@@ -8,9 +8,8 @@ class ToolBase(BaseModel):
     descrizione: Optional[str] = Field(None, description="Descrizione dettagliata dello stampo")
     
     # Dimensioni fisiche
-    lunghezza: float = Field(..., gt=0, description="Lunghezza in mm")
-    larghezza: float = Field(..., gt=0, description="Larghezza in mm")
-    altezza: float = Field(..., gt=0, description="Altezza in mm")
+    lunghezza_piano: float = Field(..., gt=0, description="Lunghezza utile del tool")
+    larghezza_piano: float = Field(..., gt=0, description="Larghezza utile del tool")
     
     # Capacità e limitazioni
     max_temperatura: Optional[float] = Field(None, description="Temperatura massima supportata in gradi Celsius")
@@ -29,9 +28,8 @@ class ToolUpdate(BaseModel):
     codice: Optional[str] = Field(None, max_length=50, description="Codice identificativo univoco dello stampo")
     descrizione: Optional[str] = Field(None, description="Descrizione dettagliata dello stampo")
     
-    lunghezza: Optional[float] = Field(None, gt=0, description="Lunghezza in mm")
-    larghezza: Optional[float] = Field(None, gt=0, description="Larghezza in mm")
-    altezza: Optional[float] = Field(None, gt=0, description="Altezza in mm")
+    lunghezza_piano: Optional[float] = Field(None, gt=0, description="Lunghezza utile del tool")
+    larghezza_piano: Optional[float] = Field(None, gt=0, description="Larghezza utile del tool")
     
     disponibile: Optional[bool] = Field(None, description="Indica se lo stampo è attualmente disponibile")
     in_manutenzione: Optional[bool] = Field(None, description="Indica se lo stampo è in manutenzione")

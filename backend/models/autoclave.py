@@ -21,8 +21,8 @@ class Autoclave(Base, TimestampMixin):
                    doc="Codice univoco dell'autoclave")
     
     # Dimensioni fisiche
-    diametro = Column(Float, nullable=False, doc="Diametro interno in mm")
     lunghezza = Column(Float, nullable=False, doc="Lunghezza interna in mm")
+    larghezza_piano = Column(Float, nullable=False, doc="Larghezza utile del piano di carico")
     
     # Capacità e specifiche tecniche
     num_linee_vuoto = Column(Integer, nullable=False, 

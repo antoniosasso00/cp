@@ -17,8 +17,8 @@ class AutoclaveBase(BaseModel):
     codice: str = Field(..., max_length=50, description="Codice univoco dell'autoclave")
     
     # Dimensioni fisiche
-    diametro: float = Field(..., gt=0, description="Diametro interno in mm")
     lunghezza: float = Field(..., gt=0, description="Lunghezza interna in mm")
+    larghezza_piano: float = Field(..., gt=0, description="Larghezza utile del piano di carico")
     
     # Capacità e specifiche tecniche
     num_linee_vuoto: int = Field(..., gt=0, description="Numero di linee vuoto disponibili")
@@ -40,8 +40,8 @@ class AutoclaveUpdate(BaseModel):
     nome: Optional[str] = Field(None, max_length=100, description="Nome identificativo dell'autoclave")
     codice: Optional[str] = Field(None, max_length=50, description="Codice univoco dell'autoclave")
     
-    diametro: Optional[float] = Field(None, gt=0, description="Diametro interno in mm")
     lunghezza: Optional[float] = Field(None, gt=0, description="Lunghezza interna in mm")
+    larghezza_piano: Optional[float] = Field(None, gt=0, description="Larghezza utile del piano di carico")
     
     num_linee_vuoto: Optional[int] = Field(None, gt=0, description="Numero di linee vuoto disponibili")
     temperatura_max: Optional[float] = Field(None, gt=0, description="Temperatura massima in gradi Celsius")

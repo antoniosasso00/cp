@@ -7,31 +7,23 @@ class CicloCuraBase(BaseModel):
     nome: str = Field(..., description="Nome identificativo del ciclo di cura")
     temperatura_max: float = Field(..., gt=0, description="Temperatura massima in gradi Celsius")
     pressione_max: float = Field(..., gt=0, description="Pressione massima in bar")
-    tempo_totale: int = Field(..., gt=0, description="Tempo totale del ciclo in minuti")
     
-    # Parametri per la prima stasi
-    stasi1_attiva: bool = Field(True, description="Indica se è presente la prima stasi")
-    stasi1_temperatura: Optional[float] = Field(None, description="Temperatura della prima stasi in gradi Celsius")
-    stasi1_pressione: Optional[float] = Field(None, description="Pressione della prima stasi in bar")
-    stasi1_durata: Optional[int] = Field(None, description="Durata della prima stasi in minuti")
+    # Stasi 1 (obbligatoria)
+    temperatura_stasi1: float = Field(..., gt=0, description="Temperatura della prima stasi in gradi Celsius")
+    pressione_stasi1: float = Field(..., gt=0, description="Pressione della prima stasi in bar")
+    durata_stasi1: int = Field(..., gt=0, description="Durata della prima stasi in minuti")
     
-    # Parametri per la seconda stasi (opzionale)
-    stasi2_attiva: bool = Field(False, description="Indica se è presente la seconda stasi")
-    stasi2_temperatura: Optional[float] = Field(None, description="Temperatura della seconda stasi in gradi Celsius")
-    stasi2_pressione: Optional[float] = Field(None, description="Pressione della seconda stasi in bar")
-    stasi2_durata: Optional[int] = Field(None, description="Durata della seconda stasi in minuti")
+    # Stasi 2 (opzionale)
+    attiva_stasi2: bool = Field(False, description="Indica se è presente la seconda stasi")
+    temperatura_stasi2: Optional[float] = Field(None, description="Temperatura della seconda stasi in gradi Celsius")
+    pressione_stasi2: Optional[float] = Field(None, description="Pressione della seconda stasi in bar")
+    durata_stasi2: Optional[int] = Field(None, description="Durata della seconda stasi in minuti")
     
     descrizione: Optional[str] = Field(None, description="Descrizione dettagliata del ciclo di cura")
     
-    @validator('stasi1_temperatura', 'stasi1_pressione', 'stasi1_durata', pre=True, always=True)
-    def validate_stasi1_fields(cls, v, values):
-        if values.get('stasi1_attiva', True) and v is None:
-            raise ValueError("Se la prima stasi è attiva, questo campo non può essere vuoto")
-        return v
-    
-    @validator('stasi2_temperatura', 'stasi2_pressione', 'stasi2_durata', pre=True, always=True)
+    @validator('temperatura_stasi2', 'pressione_stasi2', 'durata_stasi2', pre=True, always=True)
     def validate_stasi2_fields(cls, v, values):
-        if values.get('stasi2_attiva', False) and v is None:
+        if values.get('attiva_stasi2', False) and v is None:
             raise ValueError("Se la seconda stasi è attiva, questo campo non può essere vuoto")
         return v
 
@@ -44,17 +36,15 @@ class CicloCuraUpdate(BaseModel):
     nome: Optional[str] = Field(None, description="Nome identificativo del ciclo di cura")
     temperatura_max: Optional[float] = Field(None, gt=0, description="Temperatura massima in gradi Celsius")
     pressione_max: Optional[float] = Field(None, gt=0, description="Pressione massima in bar")
-    tempo_totale: Optional[int] = Field(None, gt=0, description="Tempo totale del ciclo in minuti")
     
-    stasi1_attiva: Optional[bool] = Field(None, description="Indica se è presente la prima stasi")
-    stasi1_temperatura: Optional[float] = Field(None, description="Temperatura della prima stasi in gradi Celsius")
-    stasi1_pressione: Optional[float] = Field(None, description="Pressione della prima stasi in bar")
-    stasi1_durata: Optional[int] = Field(None, description="Durata della prima stasi in minuti")
+    temperatura_stasi1: Optional[float] = Field(None, gt=0, description="Temperatura della prima stasi in gradi Celsius")
+    pressione_stasi1: Optional[float] = Field(None, gt=0, description="Pressione della prima stasi in bar")
+    durata_stasi1: Optional[int] = Field(None, gt=0, description="Durata della prima stasi in minuti")
     
-    stasi2_attiva: Optional[bool] = Field(None, description="Indica se è presente la seconda stasi")
-    stasi2_temperatura: Optional[float] = Field(None, description="Temperatura della seconda stasi in gradi Celsius")
-    stasi2_pressione: Optional[float] = Field(None, description="Pressione della seconda stasi in bar")
-    stasi2_durata: Optional[int] = Field(None, description="Durata della seconda stasi in minuti")
+    attiva_stasi2: Optional[bool] = Field(None, description="Indica se è presente la seconda stasi")
+    temperatura_stasi2: Optional[float] = Field(None, description="Temperatura della seconda stasi in gradi Celsius")
+    pressione_stasi2: Optional[float] = Field(None, description="Pressione della seconda stasi in bar")
+    durata_stasi2: Optional[int] = Field(None, description="Durata della seconda stasi in minuti")
     
     descrizione: Optional[str] = Field(None, description="Descrizione dettagliata del ciclo di cura")
 

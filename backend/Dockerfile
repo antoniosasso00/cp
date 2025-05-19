@@ -7,4 +7,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"] 
+# Imposta il permesso di esecuzione per lo script di avvio
+RUN chmod +x start.sh
+
+# Usa lo script di avvio come comando di default
+CMD ["./start.sh"] 

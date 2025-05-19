@@ -2,6 +2,25 @@
 
 ## Versioni
 
+### [19/05/2025 - v0.2.1] Refactoring dei Modelli Database
+
+#### Modifiche ai Modelli Database
+- **Autoclave**: Rimosso campo `diametro`, aggiunto `larghezza_piano` per migliorare la descrizione dimensionale.
+- **Tool**: Rimossi campi `lunghezza`, `larghezza`, `altezza`, aggiunti `lunghezza_piano` e `larghezza_piano` per una migliore descrizione dell'area utile.
+- **CicloCura**: Riformulati completamente i campi delle stasi:
+  - Rimosso `tempo_totale`
+  - Sostituiti i campi `stasi1_*` e `stasi2_*` con un nuovo schema più coerente
+  - Prima stasi resa obbligatoria con campi non nullable
+  - Seconda stasi gestita con flag `attiva_stasi2` e campi nullable
+
+#### Migrazioni
+- Creata migrazione Alembic `2030_refactor_models` per applicare tutte le modifiche in modo consistente
+- Implementata logica di upgrade/downgrade completa con gestione dei valori di default temporanei
+
+#### Schemi Pydantic
+- Aggiornati tutti gli schemi correlati per riflettere i cambiamenti nei modelli
+- Mantenuta la validazione dei dati per garantire coerenza nei modelli
+
 ### [19/05/2025 - v0.2.0] Modelli Database e Schemi
 
 #### Modelli Database

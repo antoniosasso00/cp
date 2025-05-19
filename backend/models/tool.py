@@ -13,9 +13,8 @@ class Tool(Base, TimestampMixin):
                         doc="Descrizione dettagliata dello stampo")
     
     # Dimensioni fisiche
-    lunghezza = Column(Float, nullable=False, doc="Lunghezza in mm")
-    larghezza = Column(Float, nullable=False, doc="Larghezza in mm")
-    altezza = Column(Float, nullable=False, doc="Altezza in mm")
+    lunghezza_piano = Column(Float, nullable=False, doc="Lunghezza utile del tool")
+    larghezza_piano = Column(Float, nullable=False, doc="Larghezza utile del tool")
     
     # Stato e disponibilità
     disponibile = Column(Boolean, default=True, nullable=False,

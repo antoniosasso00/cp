@@ -12,27 +12,23 @@ class CicloCura(Base, TimestampMixin):
                            doc="Temperatura massima in gradi Celsius")
     pressione_max = Column(Float, nullable=False,
                          doc="Pressione massima in bar")
-    tempo_totale = Column(Integer, nullable=False,
-                         doc="Tempo totale del ciclo in minuti")
     
-    # Parametri per la prima stasi
-    stasi1_attiva = Column(Boolean, default=True, nullable=False,
-                         doc="Indica se è presente la prima stasi")
-    stasi1_temperatura = Column(Float, nullable=True,
+    # Stasi 1 (obbligatoria)
+    temperatura_stasi1 = Column(Float, nullable=False, 
                               doc="Temperatura della prima stasi in gradi Celsius")
-    stasi1_pressione = Column(Float, nullable=True,
+    pressione_stasi1 = Column(Float, nullable=False, 
                             doc="Pressione della prima stasi in bar")
-    stasi1_durata = Column(Integer, nullable=True,
+    durata_stasi1 = Column(Integer, nullable=False, 
                           doc="Durata della prima stasi in minuti")
     
-    # Parametri per la seconda stasi (opzionale)
-    stasi2_attiva = Column(Boolean, default=False, nullable=False,
+    # Stasi 2 (opzionale)
+    attiva_stasi2 = Column(Boolean, default=False, nullable=False,
                          doc="Indica se è presente la seconda stasi")
-    stasi2_temperatura = Column(Float, nullable=True,
+    temperatura_stasi2 = Column(Float, nullable=True, 
                               doc="Temperatura della seconda stasi in gradi Celsius")
-    stasi2_pressione = Column(Float, nullable=True,
+    pressione_stasi2 = Column(Float, nullable=True, 
                             doc="Pressione della seconda stasi in bar")
-    stasi2_durata = Column(Integer, nullable=True,
+    durata_stasi2 = Column(Integer, nullable=True, 
                           doc="Durata della seconda stasi in minuti")
     
     descrizione = Column(Text, nullable=True,
