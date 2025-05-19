@@ -1,6 +1,6 @@
 # CarbonPilot
 
-![Versione](https://img.shields.io/badge/versione-0.1.0-green)
+![Versione](https://img.shields.io/badge/versione-0.3.0-green)
 
 CarbonPilot è una piattaforma completa per l'ottimizzazione di processi industriali con l'obiettivo di ridurre l'impatto ambientale. Utilizza algoritmi avanzati di nesting e ottimizzazione per minimizzare gli sprechi e massimizzare l'efficienza.
 
@@ -42,6 +42,7 @@ CarbonPilot è una piattaforma completa per l'ottimizzazione di processi industr
 progetto-root/
 ├── backend/              # Servizio API FastAPI
 │ ├── api/                # Implementazione API
+│ │ ├── routers/          # Router per le operazioni CRUD
 │ ├── models/             # Modelli SQLAlchemy
 │ ├── schemas/            # Schemi Pydantic
 │ ├── services/           # Logica di business
@@ -65,7 +66,12 @@ progetto-root/
 ### Backend
 
 ```bash
-docker-compose exec backend pytest
+# All'interno del container:
+cd backend
+./start.sh test
+
+# Dall'esterno del container:
+docker-compose exec backend ./start.sh test
 ```
 
 ### Frontend
@@ -80,6 +86,28 @@ La documentazione interattiva dell'API è disponibile all'indirizzo:
 
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
+
+### Endpoint principali
+
+CarbonPilot espone API CRUD complete per tutti i modelli principali:
+
+| Risorsa | Endpoint Base | Operazioni |
+|---------|--------------|------------|
+| Catalogo | `/api/catalogo` | GET, POST, PUT, DELETE |
+| Parti | `/api/parti` | GET, POST, PUT, DELETE |
+| Tools | `/api/tools` | GET, POST, PUT, DELETE |
+| Autoclavi | `/api/autoclavi` | GET, POST, PUT, DELETE |
+| Cicli di Cura | `/api/cicli-cura` | GET, POST, PUT, DELETE |
+
+Ogni endpoint supporta operazioni di filtraggio e paginazione:
+
+```
+GET /api/parti?part_number=ABC123&cliente=Cliente1&skip=0&limit=10
+```
+
+### Autenticazione
+
+L'autenticazione non è ancora implementata. Tutte le API sono attualmente accessibili senza credenziali.
 
 ## 🤝 Contribuire
 
@@ -101,4 +129,4 @@ Per domande o supporto, contattaci a [email@example.com](mailto:email@example.co
 
 ---
 
-Sviluppato con ❤️ dal team CarbonPilot 
+Sviluppato con ❤️ dal team CarbonPilot

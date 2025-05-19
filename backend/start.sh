@@ -1,131 +1,124 @@
 #!/bin/bash
 set -e
 
-echo "Inizializzazione del backend CarbonPilot..."
+# Carica variabili d'ambiente dal file .env
+if [ -f ".env" ]; then
+  export $(grep -v '^#' .env | xargs)
+fi
 
-# Verifica connessione al database
-echo "Verifica della connessione al database..."
-python -c "
-import psycopg2
-import os
-import time
+# Funzioni di supporto
+check_database() {
+  echo "🔍 Verifico la connessione al database..."
+  python -c "
 import sys
+from sqlalchemy import create_engine
+import time
 
-DB_HOST = os.getenv('POSTGRES_SERVER', 'db')
-DB_USER = os.getenv('POSTGRES_USER', 'postgres')
-DB_PASSWORD = os.getenv('POSTGRES_PASSWORD', 'postgres')
-DB_NAME = os.getenv('POSTGRES_DB', 'carbonpilot')
-DB_PORT = os.getenv('POSTGRES_PORT', '5432')
+# Maximum number of retries
+max_retries = 5
+retry_count = 0
+retry_delay = 2  # seconds
 
-MAX_RETRIES = 10
-RETRY_INTERVAL = 3
+# Get database URL, defaulting to a value if not found
+db_url = '${DATABASE_URL:-postgresql://postgres:postgres@db:5432/carbonpilot}'
 
-for i in range(MAX_RETRIES):
+while retry_count < max_retries:
     try:
-        conn = psycopg2.connect(
-            host=DB_HOST,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            dbname=DB_NAME,
-            port=DB_PORT
-        )
+        engine = create_engine(db_url)
+        conn = engine.connect()
         conn.close()
-        print('✅ Connessione al database riuscita')
+        print('✅ Connessione al database riuscita!')
         sys.exit(0)
     except Exception as e:
-        print(f'Tentativo {i+1}/{MAX_RETRIES}: Connessione fallita - {e}')
-        if i < MAX_RETRIES - 1:
-            print(f'Nuovo tentativo tra {RETRY_INTERVAL} secondi...')
-            time.sleep(RETRY_INTERVAL)
+        retry_count += 1
+        if retry_count < max_retries:
+            print(f'⚠️ Tentativo {retry_count}/{max_retries} fallito. Riprovo in {retry_delay} secondi...')
+            print(f'Errore: {str(e)}')
+            time.sleep(retry_delay)
+            retry_delay *= 2  # Exponential backoff
         else:
-            print('❌ Impossibile connettersi al database dopo i tentativi massimi')
+            print('❌ Impossibile connettersi al database dopo ripetuti tentativi!')
+            print(f'Errore: {str(e)}')
             sys.exit(1)
-"
-
-# Verifica stato database e schema
-echo "Verifica dello schema del database..."
-python -c "
-import psycopg2
-import os
-
-DB_HOST = os.getenv('POSTGRES_SERVER', 'db')
-DB_USER = os.getenv('POSTGRES_USER', 'postgres')
-DB_PASSWORD = os.getenv('POSTGRES_PASSWORD', 'postgres')
-DB_NAME = os.getenv('POSTGRES_DB', 'carbonpilot')
-DB_PORT = os.getenv('POSTGRES_PORT', '5432')
-
-conn = psycopg2.connect(
-    host=DB_HOST,
-    user=DB_USER,
-    password=DB_PASSWORD,
-    dbname=DB_NAME,
-    port=DB_PORT
-)
-cursor = conn.cursor()
-
-# Verifica se la tabella alembic_version esiste
-cursor.execute(\"\"\"
-    SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_name = 'alembic_version'
-    );
-\"\"\")
-alembic_exists = cursor.fetchone()[0]
-
-if alembic_exists:
-    print('✅ Tabella alembic_version trovata')
-    
-    # Verifica qual è la versione corrente
-    cursor.execute('SELECT version_num FROM alembic_version;')
-    current_version = cursor.fetchone()
-    
-    if current_version:
-        print(f'✅ Versione attuale: {current_version[0]}')
-    else:
-        print('❌ Nessuna versione trovata nella tabella alembic_version')
-else:
-    print('❓ Tabella alembic_version non trovata - lo schema potrebbe non essere inizializzato')
-
-# Verifica se le tabelle principali esistono
-tables_to_check = ['cataloghi', 'autoclavi', 'cicli_cura', 'tools', 'parti']
-existing_tables = []
-missing_tables = []
-
-for table in tables_to_check:
-    cursor.execute(f\"\"\"
-        SELECT EXISTS (
-            SELECT FROM information_schema.tables 
-            WHERE table_name = '{table}'
-        );
-    \"\"\")
-    if cursor.fetchone()[0]:
-        existing_tables.append(table)
-    else:
-        missing_tables.append(table)
-
-if existing_tables:
-    print(f'✅ Tabelle esistenti: {existing_tables}')
-
-if missing_tables:
-    print(f'❓ Tabelle mancanti: {missing_tables}')
-
-cursor.close()
-conn.close()
-"
-
-# Applica le migrazioni
-echo "Applicazione delle migrazioni Alembic..."
-python -m alembic upgrade head || {
-    echo "⚠️ Si sono verificati errori durante l'applicazione delle migrazioni."
-    echo "⚠️ Si tenterà comunque di avviare l'API."
+  "
 }
 
-# Tenta di applicare direttamente la seconda migrazione se necessario
-echo "Prova ad applicare direttamente la seconda migrazione..."
-python -m alembic upgrade 2030_refactor_models || {
-    echo "⚠️ Non è stato possibile applicare la seconda migrazione."
+init_alembic() {
+  if [ ! -d "migrations" ]; then
+    echo "🚀 Inizializzazione Alembic per la gestione delle migrazioni..."
+    alembic init migrations
+
+    # Modifica il file env.py di Alembic per utilizzare le nostre configurazioni
+    sed -i 's/from sqlalchemy import pool/from sqlalchemy import pool\nimport os\nfrom dotenv import load_dotenv\nfrom api.database import SQLALCHEMY_DATABASE_URL\n\nload_dotenv()/' migrations/env.py
+    sed -i 's/config.set_main_option("sqlalchemy.url", url)/url = os.environ.get("DATABASE_URL", SQLALCHEMY_DATABASE_URL)\nconfig.set_main_option("sqlalchemy.url", url)/' migrations/env.py
+    sed -i 's/target_metadata = None/from models.base import Base\ntarget_metadata = Base.metadata/' migrations/env.py
+  fi
 }
 
-# Avvia l'API FastAPI
-echo "Avvio dell'API FastAPI..."
-exec uvicorn main:app --host 0.0.0.0 --port 8000 --reload 
+run_migrations() {
+  echo "🔄 Applicazione migrazioni del database..."
+  alembic upgrade head
+}
+
+show_help() {
+  echo "💼 CarbonPilot Backend - Comandi disponibili:"
+  echo "  start       - Avvia il server in modalità normale"
+  echo "  dev         - Avvia il server in modalità sviluppo con reload automatico"
+  echo "  migrate     - Crea ed esegue migrazioni del database"
+  echo "  init-db     - Inizializza il database con dati di base"
+  echo "  test        - Esegue i test automatici"
+  echo "  help        - Mostra questo messaggio di aiuto"
+}
+
+# Comando principale
+case "$1" in
+  start)
+    check_database
+    run_migrations
+    echo "🚀 Avvio del server in modalità produzione..."
+    uvicorn main:app --host 0.0.0.0 --port 8000
+    ;;
+    
+  dev)
+    check_database
+    run_migrations
+    echo "🚀 Avvio del server in modalità sviluppo con reload automatico..."
+    uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    ;;
+    
+  migrate)
+    check_database
+    init_alembic
+    
+    # Se specificato, crea una nuova migrazione
+    if [ -n "$2" ]; then
+      echo "📝 Creazione nuova migrazione: $2"
+      alembic revision --autogenerate -m "$2"
+    fi
+    
+    run_migrations
+    ;;
+    
+  init-db)
+    check_database
+    run_migrations
+    echo "🌱 Inizializzazione database con dati di base..."
+    python -c "
+from models.base import Base
+from api.database import engine, get_db
+from sqlalchemy.orm import Session
+
+# Qui puoi aggiungere codice per inserire dati iniziali nel database
+print('✅ Inizializzazione completata')
+"
+    ;;
+
+  test)
+    echo "🧪 Esecuzione dei test automatici..."
+    pytest -xvs tests/
+    ;;
+    
+  help|*)
+    show_help
+    ;;
+esac 

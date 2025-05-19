@@ -1,55 +1,53 @@
-# Changelog del Progetto CarbonPilot
+# Changelog CarbonPilot
 
-## Versioni
+Questo file contiene il registro dei cambiamenti più significativi del progetto.
 
-### [19/05/2025 - v0.2.1] Refactoring dei Modelli Database
+## [v0.3.0] - API CRUD Backend - 2023-10-25
 
-#### Modifiche ai Modelli Database
-- **Autoclave**: Rimosso campo `diametro`, aggiunto `larghezza_piano` per migliorare la descrizione dimensionale.
-- **Tool**: Rimossi campi `lunghezza`, `larghezza`, `altezza`, aggiunti `lunghezza_piano` e `larghezza_piano` per una migliore descrizione dell'area utile.
-- **CicloCura**: Riformulati completamente i campi delle stasi:
-  - Rimosso `tempo_totale`
-  - Sostituiti i campi `stasi1_*` e `stasi2_*` con un nuovo schema più coerente
-  - Prima stasi resa obbligatoria con campi non nullable
-  - Seconda stasi gestita con flag `attiva_stasi2` e campi nullable
+### Aggiunte
+- Implementate API CRUD complete per tutti i modelli principali:
+  - `/api/catalogo`: Gestione del catalogo prodotti (part number)
+  - `/api/parti`: Gestione delle parti prodotte
+  - `/api/tools`: Gestione degli stampi (tools)
+  - `/api/autoclavi`: Gestione delle autoclavi
+  - `/api/cicli-cura`: Gestione dei cicli di cura
+- Aggiunta gestione degli errori e logging centralizzato
+- Aggiunti test automatici per le API con pytest
+- Aggiornato lo script start.sh con comandi per eseguire i test
+- Aggiunta paginazione e filtri alle API di lista
 
-#### Migrazioni
-- Creata migrazione Alembic `2030_refactor_models` per applicare tutte le modifiche in modo consistente
-- Implementata logica di upgrade/downgrade completa con gestione dei valori di default temporanei
+### Modifiche
+- Aggiornata documentazione Swagger/OpenAPI con sommari e descrizioni dettagliate
+- Migliorate le validazioni e gestione degli errori negli endpoint
+- Versione dell'API aggiornata a v0.3.0
 
-#### Schemi Pydantic
-- Aggiornati tutti gli schemi correlati per riflettere i cambiamenti nei modelli
-- Mantenuta la validazione dei dati per garantire coerenza nei modelli
+## [v0.2.0] - Modelli SQLAlchemy e Schemi - 2023-10-20
 
-### [19/05/2025 - v0.2.0] Modelli Database e Schemi
+### Aggiunte
+- Definiti modelli SQLAlchemy completi:
+  - `Catalogo`: Modello per gestire i part number del catalogo
+  - `Parte`: Modello per le parti prodotte associate a un PN del catalogo
+  - `Tool`: Modello per gli stampi utilizzati nella laminazione
+  - `Autoclave`: Modello per le autoclavi utilizzate nella cura
+  - `CicloCura`: Modello per i cicli di cura applicabili in autoclave
+- Creati schemi Pydantic per la validazione e serializzazione:
+  - Schema base, creazione, update e risposta per ogni modello
+  - Validatori personalizzati per regole specifiche
+- Configurazione Alembic per le migrazioni del database
+- Prima migrazione per la creazione dello schema del database
 
-#### Modelli Database
-- **Catalogo**: Modello per i Part Number univoci dell'azienda con descrizione, categoria e stato attivo.
-- **Parte**: Modello per le parti associate a un PN del catalogo, con descrizione, peso, spessore, e informazioni sui cicli di cura e tool necessari.
-- **Tool**: Modello per gli stampi utilizzati nella produzione, con dimensioni, disponibilità e specifiche tecniche.
-- **Autoclave**: Modello per le autoclavi con dimensioni, capacità, specifiche tecniche e stato operativo.
-- **CicloCura**: Modello per i cicli di cura con temperatura, pressione e impostazioni delle stasi.
+### Modifiche
+- Aggiornata struttura del progetto con cartelle dedicate (schemas, models)
+- Migliorata configurazione di connessione al database
 
-#### Schemi Pydantic
-- Creati schemi per ogni modello:
-  - Schema base per le proprietà comuni
-  - Schema di creazione con campi obbligatori 
-  - Schema di aggiornamento con campi opzionali
-  - Schema di risposta completo per le API
+## [v0.1.0] - Setup Iniziale - 2023-10-15
 
-#### Migrazioni
-- Creata migrazione manuale con Alembic per l'inizializzazione di tutte le tabelle del database.
-- Configurata la relazione tra Parte e Catalogo (Foreign Key).
-- Configurata la relazione tra Parte e CicloCura (Foreign Key).
-- Configurata la relazione molti-a-molti tra Parte e Tool con tabella associativa.
-
-### [17/05/2025 - v0.1.0] Setup Iniziale del Progetto
-
-- Creata struttura del progetto con Next.js (frontend) e FastAPI (backend)
-- Configurato Docker Compose per l'orchestrazione
-- Impostati modelli base e configurazione delle migrazioni
-- Inizializzato il database PostgreSQL
-- Configurata l'API di base con autenticazione
+### Aggiunte
+- Struttura base del progetto con Next.js per il frontend
+- Backend FastAPI con PostgreSQL
+- Configurazione Docker Compose
+- Setup di base per autenticazione
+- CI/CD iniziale
 
 ---
 
