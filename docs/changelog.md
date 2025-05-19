@@ -1,27 +1,36 @@
-# Changelog CarbonPilot
+# Changelog del Progetto CarbonPilot
 
-Questo file mantiene un registro di tutti i cambiamenti significativi apportati al progetto CarbonPilot.
+## Versioni
 
-## [0.1.0] - 2023-12-01
+### [19/05/2025 - v0.2.0] Modelli Database e Schemi
 
-### Aggiunte
-- Setup iniziale del progetto con struttura modulare
-- Configurazione del backend FastAPI con SQLAlchemy e PostgreSQL
-- Configurazione del frontend Next.js 14 con TypeScript e TailwindCSS
-- Aggiunta dei componenti UI di base utilizzando shadcn/ui
-- Configurazione di Docker e Docker Compose per orchestrare i servizi
-- Predisposizione per l'autenticazione e la gestione utenti
-- Configurazione di Alembic per le migrazioni del database
-- Pagina Home con layout di base e tema responsivo
+#### Modelli Database
+- **Catalogo**: Modello per i Part Number univoci dell'azienda con descrizione, categoria e stato attivo.
+- **Parte**: Modello per le parti associate a un PN del catalogo, con descrizione, peso, spessore, e informazioni sui cicli di cura e tool necessari.
+- **Tool**: Modello per gli stampi utilizzati nella produzione, con dimensioni, disponibilità e specifiche tecniche.
+- **Autoclave**: Modello per le autoclavi con dimensioni, capacità, specifiche tecniche e stato operativo.
+- **CicloCura**: Modello per i cicli di cura con temperatura, pressione e impostazioni delle stasi.
 
-### Infrastruttura
-- Struttura del database PostgreSQL con tabelle base
-- Implementazione base del sistema di API RESTful
-- Configurazione ambiente di sviluppo Docker-based
+#### Schemi Pydantic
+- Creati schemi per ogni modello:
+  - Schema base per le proprietà comuni
+  - Schema di creazione con campi obbligatori 
+  - Schema di aggiornamento con campi opzionali
+  - Schema di risposta completo per le API
 
-### Modifiche al database
-- Setup iniziale schema database
-- Creata tabella `users` (predisposta per autenticazione futura)
+#### Migrazioni
+- Creata migrazione manuale con Alembic per l'inizializzazione di tutte le tabelle del database.
+- Configurata la relazione tra Parte e Catalogo (Foreign Key).
+- Configurata la relazione tra Parte e CicloCura (Foreign Key).
+- Configurata la relazione molti-a-molti tra Parte e Tool con tabella associativa.
+
+### [17/05/2025 - v0.1.0] Setup Iniziale del Progetto
+
+- Creata struttura del progetto con Next.js (frontend) e FastAPI (backend)
+- Configurato Docker Compose per l'orchestrazione
+- Impostati modelli base e configurazione delle migrazioni
+- Inizializzato il database PostgreSQL
+- Configurata l'API di base con autenticazione
 
 ---
 
