@@ -13,7 +13,7 @@ load_dotenv()
 app = FastAPI(
     title="CarbonPilot API",
     description="Backend API per CarbonPilot",
-    version="0.1.0"
+    version="0.3.1"
 )
 
 # Configurazione CORS
@@ -30,7 +30,7 @@ app.include_router(router, prefix="/api")
 
 @app.get("/")
 def read_root():
-    return {"message": "Benvenuto nella CarbonPilot API", "version": "0.1.0"}
+    return {"message": "Benvenuto nella CarbonPilot API", "version": "0.3.1"}
 
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):

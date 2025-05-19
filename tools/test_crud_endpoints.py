@@ -18,11 +18,11 @@ API_PREFIX = os.getenv("API_PREFIX", "/api/v1")
 
 # Endpoints da testare automaticamente
 ENDPOINTS = [
-    "cataloghi",
+    "catalogo",
     "parti",
     "tools",
     "autoclavi",
-    "cicli_cura",
+    "cicli-cura",  # trattino corretto
 ]
 
 # Payload di esempio minimi (da estendere in produzione)
