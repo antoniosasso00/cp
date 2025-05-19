@@ -2,7 +2,7 @@ from sqlalchemy import Column, Integer, Float, String, Boolean, Text, Enum
 import enum
 from .base import Base, TimestampMixin
 
-class StatoAutoclave(enum.Enum):
+class StatoAutoclave(str, enum.Enum):
     """Enum per rappresentare i vari stati operativi di un'autoclave"""
     DISPONIBILE = "disponibile"
     IN_USO = "in_uso"

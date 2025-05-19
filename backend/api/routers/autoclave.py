@@ -5,15 +5,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from api.database import get_db
-from models.autoclave import Autoclave, StatoAutoclave
-from schemas.autoclave import AutoclaveCreate, AutoclaveResponse, AutoclaveUpdate, StatoAutoclaveEnum
+from models.autoclave import Autoclave, StatoAutoclave as DbStatoAutoclave
+from schemas.autoclave import AutoclaveCreate, AutoclaveResponse, AutoclaveUpdate, StatoAutoclave
 
 # Configurazione logger
 logger = logging.getLogger(__name__)
 
 # Creazione router
 router = APIRouter(
-    prefix="/autoclavi",
     tags=["autoclavi"],
     responses={404: {"description": "Autoclave non trovata"}}
 )
@@ -36,15 +35,11 @@ def create_autoclave(autoclave: AutoclaveCreate, db: Session = Depends(get_db)):
     - **anno_produzione**: anno di produzione (opzionale)
     - **note**: note aggiuntive (opzionale)
     """
-    # Converte lo stato enum da Pydantic a SQLAlchemy
-    autoclave_data = autoclave.model_dump()
-    if "stato" in autoclave_data:
-        stato_str = autoclave_data["stato"]
-        autoclave_data["stato"] = StatoAutoclave(stato_str)
-    
-    db_autoclave = Autoclave(**autoclave_data)
-    
     try:
+        # Converte direttamente i dati senza conversione speciale per lo stato
+        autoclave_data = autoclave.model_dump()
+        db_autoclave = Autoclave(**autoclave_data)
+        
         db.add(db_autoclave)
         db.commit()
         db.refresh(db_autoclave)
@@ -61,7 +56,7 @@ def create_autoclave(autoclave: AutoclaveCreate, db: Session = Depends(get_db)):
         logger.error(f"Errore imprevisto durante la creazione dell'autoclave: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Si è verificato un errore durante la creazione dell'autoclave."
+            detail=f"Si è verificato un errore durante la creazione dell'autoclave: {str(e)}"
         )
 
 @router.get("/", response_model=List[AutoclaveResponse], 
@@ -71,7 +66,7 @@ def read_autoclavi(
     limit: int = 100,
     nome: Optional[str] = Query(None, description="Filtra per nome"),
     codice: Optional[str] = Query(None, description="Filtra per codice"),
-    stato: Optional[StatoAutoclaveEnum] = Query(None, description="Filtra per stato"),
+    stato: Optional[StatoAutoclave] = Query(None, description="Filtra per stato"),
     in_manutenzione: Optional[bool] = Query(None, description="Filtra per stato di manutenzione"),
     db: Session = Depends(get_db)
 ):
@@ -92,7 +87,7 @@ def read_autoclavi(
     if codice:
         query = query.filter(Autoclave.codice == codice)
     if stato:
-        query = query.filter(Autoclave.stato == StatoAutoclave(stato))
+        query = query.filter(Autoclave.stato == DbStatoAutoclave(stato))
     if in_manutenzione is not None:
         query = query.filter(Autoclave.in_manutenzione == in_manutenzione)
     
@@ -144,18 +139,13 @@ def update_autoclave(autoclave_id: int, autoclave: AutoclaveUpdate, db: Session 
             detail=f"Autoclave con ID {autoclave_id} non trovata"
         )
     
-    # Aggiornamento dei campi presenti nella richiesta
-    update_data = autoclave.model_dump(exclude_unset=True)
-    
-    # Gestione enum stato
-    if "stato" in update_data:
-        stato_str = update_data["stato"]
-        update_data["stato"] = StatoAutoclave(stato_str)
-    
-    for key, value in update_data.items():
-        setattr(db_autoclave, key, value)
-    
     try:
+        # Aggiornamento dei campi presenti nella richiesta
+        update_data = autoclave.model_dump(exclude_unset=True)
+        
+        for key, value in update_data.items():
+            setattr(db_autoclave, key, value)
+        
         db.commit()
         db.refresh(db_autoclave)
         return db_autoclave
@@ -171,7 +161,7 @@ def update_autoclave(autoclave_id: int, autoclave: AutoclaveUpdate, db: Session 
         logger.error(f"Errore durante l'aggiornamento dell'autoclave {autoclave_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Si è verificato un errore durante l'aggiornamento dell'autoclave."
+            detail=f"Si è verificato un errore durante l'aggiornamento dell'autoclave: {str(e)}"
         )
 
 @router.delete("/{autoclave_id}", status_code=status.HTTP_204_NO_CONTENT, 
