@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from api.database import get_db
-from models.autoclave import Autoclave, StatoAutoclave as DbStatoAutoclave
-from schemas.autoclave import AutoclaveCreate, AutoclaveResponse, AutoclaveUpdate, StatoAutoclave
+from models.autoclave import Autoclave
+from schemas.autoclave import AutoclaveCreate, AutoclaveResponse, AutoclaveUpdate, StatoAutoclaveEnum
 
 # Configurazione logger
 logger = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ def read_autoclavi(
     limit: int = 100,
     nome: Optional[str] = Query(None, description="Filtra per nome"),
     codice: Optional[str] = Query(None, description="Filtra per codice"),
-    stato: Optional[StatoAutoclave] = Query(None, description="Filtra per stato"),
+    stato: Optional[StatoAutoclaveEnum] = Query(None, description="Filtra per stato"),
     in_manutenzione: Optional[bool] = Query(None, description="Filtra per stato di manutenzione"),
     db: Session = Depends(get_db)
 ):
@@ -87,7 +87,7 @@ def read_autoclavi(
     if codice:
         query = query.filter(Autoclave.codice == codice)
     if stato:
-        query = query.filter(Autoclave.stato == DbStatoAutoclave(stato))
+        query = query.filter(Autoclave.stato == stato)
     if in_manutenzione is not None:
         query = query.filter(Autoclave.in_manutenzione == in_manutenzione)
     

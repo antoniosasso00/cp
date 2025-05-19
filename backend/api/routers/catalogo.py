@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 # Creazione router
 router = APIRouter(
-    prefix="/catalogo",
     tags=["catalogo"],
     responses={404: {"description": "Catalogo non trovato"}}
 )

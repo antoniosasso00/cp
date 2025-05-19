@@ -22,12 +22,12 @@ ENDPOINTS = [
     "parti",
     "tools",
     "autoclavi",
-    "cicli-cura",  # trattino corretto
+    "cicli-cura",
 ]
 
-# Payload di esempio minimi (da estendere in produzione)
+# Payload di esempio aggiornati
 EXAMPLE_PAYLOADS = {
-    "cataloghi": {
+    "catalogo": {
         "part_number": "TEST-CAT-001",
         "descrizione": "Test Catalog Entry",
         "categoria": "Test",
@@ -51,10 +51,10 @@ EXAMPLE_PAYLOADS = {
         "num_linee_vuoto": 4,
         "temperatura_max": 180.0,
         "pressione_max": 7.0,
-        "stato": "DISPONIBILE",
+        "stato": "disponibile",
         "in_manutenzione": False
     },
-    "cicli_cura": {
+    "cicli-cura": {
         "nome": "Ciclo Test",
         "temperatura_max": 180.0,
         "pressione_max": 6.0,
@@ -71,11 +71,10 @@ EXAMPLE_PAYLOADS = {
 }
 
 async def test_endpoint(endpoint: str):
-    url = f"{BACKEND_URL}{API_PREFIX}/{endpoint}"
-    async with httpx.AsyncClient() as client:
+    url = f"{BACKEND_URL}{API_PREFIX}/{endpoint}/"
+    async with httpx.AsyncClient(follow_redirects=True) as client:
         print(f"\n🔄 Testing: {endpoint.upper()}...")
 
-        # CREATE
         payload = EXAMPLE_PAYLOADS.get(endpoint)
         if not payload:
             print(f"⚠️ Nessun payload di esempio per {endpoint}, salto.")
@@ -94,14 +93,14 @@ async def test_endpoint(endpoint: str):
             r = await client.get(url)
             print(f"GET {url} → {r.status_code} | {len(r.json())} elementi trovati")
 
-            # GET by ID or codice
+            # GET by ID or chiave
             if entity_id:
-                r = await client.get(f"{url}/{entity_id}")
-                print(f"GET {url}/{entity_id} → {r.status_code}")
+                r = await client.get(f"{url}{entity_id}")
+                print(f"GET {url}{entity_id} → {r.status_code}")
 
                 # DELETE
-                r = await client.delete(f"{url}/{entity_id}")
-                print(f"DELETE {url}/{entity_id} → {r.status_code}")
+                r = await client.delete(f"{url}{entity_id}")
+                print(f"DELETE {url}{entity_id} → {r.status_code}")
         except Exception as e:
             print(f"❌ Errore durante test {endpoint}: {e}")
 

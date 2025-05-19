@@ -1,14 +1,7 @@
-from sqlalchemy import Column, Integer, Float, String, Boolean, Text, Enum
-import enum
+from sqlalchemy import Column, Integer, Float, String, Boolean, Text
+from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from .base import Base, TimestampMixin
-
-class StatoAutoclave(str, enum.Enum):
-    """Enum per rappresentare i vari stati operativi di un'autoclave"""
-    DISPONIBILE = "disponibile"
-    IN_USO = "in_uso"
-    MANUTENZIONE = "manutenzione"
-    GUASTO = "guasto"
-    SPENTA = "spenta"
+from schemas.autoclave import StatoAutoclaveEnum
 
 class Autoclave(Base, TimestampMixin):
     """Modello che rappresenta le autoclavi utilizzate per la cura delle parti"""
@@ -33,8 +26,12 @@ class Autoclave(Base, TimestampMixin):
                          doc="Pressione massima in bar")
     
     # Stato operativo
-    stato = Column(Enum(StatoAutoclave), default=StatoAutoclave.DISPONIBILE, nullable=False,
-                  doc="Stato attuale dell'autoclave")
+    stato = Column(
+        PgEnum(StatoAutoclaveEnum, name="statoautoclave", create_type=True, validate_strings=True),
+        nullable=False,
+        default=StatoAutoclaveEnum.DISPONIBILE,
+        doc="Stato attuale dell'autoclave"
+    )
     in_manutenzione = Column(Boolean, default=False, nullable=False,
                            doc="Indica se l'autoclave è in manutenzione programmata")
     

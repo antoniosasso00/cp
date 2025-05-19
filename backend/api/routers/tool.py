@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 # Creazione router
 router = APIRouter(
-    prefix="/tools",
     tags=["tools"],
     responses={404: {"description": "Tool non trovato"}}
 )

@@ -1,8 +1,9 @@
 # 🧱 Progetto CarbonPilot – Struttura Corrente
 
-📁 CarbonPilot/
+📁 carbonpilot/
     └── README.md
     └── docker-compose.yml
+    └── project_structure.md
     📁 backend/
         └── Dockerfile
         └── alembic.ini
@@ -12,7 +13,6 @@
         📁 api/
             └── __init__.py
             └── database.py
-            └── main.py
             └── routes.py
             📁 routers/
                 └── __init__.py
@@ -27,9 +27,7 @@
             └── env.py
             └── script.py.mako
             📁 versions/
-                └── 20250519_1945_initial_models.py
-                └── 20250519_2030_refactor_models.py
-                └── __init__.py
+                └── 20250519_210022_initial_clean_migration.py
         📁 models/
             └── __init__.py
             └── autoclave.py
@@ -85,4 +83,5 @@
         └── inspect_models.py
         └── setup_db.py
         └── snapshot_structure.py
+        └── test_autoclave.py
         └── test_crud_endpoints.py

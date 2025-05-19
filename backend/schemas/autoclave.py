@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 
 # Enum per rappresentare i vari stati operativi di un'autoclave
-class StatoAutoclave(str, Enum):
+class StatoAutoclaveEnum(str, Enum):
     DISPONIBILE = "disponibile"
     IN_USO = "in_uso"
     MANUTENZIONE = "manutenzione"
@@ -32,7 +32,7 @@ class AutoclaveBase(BaseModel):
 
 # Schema per la creazione
 class AutoclaveCreate(AutoclaveBase):
-    stato: StatoAutoclave = Field(StatoAutoclave.DISPONIBILE, description="Stato attuale dell'autoclave")
+    stato: StatoAutoclaveEnum = Field(StatoAutoclaveEnum.DISPONIBILE, description="Stato attuale dell'autoclave")
     in_manutenzione: bool = Field(False, description="Indica se l'autoclave è in manutenzione programmata")
 
 # Schema per gli aggiornamenti
@@ -47,7 +47,7 @@ class AutoclaveUpdate(BaseModel):
     temperatura_max: Optional[float] = Field(None, gt=0, description="Temperatura massima in gradi Celsius")
     pressione_max: Optional[float] = Field(None, gt=0, description="Pressione massima in bar")
     
-    stato: Optional[StatoAutoclave] = Field(None, description="Stato attuale dell'autoclave")
+    stato: Optional[StatoAutoclaveEnum] = Field(None, description="Stato attuale dell'autoclave")
     in_manutenzione: Optional[bool] = Field(None, description="Indica se l'autoclave è in manutenzione programmata")
     
     produttore: Optional[str] = Field(None, max_length=100, description="Nome del produttore dell'autoclave")
@@ -57,7 +57,7 @@ class AutoclaveUpdate(BaseModel):
 # Schema per la risposta (include i campi generati dal database)
 class AutoclaveResponse(AutoclaveBase):
     id: int = Field(..., description="ID univoco dell'autoclave")
-    stato: StatoAutoclave = Field(..., description="Stato attuale dell'autoclave")
+    stato: StatoAutoclaveEnum = Field(..., description="Stato attuale dell'autoclave")
     in_manutenzione: bool = Field(..., description="Indica se l'autoclave è in manutenzione programmata")
     created_at: datetime = Field(..., description="Data e ora di creazione del record")
     updated_at: datetime = Field(..., description="Data e ora dell'ultimo aggiornamento")

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:14-alpine
@@ -36,6 +34,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+    command: ["sh", "-c", "cd /app && ./start.sh dev"]
     depends_on:
       db:
         condition: service_healthy

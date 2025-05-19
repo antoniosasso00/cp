@@ -7,6 +7,7 @@ alembic==1.12.0
 pydantic==2.4.2
 pydantic-settings==2.0.3
 python-multipart==0.0.6
+python-dateutil>=2.8
 
 # Pacchetti per i test
 pytest==7.4.2
