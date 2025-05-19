@@ -1,0 +1,30 @@
+# Migrazioni del Database
+
+Questo directory contiene gli script di migrazione per il database PostgreSQL.
+
+## Comandi Utili
+
+### Generare una nuova migrazione
+```
+alembic revision --autogenerate -m "descrizione_della_migrazione"
+```
+
+### Aggiornare il database all'ultima migrazione
+```
+alembic upgrade head
+```
+
+### Downgrade di una migrazione
+```
+alembic downgrade -1
+```
+
+### Visualizzare lo stato attuale
+```
+alembic current
+```
+
+### Visualizzare la storia delle migrazioni
+```
+alembic history --verbose
+``` 
