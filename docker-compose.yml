@@ -1,61 +1,50 @@
-services:
-  db:
-    image: postgres:14-alpine
-    restart: always
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=carbonpilot
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - carbonpilot-network
+version: '3.8'
 
+services:
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    restart: always
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_SERVER=db
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=carbonpilot
-      - ENVIRONMENT=development
-    ports:
-      - "8000:8000"
+    build: ./backend
+    container_name: carbonpilot-backend
     volumes:
       - ./backend:/app
-    command: ["sh", "-c", "cd /app && ./start.sh dev"]
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/carbonpilot
+      - DEBUG=true
     depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - carbonpilot-network
+      - db
+    restart: unless-stopped
+    command: >
+      sh -c "alembic upgrade head && 
+             uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    restart: always
-    ports:
-      - "3000:3000"
+    build: ./frontend
+    container_name: carbonpilot-frontend
     volumes:
       - ./frontend:/app
       - /app/node_modules
-      - /app/.next
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/v1
     depends_on:
       - backend
-    networks:
-      - carbonpilot-network
+    restart: unless-stopped
+    command: npm run dev
+
+  db:
+    image: postgres:15-alpine
+    container_name: carbonpilot-db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=carbonpilot
+    restart: unless-stopped
 
 volumes:
   postgres_data:

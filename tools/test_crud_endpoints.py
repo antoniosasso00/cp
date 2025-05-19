@@ -16,13 +16,13 @@ load_dotenv()
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 API_PREFIX = os.getenv("API_PREFIX", "/api/v1")
 
-# Endpoints da testare automaticamente
+# Endpoints da testare automaticamente - Metto catalogo per primo per garantire che esista
 ENDPOINTS = [
     "catalogo",
-    "parti",
     "tools",
     "autoclavi",
     "cicli-cura",
+    "parte",
 ]
 
 # Payload di esempio aggiornati
@@ -63,17 +63,32 @@ EXAMPLE_PAYLOADS = {
         "durata_stasi1": 60,
         "attiva_stasi2": False
     },
-    "parti": {
+    "parte": {
         "part_number": "TEST-CAT-001",
         "descrizione_breve": "Parte test",
-        "num_valvole_richieste": 2
+        "num_valvole_richieste": 2,
+        "tool_ids": []
     },
 }
 
+# Dati creati per riferimento
+created_entities = {}
+
 async def test_endpoint(endpoint: str):
     url = f"{BACKEND_URL}{API_PREFIX}/{endpoint}/"
+    
     async with httpx.AsyncClient(follow_redirects=True) as client:
         print(f"\n🔄 Testing: {endpoint.upper()}...")
+
+        if endpoint == "parte":
+            try:
+                catalog_url = f"{BACKEND_URL}{API_PREFIX}/catalogo/TEST-CAT-001"
+                r = await client.get(catalog_url)
+                if r.status_code != 200:
+                    print("Catalogo non trovato, lo creo...")
+                    await client.post(f"{BACKEND_URL}{API_PREFIX}/catalogo/", json=EXAMPLE_PAYLOADS["catalogo"])
+            except Exception as e:
+                print(f"Errore nel controllo del catalogo: {e}")
 
         payload = EXAMPLE_PAYLOADS.get(endpoint)
         if not payload:
@@ -88,6 +103,9 @@ async def test_endpoint(endpoint: str):
                 return
             data = r.json()
             entity_id = data.get("id") or data.get("part_number") or data.get("codice")
+            
+            # Salva l'entità creata per riferimento
+            created_entities[endpoint] = data
 
             # GET all
             r = await client.get(url)
@@ -95,12 +113,14 @@ async def test_endpoint(endpoint: str):
 
             # GET by ID or chiave
             if entity_id:
-                r = await client.get(f"{url}{entity_id}")
-                print(f"GET {url}{entity_id} → {r.status_code}")
+                get_url = f"{url}{entity_id}"
+                r = await client.get(get_url)
+                print(f"GET {get_url} → {r.status_code}")
 
                 # DELETE
-                r = await client.delete(f"{url}{entity_id}")
-                print(f"DELETE {url}{entity_id} → {r.status_code}")
+                delete_url = f"{url}{entity_id}"
+                r = await client.delete(delete_url)
+                print(f"DELETE {delete_url} → {r.status_code}")
         except Exception as e:
             print(f"❌ Errore durante test {endpoint}: {e}")
 
@@ -108,6 +128,18 @@ async def test_endpoint(endpoint: str):
 async def main():
     for endpoint in ENDPOINTS:
         await test_endpoint(endpoint)
+    
+    print("\n✅ Test completati!")
+    
+    if "catalogo" in created_entities:
+        print(f"🗑️ Pulizia: rimuovo il catalogo di test {created_entities['catalogo']['part_number']}")
+        
+        # Assicuriamo che il catalogo venga eliminato alla fine
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.delete(f"{BACKEND_URL}{API_PREFIX}/catalogo/{created_entities['catalogo']['part_number']}")
+        except Exception as e:
+            print(f"Errore nella pulizia finale: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
