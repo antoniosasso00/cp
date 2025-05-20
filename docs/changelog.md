@@ -2,6 +2,26 @@
 
 Questo file contiene il registro dei cambiamenti più significativi del progetto.
 
+## [v0.4.2] - Pulizia Modelli e Migrazioni - 2024-05-22
+
+### Modifiche al Database
+- Rimossi campi inutilizzati dai modelli:
+  - Da `Tool`: data_ultima_manutenzione, max_temperatura, max_pressione, cicli_completati
+  - Da `Parte`: peso, spessore, cliente
+- Aggiornati gli schemi Pydantic corrispondenti
+- Aggiornati i dati di test per riflettere le modifiche
+
+### Miglioramenti
+- Creato script `run_migration.py` per semplificare la gestione delle migrazioni Alembic
+- Migliorata la configurazione di Alembic per supporto locale e Docker
+- Aggiunto script `apply_schema_changes.py` per modifiche manuali al database
+- Ottimizzata la gestione delle variabili d'ambiente per le migrazioni
+
+### Correzioni
+- Risolti problemi di connessione al database durante le migrazioni
+- Corretta la gestione delle revisioni Alembic
+- Migliorata la gestione degli errori durante le migrazioni
+
 ## [v0.4.1] - Fix Routing e Test CRUD - 2024-05-20
 
 ### Correzioni
