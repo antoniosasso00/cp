@@ -1,8 +1,0 @@
-{
-  "/page": "app/page.js",
-  "/dashboard/page": "app/dashboard/page.js",
-  "/dashboard/tools/page": "app/dashboard/tools/page.js",
-  "/dashboard/parts/page": "app/dashboard/parts/page.js",
-  "/dashboard/autoclavi/page": "app/dashboard/autoclavi/page.js",
-  "/dashboard/cicli-cura/page": "app/dashboard/cicli-cura/page.js"
-}
