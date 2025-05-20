@@ -1,14 +1,10 @@
-from sqlalchemy import Column, Integer, Float, String, ForeignKey, Text, Table
+from sqlalchemy import Column, Integer, Float, String, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from .base import Base, TimestampMixin
-
-# Tabella di associazione molti-a-molti tra Parti e Tools
-parte_tool_association = Table(
-    'parte_tool_association',
-    Base.metadata,
-    Column('parte_id', Integer, ForeignKey('parti.id'), primary_key=True),
-    Column('tool_id', Integer, ForeignKey('tools.id'), primary_key=True)
-)
+from .ciclo_cura import CicloCura
+from .tool import Tool
+from .catalogo import Catalogo
+from .associations import parte_tool_association
 
 class Parte(Base, TimestampMixin):
     """Modello che rappresenta le parti prodotte associate a un PN del Catalogo"""
@@ -33,10 +29,10 @@ class Parte(Base, TimestampMixin):
     # Relazione con il ciclo di cura
     ciclo_cura_id = Column(Integer, ForeignKey('cicli_cura.id'), nullable=True,
                           doc="ID del ciclo di cura associato")
-    ciclo_cura = relationship("CicloCura", backref="parti")
+    ciclo_cura = relationship(CicloCura, back_populates="parti")
     
     # Relazione molti-a-molti con i Tools
-    tools = relationship("Tool", secondary=parte_tool_association, backref="parti")
+    tools = relationship(Tool, secondary=parte_tool_association, back_populates="parti")
     
     # Campi aggiuntivi
     note_produzione = Column(Text, nullable=True,
@@ -45,7 +41,7 @@ class Parte(Base, TimestampMixin):
                     doc="Cliente per cui viene prodotta la parte")
     
     # Relazione con il catalogo
-    catalogo = relationship("Catalogo", backref="parti")
+    catalogo = relationship(Catalogo, back_populates="parti")
     
     def __repr__(self):
         return f"<Parte(id={self.id}, part_number='{self.part_number}', desc='{self.descrizione_breve[:20]}')>" 

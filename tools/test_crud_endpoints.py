@@ -51,7 +51,7 @@ EXAMPLE_PAYLOADS = {
         "num_linee_vuoto": 4,
         "temperatura_max": 180.0,
         "pressione_max": 7.0,
-        "stato": "disponibile",
+        "stato": "DISPONIBILE",
         "in_manutenzione": False
     },
     "cicli-cura": {

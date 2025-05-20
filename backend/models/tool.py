@@ -1,6 +1,8 @@
 from sqlalchemy import Column, Integer, Float, String, Boolean, Text, DateTime
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 from .base import Base, TimestampMixin
+from .associations import parte_tool_association
 
 class Tool(Base, TimestampMixin):
     """Modello che rappresenta gli stampi (tool) utilizzati per la laminazione"""
@@ -33,6 +35,9 @@ class Tool(Base, TimestampMixin):
                          doc="Pressione massima supportata in bar")
     
     note = Column(Text, nullable=True, doc="Note aggiuntive sullo stampo")
+    
+    # Relazione molti-a-molti con le parti
+    parti = relationship("Parte", secondary=parte_tool_association, back_populates="tools")
     
     def __repr__(self):
         return f"<Tool(id={self.id}, codice='{self.codice}', disponibile={self.disponibile})>" 

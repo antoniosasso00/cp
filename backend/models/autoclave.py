@@ -1,7 +1,15 @@
 from sqlalchemy import Column, Integer, Float, String, Boolean, Text
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum
+from enum import Enum
 from .base import Base, TimestampMixin
-from schemas.autoclave import StatoAutoclaveEnum
+
+class StatoAutoclaveEnum(str, Enum):
+    """Enum per lo stato operativo dell'autoclave"""
+    DISPONIBILE = "DISPONIBILE"
+    IN_USO = "IN_USO"
+    MANUTENZIONE = "MANUTENZIONE"
+    GUASTO = "GUASTO"
+    SPENTA = "SPENTA"
 
 class Autoclave(Base, TimestampMixin):
     """Modello che rappresenta le autoclavi utilizzate per la cura delle parti"""

@@ -5,11 +5,19 @@ import sys
 import asyncio
 import importlib
 import inspect
+import logging
 from pathlib import Path
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.future import select
 from dotenv import load_dotenv
+
+# Configurazione logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Setup path
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -20,11 +28,11 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
-    print("❌ DATABASE_URL non definito nel file .env")
+    logger.error("❌ DATABASE_URL non definito nel file .env")
     sys.exit(1)
 
 if not DATABASE_URL.startswith("postgresql+asyncpg"):
-    print("❌ DATABASE_URL deve iniziare con 'postgresql+asyncpg://' per usare SQLAlchemy async")
+    logger.error("❌ DATABASE_URL deve iniziare con 'postgresql+asyncpg://' per usare SQLAlchemy async")
     sys.exit(1)
 
 # DB engine
@@ -37,7 +45,7 @@ MODEL_MODULE = "backend.models"
 
 async def inspect_all():
     async with AsyncSessionLocal() as session:
-        print("\n📊 MODEL INSPECTION REPORT:\n")
+        logger.info("\n📊 MODEL INSPECTION REPORT:\n")
 
         for file in MODELS_PATH.glob("*.py"):
             if file.name in {"__init__.py", "base.py"}:
@@ -46,26 +54,40 @@ async def inspect_all():
             module_name = f"{MODEL_MODULE}.{file.stem}"
             try:
                 module = importlib.import_module(module_name)
+                logger.info(f"✅ Modulo {module_name} importato correttamente")
+            except ImportError as e:
+                logger.error(f"❌ Errore import {module_name}: {str(e)}")
+                continue
             except Exception as e:
-                print(f"❌ Errore import {module_name}: {e}")
+                logger.error(f"❌ Errore imprevisto durante l'import di {module_name}: {str(e)}")
                 continue
 
             # Cerca le classi SQLAlchemy
             classes = [obj for name, obj in inspect.getmembers(module)
-                       if inspect.isclass(obj)
-                       and hasattr(obj, '__tablename__')
-                       and hasattr(obj, '__table__')]
+                      if inspect.isclass(obj)
+                      and hasattr(obj, '__tablename__')
+                      and hasattr(obj, '__table__')]
 
             for model_class in classes:
                 try:
                     result = await session.execute(select(model_class))
                     items = result.scalars().all()
-                    print(f"\n📦 {model_class.__name__} ({len(items)} record):")
+                    logger.info(f"\n📦 {model_class.__name__} ({len(items)} record):")
+                    
+                    if not items:
+                        logger.info(" - Nessun record trovato")
+                        continue
+                        
                     for item in items:
                         data = {col: getattr(item, col, None) for col in item.__table__.columns.keys()}
-                        print(" - " + ", ".join([f"{k}: {v}" for k, v in data.items()]))
+                        logger.info(" - " + ", ".join([f"{k}: {v}" for k, v in data.items()]))
+                        
                 except Exception as e:
-                    print(f"⚠️ Errore durante query su {model_class.__name__}: {e}")
+                    logger.error(f"⚠️ Errore durante query su {model_class.__name__}: {str(e)}")
 
 if __name__ == "__main__":
-    asyncio.run(inspect_all())
+    try:
+        asyncio.run(inspect_all())
+    except Exception as e:
+        logger.error(f"❌ Errore durante l'esecuzione: {str(e)}")
+        sys.exit(1)

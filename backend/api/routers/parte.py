@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 # Creazione router
 router = APIRouter(
-    tags=["parti"],
+    tags=["Parte"],
     responses={404: {"description": "Parte non trovata"}}
 )
 

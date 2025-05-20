@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Creazione router
 router = APIRouter(
-    tags=["autoclavi"],
+    tags=["Autoclavi"],
     responses={404: {"description": "Autoclave non trovata"}}
 )
 

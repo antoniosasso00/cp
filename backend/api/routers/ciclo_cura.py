@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Creazione router
 router = APIRouter(
-    tags=["cicli_cura"],
+    tags=["Cicli Cura"],
     responses={404: {"description": "Ciclo di cura non trovato"}}
 )
 

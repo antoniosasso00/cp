@@ -2,6 +2,19 @@
 
 Questo file contiene il registro dei cambiamenti più significativi del progetto.
 
+## [v0.4.1] - Fix Routing e Test CRUD - 2024-05-20
+
+### Correzioni
+- Risolto problema di routing per l'endpoint `/api/v1/parte/`
+- Uniformato il routing di tutti gli endpoint sotto `/api/v1/`
+- Migliorata la struttura dei router FastAPI per maggiore coerenza
+- Corretti i test CRUD per la gestione delle parti
+
+### Miglioramenti
+- Aggiunto script `clean_pycache.py` per la pulizia dei file `.pyc`
+- Migliorato lo script di seed dei dati di test
+- Ottimizzata la gestione delle dipendenze tra modelli
+
 ## [v0.3.0] - API CRUD Backend - 2023-10-25
 
 ### Aggiunte

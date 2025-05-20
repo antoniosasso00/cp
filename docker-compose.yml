@@ -14,16 +14,19 @@ services:
     depends_on:
       - db
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "db", "5432"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     command: >
-      sh -c "alembic upgrade head && 
+      sh -c "sleep 10 && 
+             python -m alembic upgrade head && 
              uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
 
   frontend:
     build: ./frontend
     container_name: carbonpilot-frontend
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
     ports:
       - "3000:3000"
     environment:
@@ -31,7 +34,6 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
-    command: npm run dev
 
   db:
     image: postgres:15-alpine

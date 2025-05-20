@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, Float, String, Boolean, Text
+from sqlalchemy.orm import relationship
 from .base import Base, TimestampMixin
 
 class CicloCura(Base, TimestampMixin):
@@ -33,6 +34,9 @@ class CicloCura(Base, TimestampMixin):
     
     descrizione = Column(Text, nullable=True,
                         doc="Descrizione dettagliata del ciclo di cura")
+    
+    # Relazione con le parti
+    parti = relationship("Parte", back_populates="ciclo_cura")
     
     def __repr__(self):
         return f"<CicloCura(id={self.id}, nome='{self.nome}', temp_max={self.temperatura_max}°C)>" 

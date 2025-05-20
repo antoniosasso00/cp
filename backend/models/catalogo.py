@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, Boolean, Text
+from sqlalchemy.orm import relationship
 from .base import Base, TimestampMixin
 
 class Catalogo(Base, TimestampMixin):
@@ -15,6 +16,9 @@ class Catalogo(Base, TimestampMixin):
                    doc="Indica se il part number è ancora attivo nel catalogo")
     note = Column(Text, nullable=True,
                  doc="Note aggiuntive sul part number")
+    
+    # Relazione con le parti
+    parti = relationship("Parte", back_populates="catalogo")
     
     def __repr__(self):
         return f"<Catalogo(part_number='{self.part_number}', categoria='{self.categoria}')>" 

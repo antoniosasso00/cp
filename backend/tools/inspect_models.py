@@ -9,24 +9,28 @@ import os
 import sys
 from sqlalchemy import inspect, create_engine
 from sqlalchemy.orm import sessionmaker
+from dotenv import load_dotenv
 
 # Aggiungi la cartella principale al PATH per importare i moduli
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+# Carica le variabili d'ambiente dal file .env
+load_dotenv()
+
 # Importa i modelli
 from models import (
     Base, Catalogo, Parte, Tool, Autoclave, CicloCura, 
-    StatoAutoclave, parte_tool_association
+    parte_tool_association
 )
+from schemas.autoclave import StatoAutoclaveEnum
 
 # Configura la connessione al database
-DB_USER = os.getenv("POSTGRES_USER", "postgres")
-DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
-DB_HOST = os.getenv("POSTGRES_SERVER", "localhost")
-DB_PORT = os.getenv("POSTGRES_PORT", "5432")
-DB_NAME = os.getenv("POSTGRES_DB", "carbonpilot")
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL non definito nel file .env")
 
-DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+# Rimuovi il driver asyncpg per usare psycopg2
+DATABASE_URL = DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
 
 engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
@@ -134,7 +138,7 @@ def test_create_records():
             num_linee_vuoto=4,
             temperatura_max=200.0,
             pressione_max=8.0,
-            stato=StatoAutoclave.DISPONIBILE,
+            stato=StatoAutoclaveEnum.DISPONIBILE,
             in_manutenzione=False,
             produttore="TestManufacturer",
             anno_produzione=2025,
