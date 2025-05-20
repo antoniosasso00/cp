@@ -7,33 +7,33 @@ import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { toolApi } from '@/lib/api'
-import { formatDateIT } from '@/lib/utils'
+import { ToolModal } from './components/tool-modal'
 
-interface ToolResponse {
+interface Tool {
   id: number
   codice: string
   descrizione?: string
-  num_cavita: number
-  posizione_magazzino?: string
-  stato: 'disponibile' | 'in_uso' | 'manutenzione'
+  lunghezza_piano: number
+  larghezza_piano: number
+  disponibile: boolean
+  in_manutenzione: boolean
   created_at: string
   updated_at: string
 }
 
 export default function ToolsPage() {
-  const [tools, setTools] = useState<ToolResponse[]>([])
+  const [tools, setTools] = useState<Tool[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
-  const [filter, setFilter] = useState<{stato?: string}>({})
   const [modalOpen, setModalOpen] = useState(false)
-  const [editingItem, setEditingItem] = useState<ToolResponse | null>(null)
+  const [editingItem, setEditingItem] = useState<Tool | null>(null)
   const { toast } = useToast()
 
   const fetchTools = async () => {
     try {
       setIsLoading(true)
       const data = await toolApi.getAll()
-      setTools(data as ToolResponse[])
+      setTools(data as Tool[])
     } catch (error) {
       console.error('Errore nel caricamento dei tools:', error)
       toast({
@@ -48,72 +48,47 @@ export default function ToolsPage() {
 
   useEffect(() => {
     fetchTools()
-  }, [filter])
+  }, [])
 
   const handleCreateClick = () => {
     setEditingItem(null)
     setModalOpen(true)
   }
 
-  const handleEditClick = (item: ToolResponse) => {
+  const handleEditClick = (item: Tool) => {
     setEditingItem(item)
     setModalOpen(true)
   }
 
   const handleDeleteClick = async (id: number) => {
-    if (!window.confirm(`Sei sicuro di voler eliminare il tool con ID ${id}?`)) {
+    if (!window.confirm('Sei sicuro di voler eliminare questo tool?')) {
       return
     }
 
     try {
-      // Qui andrebbe la funzione di delete
-      // await toolApi.delete(id)
+      await toolApi.delete(id)
       toast({
-        variant: 'success',
-        title: 'Eliminato',
-        description: `Tool con ID ${id} eliminato con successo.`,
+        title: 'Tool eliminato',
+        description: 'Il tool è stato eliminato con successo.',
       })
       fetchTools()
     } catch (error) {
-      console.error(`Errore durante l'eliminazione del tool ${id}:`, error)
+      console.error('Errore durante l\'eliminazione:', error)
       toast({
         variant: 'destructive',
         title: 'Errore',
-        description: `Impossibile eliminare il tool con ID ${id}. Potrebbe essere assegnato a una parte.`,
+        description: 'Impossibile eliminare il tool. Potrebbe essere in uso.',
       })
     }
   }
 
   const filteredTools = tools.filter(item => {
     const searchLower = searchQuery.toLowerCase()
-    const matchesSearch = 
+    return (
       item.codice.toLowerCase().includes(searchLower) ||
-      (item.descrizione?.toLowerCase().includes(searchLower) || false) ||
-      (item.posizione_magazzino?.toLowerCase().includes(searchLower) || false)
-    
-    // Applica filtro per stato se impostato
-    const matchesFilter = !filter.stato || item.stato === filter.stato
-    
-    return matchesSearch && matchesFilter
+      (item.descrizione?.toLowerCase().includes(searchLower) || false)
+    )
   })
-
-  const getStatoBadgeVariant = (stato: string) => {
-    switch (stato) {
-      case 'disponibile': return 'success'
-      case 'in_uso': return 'secondary'
-      case 'manutenzione': return 'destructive'
-      default: return 'outline'
-    }
-  }
-
-  const getStatoLabel = (stato: string) => {
-    switch (stato) {
-      case 'disponibile': return 'Disponibile'
-      case 'in_uso': return 'In Uso'
-      case 'manutenzione': return 'In Manutenzione'
-      default: return stato
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -134,19 +109,6 @@ export default function ToolsPage() {
           onChange={e => setSearchQuery(e.target.value)}
           className="max-w-sm"
         />
-        
-        <div className="flex flex-wrap gap-2">
-          <select 
-            className="px-3 py-2 rounded-md border text-sm"
-            value={filter.stato || ''}
-            onChange={e => setFilter({stato: e.target.value || undefined})}
-          >
-            <option value="">Tutti gli stati</option>
-            <option value="disponibile">Disponibili</option>
-            <option value="in_uso">In Uso</option>
-            <option value="manutenzione">In Manutenzione</option>
-          </select>
-        </div>
       </div>
 
       {isLoading ? (
@@ -158,11 +120,9 @@ export default function ToolsPage() {
           <TableCaption>Lista dei tools disponibili</TableCaption>
           <TableHeader>
             <TableRow>
-              <TableHead>ID</TableHead>
               <TableHead>Codice</TableHead>
               <TableHead>Descrizione</TableHead>
-              <TableHead className="text-center">Cavità</TableHead>
-              <TableHead>Posizione</TableHead>
+              <TableHead className="text-center">Dimensioni (mm)</TableHead>
               <TableHead className="text-center">Stato</TableHead>
               <TableHead className="text-right">Azioni</TableHead>
             </TableRow>
@@ -170,22 +130,27 @@ export default function ToolsPage() {
           <TableBody>
             {filteredTools.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8">
+                <TableCell colSpan={5} className="text-center py-8">
                   Nessun tool trovato
                 </TableCell>
               </TableRow>
             ) : (
               filteredTools.map(item => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.id}</TableCell>
-                  <TableCell>{item.codice}</TableCell>
+                  <TableCell className="font-medium">{item.codice}</TableCell>
                   <TableCell className="max-w-xs truncate">{item.descrizione || '-'}</TableCell>
-                  <TableCell className="text-center">{item.num_cavita}</TableCell>
-                  <TableCell>{item.posizione_magazzino || '-'}</TableCell>
                   <TableCell className="text-center">
-                    <Badge variant={getStatoBadgeVariant(item.stato)}>
-                      {getStatoLabel(item.stato)}
-                    </Badge>
+                    {item.lunghezza_piano} x {item.larghezza_piano}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <div className="flex justify-center gap-2">
+                      <Badge variant={item.disponibile ? 'success' : 'destructive'}>
+                        {item.disponibile ? 'Disponibile' : 'Non Disponibile'}
+                      </Badge>
+                      {item.in_manutenzione && (
+                        <Badge variant="warning">In Manutenzione</Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
@@ -204,21 +169,12 @@ export default function ToolsPage() {
         </Table>
       )}
 
-      {/* Placeholder per la modale */}
-      {modalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg w-full max-w-md">
-            <h2 className="text-xl font-bold mb-4">
-              {editingItem ? 'Modifica Tool' : 'Nuovo Tool'}
-            </h2>
-            <p className="text-gray-500 mb-4">Implementazione modale in corso...</p>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setModalOpen(false)}>Chiudi</Button>
-              <Button onClick={() => setModalOpen(false)}>Salva</Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ToolModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        editingItem={editingItem}
+        onSuccess={fetchTools}
+      />
     </div>
   )
 } 

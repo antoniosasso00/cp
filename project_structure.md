@@ -1,6 +1,7 @@
 # 🧱 Progetto CarbonPilot – Struttura Corrente
 
 📁 carbonpilot/
+    └── MIGRATION_GUIDE.md
     └── README.md
     └── docker-compose.yml
     └── project_structure.md
@@ -33,6 +34,7 @@
                 └── 20250520_093832_fix_parte_dependencies.py
                 └── 20250520_094911_fix_tool_parte_relationship.py
                 └── 20250520_095037_add_catalogo_parti_relationship.py
+                └── 20250522_164500_remove_unused_fields.py
         📁 models/
             └── __init__.py
             └── associations.py
@@ -256,9 +258,12 @@
                 └── utils.ts
             📁 styles/
     📁 tools/
+        └── MIGRATION_GUIDE.md
+        └── apply_schema_changes.py
         └── clean_pycache.py
         └── describe_models.py
         └── inspect_models.py
+        └── run_migration.py
         └── seed_test_data.py
         └── setup_db.py
         └── snapshot_structure.py

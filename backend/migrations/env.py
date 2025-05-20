@@ -14,8 +14,8 @@ load_dotenv()
 # questo è l'oggetto Alembic Config
 config = context.config
 
-# Forza l'uso di localhost quando eseguito localmente
-url = "postgresql://postgres:postgres@localhost:5432/carbonpilot"
+# Usa la variabile d'ambiente DATABASE_URL
+url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@db:5432/carbonpilot")
 config.set_main_option('sqlalchemy.url', url)
 
 # Interpreta la configurazione del file logging.ini, se esiste

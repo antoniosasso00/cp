@@ -2,7 +2,7 @@
 
 Sistema modulare per la gestione avanzata della produzione in fibra di carbonio, con dashboard interattiva, gestione catalogo, parti, tools, autoclavi e cicli di cura.
 
-Versione attuale: `v0.4.0`
+![versione](https://img.shields.io/badge/version-0.4.3-brightgreen)
 
 ## Tecnologie principali
 
@@ -11,7 +11,7 @@ Versione attuale: `v0.4.0`
 - 🐳 Containerizzazione: Docker + Docker Compose
 - 📈 Dashboard amministrativa con filtri, CRUD e interfaccia minimal
 
-## Funzionalità implementate nella v0.4.0
+## Funzionalità implementate nella v0.4.3
 
 ✅ CRUD completo:
 - Catalogo (Part Number)
@@ -24,6 +24,13 @@ Versione attuale: `v0.4.0`
 - Sidebar navigabile
 - Tabelle responsive filtrabili
 - Moduli dinamici per creazione e modifica
+
+## 🚀 Stato del Progetto – v0.4.3
+- Completata la Fase 4
+- Dashboard CRUD stabile per Tools, Cicli di Cura, Autoclavi, Catalogo, Parti
+- Backend FastAPI e frontend Next.js sincronizzati
+- Seed e migrazioni funzionanti
+- Build stabile in locale e Docker
 
 ## Come avviare il progetto
 

@@ -6,69 +6,15 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { formatDateIT } from '@/lib/utils'
-
-interface AutoclaveResponse {
-  id: number
-  codice: string
-  descrizione?: string
-  dimensioni: string
-  capacita_kg: number
-  stato: 'operativa' | 'ferma' | 'manutenzione'
-  posizione: string
-  created_at: string
-  updated_at: string
-}
-
-// API placeholder in assenza di un'API reale per le autoclavi
-const autoclaveApi = {
-  getAll: async () => {
-    // Dati di esempio
-    return [
-      {
-        id: 1,
-        codice: 'AUTO-001',
-        descrizione: 'Autoclave principale',
-        dimensioni: '3m x 2m x 2m',
-        capacita_kg: 500,
-        stato: 'operativa',
-        posizione: 'Reparto 1',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 2,
-        codice: 'AUTO-002',
-        descrizione: 'Autoclave secondaria',
-        dimensioni: '2m x 1.5m x 1.5m',
-        capacita_kg: 300,
-        stato: 'ferma',
-        posizione: 'Reparto 2',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 3,
-        codice: 'AUTO-003',
-        descrizione: 'Autoclave piccola',
-        dimensioni: '1.5m x 1m x 1m',
-        capacita_kg: 150,
-        stato: 'manutenzione',
-        posizione: 'Reparto 3',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
-    ] as AutoclaveResponse[];
-  }
-};
+import { AutoclaveModal } from './components/autoclave-modal'
+import { autoclaveApi, type Autoclave } from '@/lib/api'
 
 export default function AutoclaviPage() {
-  const [autoclavi, setAutoclavi] = useState<AutoclaveResponse[]>([])
+  const [autoclavi, setAutoclavi] = useState<Autoclave[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
-  const [filter, setFilter] = useState<{stato?: string}>({})
   const [modalOpen, setModalOpen] = useState(false)
-  const [editingItem, setEditingItem] = useState<AutoclaveResponse | null>(null)
+  const [editingItem, setEditingItem] = useState<Autoclave | null>(null)
   const { toast } = useToast()
 
   const fetchAutoclavi = async () => {
@@ -90,69 +36,66 @@ export default function AutoclaviPage() {
 
   useEffect(() => {
     fetchAutoclavi()
-  }, [filter])
+  }, [])
 
   const handleCreateClick = () => {
     setEditingItem(null)
     setModalOpen(true)
   }
 
-  const handleEditClick = (item: AutoclaveResponse) => {
+  const handleEditClick = (item: Autoclave) => {
     setEditingItem(item)
     setModalOpen(true)
   }
 
   const handleDeleteClick = async (id: number) => {
-    if (!window.confirm(`Sei sicuro di voler eliminare l'autoclave con ID ${id}?`)) {
+    if (!window.confirm('Sei sicuro di voler eliminare questa autoclave?')) {
       return
     }
 
     try {
-      // Qui andrebbe la funzione di delete
-      // await autoclaveApi.delete(id)
+      await autoclaveApi.delete(id)
+      
       toast({
-        variant: 'success',
-        title: 'Eliminato',
-        description: `Autoclave con ID ${id} eliminata con successo.`,
+        title: 'Autoclave eliminata',
+        description: 'L\'autoclave è stata eliminata con successo.',
       })
       fetchAutoclavi()
     } catch (error) {
-      console.error(`Errore durante l'eliminazione dell'autoclave ${id}:`, error)
+      console.error('Errore durante l\'eliminazione:', error)
       toast({
         variant: 'destructive',
         title: 'Errore',
-        description: `Impossibile eliminare l'autoclave con ID ${id}.`,
+        description: 'Impossibile eliminare l\'autoclave. Potrebbe essere in uso.',
       })
     }
   }
 
   const filteredAutoclavi = autoclavi.filter(item => {
     const searchLower = searchQuery.toLowerCase()
-    const matchesSearch = 
+    return (
+      item.nome.toLowerCase().includes(searchLower) ||
       item.codice.toLowerCase().includes(searchLower) ||
-      (item.descrizione?.toLowerCase().includes(searchLower) || false) ||
-      item.posizione.toLowerCase().includes(searchLower)
-    
-    // Applica filtro per stato se impostato
-    const matchesFilter = !filter.stato || item.stato === filter.stato
-    
-    return matchesSearch && matchesFilter
+      item.reparto.toLowerCase().includes(searchLower)
+    )
   })
 
   const getStatoBadgeVariant = (stato: string) => {
     switch (stato) {
-      case 'operativa': return 'success'
-      case 'ferma': return 'secondary'
-      case 'manutenzione': return 'destructive'
+      case 'DISPONIBILE': return 'success'
+      case 'IN_USO': return 'secondary'
+      case 'GUASTO': return 'destructive'
+      case 'MANUTENZIONE': return 'warning'
       default: return 'outline'
     }
   }
 
   const getStatoLabel = (stato: string) => {
     switch (stato) {
-      case 'operativa': return 'Operativa'
-      case 'ferma': return 'Ferma'
-      case 'manutenzione': return 'In Manutenzione'
+      case 'DISPONIBILE': return 'Disponibile'
+      case 'IN_USO': return 'In Uso'
+      case 'GUASTO': return 'Guasto'
+      case 'MANUTENZIONE': return 'In Manutenzione'
       default: return stato
     }
   }
@@ -163,7 +106,7 @@ export default function AutoclaviPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Autoclavi</h1>
           <p className="text-muted-foreground">
-            Gestisci le autoclavi disponibili per la produzione
+            Gestisci le autoclavi disponibili
           </p>
         </div>
         <Button onClick={handleCreateClick}>Nuova Autoclave</Button>
@@ -176,19 +119,6 @@ export default function AutoclaviPage() {
           onChange={e => setSearchQuery(e.target.value)}
           className="max-w-sm"
         />
-        
-        <div className="flex flex-wrap gap-2">
-          <select 
-            className="px-3 py-2 rounded-md border text-sm"
-            value={filter.stato || ''}
-            onChange={e => setFilter({stato: e.target.value || undefined})}
-          >
-            <option value="">Tutti gli stati</option>
-            <option value="operativa">Operative</option>
-            <option value="ferma">Ferme</option>
-            <option value="manutenzione">In Manutenzione</option>
-          </select>
-        </div>
       </div>
 
       {isLoading ? (
@@ -200,12 +130,11 @@ export default function AutoclaviPage() {
           <TableCaption>Lista delle autoclavi disponibili</TableCaption>
           <TableHeader>
             <TableRow>
-              <TableHead>ID</TableHead>
+              <TableHead>Nome</TableHead>
               <TableHead>Codice</TableHead>
-              <TableHead>Descrizione</TableHead>
-              <TableHead>Dimensioni</TableHead>
-              <TableHead className="text-center">Capacità (kg)</TableHead>
-              <TableHead>Posizione</TableHead>
+              <TableHead className="text-center">Dimensioni (mm)</TableHead>
+              <TableHead className="text-center">Linee Vuoto</TableHead>
+              <TableHead>Reparto</TableHead>
               <TableHead className="text-center">Stato</TableHead>
               <TableHead className="text-right">Azioni</TableHead>
             </TableRow>
@@ -213,19 +142,20 @@ export default function AutoclaviPage() {
           <TableBody>
             {filteredAutoclavi.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8">
+                <TableCell colSpan={7} className="text-center py-8">
                   Nessuna autoclave trovata
                 </TableCell>
               </TableRow>
             ) : (
               filteredAutoclavi.map(item => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.id}</TableCell>
+                  <TableCell className="font-medium">{item.nome}</TableCell>
                   <TableCell>{item.codice}</TableCell>
-                  <TableCell className="max-w-xs truncate">{item.descrizione || '-'}</TableCell>
-                  <TableCell>{item.dimensioni}</TableCell>
-                  <TableCell className="text-center">{item.capacita_kg}</TableCell>
-                  <TableCell>{item.posizione}</TableCell>
+                  <TableCell className="text-center">
+                    {item.lunghezza_piano} x {item.larghezza_piano}
+                  </TableCell>
+                  <TableCell className="text-center">{item.numero_linee_vuoto}</TableCell>
+                  <TableCell>{item.reparto}</TableCell>
                   <TableCell className="text-center">
                     <Badge variant={getStatoBadgeVariant(item.stato)}>
                       {getStatoLabel(item.stato)}
@@ -248,21 +178,12 @@ export default function AutoclaviPage() {
         </Table>
       )}
 
-      {/* Placeholder per la modale */}
-      {modalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg w-full max-w-md">
-            <h2 className="text-xl font-bold mb-4">
-              {editingItem ? 'Modifica Autoclave' : 'Nuova Autoclave'}
-            </h2>
-            <p className="text-gray-500 mb-4">Implementazione modale in corso...</p>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setModalOpen(false)}>Chiudi</Button>
-              <Button onClick={() => setModalOpen(false)}>Salva</Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AutoclaveModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        editingItem={editingItem}
+        onSuccess={fetchAutoclavi}
+      />
     </div>
   )
 } 

@@ -2,32 +2,40 @@
 
 Questo file contiene il registro dei cambiamenti più significativi del progetto.
 
-## [v0.4.2] - Pulizia Modelli e Migrazioni - 2024-05-22
+## [v0.4.2] - 2024-03-20
 
-### Modifiche al Database
-- Rimossi campi inutilizzati dai modelli:
-  - Da `Tool`: data_ultima_manutenzione, max_temperatura, max_pressione, cicli_completati
-  - Da `Parte`: peso, spessore, cliente
-- Aggiornati gli schemi Pydantic corrispondenti
-- Aggiornati i dati di test per riflettere le modifiche
+### Aggiunte
+- Implementata sezione Strumenti nella dashboard
+  - Tabella con lista degli strumenti
+  - Modal per creazione/modifica strumenti
+  - Funzionalità di ricerca e filtro
+  - Gestione stati (DISPONIBILE, IN_USO, GUASTO, MANUTENZIONE)
+  - Integrazione con API backend
 
-### Aggiornamenti Frontend
-- Adattate interfacce utente per rimuovere i campi eliminati:
-  - Rimossi campi cliente, peso, spessore dal form di creazione/modifica Parte
-  - Rimossa colonna cliente dalla tabella Parti
-  - Aggiornate interfacce TypeScript nel file api.ts
-  - Rimosso filtro per cliente dalla pagina Parti
+- Implementata sezione Cicli di Cura nella dashboard
+  - Tabella con lista dei cicli di cura
+  - Modal per creazione/modifica cicli
+  - Funzionalità di ricerca e filtro
+  - Gestione stati (ATTIVO, INATTIVO)
+  - Integrazione con API backend
+
+- Implementata sezione Autoclavi nella dashboard
+  - Tabella con lista delle autoclavi
+  - Modal per creazione/modifica autoclavi
+  - Funzionalità di ricerca e filtro
+  - Gestione stati (DISPONIBILE, IN_USO, GUASTO, MANUTENZIONE)
+  - Integrazione con API backend
 
 ### Miglioramenti
-- Creato script `run_migration.py` per semplificare la gestione delle migrazioni Alembic
-- Migliorata la configurazione di Alembic per supporto locale e Docker
-- Aggiunto script `apply_schema_changes.py` per modifiche manuali al database
-- Ottimizzata la gestione delle variabili d'ambiente per le migrazioni
+- Aggiunta validazione dei form con Zod
+- Implementata gestione degli errori con toast notifications
+- Migliorata UX con feedback visivi per le azioni
+- Ottimizzata gestione dello stato delle applicazioni
 
 ### Correzioni
-- Risolti problemi di connessione al database durante le migrazioni
-- Corretta la gestione delle revisioni Alembic
-- Migliorata la gestione degli errori durante le migrazioni
+- Risolti problemi di TypeScript nei componenti
+- Corretta gestione delle date nei form
+- Sistemata visualizzazione dei badge di stato
 
 ## [v0.4.1] - Fix Routing e Test CRUD - 2024-05-20
 

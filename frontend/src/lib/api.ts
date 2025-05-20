@@ -1,6 +1,8 @@
 // API client per interagire con il backend
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/v1';
+import axios from 'axios'
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
 // Tipi base per Catalogo
 export interface CatalogoBase {
@@ -64,6 +66,59 @@ export interface ParteResponse extends ParteBase {
   catalogo: CatalogoInParteResponse;
   created_at: string;
   updated_at: string;
+}
+
+const api = axios.create({
+  baseURL: API_BASE_URL,
+})
+
+export interface Tool {
+  id: number
+  codice: string
+  descrizione?: string
+  lunghezza_piano: number
+  larghezza_piano: number
+  disponibile: boolean
+  in_manutenzione: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateToolDto {
+  codice: string
+  descrizione?: string
+  lunghezza_piano: number
+  larghezza_piano: number
+  disponibile: boolean
+  in_manutenzione: boolean
+}
+
+export interface UpdateToolDto extends Partial<CreateToolDto> {}
+
+export const toolApi = {
+  getAll: async (): Promise<Tool[]> => {
+    const response = await api.get<Tool[]>('/tools')
+    return response.data
+  },
+
+  getById: async (id: number): Promise<Tool> => {
+    const response = await api.get<Tool>(`/tools/${id}`)
+    return response.data
+  },
+
+  create: async (data: CreateToolDto): Promise<Tool> => {
+    const response = await api.post<Tool>('/tools', data)
+    return response.data
+  },
+
+  update: async (id: number, data: UpdateToolDto): Promise<Tool> => {
+    const response = await api.put<Tool>(`/tools/${id}`, data)
+    return response.data
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/tools/${id}`)
+  },
 }
 
 // Common fetch wrapper
@@ -157,10 +212,113 @@ export const partiApi = {
 
 // API CicloCura (per selezionare nei dropdown)
 export const cicloCuraApi = {
-  getAll: () => apiRequest<{ id: number; nome: string }[]>('/ciclo_cura'),
-};
+  getAll: async (): Promise<CicloCura[]> => {
+    const response = await api.get<CicloCura[]>('/cicli-cura')
+    return response.data
+  },
 
-// API Tool (per selezionare nei dropdown)
-export const toolApi = {
-  getAll: () => apiRequest<{ id: number; codice: string; descrizione?: string }[]>('/tool'),
-}; 
+  getById: async (id: number): Promise<CicloCura> => {
+    const response = await api.get<CicloCura>(`/cicli-cura/${id}`)
+    return response.data
+  },
+
+  create: async (data: CreateCicloCuraDto): Promise<CicloCura> => {
+    const response = await api.post<CicloCura>('/cicli-cura', data)
+    return response.data
+  },
+
+  update: async (id: number, data: UpdateCicloCuraDto): Promise<CicloCura> => {
+    const response = await api.put<CicloCura>(`/cicli-cura/${id}`, data)
+    return response.data
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/cicli-cura/${id}`)
+  },
+}
+
+export interface CicloCura {
+  id: number
+  nome: string
+  temperatura_max: number
+  pressione_max: number
+  temperatura_stasi1: number
+  pressione_stasi1: number
+  durata_stasi1: number
+  attiva_stasi2: boolean
+  temperatura_stasi2?: number
+  pressione_stasi2?: number
+  durata_stasi2?: number
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateCicloCuraDto {
+  nome: string
+  temperatura_max: number
+  pressione_max: number
+  temperatura_stasi1: number
+  pressione_stasi1: number
+  durata_stasi1: number
+  attiva_stasi2: boolean
+  temperatura_stasi2?: number
+  pressione_stasi2?: number
+  durata_stasi2?: number
+}
+
+export interface UpdateCicloCuraDto extends Partial<CreateCicloCuraDto> {}
+
+export interface Autoclave {
+  id: number
+  nome: string
+  codice: string
+  lunghezza_piano: number
+  larghezza_piano: number
+  numero_linee_vuoto: number
+  stato: 'DISPONIBILE' | 'IN_USO' | 'GUASTO' | 'MANUTENZIONE'
+  reparto: string
+  temperatura_max: number
+  pressione_max: number
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateAutoclaveDto {
+  nome: string
+  codice: string
+  lunghezza_piano: number
+  larghezza_piano: number
+  numero_linee_vuoto: number
+  stato: 'DISPONIBILE' | 'IN_USO' | 'GUASTO' | 'MANUTENZIONE'
+  reparto: string
+  temperatura_max: number
+  pressione_max: number
+}
+
+export interface UpdateAutoclaveDto extends Partial<CreateAutoclaveDto> {}
+
+export const autoclaveApi = {
+  getAll: async (): Promise<Autoclave[]> => {
+    const response = await api.get<Autoclave[]>('/autoclavi')
+    return response.data
+  },
+
+  getById: async (id: number): Promise<Autoclave> => {
+    const response = await api.get<Autoclave>(`/autoclavi/${id}`)
+    return response.data
+  },
+
+  create: async (data: CreateAutoclaveDto): Promise<Autoclave> => {
+    const response = await api.post<Autoclave>('/autoclavi', data)
+    return response.data
+  },
+
+  update: async (id: number, data: UpdateAutoclaveDto): Promise<Autoclave> => {
+    const response = await api.put<Autoclave>(`/autoclavi/${id}`, data)
+    return response.data
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/autoclavi/${id}`)
+  },
+} 
