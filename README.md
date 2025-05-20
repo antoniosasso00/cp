@@ -1,8 +1,43 @@
 # CarbonPilot
 
-![Versione](https://img.shields.io/badge/versione-0.3.0-green)
+Sistema modulare per la gestione avanzata della produzione in fibra di carbonio, con dashboard interattiva, gestione catalogo, parti, tools, autoclavi e cicli di cura.
 
-CarbonPilot è una piattaforma completa per l'ottimizzazione di processi industriali con l'obiettivo di ridurre l'impatto ambientale. Utilizza algoritmi avanzati di nesting e ottimizzazione per minimizzare gli sprechi e massimizzare l'efficienza.
+Versione attuale: `v0.4.0`
+
+## Tecnologie principali
+
+- 📦 Backend: FastAPI + PostgreSQL + SQLAlchemy + Alembic
+- 💻 Frontend: Next.js + TypeScript + TailwindCSS + shadcn/ui
+- 🐳 Containerizzazione: Docker + Docker Compose
+- 📈 Dashboard amministrativa con filtri, CRUD e interfaccia minimal
+
+## Funzionalità implementate nella v0.4.0
+
+✅ CRUD completo:
+- Catalogo (Part Number)
+- Parti associate a PN
+- Tools
+- Autoclavi
+- Cicli di Cura
+
+✅ Frontend con:
+- Sidebar navigabile
+- Tabelle responsive filtrabili
+- Moduli dinamici per creazione e modifica
+
+## Come avviare il progetto
+
+```bash
+docker-compose up -d --build
+```
+
+Accedi a:
+- Frontend: http://localhost:3000
+- API Swagger: http://localhost:8000/docs
+
+## Prossima fase
+
+🚧 v0.5.x – Introduzione del modulo ODL con gestione stato e priorità
 
 ## 📋 Caratteristiche
 
