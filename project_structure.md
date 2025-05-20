@@ -56,17 +56,187 @@
         📁 tools/
             └── inspect_models.py
             └── update_version.py
+    📁 cp.git/
+        └── HEAD
+        └── config
+        └── description
+        └── packed-refs
+        📁 hooks/
+            └── applypatch-msg.sample
+            └── commit-msg.sample
+            └── fsmonitor-watchman.sample
+            └── post-update.sample
+            └── pre-applypatch.sample
+            └── pre-commit.sample
+            └── pre-merge-commit.sample
+            └── pre-push.sample
+            └── pre-rebase.sample
+            └── pre-receive.sample
+            └── prepare-commit-msg.sample
+            └── push-to-checkout.sample
+            └── sendemail-validate.sample
+            └── update.sample
+        📁 info/
+            └── exclude
+        📁 objects/
+            📁 info/
+            📁 pack/
+                └── pack-fd18648a7a5e327b7029eebf8949950b1c2ec340.idx
+                └── pack-fd18648a7a5e327b7029eebf8949950b1c2ec340.pack
+                └── pack-fd18648a7a5e327b7029eebf8949950b1c2ec340.rev
+        📁 refs/
+            📁 heads/
+            📁 tags/
     📁 docs/
+        └── FASE4_riepilogo.md
         └── changelog.md
     📁 frontend/
         └── Dockerfile
+        └── next-env.d.ts
         └── next.config.js
         └── package-lock.json
         └── package.json
         └── postcss.config.js
         └── tailwind.config.ts
         └── tsconfig.json
+        └── tsconfig.tsbuildinfo
         📁 .next/
+            └── app-build-manifest.json
+            └── build-manifest.json
+            └── package.json
+            └── react-loadable-manifest.json
+            └── trace
+            📁 cache/
+                └── config.json
+                📁 swc/
+                    📁 plugins/
+                        📁 v7_windows_x86_64_0.104.14/
+                📁 webpack/
+                    📁 client-development/
+                        └── 0.pack.gz
+                        └── 1.pack.gz
+                        └── 2.pack.gz
+                        └── 3.pack.gz
+                        └── 4.pack.gz
+                        └── index.pack.gz
+                        └── index.pack.gz.old
+                    📁 client-production/
+                        └── 0.pack
+                        └── index.pack
+                    📁 server-development/
+                        └── 0.pack.gz
+                        └── 1.pack.gz
+                        └── 2.pack.gz
+                        └── 3.pack.gz
+                        └── index.pack.gz
+                        └── index.pack.gz.old
+                    📁 server-production/
+                        └── 0.pack
+                        └── index.pack
+            📁 server/
+                └── app-paths-manifest.json
+                └── middleware-build-manifest.js
+                └── middleware-manifest.json
+                └── middleware-react-loadable-manifest.js
+                └── next-font-manifest.js
+                └── next-font-manifest.json
+                └── pages-manifest.json
+                └── server-reference-manifest.js
+                └── server-reference-manifest.json
+                └── webpack-runtime.js
+                📁 app/
+                    └── _not-found_client-reference-manifest.js
+                    └── not-found.js
+                    └── not-found_client-reference-manifest.js
+                    └── page.js
+                    └── page_client-reference-manifest.js
+                    📁 dashboard/
+                        └── page.js
+                        └── page_client-reference-manifest.js
+                        📁 catalog/
+                            └── page.js
+                            └── page_client-reference-manifest.js
+                        📁 parts/
+                            └── page.js
+                            └── page_client-reference-manifest.js
+                📁 vendor-chunks/
+                    └── @radix-ui.js
+                    └── @swc.js
+                    └── aria-hidden.js
+                    └── class-variance-authority.js
+                    └── clsx.js
+                    └── get-nonce.js
+                    └── next.js
+                    └── react-remove-scroll-bar.js
+                    └── react-remove-scroll.js
+                    └── react-style-singleton.js
+                    └── tailwind-merge.js
+                    └── tslib.js
+                    └── use-callback-ref.js
+                    └── use-sidecar.js
+                    └── zod.js
+            📁 static/
+                📁 chunks/
+                    └── app-pages-internals.js
+                    └── main-app.js
+                    └── polyfills.js
+                    └── webpack.js
+                    📁 app/
+                        └── layout.js
+                        └── not-found.js
+                        └── page.js
+                        📁 dashboard/
+                            └── layout.js
+                            └── page.js
+                            📁 catalog/
+                                └── page.js
+                            📁 parts/
+                                └── page.js
+                📁 css/
+                    📁 app/
+                        └── layout.css
+                📁 development/
+                    └── _buildManifest.js
+                    └── _ssgManifest.js
+                📁 media/
+                    └── 26a46d62cd723877-s.woff2
+                    └── 55c55f0601d81cf3-s.woff2
+                    └── 581909926a08bbc8-s.woff2
+                    └── 6d93bde91c0c2823-s.woff2
+                    └── 97e0cb1ae144a2a9-s.woff2
+                    └── a34f9d1faa5f3315-s.p.woff2
+                    └── df0a9ae256c0569c-s.woff2
+                📁 webpack/
+                    └── 13eedb7567a3e04d.webpack.hot-update.json
+                    └── 1c8ac5a42f4f7f37.webpack.hot-update.json
+                    └── 366814774f228095.webpack.hot-update.json
+                    └── 633457081244afec._.hot-update.json
+                    └── 674a4506e627497f.webpack.hot-update.json
+                    └── 86c718e6070a5e8f.webpack.hot-update.json
+                    └── e186d19a55d05a3e.webpack.hot-update.json
+                    └── e5fe2ac872c9b8e5.webpack.hot-update.json
+                    └── webpack.13eedb7567a3e04d.hot-update.js
+                    └── webpack.1c8ac5a42f4f7f37.hot-update.js
+                    └── webpack.366814774f228095.hot-update.js
+                    └── webpack.674a4506e627497f.hot-update.js
+                    └── webpack.86c718e6070a5e8f.hot-update.js
+                    └── webpack.e186d19a55d05a3e.hot-update.js
+                    └── webpack.e5fe2ac872c9b8e5.hot-update.js
+                    📁 app/
+                        └── layout.674a4506e627497f.hot-update.js
+                        └── layout.86c718e6070a5e8f.hot-update.js
+            📁 types/
+                └── package.json
+                📁 app/
+                    └── layout.ts
+                    └── page.ts
+                    📁 dashboard/
+                        └── layout.ts
+                        └── page.ts
+                        📁 catalog/
+                            └── page.ts
+                        📁 parts/
+                            └── page.ts
         📁 frontend/
             📁 public/
         📁 node_modules/
@@ -1107,6 +1277,17 @@
                         └── index.mjs
                         └── index.mjs.map
                 📁 react-slot/
+                    └── LICENSE
+                    └── README.md
+                    └── package.json
+                    📁 dist/
+                        └── index.d.mts
+                        └── index.d.ts
+                        └── index.js
+                        └── index.js.map
+                        └── index.mjs
+                        └── index.mjs.map
+                📁 react-toast/
                     └── LICENSE
                     └── README.md
                     └── package.json

@@ -1,3 +1,5 @@
+'use client'
+
 // Adapted from https://github.com/shadcn-ui/ui/blob/main/apps/www/registry/default/ui/use-toast.ts
 import * as React from "react"
 
