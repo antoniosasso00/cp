@@ -26,7 +26,6 @@ ENV NODE_ENV production
 # Configura l'utente non-root per motivi di sicurezza
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
-USER nextjs
 
 # Copia il codice compilato
 COPY --from=builder /app/public ./public
@@ -34,8 +33,14 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 
+# Imposta i permessi corretti per la directory .next
+RUN chown -R nextjs:nodejs /app/.next
+
+# Passa all'utente non-root
+USER nextjs
+
 # Espone la porta e avvia l'applicazione
 EXPOSE 3000
 ENV PORT 3000
 
-CMD ["npm", "start"] 
+CMD ["npm", "run", "dev"] 

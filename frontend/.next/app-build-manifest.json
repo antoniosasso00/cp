@@ -21,20 +21,25 @@
       "static/chunks/main-app.js",
       "static/chunks/app/dashboard/layout.js"
     ],
-    "/dashboard/catalog/page": [
+    "/dashboard/tools/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/catalog/page.js"
+      "static/chunks/app/dashboard/tools/page.js"
+    ],
+    "/dashboard/autoclavi/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/autoclavi/page.js"
     ],
     "/dashboard/parts/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/dashboard/parts/page.js"
     ],
-    "/not-found": [
+    "/dashboard/cicli-cura/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/not-found.js"
+      "static/chunks/app/dashboard/cicli-cura/page.js"
     ]
   }
 }

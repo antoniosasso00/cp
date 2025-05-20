@@ -5,11 +5,11 @@ from enum import Enum
 
 # Enum per rappresentare i vari stati operativi di un'autoclave
 class StatoAutoclaveEnum(str, Enum):
-    DISPONIBILE = "disponibile"
-    IN_USO = "in_uso"
-    MANUTENZIONE = "manutenzione"
-    GUASTO = "guasto"
-    SPENTA = "spenta"
+    DISPONIBILE = "DISPONIBILE"
+    IN_USO = "IN_USO"
+    MANUTENZIONE = "MANUTENZIONE"
+    GUASTO = "GUASTO"
+    SPENTA = "SPENTA"
 
 # Schema base per le proprietà comuni
 class AutoclaveBase(BaseModel):
