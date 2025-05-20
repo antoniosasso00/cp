@@ -30,7 +30,6 @@ def create_autoclave(autoclave: AutoclaveCreate, db: Session = Depends(get_db)):
     - **temperatura_max**: temperatura massima in gradi Celsius
     - **pressione_max**: pressione massima in bar
     - **stato**: stato attuale dell'autoclave
-    - **in_manutenzione**: se l'autoclave è in manutenzione programmata
     - **produttore**: nome del produttore (opzionale)
     - **anno_produzione**: anno di produzione (opzionale)
     - **note**: note aggiuntive (opzionale)
@@ -67,7 +66,6 @@ def read_autoclavi(
     nome: Optional[str] = Query(None, description="Filtra per nome"),
     codice: Optional[str] = Query(None, description="Filtra per codice"),
     stato: Optional[StatoAutoclaveEnum] = Query(None, description="Filtra per stato"),
-    in_manutenzione: Optional[bool] = Query(None, description="Filtra per stato di manutenzione"),
     db: Session = Depends(get_db)
 ):
     """
@@ -77,7 +75,6 @@ def read_autoclavi(
     - **nome**: filtro opzionale per nome
     - **codice**: filtro opzionale per codice
     - **stato**: filtro opzionale per stato
-    - **in_manutenzione**: filtro opzionale per stato di manutenzione
     """
     query = db.query(Autoclave)
     
@@ -88,8 +85,6 @@ def read_autoclavi(
         query = query.filter(Autoclave.codice == codice)
     if stato:
         query = query.filter(Autoclave.stato == stato)
-    if in_manutenzione is not None:
-        query = query.filter(Autoclave.in_manutenzione == in_manutenzione)
     
     return query.offset(skip).limit(limit).all()
 

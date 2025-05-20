@@ -5,8 +5,6 @@ from datetime import datetime
 # Schema base per le proprietà comuni
 class CicloCuraBase(BaseModel):
     nome: str = Field(..., description="Nome identificativo del ciclo di cura")
-    temperatura_max: float = Field(..., gt=0, description="Temperatura massima in gradi Celsius")
-    pressione_max: float = Field(..., gt=0, description="Pressione massima in bar")
     
     # Stasi 1 (obbligatoria)
     temperatura_stasi1: float = Field(..., gt=0, description="Temperatura della prima stasi in gradi Celsius")
@@ -34,8 +32,6 @@ class CicloCuraCreate(CicloCuraBase):
 # Schema per gli aggiornamenti
 class CicloCuraUpdate(BaseModel):
     nome: Optional[str] = Field(None, description="Nome identificativo del ciclo di cura")
-    temperatura_max: Optional[float] = Field(None, gt=0, description="Temperatura massima in gradi Celsius")
-    pressione_max: Optional[float] = Field(None, gt=0, description="Pressione massima in bar")
     
     temperatura_stasi1: Optional[float] = Field(None, gt=0, description="Temperatura della prima stasi in gradi Celsius")
     pressione_stasi1: Optional[float] = Field(None, gt=0, description="Pressione della prima stasi in bar")
@@ -51,6 +47,8 @@ class CicloCuraUpdate(BaseModel):
 # Schema per la risposta (include i campi generati dal database)
 class CicloCuraResponse(CicloCuraBase):
     id: int = Field(..., description="ID univoco del ciclo di cura")
+    temperatura_max: float = Field(..., gt=0, description="Temperatura massima in gradi Celsius")
+    pressione_max: float = Field(..., gt=0, description="Pressione massima in bar")
     created_at: datetime = Field(..., description="Data e ora di creazione del record")
     updated_at: datetime = Field(..., description="Data e ora dell'ultimo aggiornamento")
 

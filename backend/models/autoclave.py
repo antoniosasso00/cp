@@ -40,8 +40,6 @@ class Autoclave(Base, TimestampMixin):
         default=StatoAutoclaveEnum.DISPONIBILE,
         doc="Stato attuale dell'autoclave"
     )
-    in_manutenzione = Column(Boolean, default=False, nullable=False,
-                           doc="Indica se l'autoclave è in manutenzione programmata")
     
     # Informazioni aggiuntive
     produttore = Column(String(100), nullable=True, 
@@ -49,6 +47,11 @@ class Autoclave(Base, TimestampMixin):
     anno_produzione = Column(Integer, nullable=True,
                            doc="Anno di produzione dell'autoclave")
     note = Column(Text, nullable=True, doc="Note aggiuntive sull'autoclave")
+    
+    @property
+    def disponibile(self) -> bool:
+        """Indica se l'autoclave è disponibile per l'uso"""
+        return self.stato == StatoAutoclaveEnum.DISPONIBILE
     
     def __repr__(self):
         return f"<Autoclave(id={self.id}, nome='{self.nome}', stato={self.stato.value})>" 

@@ -8,7 +8,7 @@ from api.routers.ciclo_cura import router as ciclo_cura_router
 router = APIRouter()
 
 router.include_router(catalogo_router, prefix="/v1/catalogo")
-router.include_router(parte_router, prefix="/v1/parte")
+router.include_router(parte_router, prefix="/v1/parti")
 router.include_router(tool_router, prefix="/v1/tools")
 router.include_router(autoclave_router, prefix="/v1/autoclavi")
 router.include_router(ciclo_cura_router, prefix="/v1/cicli-cura")

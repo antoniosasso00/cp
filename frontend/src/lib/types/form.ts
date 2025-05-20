@@ -13,15 +13,29 @@ export type ToolFormValues = z.infer<typeof toolSchema>
 
 export const cicloSchema = z.object({
   nome: z.string().min(1, 'Il nome è obbligatorio'),
-  temperatura_max: z.number().min(0, 'La temperatura deve essere positiva'),
-  pressione_max: z.number().min(0, 'La pressione deve essere positiva'),
   temperatura_stasi1: z.number().min(0, 'La temperatura deve essere positiva'),
   pressione_stasi1: z.number().min(0, 'La pressione deve essere positiva'),
-  durata_stasi1: z.number().min(0, 'La durata deve essere positiva'),
+  durata_stasi1: z.number().min(1, 'La durata deve essere almeno 1 minuto'),
   attiva_stasi2: z.boolean(),
   temperatura_stasi2: z.number().min(0, 'La temperatura deve essere positiva').optional(),
   pressione_stasi2: z.number().min(0, 'La pressione deve essere positiva').optional(),
-  durata_stasi2: z.number().min(0, 'La durata deve essere positiva').optional(),
+  durata_stasi2: z.number().min(1, 'La durata deve essere almeno 1 minuto').optional(),
 })
 
-export type CicloFormValues = z.infer<typeof cicloSchema> 
+export type CicloFormValues = z.infer<typeof cicloSchema>
+
+export const autoclaveSchema = z.object({
+  nome: z.string().min(1, 'Il nome è obbligatorio'),
+  codice: z.string().min(1, 'Il codice è obbligatorio'),
+  lunghezza: z.number().min(0, 'La lunghezza deve essere positiva'),
+  larghezza_piano: z.number().min(0, 'La larghezza deve essere positiva'),
+  num_linee_vuoto: z.number().min(0, 'Il numero di linee deve essere positivo'),
+  temperatura_max: z.number().min(0, 'La temperatura deve essere positiva'),
+  pressione_max: z.number().min(0, 'La pressione deve essere positiva'),
+  stato: z.enum(['DISPONIBILE', 'IN_USO', 'MANUTENZIONE', 'GUASTO', 'SPENTA']),
+  produttore: z.string().optional(),
+  anno_produzione: z.number().optional(),
+  note: z.string().optional(),
+})
+
+export type AutoclaveFormValues = z.infer<typeof autoclaveSchema> 

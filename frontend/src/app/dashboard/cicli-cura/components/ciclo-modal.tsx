@@ -19,8 +19,6 @@ interface CicloModalProps {
   editingItem?: {
     id: number
     nome: string
-    temperatura_max: number
-    pressione_max: number
     temperatura_stasi1: number
     pressione_stasi1: number
     durata_stasi1: number
@@ -40,8 +38,6 @@ export function CicloModal({ open, onOpenChange, editingItem, onSuccess }: Ciclo
     resolver: zodResolver(cicloSchema),
     defaultValues: {
       nome: editingItem?.nome || '',
-      temperatura_max: editingItem?.temperatura_max || 0,
-      pressione_max: editingItem?.pressione_max || 0,
       temperatura_stasi1: editingItem?.temperatura_stasi1 || 0,
       pressione_stasi1: editingItem?.pressione_stasi1 || 0,
       durata_stasi1: editingItem?.durata_stasi1 || 0,
@@ -82,6 +78,15 @@ export function CicloModal({ open, onOpenChange, editingItem, onSuccess }: Ciclo
     }
   }
 
+  // Calcola i valori massimi
+  const temperaturaMax = form.watch('attiva_stasi2') 
+    ? Math.max(form.watch('temperatura_stasi1'), form.watch('temperatura_stasi2') || 0)
+    : form.watch('temperatura_stasi1')
+
+  const pressioneMax = form.watch('attiva_stasi2')
+    ? Math.max(form.watch('pressione_stasi1'), form.watch('pressione_stasi2') || 0)
+    : form.watch('pressione_stasi1')
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
@@ -105,41 +110,29 @@ export function CicloModal({ open, onOpenChange, editingItem, onSuccess }: Ciclo
             />
 
             <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="temperatura_max"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Temperatura Max (°C)</FormLabel>
-                    <FormControl>
-                      <Input 
-                        type="number" 
-                        {...field} 
-                        onChange={e => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <FormItem>
+                <FormLabel>Temperatura Max (°C)</FormLabel>
+                <FormControl>
+                  <Input 
+                    type="number" 
+                    value={temperaturaMax}
+                    readOnly
+                    className="bg-muted"
+                  />
+                </FormControl>
+              </FormItem>
 
-              <FormField
-                control={form.control}
-                name="pressione_max"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Pressione Max (bar)</FormLabel>
-                    <FormControl>
-                      <Input 
-                        type="number" 
-                        {...field} 
-                        onChange={e => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <FormItem>
+                <FormLabel>Pressione Max (bar)</FormLabel>
+                <FormControl>
+                  <Input 
+                    type="number" 
+                    value={pressioneMax}
+                    readOnly
+                    className="bg-muted"
+                  />
+                </FormControl>
+              </FormItem>
             </div>
 
             <div className="space-y-4 border-t pt-4">
@@ -281,11 +274,8 @@ export function CicloModal({ open, onOpenChange, editingItem, onSuccess }: Ciclo
             )}
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Annulla
-              </Button>
               <Button type="submit" disabled={isLoading}>
-                {isLoading ? 'Salvataggio...' : 'Salva'}
+                {isLoading ? 'Salvataggio...' : editingItem ? 'Aggiorna' : 'Crea'}
               </Button>
             </DialogFooter>
           </form>

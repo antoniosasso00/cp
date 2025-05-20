@@ -76,7 +76,7 @@ export default function AutoclaviPage() {
     return (
       item.nome.toLowerCase().includes(searchLower) ||
       item.codice.toLowerCase().includes(searchLower) ||
-      item.reparto.toLowerCase().includes(searchLower)
+      (item.produttore?.toLowerCase().includes(searchLower) || false)
     )
   })
 
@@ -86,6 +86,7 @@ export default function AutoclaviPage() {
       case 'IN_USO': return 'secondary'
       case 'GUASTO': return 'destructive'
       case 'MANUTENZIONE': return 'warning'
+      case 'SPENTA': return 'outline'
       default: return 'outline'
     }
   }
@@ -96,6 +97,7 @@ export default function AutoclaviPage() {
       case 'IN_USO': return 'In Uso'
       case 'GUASTO': return 'Guasto'
       case 'MANUTENZIONE': return 'In Manutenzione'
+      case 'SPENTA': return 'Spenta'
       default: return stato
     }
   }
@@ -134,7 +136,7 @@ export default function AutoclaviPage() {
               <TableHead>Codice</TableHead>
               <TableHead className="text-center">Dimensioni (mm)</TableHead>
               <TableHead className="text-center">Linee Vuoto</TableHead>
-              <TableHead>Reparto</TableHead>
+              <TableHead>Produttore</TableHead>
               <TableHead className="text-center">Stato</TableHead>
               <TableHead className="text-right">Azioni</TableHead>
             </TableRow>
@@ -152,10 +154,10 @@ export default function AutoclaviPage() {
                   <TableCell className="font-medium">{item.nome}</TableCell>
                   <TableCell>{item.codice}</TableCell>
                   <TableCell className="text-center">
-                    {item.lunghezza_piano} x {item.larghezza_piano}
+                    {item.lunghezza} x {item.larghezza_piano}
                   </TableCell>
-                  <TableCell className="text-center">{item.numero_linee_vuoto}</TableCell>
-                  <TableCell>{item.reparto}</TableCell>
+                  <TableCell className="text-center">{item.num_linee_vuoto}</TableCell>
+                  <TableCell>{item.produttore || '-'}</TableCell>
                   <TableCell className="text-center">
                     <Badge variant={getStatoBadgeVariant(item.stato)}>
                       {getStatoLabel(item.stato)}

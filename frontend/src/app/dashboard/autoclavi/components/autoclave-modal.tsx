@@ -15,13 +15,15 @@ import { autoclaveApi } from '@/lib/api'
 const autoclaveSchema = z.object({
   nome: z.string().min(1, 'Il nome è obbligatorio'),
   codice: z.string().min(1, 'Il codice è obbligatorio'),
-  lunghezza_piano: z.number().min(0, 'La lunghezza deve essere positiva'),
+  lunghezza: z.number().min(0, 'La lunghezza deve essere positiva'),
   larghezza_piano: z.number().min(0, 'La larghezza deve essere positiva'),
-  numero_linee_vuoto: z.number().min(0, 'Il numero di linee deve essere positivo'),
-  stato: z.enum(['DISPONIBILE', 'IN_USO', 'GUASTO', 'MANUTENZIONE']),
-  reparto: z.string().min(1, 'Il reparto è obbligatorio'),
+  num_linee_vuoto: z.number().min(0, 'Il numero di linee deve essere positivo'),
+  stato: z.enum(['DISPONIBILE', 'IN_USO', 'GUASTO', 'MANUTENZIONE', 'SPENTA']),
   temperatura_max: z.number().min(0, 'La temperatura deve essere positiva'),
   pressione_max: z.number().min(0, 'La pressione deve essere positiva'),
+  produttore: z.string().optional(),
+  anno_produzione: z.number().optional(),
+  note: z.string().optional(),
 })
 
 type AutoclaveFormValues = z.infer<typeof autoclaveSchema>
@@ -33,13 +35,15 @@ interface AutoclaveModalProps {
     id: number
     nome: string
     codice: string
-    lunghezza_piano: number
+    lunghezza: number
     larghezza_piano: number
-    numero_linee_vuoto: number
-    stato: 'DISPONIBILE' | 'IN_USO' | 'GUASTO' | 'MANUTENZIONE'
-    reparto: string
+    num_linee_vuoto: number
+    stato: 'DISPONIBILE' | 'IN_USO' | 'GUASTO' | 'MANUTENZIONE' | 'SPENTA'
     temperatura_max: number
     pressione_max: number
+    produttore?: string
+    anno_produzione?: number
+    note?: string
   } | null
   onSuccess: () => void
 }
@@ -53,13 +57,15 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
     defaultValues: {
       nome: editingItem?.nome || '',
       codice: editingItem?.codice || '',
-      lunghezza_piano: editingItem?.lunghezza_piano || 0,
+      lunghezza: editingItem?.lunghezza || 0,
       larghezza_piano: editingItem?.larghezza_piano || 0,
-      numero_linee_vuoto: editingItem?.numero_linee_vuoto || 0,
+      num_linee_vuoto: editingItem?.num_linee_vuoto || 0,
       stato: editingItem?.stato || 'DISPONIBILE',
-      reparto: editingItem?.reparto || '',
       temperatura_max: editingItem?.temperatura_max || 0,
       pressione_max: editingItem?.pressione_max || 0,
+      produttore: editingItem?.produttore || '',
+      anno_produzione: editingItem?.anno_produzione || undefined,
+      note: editingItem?.note || '',
     },
   })
 
@@ -132,10 +138,10 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="lunghezza_piano"
+                name="lunghezza"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Lunghezza Piano (mm)</FormLabel>
+                    <FormLabel>Lunghezza (mm)</FormLabel>
                     <FormControl>
                       <Input 
                         type="number" 
@@ -169,7 +175,7 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
 
             <FormField
               control={form.control}
-              name="numero_linee_vuoto"
+              name="num_linee_vuoto"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Numero Linee Vuoto</FormLabel>
@@ -202,22 +208,9 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
                       <SelectItem value="IN_USO">In Uso</SelectItem>
                       <SelectItem value="GUASTO">Guasto</SelectItem>
                       <SelectItem value="MANUTENZIONE">In Manutenzione</SelectItem>
+                      <SelectItem value="SPENTA">Spenta</SelectItem>
                     </SelectContent>
                   </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="reparto"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Reparto</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -261,12 +254,55 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
               />
             </div>
 
+            <FormField
+              control={form.control}
+              name="produttore"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Produttore</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="anno_produzione"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Anno Produzione</FormLabel>
+                  <FormControl>
+                    <Input 
+                      type="number" 
+                      {...field} 
+                      onChange={e => field.onChange(Number(e.target.value))}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="note"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Note</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Annulla
-              </Button>
               <Button type="submit" disabled={isLoading}>
-                {isLoading ? 'Salvataggio...' : 'Salva'}
+                {isLoading ? 'Salvataggio...' : editingItem ? 'Aggiorna' : 'Crea'}
               </Button>
             </DialogFooter>
           </form>

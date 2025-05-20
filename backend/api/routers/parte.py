@@ -25,11 +25,8 @@ def create_parte(parte: ParteCreate, db: Session = Depends(get_db)):
     Crea una nuova parte con le seguenti informazioni:
     - **part_number**: codice associato dal catalogo
     - **descrizione_breve**: breve descrizione della parte
-    - **peso**: peso in grammi (opzionale)
-    - **spessore**: spessore in mm (opzionale)
     - **num_valvole_richieste**: numero di valvole necessarie
     - **note_produzione**: note per la produzione (opzionale)
-    - **cliente**: cliente associato (opzionale)
     - **ciclo_cura_id**: ID del ciclo di cura associato (opzionale)
     - **tool_ids**: lista di ID degli stampi associati
     """
@@ -80,7 +77,6 @@ def read_parti(
     skip: int = 0, 
     limit: int = 100,
     part_number: Optional[str] = Query(None, description="Filtra per part number"),
-    cliente: Optional[str] = Query(None, description="Filtra per cliente"),
     db: Session = Depends(get_db)
 ):
     """
@@ -88,15 +84,12 @@ def read_parti(
     - **skip**: numero di elementi da saltare
     - **limit**: numero massimo di elementi da restituire
     - **part_number**: filtro opzionale per part number
-    - **cliente**: filtro opzionale per cliente
     """
     query = db.query(Parte)
     
     # Applicazione filtri
     if part_number:
         query = query.filter(Parte.part_number == part_number)
-    if cliente:
-        query = query.filter(Parte.cliente == cliente)
     
     return query.offset(skip).limit(limit).all()
 

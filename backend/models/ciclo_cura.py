@@ -9,10 +9,6 @@ class CicloCura(Base, TimestampMixin):
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String(100), nullable=False, unique=True,
                  doc="Nome identificativo del ciclo di cura")
-    temperatura_max = Column(Float, nullable=False,
-                           doc="Temperatura massima in gradi Celsius")
-    pressione_max = Column(Float, nullable=False,
-                         doc="Pressione massima in bar")
     
     # Stasi 1 (obbligatoria)
     temperatura_stasi1 = Column(Float, nullable=False, 
@@ -37,6 +33,20 @@ class CicloCura(Base, TimestampMixin):
     
     # Relazione con le parti
     parti = relationship("Parte", back_populates="ciclo_cura")
+    
+    @property
+    def temperatura_max(self) -> float:
+        """Calcola la temperatura massima tra le stasi"""
+        if not self.attiva_stasi2 or self.temperatura_stasi2 is None:
+            return self.temperatura_stasi1
+        return max(self.temperatura_stasi1, self.temperatura_stasi2)
+    
+    @property
+    def pressione_max(self) -> float:
+        """Calcola la pressione massima tra le stasi"""
+        if not self.attiva_stasi2 or self.pressione_stasi2 is None:
+            return self.pressione_stasi1
+        return max(self.pressione_stasi1, self.pressione_stasi2)
     
     def __repr__(self):
         return f"<CicloCura(id={self.id}, nome='{self.nome}', temp_max={self.temperatura_max}°C)>" 

@@ -107,8 +107,6 @@ export default function CicliCuraPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Nome</TableHead>
-              <TableHead className="text-center">Temperatura Max</TableHead>
-              <TableHead className="text-center">Pressione Max</TableHead>
               <TableHead className="text-center">Stasi 1</TableHead>
               <TableHead className="text-center">Stasi 2</TableHead>
               <TableHead className="text-right">Azioni</TableHead>
@@ -125,8 +123,6 @@ export default function CicliCuraPage() {
               filteredCicli.map(item => (
                 <TableRow key={item.id}>
                   <TableCell className="font-medium">{item.nome}</TableCell>
-                  <TableCell className="text-center">{item.temperatura_max}°C</TableCell>
-                  <TableCell className="text-center">{item.pressione_max} bar</TableCell>
                   <TableCell className="text-center">
                     {item.temperatura_stasi1}°C / {item.pressione_stasi1} bar / {item.durata_stasi1} min
                   </TableCell>

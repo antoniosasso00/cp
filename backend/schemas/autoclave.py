@@ -33,7 +33,6 @@ class AutoclaveBase(BaseModel):
 # Schema per la creazione
 class AutoclaveCreate(AutoclaveBase):
     stato: StatoAutoclaveEnum = Field(StatoAutoclaveEnum.DISPONIBILE, description="Stato attuale dell'autoclave")
-    in_manutenzione: bool = Field(False, description="Indica se l'autoclave è in manutenzione programmata")
 
 # Schema per gli aggiornamenti
 class AutoclaveUpdate(BaseModel):
@@ -48,7 +47,6 @@ class AutoclaveUpdate(BaseModel):
     pressione_max: Optional[float] = Field(None, gt=0, description="Pressione massima in bar")
     
     stato: Optional[StatoAutoclaveEnum] = Field(None, description="Stato attuale dell'autoclave")
-    in_manutenzione: Optional[bool] = Field(None, description="Indica se l'autoclave è in manutenzione programmata")
     
     produttore: Optional[str] = Field(None, max_length=100, description="Nome del produttore dell'autoclave")
     anno_produzione: Optional[int] = Field(None, description="Anno di produzione dell'autoclave")
@@ -58,7 +56,6 @@ class AutoclaveUpdate(BaseModel):
 class AutoclaveResponse(AutoclaveBase):
     id: int = Field(..., description="ID univoco dell'autoclave")
     stato: StatoAutoclaveEnum = Field(..., description="Stato attuale dell'autoclave")
-    in_manutenzione: bool = Field(..., description="Indica se l'autoclave è in manutenzione programmata")
     created_at: datetime = Field(..., description="Data e ora di creazione del record")
     updated_at: datetime = Field(..., description="Data e ora dell'ultimo aggiornamento")
 

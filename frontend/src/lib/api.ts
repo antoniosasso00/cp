@@ -194,20 +194,20 @@ export const partiApi = {
     if (params?.part_number) queryParams.append('part_number', params.part_number);
     
     const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
-    return apiRequest<ParteResponse[]>(`/parte${query}`);
+    return apiRequest<ParteResponse[]>(`/parti${query}`);
   },
   
   getOne: (id: number) => 
-    apiRequest<ParteResponse>(`/parte/${id}`),
+    apiRequest<ParteResponse>(`/parti/${id}`),
   
   create: (data: ParteCreate) => 
-    apiRequest<ParteResponse>('/parte/', 'POST', data),
+    apiRequest<ParteResponse>('/parti/', 'POST', data),
   
   update: (id: number, data: ParteUpdate) => 
-    apiRequest<ParteResponse>(`/parte/${id}`, 'PUT', data),
+    apiRequest<ParteResponse>(`/parti/${id}`, 'PUT', data),
   
   delete: (id: number) => 
-    apiRequest<void>(`/parte/${id}`, 'DELETE'),
+    apiRequest<void>(`/parti/${id}`, 'DELETE'),
 };
 
 // API CicloCura (per selezionare nei dropdown)
@@ -240,8 +240,6 @@ export const cicloCuraApi = {
 export interface CicloCura {
   id: number
   nome: string
-  temperatura_max: number
-  pressione_max: number
   temperatura_stasi1: number
   pressione_stasi1: number
   durata_stasi1: number
@@ -255,8 +253,6 @@ export interface CicloCura {
 
 export interface CreateCicloCuraDto {
   nome: string
-  temperatura_max: number
-  pressione_max: number
   temperatura_stasi1: number
   pressione_stasi1: number
   durata_stasi1: number
@@ -272,13 +268,15 @@ export interface Autoclave {
   id: number
   nome: string
   codice: string
-  lunghezza_piano: number
+  lunghezza: number
   larghezza_piano: number
-  numero_linee_vuoto: number
-  stato: 'DISPONIBILE' | 'IN_USO' | 'GUASTO' | 'MANUTENZIONE'
-  reparto: string
+  num_linee_vuoto: number
+  stato: 'DISPONIBILE' | 'IN_USO' | 'GUASTO' | 'MANUTENZIONE' | 'SPENTA'
   temperatura_max: number
   pressione_max: number
+  produttore?: string
+  anno_produzione?: number
+  note?: string
   created_at: string
   updated_at: string
 }
@@ -286,13 +284,15 @@ export interface Autoclave {
 export interface CreateAutoclaveDto {
   nome: string
   codice: string
-  lunghezza_piano: number
+  lunghezza: number
   larghezza_piano: number
-  numero_linee_vuoto: number
-  stato: 'DISPONIBILE' | 'IN_USO' | 'GUASTO' | 'MANUTENZIONE'
-  reparto: string
+  num_linee_vuoto: number
+  stato: 'DISPONIBILE' | 'IN_USO' | 'GUASTO' | 'MANUTENZIONE' | 'SPENTA'
   temperatura_max: number
   pressione_max: number
+  produttore?: string
+  anno_produzione?: number
+  note?: string
 }
 
 export interface UpdateAutoclaveDto extends Partial<CreateAutoclaveDto> {}
