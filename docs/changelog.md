@@ -11,6 +11,13 @@ Questo file contiene il registro dei cambiamenti più significativi del progetto
 - Aggiornati gli schemi Pydantic corrispondenti
 - Aggiornati i dati di test per riflettere le modifiche
 
+### Aggiornamenti Frontend
+- Adattate interfacce utente per rimuovere i campi eliminati:
+  - Rimossi campi cliente, peso, spessore dal form di creazione/modifica Parte
+  - Rimossa colonna cliente dalla tabella Parti
+  - Aggiornate interfacce TypeScript nel file api.ts
+  - Rimosso filtro per cliente dalla pagina Parti
+
 ### Miglioramenti
 - Creato script `run_migration.py` per semplificare la gestione delle migrazioni Alembic
 - Migliorata la configurazione di Alembic per supporto locale e Docker

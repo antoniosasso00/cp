@@ -26,11 +26,8 @@ export interface CatalogoResponse extends CatalogoBase {
 export interface ParteBase {
   part_number: string;
   descrizione_breve: string;
-  peso?: number;
-  spessore?: number;
   num_valvole_richieste: number;
   note_produzione?: string;
-  cliente?: string;
 }
 
 export interface ParteCreate extends ParteBase {
@@ -135,12 +132,11 @@ export const catalogoApi = {
 
 // API Parti
 export const partiApi = {
-  getAll: (params?: { skip?: number; limit?: number; part_number?: string; cliente?: string }) => {
+  getAll: (params?: { skip?: number; limit?: number; part_number?: string }) => {
     const queryParams = new URLSearchParams();
     if (params?.skip) queryParams.append('skip', params.skip.toString());
     if (params?.limit) queryParams.append('limit', params.limit.toString());
     if (params?.part_number) queryParams.append('part_number', params.part_number);
-    if (params?.cliente) queryParams.append('cliente', params.cliente);
     
     const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
     return apiRequest<ParteResponse[]>(`/parte${query}`);

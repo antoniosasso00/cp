@@ -30,11 +30,8 @@ interface ParteModalProps {
 const parteSchema = z.object({
   part_number: z.string().min(1, "Part Number obbligatorio"),
   descrizione_breve: z.string().min(1, "Descrizione obbligatoria"),
-  peso: z.number().positive("Peso deve essere positivo").optional().nullable(),
-  spessore: z.number().positive("Spessore deve essere positivo").optional().nullable(),
   num_valvole_richieste: z.number().min(1, "Almeno una valvola richiesta"),
   note_produzione: z.string().optional().nullable(),
-  cliente: z.string().optional().nullable(),
   ciclo_cura_id: z.number().optional().nullable(),
   tool_ids: z.array(z.number()).optional().default([])
 })
@@ -60,11 +57,8 @@ type CicloCuraOption = {
 interface ParteFormData {
   part_number: string;
   descrizione_breve: string;
-  peso: number | null;
-  spessore: number | null;
   num_valvole_richieste: number;
   note_produzione: string | null;
-  cliente: string | null;
   ciclo_cura_id: number | null;
   tool_ids: number[];
 }
@@ -73,11 +67,8 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
   const [formData, setFormData] = useState<ParteFormData>({
     part_number: '',
     descrizione_breve: '',
-    peso: null,
-    spessore: null,
     num_valvole_richieste: 1,
     note_produzione: null,
-    cliente: null,
     ciclo_cura_id: null,
     tool_ids: []
   })
@@ -131,11 +122,8 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
       setFormData({
         part_number: item.part_number,
         descrizione_breve: item.descrizione_breve,
-        peso: item.peso !== undefined ? item.peso : null,
-        spessore: item.spessore !== undefined ? item.spessore : null,
         num_valvole_richieste: item.num_valvole_richieste,
         note_produzione: item.note_produzione || null,
-        cliente: item.cliente || null,
         ciclo_cura_id: item.ciclo_cura?.id || null,
         tool_ids: item.tools?.map(t => t.id) || []
       })
@@ -144,11 +132,8 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
       setFormData({
         part_number: '',
         descrizione_breve: '',
-        peso: null,
-        spessore: null,
         num_valvole_richieste: 1,
         note_produzione: null,
-        cliente: null,
         ciclo_cura_id: null,
         tool_ids: []
       })
@@ -174,8 +159,6 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
       // Converti stringhe in numeri dove necessario
       const dataToValidate = {
         ...formData,
-        peso: formData.peso !== null ? Number(formData.peso) : null,
-        spessore: formData.spessore !== null ? Number(formData.spessore) : null,
         num_valvole_richieste: Number(formData.num_valvole_richieste),
         ciclo_cura_id: formData.ciclo_cura_id !== null ? Number(formData.ciclo_cura_id) : null,
         tool_ids: formData.tool_ids || []
@@ -211,22 +194,9 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
       num_valvole_richieste: Number(formData.num_valvole_richieste),
       tool_ids: formData.tool_ids
     }
-
-    // Aggiungi i campi opzionali solo se sono definiti
-    if (formData.peso !== null) {
-      dataToSubmit.peso = Number(formData.peso)
-    }
-    
-    if (formData.spessore !== null) {
-      dataToSubmit.spessore = Number(formData.spessore)
-    }
     
     if (formData.note_produzione) {
       dataToSubmit.note_produzione = formData.note_produzione
-    }
-    
-    if (formData.cliente) {
-      dataToSubmit.cliente = formData.cliente
     }
     
     if (formData.ciclo_cura_id !== null) {
@@ -317,57 +287,6 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
             {errors.descrizione_breve && (
               <p className="col-span-4 text-right text-sm text-destructive">{errors.descrizione_breve}</p>
             )}
-          </div>
-
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="cliente" className="text-right">
-              Cliente
-            </Label>
-            <Input
-              id="cliente"
-              value={formData.cliente || ''}
-              onChange={e => handleChange('cliente', e.target.value || null)}
-              className="col-span-3"
-              placeholder="Opzionale"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid grid-cols-2 items-center gap-2">
-              <Label htmlFor="peso" className="text-right">
-                Peso (g)
-              </Label>
-              <Input
-                id="peso"
-                type="number"
-                step="0.01"
-                min="0"
-                value={formData.peso !== null ? formData.peso : ''}
-                onChange={e => handleChange('peso', e.target.value ? Number(e.target.value) : null)}
-                placeholder="Opzionale"
-              />
-              {errors.peso && (
-                <p className="col-span-2 text-right text-sm text-destructive">{errors.peso}</p>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 items-center gap-2">
-              <Label htmlFor="spessore" className="text-right">
-                Spessore (mm)
-              </Label>
-              <Input
-                id="spessore"
-                type="number"
-                step="0.01"
-                min="0"
-                value={formData.spessore !== null ? formData.spessore : ''}
-                onChange={e => handleChange('spessore', e.target.value ? Number(e.target.value) : null)}
-                placeholder="Opzionale"
-              />
-              {errors.spessore && (
-                <p className="col-span-2 text-right text-sm text-destructive">{errors.spessore}</p>
-              )}
-            </div>
           </div>
 
           <div className="grid grid-cols-4 items-center gap-4">

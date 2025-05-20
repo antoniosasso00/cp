@@ -14,7 +14,7 @@ export default function PartiPage() {
   const [parti, setParti] = useState<ParteResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
-  const [filter, setFilter] = useState<{part_number?: string; cliente?: string}>({})
+  const [filter, setFilter] = useState<{part_number?: string}>({})
   const [modalOpen, setModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<ParteResponse | null>(null)
   const { toast } = useToast()
@@ -77,12 +77,9 @@ export default function PartiPage() {
     const searchLower = searchQuery.toLowerCase()
     return (
       item.part_number.toLowerCase().includes(searchLower) ||
-      item.descrizione_breve.toLowerCase().includes(searchLower) ||
-      (item.cliente && item.cliente.toLowerCase().includes(searchLower))
+      item.descrizione_breve.toLowerCase().includes(searchLower)
     )
   })
-
-  const uniqueClienti = Array.from(new Set(parti.map(item => item.cliente).filter(Boolean))) as string[]
 
   return (
     <div className="space-y-6">
@@ -103,19 +100,6 @@ export default function PartiPage() {
           onChange={e => setSearchQuery(e.target.value)}
           className="max-w-sm"
         />
-        
-        <div className="flex flex-wrap gap-2">
-          <select 
-            className="px-3 py-2 rounded-md border text-sm"
-            value={filter.cliente || ''}
-            onChange={e => setFilter({...filter, cliente: e.target.value || undefined})}
-          >
-            <option value="">Tutti i clienti</option>
-            {uniqueClienti.map(cliente => (
-              <option key={cliente} value={cliente}>{cliente}</option>
-            ))}
-          </select>
-        </div>
       </div>
 
       {isLoading ? (
@@ -130,7 +114,6 @@ export default function PartiPage() {
               <TableHead>ID</TableHead>
               <TableHead>Part Number</TableHead>
               <TableHead>Descrizione</TableHead>
-              <TableHead>Cliente</TableHead>
               <TableHead className="text-center">Valvole</TableHead>
               <TableHead>Tools</TableHead>
               <TableHead className="text-right">Azioni</TableHead>
@@ -139,7 +122,7 @@ export default function PartiPage() {
           <TableBody>
             {filteredParti.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8">
+                <TableCell colSpan={6} className="text-center py-8">
                   Nessuna parte trovata
                 </TableCell>
               </TableRow>
@@ -149,7 +132,6 @@ export default function PartiPage() {
                   <TableCell className="font-medium">{item.id}</TableCell>
                   <TableCell>{item.part_number}</TableCell>
                   <TableCell className="max-w-xs truncate">{item.descrizione_breve}</TableCell>
-                  <TableCell>{item.cliente || '-'}</TableCell>
                   <TableCell className="text-center">
                     {item.num_valvole_richieste}
                   </TableCell>
