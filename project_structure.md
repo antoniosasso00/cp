@@ -28,8 +28,14 @@
             └── script.py.mako
             📁 versions/
                 └── 20250519_210022_initial_clean_migration.py
+                └── 20250520_093814_fix_parte_dependencies.py
+                └── 20250520_093822_fix_parte_dependencies.py
+                └── 20250520_093832_fix_parte_dependencies.py
+                └── 20250520_094911_fix_tool_parte_relationship.py
+                └── 20250520_095037_add_catalogo_parti_relationship.py
         📁 models/
             └── __init__.py
+            └── associations.py
             └── autoclave.py
             └── base.py
             └── catalogo.py
@@ -250,8 +256,10 @@
                 └── utils.ts
             📁 styles/
     📁 tools/
+        └── clean_pycache.py
         └── describe_models.py
         └── inspect_models.py
+        └── seed_test_data.py
         └── setup_db.py
         └── snapshot_structure.py
         └── test_autoclave.py

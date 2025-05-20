@@ -65,8 +65,7 @@ def main():
         "lunghezza_piano": 100.0,
         "larghezza_piano": 50.0,
         "disponibile": True,
-        "in_manutenzione": False,
-        "cicli_completati": 0
+        "in_manutenzione": False
     })
     
     # 3. Ciclo Cura

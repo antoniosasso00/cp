@@ -6,11 +6,8 @@ from datetime import datetime
 class ParteBase(BaseModel):
     part_number: str = Field(..., description="Part Number associato dal catalogo")
     descrizione_breve: str = Field(..., max_length=255, description="Descrizione breve della parte")
-    peso: Optional[float] = Field(None, gt=0, description="Peso in grammi")
-    spessore: Optional[float] = Field(None, gt=0, description="Spessore in mm")
     num_valvole_richieste: int = Field(1, ge=1, description="Numero di valvole richieste per la cura")
     note_produzione: Optional[str] = Field(None, description="Note specifiche per la produzione")
-    cliente: Optional[str] = Field(None, max_length=100, description="Cliente per cui viene prodotta la parte")
 
 # Schema per la creazione
 class ParteCreate(ParteBase):
@@ -21,11 +18,8 @@ class ParteCreate(ParteBase):
 class ParteUpdate(BaseModel):
     part_number: Optional[str] = Field(None, description="Part Number associato dal catalogo")
     descrizione_breve: Optional[str] = Field(None, max_length=255, description="Descrizione breve della parte")
-    peso: Optional[float] = Field(None, gt=0, description="Peso in grammi")
-    spessore: Optional[float] = Field(None, gt=0, description="Spessore in mm")
     num_valvole_richieste: Optional[int] = Field(None, ge=1, description="Numero di valvole richieste per la cura")
     note_produzione: Optional[str] = Field(None, description="Note specifiche per la produzione")
-    cliente: Optional[str] = Field(None, max_length=100, description="Cliente per cui viene prodotta la parte")
     ciclo_cura_id: Optional[int] = Field(None, description="ID del ciclo di cura associato")
     tool_ids: Optional[List[int]] = Field(None, description="Lista di ID degli stampi associati alla parte")
 

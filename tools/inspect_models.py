@@ -1,5 +1,3 @@
-# tools/inspect_all_models.py
-
 import os
 import sys
 import asyncio
@@ -44,6 +42,8 @@ MODELS_PATH = ROOT_DIR / "backend" / "models"
 MODEL_MODULE = "backend.models"
 
 async def inspect_all():
+    loaded_modules = set()
+
     async with AsyncSessionLocal() as session:
         logger.info("\n📊 MODEL INSPECTION REPORT:\n")
 
@@ -52,8 +52,12 @@ async def inspect_all():
                 continue
 
             module_name = f"{MODEL_MODULE}.{file.stem}"
+            if module_name in loaded_modules:
+                continue
+
             try:
                 module = importlib.import_module(module_name)
+                loaded_modules.add(module_name)
                 logger.info(f"✅ Modulo {module_name} importato correttamente")
             except ImportError as e:
                 logger.error(f"❌ Errore import {module_name}: {str(e)}")
@@ -73,15 +77,15 @@ async def inspect_all():
                     result = await session.execute(select(model_class))
                     items = result.scalars().all()
                     logger.info(f"\n📦 {model_class.__name__} ({len(items)} record):")
-                    
+
                     if not items:
                         logger.info(" - Nessun record trovato")
                         continue
-                        
+
                     for item in items:
                         data = {col: getattr(item, col, None) for col in item.__table__.columns.keys()}
                         logger.info(" - " + ", ".join([f"{k}: {v}" for k, v in data.items()]))
-                        
+
                 except Exception as e:
                     logger.error(f"⚠️ Errore durante query su {model_class.__name__}: {str(e)}")
 

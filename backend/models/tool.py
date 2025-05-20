@@ -23,16 +23,6 @@ class Tool(Base, TimestampMixin):
                         doc="Indica se lo stampo è attualmente disponibile")
     in_manutenzione = Column(Boolean, default=False, nullable=False,
                            doc="Indica se lo stampo è in manutenzione")
-    data_ultima_manutenzione = Column(DateTime, nullable=True,
-                                    doc="Data dell'ultima manutenzione")
-    cicli_completati = Column(Integer, default=0, nullable=False,
-                            doc="Numero di cicli di produzione completati")
-    
-    # Capacità e limitazioni
-    max_temperatura = Column(Float, nullable=True,
-                           doc="Temperatura massima supportata in gradi Celsius")
-    max_pressione = Column(Float, nullable=True,
-                         doc="Pressione massima supportata in bar")
     
     note = Column(Text, nullable=True, doc="Note aggiuntive sullo stampo")
     

@@ -19,8 +19,6 @@ class Parte(Base, TimestampMixin):
     # Dettagli della parte
     descrizione_breve = Column(String(255), nullable=False,
                               doc="Descrizione breve della parte")
-    peso = Column(Float, nullable=True, doc="Peso in grammi")
-    spessore = Column(Float, nullable=True, doc="Spessore in mm")
     
     # Requisiti tecnici
     num_valvole_richieste = Column(Integer, nullable=False, default=1,
@@ -37,8 +35,6 @@ class Parte(Base, TimestampMixin):
     # Campi aggiuntivi
     note_produzione = Column(Text, nullable=True,
                             doc="Note specifiche per la produzione")
-    cliente = Column(String(100), nullable=True,
-                    doc="Cliente per cui viene prodotta la parte")
     
     # Relazione con il catalogo
     catalogo = relationship(Catalogo, back_populates="parti")

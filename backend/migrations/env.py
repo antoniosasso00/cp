@@ -14,15 +14,8 @@ load_dotenv()
 # questo è l'oggetto Alembic Config
 config = context.config
 
-# Configura la connessione al database tramite variabili d'ambiente
-section = config.config_ini_section
-config.set_section_option(section, "POSTGRES_USER", os.getenv("POSTGRES_USER", "postgres"))
-config.set_section_option(section, "POSTGRES_PASSWORD", os.getenv("POSTGRES_PASSWORD", "postgres"))
-config.set_section_option(section, "POSTGRES_SERVER", os.getenv("POSTGRES_SERVER", "db"))
-config.set_section_option(section, "POSTGRES_PORT", os.getenv("POSTGRES_PORT", "5432"))
-config.set_section_option(section, "POSTGRES_DB", os.getenv("POSTGRES_DB", "carbonpilot"))
-
-url = f"postgresql://{os.getenv('POSTGRES_USER', 'postgres')}:{os.getenv('POSTGRES_PASSWORD', 'postgres')}@{os.getenv('POSTGRES_SERVER', 'db')}:{os.getenv('POSTGRES_PORT', '5432')}/{os.getenv('POSTGRES_DB', 'carbonpilot')}"
+# Forza l'uso di localhost quando eseguito localmente
+url = "postgresql://postgres:postgres@localhost:5432/carbonpilot"
 config.set_main_option('sqlalchemy.url', url)
 
 # Interpreta la configurazione del file logging.ini, se esiste
