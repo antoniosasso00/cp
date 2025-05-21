@@ -2,7 +2,7 @@
 
 Sistema modulare per la gestione avanzata della produzione in fibra di carbonio, con dashboard interattiva, gestione catalogo, parti, tools, autoclavi e cicli di cura.
 
-![versione](https://img.shields.io/badge/version-0.4.3-brightgreen)
+![versione](https://img.shields.io/badge/version-0.5.0-brightgreen)
 
 ## Tecnologie principali
 
@@ -11,7 +11,7 @@ Sistema modulare per la gestione avanzata della produzione in fibra di carbonio,
 - 🐳 Containerizzazione: Docker + Docker Compose
 - 📈 Dashboard amministrativa con filtri, CRUD e interfaccia minimal
 
-## Funzionalità implementate nella v0.4.3
+## Funzionalità implementate nella v0.5.0
 
 ✅ CRUD completo:
 - Catalogo (Part Number)
@@ -19,18 +19,21 @@ Sistema modulare per la gestione avanzata della produzione in fibra di carbonio,
 - Tools
 - Autoclavi
 - Cicli di Cura
+- ODL (Ordini di Lavoro)
 
 ✅ Frontend con:
 - Sidebar navigabile
 - Tabelle responsive filtrabili
 - Moduli dinamici per creazione e modifica
+- Gestione stati ODL e priorità
 
-## 🚀 Stato del Progetto – v0.4.3
-- Completata la Fase 4
-- Dashboard CRUD stabile per Tools, Cicli di Cura, Autoclavi, Catalogo, Parti
+## 🚀 Stato del Progetto – v0.5.0
+- Completata la Fase 5
+- Dashboard CRUD stabile per Tools, Cicli di Cura, Autoclavi, Catalogo, Parti, ODL
 - Backend FastAPI e frontend Next.js sincronizzati
 - Seed e migrazioni funzionanti
 - Build stabile in locale e Docker
+- Sistema di seeding ODL implementato e testato
 
 ## Come avviare il progetto
 
@@ -44,7 +47,7 @@ Accedi a:
 
 ## Prossima fase
 
-🚧 v0.5.x – Introduzione del modulo ODL con gestione stato e priorità
+🚧 v0.6.x – Introduzione del modulo di gestione delle risorse
 
 ## 📋 Caratteristiche
 
