@@ -25,4 +25,11 @@ Le previsioni diventano più accurate con l'accumularsi dei dati storici. Si con
 - Correzione dashboard: aggiunto widget per visualizzazione tempi medi di produzione con grafico
 - Miglioramento monitoraggio tempo: visualizzazione dettagliata per ogni fase 
 - Correzioni bug nella visualizzazione delle previsioni tempi di fase
-- Ottimizzazione interfaccia utente per la gestione dei tempi 
+- Ottimizzazione interfaccia utente per la gestione dei tempi
+
+## versione 0.6.2 - Monitoraggio automatico tempi + interfaccia operatore
+- **Automazione tempi**: Implementato monitoraggio automatico che registra tempi di fase ad ogni cambio di stato ODL
+- **Interfaccia operatore**: Creata interfaccia dedicata `/dashboard/odl/[id]/avanza` per switch guidato di stato
+- **Tracciamento completo**: Storico visibile dello stato dell'ODL con tempi registrati per fase
+- **Seed avanzato**: Aggiornato sistema di seed con dati realistici per il monitoraggio tempi
+- **Controllo coerenza**: Validazione automatica per evitare fasi sovrapposte e dati inconsistenti 

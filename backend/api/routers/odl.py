@@ -4,15 +4,24 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import desc
+from datetime import datetime
 
 from api.database import get_db
 from models.odl import ODL
 from models.parte import Parte
 from models.tool import Tool
+from models.tempo_fase import TempoFase
 from schemas.odl import ODLCreate, ODLRead, ODLUpdate
 
 # Configurazione logger
 logger = logging.getLogger(__name__)
+
+# Mappa per convertire stato ODL a tipo fase
+STATO_A_FASE = {
+    "Laminazione": "laminazione",
+    "Attesa Cura": "attesa_cura",
+    "Cura": "cura"
+}
 
 # Creazione router
 router = APIRouter(
@@ -54,6 +63,20 @@ def create_odl(odl: ODLCreate, db: Session = Depends(get_db)):
         db.add(db_odl)
         db.commit()
         db.refresh(db_odl)
+        
+        # Se l'ODL viene creato già in uno stato di produzione, crea anche il primo TempoFase
+        if db_odl.status in STATO_A_FASE:
+            tipo_fase = STATO_A_FASE[db_odl.status]
+            tempo_fase = TempoFase(
+                odl_id=db_odl.id,
+                fase=tipo_fase,
+                inizio_fase=datetime.now(),
+                note=f"Fase {tipo_fase} iniziata automaticamente alla creazione dell'ODL"
+            )
+            db.add(tempo_fase)
+            db.commit()
+            logger.info(f"Creato record TempoFase per nuovo ODL {db_odl.id} in stato {db_odl.status}")
+        
         return db_odl
     except IntegrityError as e:
         db.rollback()
@@ -153,10 +176,61 @@ def update_odl(odl_id: int, odl: ODLUpdate, db: Session = Depends(get_db)):
                     detail=f"Tool con ID {odl.tool_id} non trovato"
                 )
         
+        # Salva lo stato precedente per verifica cambiamento
+        stato_precedente = db_odl.status
+        
         # Aggiorna i campi
         update_data = odl.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(db_odl, key, value)
+        
+        # Verifica se lo stato è cambiato
+        stato_nuovo = db_odl.status
+        ora_corrente = datetime.now()
+        
+        if "status" in update_data and stato_precedente != stato_nuovo:
+            logger.info(f"Cambio stato ODL {odl_id}: da '{stato_precedente}' a '{stato_nuovo}'")
+            
+            # Chiudi la fase precedente se era in uno stato monitorato
+            if stato_precedente in STATO_A_FASE:
+                tipo_fase_precedente = STATO_A_FASE[stato_precedente]
+                fase_attiva = db.query(TempoFase).filter(
+                    TempoFase.odl_id == odl_id,
+                    TempoFase.fase == tipo_fase_precedente,
+                    TempoFase.fine_fase == None
+                ).first()
+                
+                if fase_attiva:
+                    # Calcola la durata in minuti
+                    durata = int((ora_corrente - fase_attiva.inizio_fase).total_seconds() / 60)
+                    
+                    # Aggiorna il record esistente
+                    fase_attiva.fine_fase = ora_corrente
+                    fase_attiva.durata_minuti = durata 
+                    fase_attiva.note = f"{fase_attiva.note or ''} - Fase completata automaticamente con cambio stato a '{stato_nuovo}'"
+                    logger.info(f"Chiusa fase '{tipo_fase_precedente}' per ODL {odl_id} con durata {durata} minuti")
+            
+            # Apri una nuova fase se il nuovo stato è monitorato
+            if stato_nuovo in STATO_A_FASE:
+                tipo_fase_nuova = STATO_A_FASE[stato_nuovo]
+                
+                # Verifica se esiste già una fase attiva dello stesso tipo
+                fase_esistente = db.query(TempoFase).filter(
+                    TempoFase.odl_id == odl_id,
+                    TempoFase.fase == tipo_fase_nuova,
+                    TempoFase.fine_fase == None
+                ).first()
+                
+                if not fase_esistente:
+                    # Crea una nuova fase
+                    nuova_fase = TempoFase(
+                        odl_id=odl_id,
+                        fase=tipo_fase_nuova,
+                        inizio_fase=ora_corrente,
+                        note=f"Fase {tipo_fase_nuova} iniziata automaticamente con cambio stato da '{stato_precedente}'"
+                    )
+                    db.add(nuova_fase)
+                    logger.info(f"Aperta nuova fase '{tipo_fase_nuova}' per ODL {odl_id}")
         
         db.commit()
         db.refresh(db_odl)
