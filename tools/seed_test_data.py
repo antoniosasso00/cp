@@ -27,10 +27,10 @@ load_dotenv()
 IN_DOCKER = os.path.exists('/.dockerenv')
 
 # Se in Docker, usa l'host interno, altrimenti usa localhost
-BASE_URL = "http://backend:8000" if IN_DOCKER else os.getenv("BACKEND_URL", "http://localhost:8000")
+BASE_URL = "http://localhost:8000" if IN_DOCKER else os.getenv("BACKEND_URL", "http://localhost:8000")
 API_PREFIX = os.getenv("API_PREFIX", "/api/v1")
 
-logger.info(f"Usando URL backend: {BASE_URL}")
+logger.info(f"{'Esecuzione in ambiente Docker, utilizzo' if IN_DOCKER else 'Utilizzo'} URL backend: {BASE_URL}")
 
 # Dati di test predefiniti
 CATALOGO_PARTS = [

@@ -59,7 +59,7 @@ const getStatusBadgeVariant = (status: string) => {
 const STATI_ODL = ["Preparazione", "Laminazione", "Attesa Cura", "Cura", "Finito"]
 
 // Mappa stato a fase
-const STATO_A_FASE = {
+const STATO_A_FASE: Record<string, "laminazione" | "attesa_cura" | "cura"> = {
   "Laminazione": "laminazione",
   "Attesa Cura": "attesa_cura",
   "Cura": "cura"
