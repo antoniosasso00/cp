@@ -1,30 +1,67 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Literal
+from typing import List, Optional, Literal
 from datetime import datetime
+from enum import Enum
 
 # Schema base per le proprietà comuni
+class ODLStatus(str, Enum):
+    CREATED = "created"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+class ODLPhase(str, Enum):
+    LAMINAZIONE = "laminazione"
+    PRE_NESTING = "pre_nesting"
+    NESTING = "nesting"
+    AUTOCLAVE = "autoclave"
+    POST = "post"
+
+class ParteInODL(BaseModel):
+    parte_id: int = Field(..., description="ID della parte da includere nell'ODL")
+    quantity: int = Field(gt=0, description="Quantità richiesta")
+    status: str = Field(default="created", description="Stato della parte nell'ODL")
+
 class ODLBase(BaseModel):
-    parte_id: int = Field(..., description="ID della parte associata all'ordine di lavoro")
-    tool_id: int = Field(..., description="ID del tool utilizzato per l'ordine di lavoro")
-    priorita: int = Field(1, ge=1, description="Priorità dell'ordine di lavoro (numero più alto = priorità maggiore)")
-    status: Literal["Preparazione", "Laminazione", "Attesa Cura", "Cura", "Finito"] = Field(
-        "Preparazione", description="Stato corrente dell'ordine di lavoro"
-    )
-    note: Optional[str] = Field(None, description="Note aggiuntive sull'ordine di lavoro")
+    code: str = Field(..., description="Codice univoco dell'ODL")
+    description: Optional[str] = Field(None, description="Descrizione dell'ODL")
 
-# Schema per la creazione
 class ODLCreate(ODLBase):
-    pass
+    parti: List[ParteInODL] = Field(..., description="Lista delle parti da includere nell'ODL")
 
-# Schema per gli aggiornamenti
 class ODLUpdate(BaseModel):
-    parte_id: Optional[int] = Field(None, description="ID della parte associata all'ordine di lavoro")
-    tool_id: Optional[int] = Field(None, description="ID del tool utilizzato per l'ordine di lavoro")
-    priorita: Optional[int] = Field(None, ge=1, description="Priorità dell'ordine di lavoro (numero più alto = priorità maggiore)")
-    status: Optional[Literal["Preparazione", "Laminazione", "Attesa Cura", "Cura", "Finito"]] = Field(
-        None, description="Stato corrente dell'ordine di lavoro"
-    )
-    note: Optional[str] = Field(None, description="Note aggiuntive sull'ordine di lavoro")
+    description: Optional[str] = None
+    status: Optional[ODLStatus] = None
+    current_phase: Optional[ODLPhase] = None
+
+class ParteDetail(BaseModel):
+    id: int
+    part_number: str
+    descrizione_breve: str
+    num_valvole_richieste: int
+    tools: List[dict]
+    quantity: int
+    status: str
+    last_updated: datetime
+
+    class Config:
+        from_attributes = True
+
+class ODLInDB(ODLBase):
+    id: int
+    status: ODLStatus
+    current_phase: ODLPhase
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ODL(ODLInDB):
+    parti: List[ParteDetail]
+
+    class Config:
+        from_attributes = True
 
 # Schema per parte inclusa nella risposta
 class ParteInODLResponse(BaseModel):
@@ -45,19 +82,15 @@ class ToolInODLResponse(BaseModel):
         from_attributes = True
 
 # Schema per la risposta completa
-class ODLRead(ODLBase):
-    id: int = Field(..., description="ID univoco dell'ordine di lavoro")
+class ODLRead(ODLInDB):
     parte: ParteInODLResponse = Field(..., description="Informazioni sulla parte associata")
     tool: ToolInODLResponse = Field(..., description="Informazioni sul tool utilizzato")
-    created_at: datetime = Field(..., description="Data e ora di creazione del record")
-    updated_at: datetime = Field(..., description="Data e ora dell'ultimo aggiornamento")
 
     class Config:
         from_attributes = True
 
 # Schema per la risposta semplificata (senza relazioni dettagliate)
-class ODLReadBasic(ODLBase):
-    id: int = Field(..., description="ID univoco dell'ordine di lavoro")
+class ODLReadBasic(ODLInDB):
     created_at: datetime = Field(..., description="Data e ora di creazione del record")
     updated_at: datetime = Field(..., description="Data e ora dell'ultimo aggiornamento")
 

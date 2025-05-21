@@ -1,39 +1,47 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Text, Enum
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, Table
 from sqlalchemy.orm import relationship
-from .base import Base, TimestampMixin
+from datetime import datetime
+import enum
 
-class ODL(Base, TimestampMixin):
-    """Modello che rappresenta gli Ordini di Lavoro (ODL)"""
-    __tablename__ = "odl"
+from .base import Base
+
+class ODLStatus(enum.Enum):
+    CREATED = "created"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+class ODLPhase(enum.Enum):
+    LAMINAZIONE = "laminazione"
+    PRE_NESTING = "pre_nesting"
+    NESTING = "nesting"
+    AUTOCLAVE = "autoclave"
+    POST = "post"
+
+# Tabella di associazione tra ODL e Parte
+odl_parts = Table(
+    'odl_parts',
+    Base.metadata,
+    Column('odl_id', Integer, ForeignKey('odl.id'), primary_key=True),
+    Column('parte_id', Integer, ForeignKey('parti.id'), primary_key=True),
+    Column('quantity', Integer, nullable=False, default=1),
+    Column('status', String(50), nullable=False, default='created'),
+    Column('last_updated', DateTime, default=datetime.utcnow)
+)
+
+class ODL(Base):
+    __tablename__ = 'odl'
+
+    id = Column(Integer, primary_key=True)
+    code = Column(String(50), unique=True, nullable=False)
+    description = Column(String(200))
+    status = Column(Enum(ODLStatus), nullable=False, default=ODLStatus.CREATED)
+    current_phase = Column(Enum(ODLPhase), nullable=False, default=ODLPhase.LAMINAZIONE)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    id = Column(Integer, primary_key=True, index=True)
-    
-    # Relazione con la parte (obbligatoria)
-    parte_id = Column(Integer, ForeignKey('parti.id'), nullable=False, index=True,
-                    doc="ID della parte associata all'ordine di lavoro")
-    parte = relationship("Parte", back_populates="odl")
-    
-    # Relazione con il tool (obbligatoria)
-    tool_id = Column(Integer, ForeignKey('tools.id'), nullable=False, index=True,
-                   doc="ID del tool utilizzato per l'ordine di lavoro")
-    tool = relationship("Tool", back_populates="odl")
-    
-    # Attributi dell'ordine di lavoro
-    priorita = Column(Integer, default=1, nullable=False,
-                     doc="Priorità dell'ordine di lavoro (numero più alto = priorità maggiore)")
-    
-    status = Column(
-        Enum("Preparazione", "Laminazione", "Attesa Cura", "Cura", "Finito", name="odl_status"),
-        default="Preparazione",
-        nullable=False,
-        doc="Stato corrente dell'ordine di lavoro"
-    )
-    
-    note = Column(Text, nullable=True,
-                 doc="Note aggiuntive sull'ordine di lavoro")
-    
-    # Relazione con i tempi delle fasi
-    tempo_fasi = relationship("TempoFase", back_populates="odl", cascade="all, delete-orphan")
+    # Relazioni
+    parti = relationship("Parte", secondary=odl_parts, back_populates="odls")
     
     def __repr__(self):
-        return f"<ODL(id={self.id}, parte_id={self.parte_id}, tool_id={self.tool_id}, status='{self.status}')>" 
+        return f"<ODL {self.code}>" 

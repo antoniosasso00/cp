@@ -12,7 +12,8 @@ import {
   Loader2, 
   MoreHorizontal, 
   Pencil, 
-  Trash2 
+  Trash2,
+  Plus
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -20,6 +21,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import Link from 'next/link'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 interface Tool {
   id: number
@@ -28,78 +39,77 @@ interface Tool {
   lunghezza_piano: number
   larghezza_piano: number
   disponibile: boolean
-  in_manutenzione: boolean
-  created_at: string
-  updated_at: string
 }
 
 export default function ToolsPage() {
-  const [tools, setTools] = useState<Tool[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editingItem, setEditingItem] = useState<Tool | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedItem, setSelectedItem] = useState<Tool | null>(null)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [itemToDelete, setItemToDelete] = useState<Tool | null>(null)
   const { toast } = useToast()
+  const queryClient = useQueryClient()
 
-  const fetchTools = async () => {
-    try {
-      setIsLoading(true)
-      const data = await toolApi.getAll()
-      setTools(data as Tool[])
-    } catch (error) {
-      console.error('Errore nel caricamento dei tools:', error)
-      toast({
-        variant: 'destructive',
-        title: 'Errore',
-        description: 'Impossibile caricare i tools. Riprova più tardi.',
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchTools()
-  }, [])
+  const {
+    data: tools = [],
+    isLoading,
+    isError
+  } = useQuery<Tool[], Error>({
+    queryKey: ['tools'],
+    queryFn: () => toolApi.getAll()
+  })
 
   const handleCreateClick = () => {
-    setEditingItem(null)
-    setModalOpen(true)
+    setSelectedItem(null)
+    setIsModalOpen(true)
   }
 
   const handleEditClick = (item: Tool) => {
-    setEditingItem(item)
-    setModalOpen(true)
+    setSelectedItem(item)
+    setIsModalOpen(true)
   }
 
-  const handleDeleteClick = async (id: number) => {
-    if (!window.confirm('Sei sicuro di voler eliminare questo tool?')) {
-      return
-    }
+  const handleDeleteClick = (item: Tool) => {
+    setItemToDelete(item)
+    setIsDeleteDialogOpen(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!itemToDelete) return
 
     try {
-      await toolApi.delete(id)
+      await toolApi.delete(itemToDelete.id)
       toast({
         variant: 'success',
         title: 'Tool eliminato',
-        description: 'Il tool è stato eliminato con successo.',
+        description: `Tool #${itemToDelete.id} eliminato con successo.`,
       })
-      fetchTools()
+      queryClient.invalidateQueries({ queryKey: ['tools'] })
     } catch (error) {
-      console.error('Errore durante l\'eliminazione:', error)
+      console.error('Errore nell\'eliminazione del tool:', error)
       toast({
         variant: 'destructive',
         title: 'Errore',
-        description: 'Impossibile eliminare il tool. Potrebbe essere in uso.',
+        description: 'Impossibile eliminare il tool. Riprova più tardi.',
       })
+    } finally {
+      setIsDeleteDialogOpen(false)
+      setItemToDelete(null)
     }
   }
 
-  const filteredTools = tools.filter(item => {
+  const handleModalSuccess = () => {
+    setIsModalOpen(false)
+    setSelectedItem(null)
+    queryClient.invalidateQueries({ queryKey: ['tools'] })
+  }
+
+  // Filtra i tools in base alla ricerca
+  const filteredTools = tools.filter(tool => {
     const searchLower = searchQuery.toLowerCase()
     return (
-      item.codice.toLowerCase().includes(searchLower) ||
-      (item.descrizione?.toLowerCase().includes(searchLower) || false)
+      tool.codice.toLowerCase().includes(searchLower) ||
+      (tool.descrizione && tool.descrizione.toLowerCase().includes(searchLower))
     )
   })
 
@@ -107,12 +117,15 @@ export default function ToolsPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Tools</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Tools/Stampi</h1>
           <p className="text-muted-foreground">
-            Gestisci i tools disponibili per la produzione
+            Gestisci i tools e gli stampi disponibili
           </p>
         </div>
-        <Button onClick={handleCreateClick}>Nuovo Tool</Button>
+        <Button onClick={handleCreateClick}>
+          <Plus className="mr-2 h-4 w-4" />
+          Nuovo Tool
+        </Button>
       </div>
 
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
@@ -128,6 +141,10 @@ export default function ToolsPage() {
         <div className="flex justify-center py-8">
           <Loader2 className="h-8 w-8 animate-spin" />
           <span className="ml-2">Caricamento in corso...</span>
+        </div>
+      ) : isError ? (
+        <div className="text-center text-destructive py-8">
+          Errore nel caricamento dei tools.
         </div>
       ) : (
         <Table>
@@ -149,41 +166,39 @@ export default function ToolsPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredTools.map(item => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.codice}</TableCell>
-                  <TableCell className="max-w-xs truncate">{item.descrizione || '-'}</TableCell>
+              filteredTools.map(tool => (
+                <TableRow key={tool.id}>
+                  <TableCell>{tool.codice}</TableCell>
+                  <TableCell>{tool.descrizione || '-'}</TableCell>
                   <TableCell className="text-center">
-                    {item.lunghezza_piano} x {item.larghezza_piano}
+                    {tool.lunghezza_piano} x {tool.larghezza_piano}
                   </TableCell>
                   <TableCell className="text-center">
-                    <div className="flex justify-center gap-2">
-                      <Badge variant={item.disponibile ? 'success' : 'destructive'}>
-                        {item.disponibile ? 'Disponibile' : 'Non Disponibile'}
-                      </Badge>
-                      {item.in_manutenzione && (
-                        <Badge variant="warning">In Manutenzione</Badge>
-                      )}
-                    </div>
+                    <Badge variant={tool.disponibile ? "success" : "destructive"}>
+                      {tool.disponibile ? "Disponibile" : "Non disponibile"}
+                    </Badge>
                   </TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
+                        <Button variant="ghost" size="sm">
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleEditClick(item)}>
-                          <Pencil className="mr-2 h-4 w-4" />
-                          <span>Modifica</span>
+                        <DropdownMenuItem asChild>
+                          <Link href={`/dashboard/tools/${tool.id}`}>
+                            Dettagli
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleEditClick(tool)}>
+                          Modifica
                         </DropdownMenuItem>
                         <DropdownMenuItem 
-                          onClick={() => handleDeleteClick(item.id)}
-                          className="text-destructive focus:text-destructive"
+                          onClick={() => handleDeleteClick(tool)}
+                          className="text-destructive"
                         >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          <span>Elimina</span>
+                          Elimina
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -195,12 +210,34 @@ export default function ToolsPage() {
         </Table>
       )}
 
+      {/* Modal per creazione/modifica tool */}
       <ToolModal
-        open={modalOpen}
-        onOpenChange={setModalOpen}
-        editingItem={editingItem}
-        onSuccess={fetchTools}
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        item={selectedItem}
+        onSuccess={handleModalSuccess}
       />
+
+      {/* Dialog di conferma eliminazione */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Conferma eliminazione</DialogTitle>
+            <DialogDescription>
+              Sei sicuro di voler eliminare il tool #{itemToDelete?.id}?
+              Questa azione non può essere annullata.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+              Annulla
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              Elimina
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 } 

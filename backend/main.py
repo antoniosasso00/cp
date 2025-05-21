@@ -3,9 +3,16 @@ import os
 import importlib
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from starlette.responses import JSONResponse
 from api.routes import router
 from sqlalchemy import inspect
+from config.performance import (
+    CustomORJSONResponse,
+    MIDDLEWARE_CONFIG,
+    DB_CONFIG,
+    CACHE_CONFIG
+)
 
 # Importa gli oggetti necessari dal modulo database
 from api.database import engine, Base, create_nesting_tables
@@ -18,6 +25,7 @@ app = FastAPI(
     title="CarbonPilot API",
     description="API per la gestione dei processi di produzione di parti in carbonio",
     version="0.1.0",
+    default_response_class=CustomORJSONResponse,
 )
 
 # Configurazione CORS per permettere richieste dal frontend
@@ -27,6 +35,12 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Aggiungi middleware GZip
+app.add_middleware(
+    GZipMiddleware,
+    minimum_size=MIDDLEWARE_CONFIG["gzip"]["minimum_size"]
 )
 
 # Importa tutti i modelli per assicurarsi che siano registrati
@@ -65,4 +79,11 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        workers=4,  # Numero di worker per gestire le richieste in parallelo
+        loop="uvloop",  # Usa uvloop per migliori performance
+        http="httptools",  # Usa httptools per parsing HTTP più veloce
+    ) 

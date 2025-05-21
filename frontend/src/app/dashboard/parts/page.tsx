@@ -13,7 +13,8 @@ import {
   Loader2, 
   MoreHorizontal, 
   Pencil, 
-  Trash2 
+  Trash2,
+  Plus
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -23,74 +24,85 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import debounce from 'lodash.debounce'
+import Link from 'next/link'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 export default function PartiPage() {
   const [searchQuery, setSearchQuery] = useState('')
-  const [filter, setFilter] = useState<{part_number?: string}>({})
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editingItem, setEditingItem] = useState<ParteResponse | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedItem, setSelectedItem] = useState<ParteResponse | null>(null)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [itemToDelete, setItemToDelete] = useState<ParteResponse | null>(null)
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
-  // Debounce per la ricerca
-  const debouncedSetFilter = debounce((query: string) => {
-    setFilter(query ? { part_number: query } : {})
-  }, 400)
-
-  // React Query per fetch delle parti
   const {
     data: parti = [],
     isLoading,
-    isError,
-    refetch
+    isError
   } = useQuery<ParteResponse[], Error>({
-    queryKey: ['parti', filter],
-    queryFn: () => partiApi.getAll(filter)
+    queryKey: ['parti'],
+    queryFn: () => partiApi.getAll()
   })
 
-  // Aggiorna filtro con debounce
-  useEffect(() => {
-    debouncedSetFilter(searchQuery)
-    return () => debouncedSetFilter.cancel()
-  }, [searchQuery])
-
   const handleCreateClick = () => {
-    setEditingItem(null)
-    setModalOpen(true)
+    setSelectedItem(null)
+    setIsModalOpen(true)
   }
 
   const handleEditClick = (item: ParteResponse) => {
-    setEditingItem(item)
-    setModalOpen(true)
+    setSelectedItem(item)
+    setIsModalOpen(true)
   }
 
-  const handleDeleteClick = async (id: number) => {
-    if (!window.confirm(`Sei sicuro di voler eliminare la parte con ID ${id}?`)) {
-      return
-    }
+  const handleDeleteClick = (item: ParteResponse) => {
+    setItemToDelete(item)
+    setIsDeleteDialogOpen(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!itemToDelete) return
+
     try {
-      await partiApi.delete(id)
+      await partiApi.delete(itemToDelete.id)
       toast({
         variant: 'success',
-        title: 'Eliminata',
-        description: `Parte con ID ${id} eliminata con successo.`,
+        title: 'Parte eliminata',
+        description: `Parte #${itemToDelete.id} eliminata con successo.`,
       })
-      refetch()
+      queryClient.invalidateQueries({ queryKey: ['parti'] })
     } catch (error) {
-      console.error(`Errore durante l'eliminazione della parte ${id}:`, error)
+      console.error('Errore nell\'eliminazione della parte:', error)
       toast({
         variant: 'destructive',
         title: 'Errore',
-        description: `Impossibile eliminare la parte con ID ${id}.`,
+        description: 'Impossibile eliminare la parte. Riprova più tardi.',
       })
+    } finally {
+      setIsDeleteDialogOpen(false)
+      setItemToDelete(null)
     }
   }
 
-  const filteredParti = parti.filter((item: ParteResponse) => {
+  const handleModalSuccess = () => {
+    setIsModalOpen(false)
+    setSelectedItem(null)
+    queryClient.invalidateQueries({ queryKey: ['parti'] })
+  }
+
+  // Filtra le parti in base alla ricerca
+  const filteredParti = parti.filter(parte => {
     const searchLower = searchQuery.toLowerCase()
     return (
-      item.part_number.toLowerCase().includes(searchLower) ||
-      item.descrizione_breve.toLowerCase().includes(searchLower)
+      parte.part_number.toLowerCase().includes(searchLower) ||
+      parte.descrizione_breve.toLowerCase().includes(searchLower)
     )
   })
 
@@ -103,7 +115,10 @@ export default function PartiPage() {
             Gestisci le parti in produzione
           </p>
         </div>
-        <Button onClick={handleCreateClick}>Nuova Parte</Button>
+        <Button onClick={handleCreateClick}>
+          <Plus className="mr-2 h-4 w-4" />
+          Nuova Parte
+        </Button>
       </div>
 
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
@@ -145,45 +160,50 @@ export default function PartiPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredParti.map((item: ParteResponse) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.id}</TableCell>
-                  <TableCell>{item.part_number}</TableCell>
-                  <TableCell className="max-w-xs truncate">{item.descrizione_breve}</TableCell>
+              filteredParti.map(parte => (
+                <TableRow key={parte.id}>
+                  <TableCell>{parte.id}</TableCell>
+                  <TableCell>{parte.part_number}</TableCell>
+                  <TableCell>{parte.descrizione_breve}</TableCell>
                   <TableCell className="text-center">
-                    {item.num_valvole_richieste}
+                    <Badge variant="outline">
+                      {parte.num_valvole_richieste}
+                    </Badge>
                   </TableCell>
                   <TableCell>
-                    {item.tools.length > 0 ? (
+                    {parte.tools && parte.tools.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
-                        {item.tools.map((tool: ToolInParteResponse) => (
-                          <Badge key={tool.id} variant="secondary" className="mr-1">
+                        {parte.tools.map(tool => (
+                          <Badge key={tool.id} variant="secondary">
                             {tool.codice}
                           </Badge>
                         ))}
                       </div>
                     ) : (
-                      '-'
+                      <span className="text-muted-foreground">Nessun tool</span>
                     )}
                   </TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
+                        <Button variant="ghost" size="sm">
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleEditClick(item)}>
-                          <Pencil className="mr-2 h-4 w-4" />
-                          <span>Modifica</span>
+                        <DropdownMenuItem asChild>
+                          <Link href={`/dashboard/parts/${parte.id}`}>
+                            Dettagli
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleEditClick(parte)}>
+                          Modifica
                         </DropdownMenuItem>
                         <DropdownMenuItem 
-                          onClick={() => handleDeleteClick(item.id)}
-                          className="text-destructive focus:text-destructive"
+                          onClick={() => handleDeleteClick(parte)}
+                          className="text-destructive"
                         >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          <span>Elimina</span>
+                          Elimina
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -195,15 +215,34 @@ export default function PartiPage() {
         </Table>
       )}
 
-      <ParteModal 
-        isOpen={modalOpen} 
-        onClose={() => setModalOpen(false)} 
-        item={editingItem} 
-        onSuccess={() => {
-          refetch()
-          setModalOpen(false)
-        }}
+      {/* Modal per creazione/modifica parte */}
+      <ParteModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        item={selectedItem}
+        onSuccess={handleModalSuccess}
       />
+
+      {/* Dialog di conferma eliminazione */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Conferma eliminazione</DialogTitle>
+            <DialogDescription>
+              Sei sicuro di voler eliminare la parte #{itemToDelete?.id}?
+              Questa azione non può essere annullata.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+              Annulla
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              Elimina
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 } 

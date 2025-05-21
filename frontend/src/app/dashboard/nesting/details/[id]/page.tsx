@@ -12,9 +12,10 @@ import { useToast } from '@/components/ui/use-toast';
 import { nestingApi } from '@/lib/api/nestingApi';
 import { AutoclaveLayout, NestingResultSummary, ODLLayout } from '@/lib/types/nesting';
 import NestingVisualizer from '@/components/nesting/NestingVisualizer';
-import { Loader2, ArrowLeft, Check, BarChart2, Calendar, Clock } from 'lucide-react';
+import { Loader2, ArrowLeft, Check, BarChart2, Calendar, Clock, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface NestingDetail {
   id: number;
@@ -43,8 +44,9 @@ export default function NestingDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [selectedOdlId, setSelectedOdlId] = useState<number>(-1);
+  const [retryCount, setRetryCount] = useState(0);
 
-  // Carica i dettagli del nesting
+  // Carica i dettagli del nesting con retry
   useEffect(() => {
     const fetchDetails = async () => {
       if (!params.id) return;
@@ -54,16 +56,23 @@ export default function NestingDetailPage() {
         setError(null);
         const data = await nestingApi.getResultDetails(Number(params.id));
         setDetail(data);
+        setRetryCount(0); // Reset retry count on success
       } catch (err: any) {
+        console.error('Errore nel caricamento dei dettagli:', err);
         setError(err.message || 'Errore nel caricamento dei dettagli del nesting');
-        console.error(err);
+        
+        // Implementa retry automatico fino a 3 tentativi
+        if (retryCount < 3) {
+          setRetryCount(prev => prev + 1);
+          setTimeout(() => fetchDetails(), 2000); // Riprova dopo 2 secondi
+        }
       } finally {
         setLoading(false);
       }
     };
     
     fetchDetails();
-  }, [params.id]);
+  }, [params.id, retryCount]);
 
   // Formatta la data in formato italiano
   const formatDate = (date: string | null) => {
@@ -103,30 +112,95 @@ export default function NestingDetailPage() {
     }
   };
 
+  // Componente di caricamento
   if (loading) {
     return (
-      <div className="container mx-auto py-8 flex justify-center items-center min-h-[50vh]">
-        <Loader2 className="h-8 w-8 animate-spin mr-2" />
-        <span>Caricamento dettagli...</span>
+      <div className="container mx-auto py-8">
+        <div className="space-y-6">
+          <div className="flex items-center gap-4">
+            <Skeleton className="h-8 w-32" />
+            <Skeleton className="h-8 w-64" />
+          </div>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <Card>
+                <CardHeader>
+                  <Skeleton className="h-6 w-48" />
+                  <Skeleton className="h-4 w-32" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-[400px] w-full" />
+                </CardContent>
+              </Card>
+            </div>
+            
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <Skeleton className="h-6 w-32" />
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader>
+                  <Skeleton className="h-6 w-32" />
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
+  // Componente di errore
   if (error || !detail) {
     return (
       <div className="container mx-auto py-8">
-        <Alert variant="destructive">
+        <Alert variant="destructive" className="mb-6">
+          <AlertCircle className="h-4 w-4" />
           <AlertTitle>Errore</AlertTitle>
-          <AlertDescription>{error || 'Dettagli non trovati'}</AlertDescription>
+          <AlertDescription>
+            {error || 'Dettagli non trovati'}
+            {retryCount > 0 && (
+              <div className="mt-2 text-sm">
+                Tentativo {retryCount} di 3...
+              </div>
+            )}
+          </AlertDescription>
         </Alert>
-        <Button 
-          className="mt-4" 
-          onClick={() => router.back()}
-          variant="outline"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Torna indietro
-        </Button>
+        
+        <div className="flex gap-4">
+          <Button 
+            onClick={() => router.back()}
+            variant="outline"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Torna indietro
+          </Button>
+          
+          <Button 
+            onClick={() => {
+              setRetryCount(0);
+              setLoading(true);
+            }}
+            variant="secondary"
+          >
+            <Loader2 className="h-4 w-4 mr-2" />
+            Riprova
+          </Button>
+        </div>
       </div>
     );
   }
@@ -157,8 +231,9 @@ export default function NestingDetailPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <Card className="mb-6">
+        {/* Colonna principale: Visualizzazione e Tabella ODL */}
+        <div className="lg:col-span-2 space-y-6">
+          <Card>
             <CardHeader className="pb-2">
               <CardTitle>Visualizzazione Layout</CardTitle>
               <CardDescription>
@@ -203,48 +278,53 @@ export default function NestingDetailPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ID ODL</TableHead>
-                    <TableHead>Parte</TableHead>
-                    <TableHead>Tool</TableHead>
-                    <TableHead>Posizione</TableHead>
-                    <TableHead>Dimensioni</TableHead>
-                    <TableHead>Valvole</TableHead>
-                    <TableHead>Priorità</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {detail.layout.odl_layout.map((odl: ODLLayout) => (
-                    <TableRow 
-                      key={odl.odl_id} 
-                      className={selectedOdlId === odl.odl_id ? "bg-blue-50" : ""}
-                      onClick={() => setSelectedOdlId(odl.odl_id)}
-                    >
-                      <TableCell className="font-medium">{odl.odl_id}</TableCell>
-                      <TableCell>{odl.parte_nome}</TableCell>
-                      <TableCell>{odl.tool_codice}</TableCell>
-                      <TableCell>
-                        ({odl.x.toFixed(0)}, {odl.y.toFixed(0)})
-                      </TableCell>
-                      <TableCell>
-                        {odl.lunghezza.toFixed(0)} × {odl.larghezza.toFixed(0)} mm
-                      </TableCell>
-                      <TableCell>{odl.valvole_utilizzate}</TableCell>
-                      <TableCell>
-                        <Badge variant={odl.priorita > 5 ? "destructive" : "outline"}>
-                          {odl.priorita}
-                        </Badge>
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>ID ODL</TableHead>
+                      <TableHead>Parte</TableHead>
+                      <TableHead>Tool</TableHead>
+                      <TableHead>Posizione</TableHead>
+                      <TableHead>Dimensioni</TableHead>
+                      <TableHead>Valvole</TableHead>
+                      <TableHead>Priorità</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {detail.layout.odl_layout.map((odl: ODLLayout) => (
+                      <TableRow 
+                        key={odl.odl_id} 
+                        className={`cursor-pointer transition-colors ${
+                          selectedOdlId === odl.odl_id ? "bg-blue-50" : "hover:bg-gray-50"
+                        }`}
+                        onClick={() => setSelectedOdlId(odl.odl_id)}
+                      >
+                        <TableCell className="font-medium">{odl.odl_id}</TableCell>
+                        <TableCell>{odl.parte_nome}</TableCell>
+                        <TableCell>{odl.tool_codice}</TableCell>
+                        <TableCell>
+                          ({odl.x.toFixed(0)}, {odl.y.toFixed(0)})
+                        </TableCell>
+                        <TableCell>
+                          {odl.lunghezza.toFixed(0)} × {odl.larghezza.toFixed(0)} mm
+                        </TableCell>
+                        <TableCell>{odl.valvole_utilizzate}</TableCell>
+                        <TableCell>
+                          <Badge variant={odl.priorita > 5 ? "destructive" : "outline"}>
+                            {odl.priorita}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </div>
 
+        {/* Colonna laterale: Informazioni e Metriche */}
         <div className="space-y-6">
           <Card>
             <CardHeader>

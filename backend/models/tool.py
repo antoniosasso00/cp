@@ -1,8 +1,9 @@
-from sqlalchemy import Column, Integer, Float, String, Boolean, Text, DateTime
+from sqlalchemy import Column, Integer, Float, String, Boolean, Text, DateTime, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from .base import Base, TimestampMixin
 from .associations import parte_tool_association
+from datetime import datetime
 
 class Tool(Base, TimestampMixin):
     """Modello che rappresenta gli stampi (tool) utilizzati per la laminazione"""

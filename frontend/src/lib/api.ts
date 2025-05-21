@@ -242,9 +242,9 @@ export interface CicloCura {
   pressione_stasi1: number
   durata_stasi1: number
   attiva_stasi2: boolean
-  temperatura_stasi2?: number
-  pressione_stasi2?: number
-  durata_stasi2?: number
+  temperatura_stasi2: number | null
+  pressione_stasi2: number | null
+  durata_stasi2: number | null
   created_at: string
   updated_at: string
 }
@@ -255,9 +255,9 @@ export interface CreateCicloCuraDto {
   pressione_stasi1: number
   durata_stasi1: number
   attiva_stasi2: boolean
-  temperatura_stasi2?: number
-  pressione_stasi2?: number
-  durata_stasi2?: number
+  temperatura_stasi2: number | null
+  pressione_stasi2: number | null
+  durata_stasi2: number | null
 }
 
 export interface UpdateCicloCuraDto extends Partial<CreateCicloCuraDto> {}

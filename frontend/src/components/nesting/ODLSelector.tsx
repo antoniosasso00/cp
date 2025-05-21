@@ -3,6 +3,11 @@
 import React, { useState, useEffect } from 'react';
 import { nestingApi } from '@/lib/api/nestingApi';
 import { ODLAttesaCura } from '@/lib/types/nesting';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Search, Filter } from 'lucide-react';
 
 interface ODLSelectorProps {
     onSelectionChange: (selectedIds: number[]) => void;
@@ -132,7 +137,13 @@ const ODLSelector: React.FC<ODLSelectorProps> = ({ onSelectionChange, disabled =
     const uniquePriorita = getUniquePriorita();
     
     if (loading) {
-        return <div className="text-center py-4">Caricamento ODL in attesa di cura...</div>;
+        return (
+            <div className="space-y-4">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-32 w-full" />
+                <Skeleton className="h-32 w-full" />
+            </div>
+        );
     }
     
     if (error) {
@@ -156,50 +167,56 @@ const ODLSelector: React.FC<ODLSelectorProps> = ({ onSelectionChange, disabled =
             <h3 className="text-lg font-semibold mb-3">Seleziona ODL per Nesting Manuale</h3>
             
             <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                    <label className="block text-sm font-medium mb-1">Ricerca</label>
-                    <input
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
                         type="text"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder="ID, parte o tool..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Cerca per ID, parte o tool..."
+                        className="pl-10"
                         disabled={disabled}
                     />
                 </div>
                 
                 <div>
-                    <label className="block text-sm font-medium mb-1">Ciclo di Cura</label>
-                    <select
+                    <Select
                         value={filters.ciclo_cura_id}
-                        onChange={(e) => setFilters({ ...filters, ciclo_cura_id: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        onValueChange={(value) => setFilters({ ...filters, ciclo_cura_id: value })}
                         disabled={disabled}
                     >
-                        <option value="all">Tutti i cicli</option>
-                        {uniqueCicli.map(id => (
-                            <option key={id} value={id.toString()}>
-                                {getCicloName(id)}
-                            </option>
-                        ))}
-                    </select>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Filtra per ciclo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Tutti i cicli</SelectItem>
+                            {uniqueCicli.map(id => (
+                                <SelectItem key={id} value={id.toString()}>
+                                    {getCicloName(id)}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 </div>
                 
                 <div>
-                    <label className="block text-sm font-medium mb-1">Priorità</label>
-                    <select
+                    <Select
                         value={filters.priorita}
-                        onChange={(e) => setFilters({ ...filters, priorita: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        onValueChange={(value) => setFilters({ ...filters, priorita: value })}
                         disabled={disabled}
                     >
-                        <option value="all">Tutte le priorità</option>
-                        {uniquePriorita.map(priorita => (
-                            <option key={priorita} value={priorita.toString()}>
-                                {priorita} - {priorita >= 4 ? 'Alta' : priorita >= 2 ? 'Media' : 'Bassa'}
-                            </option>
-                        ))}
-                    </select>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Filtra per priorità" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Tutte le priorità</SelectItem>
+                            {uniquePriorita.map(priorita => (
+                                <SelectItem key={priorita} value={priorita.toString()}>
+                                    {priorita} - {priorita >= 4 ? 'Alta' : priorita >= 2 ? 'Media' : 'Bassa'}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 </div>
             </div>
             
@@ -221,7 +238,7 @@ const ODLSelector: React.FC<ODLSelectorProps> = ({ onSelectionChange, disabled =
                 </button>
             </div>
             
-            <div className="space-y-2 max-h-80 overflow-y-auto p-1">
+            <div className="space-y-2 max-h-[500px] overflow-y-auto">
                 {filteredODLs.length === 0 ? (
                     <div className="text-center text-gray-500 py-4">
                         Nessun ODL trovato con i filtri selezionati
@@ -237,7 +254,7 @@ const ODLSelector: React.FC<ODLSelectorProps> = ({ onSelectionChange, disabled =
                             } cursor-pointer transition-colors ${disabled ? 'opacity-60' : ''}`}
                             onClick={() => handleToggleSelect(odl.id)}
                         >
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-start justify-between">
                                 <div className="flex-1">
                                     <div className="flex items-center">
                                         <input
@@ -255,17 +272,12 @@ const ODLSelector: React.FC<ODLSelectorProps> = ({ onSelectionChange, disabled =
                                         </div>
                                     </div>
                                 </div>
-                                <div className="ml-4 flex flex-col items-end">
-                                    <div className="flex items-center">
-                                        <span className="text-sm mr-2">Priorità:</span>
-                                        <span className={`font-medium ${
-                                            odl.priorita >= 4 ? 'text-red-600' : 
-                                            odl.priorita >= 2 ? 'text-yellow-600' : 'text-gray-600'
-                                        }`}>
-                                            {odl.priorita}
-                                        </span>
-                                    </div>
-                                    <div className="text-sm text-gray-500">
+                                
+                                <div className="flex flex-col items-end">
+                                    <Badge variant={odl.priorita >= 4 ? "destructive" : "outline"}>
+                                        Priorità: {odl.priorita}
+                                    </Badge>
+                                    <div className="text-sm text-gray-500 mt-1">
                                         {odl.larghezza}×{odl.lunghezza} mm
                                     </div>
                                 </div>

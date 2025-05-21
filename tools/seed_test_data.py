@@ -33,13 +33,14 @@ API_PREFIX = os.getenv("API_PREFIX", "/api")
 logger.info(f"{'Esecuzione in ambiente Docker, utilizzo' if IN_DOCKER else 'Utilizzo'} URL backend: {BASE_URL}")
 
 # Dati di test predefiniti
-CATALOGO_PARTS = [
+CATALOGO_PARTI = [
     {
         "part_number": "CPX-101",
-        "descrizione": "Pannello laterale sinistro",
-        "categoria": "PANNELLI",
-        "attivo": True,
-        "note": "Pannello in composito per lato sinistro"
+        "descrizione_breve": "Pannello frontale",
+        "descrizione_lunga": "Pannello frontale in composito",
+        "materiale": "Carbonio",
+        "spessore": 2.5,
+        "note": "Fascia in composito per parte frontale"
     },
     {
         "part_number": "CPX-102",
@@ -278,8 +279,8 @@ def verify_endpoint(endpoint: str, expected_items: int = 1, debug: bool = False)
 def seed_catalogo(debug: bool = False):
     """Popola il catalogo con parti predefinite."""
     logger.info("\n📦 Popolamento catalogo parti...")
-    for part in CATALOGO_PARTS:
-        post_if_missing("catalogo", "part_number", part, debug)
+    for parte in CATALOGO_PARTI:
+        post_if_missing("catalogo", "part_number", parte, debug)
 
 def seed_tools(debug: bool = False):
     """Popola gli stampi con dati predefiniti."""
@@ -672,7 +673,7 @@ def main():
     # Verifica finale
     logger.info("\n🔍 Verifica endpoint in corso...")
     success = all([
-        verify_endpoint("catalogo", len(CATALOGO_PARTS), debug),
+        verify_endpoint("catalogo", len(CATALOGO_PARTI), debug),
         verify_endpoint("tools", len(TOOLS), debug),
         verify_endpoint("cicli-cura", len(CICLI_CURA), debug),
         verify_endpoint("autoclavi", len(AUTOCLAVI), debug),

@@ -6,10 +6,16 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ODLResponse, odlApi } from '@/lib/api'
-import { CalendarClock, Clipboard, Loader2, Settings, Factory, Gauge, Activity } from 'lucide-react'
+import { CalendarClock, Clipboard, Loader2, Settings, Factory, Gauge, Activity, MoreHorizontal } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { useQuery } from '@tanstack/react-query'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 // Badge varianti per i diversi stati
 const getStatusBadgeVariant = (status: string) => {
@@ -51,7 +57,7 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {/* Widget ODL */}
         <Card className="col-span-2 md:col-span-2 lg:col-span-3">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -93,9 +99,25 @@ export default function DashboardPage() {
                             </div>
                             <div className="flex items-center gap-2">
                               <Badge variant="outline">Priorità: {odl.priorita}</Badge>
-                              <Link href={`/dashboard/odl/${odl.id}`}>
-                                <Button variant="ghost" size="sm">Dettagli</Button>
-                              </Link>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="sm">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem asChild>
+                                    <Link href={`/dashboard/odl/${odl.id}`}>
+                                      Dettagli
+                                    </Link>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <Link href={`/dashboard/odl/${odl.id}/edit`}>
+                                      Modifica
+                                    </Link>
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </div>
                           </div>
                         ))}
@@ -106,7 +128,8 @@ export default function DashboardPage() {
                       </div>
                     )}
                   </div>
-                  <div className="flex justify-center mt-2">
+                  
+                  <div className="flex justify-end">
                     <Link href="/dashboard/odl">
                       <Button variant="outline" size="sm">
                         Visualizza tutti gli ODL
@@ -116,6 +139,41 @@ export default function DashboardPage() {
                 </div>
               </>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Widget Azioni Rapide */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">Azioni Rapide</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <Link href="/dashboard/odl/new" className="w-full">
+                <Button variant="outline" className="w-full justify-start">
+                  <Clipboard className="mr-2 h-4 w-4" />
+                  Nuovo ODL
+                </Button>
+              </Link>
+              <Link href="/dashboard/parts/new" className="w-full">
+                <Button variant="outline" className="w-full justify-start">
+                  <Factory className="mr-2 h-4 w-4" />
+                  Nuova Parte
+                </Button>
+              </Link>
+              <Link href="/dashboard/tools/new" className="w-full">
+                <Button variant="outline" className="w-full justify-start">
+                  <Settings className="mr-2 h-4 w-4" />
+                  Nuovo Tool
+                </Button>
+              </Link>
+              <Link href="/dashboard/nesting" className="w-full">
+                <Button variant="outline" className="w-full justify-start">
+                  <Gauge className="mr-2 h-4 w-4" />
+                  Nesting
+                </Button>
+              </Link>
+            </div>
           </CardContent>
         </Card>
       </div>

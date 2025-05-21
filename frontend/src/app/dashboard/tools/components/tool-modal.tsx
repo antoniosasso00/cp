@@ -23,7 +23,6 @@ interface ToolModalProps {
     lunghezza_piano: number
     larghezza_piano: number
     disponibile: boolean
-    in_manutenzione: boolean
   } | null
   onSuccess: () => void
 }
@@ -40,7 +39,6 @@ export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolMo
       lunghezza_piano: editingItem?.lunghezza_piano || 0,
       larghezza_piano: editingItem?.larghezza_piano || 0,
       disponibile: editingItem?.disponibile ?? true,
-      in_manutenzione: editingItem?.in_manutenzione ?? false,
     },
   })
 
@@ -148,43 +146,23 @@ export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolMo
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="disponibile"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                    <div className="space-y-0.5">
-                      <FormLabel>Disponibile</FormLabel>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="in_manutenzione"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                    <div className="space-y-0.5">
-                      <FormLabel>In Manutenzione</FormLabel>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-            </div>
+            <FormField
+              control={form.control}
+              name="disponibile"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <FormLabel>Disponibile</FormLabel>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

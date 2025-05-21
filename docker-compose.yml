@@ -1,15 +1,25 @@
 services:
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      cache_from:
+        - type=local,src=./.build-cache/backend
+      cache_to:
+        - type=local,dest=./.build-cache/backend
     container_name: carbonpilot-backend
     volumes:
       - ./backend:/app
+      - /app/__pycache__
+      - /app/.pytest_cache
     ports:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/carbonpilot
       - DEBUG=true
       - POSTGRES_SERVER=db
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
     depends_on:
       - db
     restart: unless-stopped
@@ -24,16 +34,25 @@ services:
              uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      cache_from:
+        - type=local,src=./.build-cache/frontend
+      cache_to:
+        - type=local,dest=./.build-cache/frontend
     container_name: carbonpilot-frontend
     volumes:
       - ./frontend:/app
       - /app/node_modules
       - /app/.next
+      - /app/.build-cache
     ports:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000/api
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
     depends_on:
       - backend
     restart: unless-stopped

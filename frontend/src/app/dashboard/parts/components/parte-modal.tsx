@@ -18,6 +18,10 @@ import {
   ToolInParteResponse,
   CicloCuraInParteResponse
 } from '@/lib/api'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { AlertTriangle, Plus } from 'lucide-react'
+import debounce from 'lodash.debounce'
 
 interface ParteModalProps {
   isOpen: boolean
@@ -78,6 +82,7 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
   const [tools, setTools] = useState<ToolOption[]>([])
   const [cicliCura, setCicliCura] = useState<CicloCuraOption[]>([])
   const [isLoadingOptions, setIsLoadingOptions] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const { toast } = useToast()
 
   // Carica opzioni per i dropdown
@@ -239,6 +244,15 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
     }
   }
 
+  // Filtra i tool in base alla ricerca
+  const filteredTools = tools.filter(tool => {
+    const searchLower = searchQuery.toLowerCase()
+    return (
+      tool.codice.toLowerCase().includes(searchLower) ||
+      (tool.descrizione?.toLowerCase().includes(searchLower) || false)
+    )
+  })
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[600px]">
@@ -254,20 +268,43 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
               Part Number
             </Label>
             <div className="col-span-3">
-              <select
-                id="part_number"
-                value={formData.part_number}
-                onChange={e => handleChange('part_number', e.target.value)}
-                disabled={!!item || isLoadingOptions} 
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option value="">Seleziona Part Number</option>
-                {catalogo.map(cat => (
-                  <option key={cat.value} value={cat.value}>
-                    {cat.label}
-                  </option>
-                ))}
-              </select>
+              <div className="space-y-2">
+                <Select
+                  value={formData.part_number}
+                  onValueChange={(value) => handleChange('part_number', value)}
+                  disabled={!!item || isLoadingOptions}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleziona Part Number" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {catalogo.length > 0 ? (
+                      catalogo.map(cat => (
+                        <SelectItem key={cat.value} value={cat.value}>
+                          {cat.label}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <div className="px-2 py-4 text-center text-sm">
+                        Nessun part number disponibile
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+
+                {!item && (
+                  <div className="flex justify-end">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => window.open('/dashboard/catalog/new', '_blank')}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Crea nuovo part number
+                    </Button>
+                  </div>
+                )}
+              </div>
               {errors.part_number && (
                 <p className="text-sm text-destructive mt-1">{errors.part_number}</p>
               )}
@@ -311,20 +348,23 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
               Ciclo di Cura
             </Label>
             <div className="col-span-3">
-              <select
-                id="ciclo_cura_id"
-                value={formData.ciclo_cura_id !== null ? formData.ciclo_cura_id : ''}
-                onChange={e => handleChange('ciclo_cura_id', e.target.value ? Number(e.target.value) : null)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              <Select
+                value={formData.ciclo_cura_id?.toString() || ""}
+                onValueChange={(value) => handleChange('ciclo_cura_id', value ? Number(value) : null)}
                 disabled={isLoadingOptions}
               >
-                <option value="">Nessun ciclo di cura</option>
-                {cicliCura.map(ciclo => (
-                  <option key={ciclo.id} value={ciclo.id}>
-                    {ciclo.nome}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleziona ciclo di cura" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Nessun ciclo di cura</SelectItem>
+                  {cicliCura.map(ciclo => (
+                    <SelectItem key={ciclo.id} value={ciclo.id.toString()}>
+                      {ciclo.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -333,37 +373,55 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
               Tools/Stampi
             </Label>
             <div className="col-span-3">
-              <div className="p-2 border rounded-md max-h-40 overflow-y-auto">
-                {tools.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nessun tool disponibile</p>
-                ) : (
-                  tools.map(tool => (
-                    <div key={tool.id} className="flex items-center gap-2 mb-1">
-                      <input
-                        type="checkbox"
-                        id={`tool-${tool.id}`}
-                        checked={formData.tool_ids.includes(tool.id)}
-                        onChange={e => {
-                          const currentTools = [...formData.tool_ids];
-                          const updatedTools = e.target.checked
-                            ? [...currentTools, tool.id]
-                            : currentTools.filter(id => id !== tool.id)
-                          handleChange('tool_ids', updatedTools)
-                        }}
-                        disabled={isLoadingOptions}
-                        className="h-4 w-4 rounded border-gray-300"
-                      />
-                      <label htmlFor={`tool-${tool.id}`} className="text-sm">
-                        {tool.codice} {tool.descrizione && `- ${tool.descrizione}`}
-                      </label>
-                    </div>
-                  ))
-                )}
+              <div className="space-y-2">
+                <Input
+                  placeholder="Cerca nei tools..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="mb-2"
+                />
+                <div className="p-2 border rounded-md max-h-40 overflow-y-auto">
+                  {filteredTools.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nessun tool disponibile</p>
+                  ) : (
+                    filteredTools.map(tool => (
+                      <div key={tool.id} className="flex items-center gap-2 mb-1">
+                        <input
+                          type="checkbox"
+                          id={`tool-${tool.id}`}
+                          checked={formData.tool_ids.includes(tool.id)}
+                          onChange={e => {
+                            const currentTools = [...formData.tool_ids];
+                            const updatedTools = e.target.checked
+                              ? [...currentTools, tool.id]
+                              : currentTools.filter(id => id !== tool.id)
+                            handleChange('tool_ids', updatedTools)
+                          }}
+                          disabled={isLoadingOptions}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <label htmlFor={`tool-${tool.id}`} className="text-sm">
+                          {tool.codice} {tool.descrizione && `- ${tool.descrizione}`}
+                        </label>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="flex justify-end">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => window.open('/dashboard/tools/new', '_blank')}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Crea nuovo tool
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-4 items-center gap-4">
+          <div className="grid grid-cols-4 items-start gap-4">
             <Label htmlFor="note_produzione" className="text-right">
               Note Produzione
             </Label>

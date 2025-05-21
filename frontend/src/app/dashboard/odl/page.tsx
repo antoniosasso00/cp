@@ -18,7 +18,8 @@ import {
   Trash2,
   ChevronDown,
   Play,
-  ListFilter
+  ListFilter,
+  Plus
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -44,6 +45,7 @@ import {
 } from "@/components/ui/dialog"
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import debounce from 'lodash.debounce'
+import Link from 'next/link'
 
 // Badge varianti per i diversi stati
 const getStatusBadgeVariant = (status: string) => {
@@ -69,165 +71,80 @@ const STATO_A_FASE: Record<string, "laminazione" | "attesa_cura" | "cura"> = {
 
 export default function ODLPage() {
   const [searchQuery, setSearchQuery] = useState('')
-  const [filter, setFilter] = useState<{parte_id?: number, tool_id?: number, status?: string}>({})
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editingItem, setEditingItem] = useState<ODLResponse | null>(null)
-  const [advanceDialogOpen, setAdvanceDialogOpen] = useState(false)
-  const [odlToAdvance, setOdlToAdvance] = useState<ODLResponse | null>(null)
-  const [processingAdvance, setProcessingAdvance] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedItem, setSelectedItem] = useState<ODLResponse | null>(null)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [itemToDelete, setItemToDelete] = useState<ODLResponse | null>(null)
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
-  // Debounce per la ricerca
-  const debouncedSetFilter = debounce((query: string) => {
-    setFilter(query ? { ...filter, parte_id: Number(query) } : {})
-  }, 400)
-
-  // React Query per fetch degli ODL
   const {
     data: odls = [],
     isLoading,
-    isError,
-    refetch
+    isError
   } = useQuery<ODLResponse[], Error>({
-    queryKey: ['odls', filter],
-    queryFn: () => odlApi.getAll(filter)
+    queryKey: ['odl'],
+    queryFn: () => odlApi.getAll()
   })
 
-  // Aggiorna filtro con debounce
-  useEffect(() => {
-    debouncedSetFilter(searchQuery)
-    return () => debouncedSetFilter.cancel()
-  }, [searchQuery])
-
   const handleCreateClick = () => {
-    setEditingItem(null)
-    setModalOpen(true)
+    setSelectedItem(null)
+    setIsModalOpen(true)
   }
 
   const handleEditClick = (item: ODLResponse) => {
-    setEditingItem(item)
-    setModalOpen(true)
+    setSelectedItem(item)
+    setIsModalOpen(true)
   }
 
-  const handleDeleteClick = async (id: number) => {
-    if (!window.confirm(`Sei sicuro di voler eliminare l'ODL con ID ${id}?`)) {
-      return
-    }
+  const handleDeleteClick = (item: ODLResponse) => {
+    setItemToDelete(item)
+    setIsDeleteDialogOpen(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!itemToDelete) return
 
     try {
-      await odlApi.delete(id)
+      await odlApi.delete(itemToDelete.id)
       toast({
         variant: 'success',
-        title: 'Eliminato',
-        description: `ODL con ID ${id} eliminato con successo.`,
+        title: 'ODL eliminato',
+        description: `ODL #${itemToDelete.id} eliminato con successo.`,
       })
-      refetch()
+      queryClient.invalidateQueries({ queryKey: ['odl'] })
     } catch (error) {
-      console.error(`Errore durante l'eliminazione dell'ODL ${id}:`, error)
+      console.error('Errore nell\'eliminazione dell\'ODL:', error)
       toast({
         variant: 'destructive',
         title: 'Errore',
-        description: `Impossibile eliminare l'ODL con ID ${id}.`,
-      })
-    }
-  }
-  
-  const handleAdvanceClick = (item: ODLResponse) => {
-    setOdlToAdvance(item)
-    setAdvanceDialogOpen(true)
-  }
-  
-  const advanceODLStatus = async () => {
-    if (!odlToAdvance) return
-    
-    // Determina il prossimo stato
-    const currentIndex = STATI_ODL.indexOf(odlToAdvance.status)
-    if (currentIndex === -1 || currentIndex === STATI_ODL.length - 1) {
-      toast({
-        variant: 'destructive',
-        title: 'Errore',
-        description: 'Impossibile avanzare lo stato: stato attuale non valido o già finale.',
-      })
-      return
-    }
-    
-    const nextStatus = STATI_ODL[currentIndex + 1] as "Preparazione" | "Laminazione" | "Attesa Cura" | "Cura" | "Finito"
-    
-    try {
-      setProcessingAdvance(true)
-      
-      // 1. Chiudi la fase corrente se esiste
-      if (odlToAdvance.status in STATO_A_FASE) {
-        const currentFase = STATO_A_FASE[odlToAdvance.status as keyof typeof STATO_A_FASE]
-        
-        // Recupera la fase attuale non completata
-        const tempiFasiResponse = await tempoFasiApi.getAll({
-          odl_id: odlToAdvance.id,
-          fase: currentFase
-        })
-        
-        const faseAttiva = tempiFasiResponse.find(fase => fase.fine_fase === null)
-        
-        if (faseAttiva) {
-          // Chiudi la fase corrente
-          await tempoFasiApi.update(faseAttiva.id, {
-            fine_fase: new Date().toISOString()
-          })
-        }
-      }
-      
-      // 2. Aggiorna lo stato dell'ODL
-      await odlApi.update(odlToAdvance.id, {
-        status: nextStatus
-      })
-      
-      // 3. Crea una nuova fase se il nuovo stato è monitorato
-      if (nextStatus in STATO_A_FASE) {
-        const nuovaFase = STATO_A_FASE[nextStatus as keyof typeof STATO_A_FASE]
-        
-        await tempoFasiApi.create({
-          odl_id: odlToAdvance.id,
-          fase: nuovaFase,
-          inizio_fase: new Date().toISOString(),
-          note: `Fase ${nuovaFase} iniziata automaticamente`
-        })
-      }
-      
-      toast({
-        title: 'Stato aggiornato',
-        description: `ODL ${odlToAdvance.id} avanzato a "${nextStatus}"`,
-      })
-      
-      // Ricarica i dati
-      refetch()
-      setAdvanceDialogOpen(false)
-      setOdlToAdvance(null)
-    } catch (error) {
-      console.error('Errore durante l\'avanzamento dello stato:', error)
-      toast({
-        variant: 'destructive',
-        title: 'Errore',
-        description: 'Impossibile avanzare lo stato dell\'ODL. Riprova più tardi.',
+        description: 'Impossibile eliminare l\'ODL. Riprova più tardi.',
       })
     } finally {
-      setProcessingAdvance(false)
+      setIsDeleteDialogOpen(false)
+      setItemToDelete(null)
     }
   }
 
-  const filterODLs = (items: ODLResponse[], query: string) => {
-    if (!query) return items
-    
-    const searchLower = query.toLowerCase()
-    return items.filter(item => (
-      item.id.toString().includes(searchLower) ||
-      item.parte.part_number.toLowerCase().includes(searchLower) ||
-      item.tool.codice.toLowerCase().includes(searchLower) ||
-      (item.note && item.note.toLowerCase().includes(searchLower))
-    ))
+  const handleModalSuccess = () => {
+    setIsModalOpen(false)
+    setSelectedItem(null)
+    queryClient.invalidateQueries({ queryKey: ['odl'] })
   }
-  
-  const filteredODLs = filterODLs(odls, searchQuery)
+
+  // Filtra gli ODL in base alla ricerca
+  const filteredODLs = odls.filter(odl => {
+    const searchLower = searchQuery.toLowerCase()
+    return (
+      odl.parte.part_number.toLowerCase().includes(searchLower) ||
+      odl.tool.codice.toLowerCase().includes(searchLower) ||
+      (odl.note && odl.note.toLowerCase().includes(searchLower))
+    )
+  })
+
+  // Separa gli ODL attivi da quelli completati
+  const activeODLs = filteredODLs.filter(odl => odl.status !== "Finito")
+  const finishedODLs = filteredODLs.filter(odl => odl.status === "Finito")
 
   return (
     <div className="space-y-6">
@@ -238,12 +155,15 @@ export default function ODLPage() {
             Gestisci gli ordini di lavoro in produzione
           </p>
         </div>
-        <Button onClick={handleCreateClick}>Nuovo ODL</Button>
+        <Button onClick={handleCreateClick}>
+          <Plus className="mr-2 h-4 w-4" />
+          Nuovo ODL
+        </Button>
       </div>
 
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
         <Input
-          placeholder="Cerca ODL per parte ID..."
+          placeholder="Cerca negli ODL..."
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           className="max-w-sm"
@@ -277,70 +197,51 @@ export default function ODLPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredODLs.length === 0 ? (
+                {activeODLs.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-8">
-                      Nessun ordine di lavoro attivo trovato
+                      Nessun ODL attivo trovato
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredODLs.map(item => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium">{item.id}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span>{item.parte.part_number}</span>
-                          <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                            {item.parte.descrizione_breve}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>{item.tool.codice}</TableCell>
+                  activeODLs.map(odl => (
+                    <TableRow key={odl.id}>
+                      <TableCell>{odl.id}</TableCell>
+                      <TableCell>{odl.parte.part_number}</TableCell>
+                      <TableCell>{odl.tool.codice}</TableCell>
                       <TableCell className="text-center">
-                        <Badge variant={item.priorita > 5 ? "destructive" : (item.priorita > 2 ? "warning" : "secondary")}>
-                          {item.priorita}
-                        </Badge>
+                        <Badge variant="outline">Priorità: {odl.priorita}</Badge>
                       </TableCell>
                       <TableCell className="text-center">
-                        <Badge variant={getStatusBadgeVariant(item.status)}>
-                          {item.status}
+                        <Badge variant={getStatusBadgeVariant(odl.status)}>
+                          {odl.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="max-w-[200px] truncate">
-                        {item.note || '-'}
-                      </TableCell>
+                      <TableCell>{odl.note || '-'}</TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end">
-                          <Button 
-                            variant="outline" 
-                            size="icon"
-                            className="mr-2"
-                            onClick={() => handleAdvanceClick(item)}
-                            disabled={item.status === "Finito"}
-                          >
-                            <Play className="h-4 w-4" />
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleEditClick(item)}>
-                                <Pencil className="mr-2 h-4 w-4" />
-                                <span>Modifica</span>
-                              </DropdownMenuItem>
-                              <DropdownMenuItem 
-                                onClick={() => handleDeleteClick(item.id)}
-                                className="text-destructive focus:text-destructive"
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                <span>Elimina</span>
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem asChild>
+                              <Link href={`/dashboard/odl/${odl.id}`}>
+                                Dettagli
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleEditClick(odl)}>
+                              Modifica
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={() => handleDeleteClick(odl)}
+                              className="text-destructive"
+                            >
+                              Elimina
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))
@@ -348,14 +249,14 @@ export default function ODLPage() {
               </TableBody>
             </Table>
           </div>
-          
+
           <Accordion type="single" collapsible className="border rounded-md">
             <AccordionItem value="finished-odl">
               <AccordionTrigger className="px-4">
                 <div className="flex items-center">
                   <h2 className="text-xl font-semibold">Storico ODL Completati</h2>
                   <Badge variant="outline" className="ml-2">
-                    {odls.length - filteredODLs.length}
+                    {finishedODLs.length}
                   </Badge>
                 </div>
               </AccordionTrigger>
@@ -373,56 +274,48 @@ export default function ODLPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {odls.length - filteredODLs.length === 0 ? (
+                    {finishedODLs.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-4">
-                          Nessun ordine di lavoro completato trovato
+                        <TableCell colSpan={7} className="text-center py-8">
+                          Nessun ODL completato trovato
                         </TableCell>
                       </TableRow>
                     ) : (
-                      odls.filter(item => !filteredODLs.includes(item)).map(item => (
-                        <TableRow key={item.id}>
-                          <TableCell className="font-medium">{item.id}</TableCell>
-                          <TableCell>
-                            <div className="flex flex-col">
-                              <span>{item.parte.part_number}</span>
-                              <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                                {item.parte.descrizione_breve}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell>{item.tool.codice}</TableCell>
+                      finishedODLs.map(odl => (
+                        <TableRow key={odl.id}>
+                          <TableCell>{odl.id}</TableCell>
+                          <TableCell>{odl.parte.part_number}</TableCell>
+                          <TableCell>{odl.tool.codice}</TableCell>
                           <TableCell className="text-center">
-                            <Badge variant="outline">
-                              {item.priorita}
-                            </Badge>
+                            <Badge variant="outline">Priorità: {odl.priorita}</Badge>
                           </TableCell>
                           <TableCell className="text-center">
-                            <Badge variant={getStatusBadgeVariant(item.status)}>
-                              {item.status}
+                            <Badge variant={getStatusBadgeVariant(odl.status)}>
+                              {odl.status}
                             </Badge>
                           </TableCell>
-                          <TableCell className="max-w-[200px] truncate">
-                            {item.note || '-'}
-                          </TableCell>
+                          <TableCell>{odl.note || '-'}</TableCell>
                           <TableCell className="text-right">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
+                                <Button variant="ghost" size="sm">
                                   <MoreHorizontal className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleEditClick(item)}>
-                                  <Pencil className="mr-2 h-4 w-4" />
-                                  <span>Dettagli</span>
+                                <DropdownMenuItem asChild>
+                                  <Link href={`/dashboard/odl/${odl.id}`}>
+                                    Dettagli
+                                  </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleEditClick(odl)}>
+                                  Modifica
                                 </DropdownMenuItem>
                                 <DropdownMenuItem 
-                                  onClick={() => handleDeleteClick(item.id)}
-                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => handleDeleteClick(odl)}
+                                  className="text-destructive"
                                 >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  <span>Elimina</span>
+                                  Elimina
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -438,43 +331,30 @@ export default function ODLPage() {
         </div>
       )}
 
-      <ODLModal 
-        isOpen={modalOpen} 
-        onClose={() => setModalOpen(false)} 
-        item={editingItem} 
-        onSuccess={() => {
-          refetch()
-          setModalOpen(false)
-        }}
+      {/* Modal per creazione/modifica ODL */}
+      <ODLModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        item={selectedItem}
+        onSuccess={handleModalSuccess}
       />
-      
-      <Dialog open={advanceDialogOpen} onOpenChange={setAdvanceDialogOpen}>
+
+      {/* Dialog di conferma eliminazione */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Avanza Fase ODL</DialogTitle>
+            <DialogTitle>Conferma eliminazione</DialogTitle>
             <DialogDescription>
-              {odlToAdvance && (
-                <>
-                  Vuoi avanzare l'ODL #{odlToAdvance.id} ({odlToAdvance.parte.part_number}) 
-                  dallo stato <Badge variant={getStatusBadgeVariant(odlToAdvance.status)}>{odlToAdvance.status}</Badge> a{' '}
-                  <Badge variant={getStatusBadgeVariant(STATI_ODL[STATI_ODL.indexOf(odlToAdvance.status) + 1])}>
-                    {STATI_ODL[STATI_ODL.indexOf(odlToAdvance.status) + 1]}
-                  </Badge>?
-                </>
-              )}
+              Sei sicuro di voler eliminare l'ODL #{itemToDelete?.id}?
+              Questa azione non può essere annullata.
             </DialogDescription>
           </DialogHeader>
-          
           <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Annulla</Button>
-            </DialogClose>
-            <Button 
-              onClick={advanceODLStatus} 
-              disabled={processingAdvance}
-            >
-              {processingAdvance && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Conferma
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+              Annulla
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              Elimina
             </Button>
           </DialogFooter>
         </DialogContent>

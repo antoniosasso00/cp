@@ -12,6 +12,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { cicloCuraApi } from '@/lib/api'
 import { cicloSchema, type CicloFormValues } from '@/lib/types/form'
+import { Info } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import type { CreateCicloCuraDto } from '@/lib/api'
 
 interface CicloModalProps {
   open: boolean
@@ -42,23 +45,36 @@ export function CicloModal({ open, onOpenChange, editingItem, onSuccess }: Ciclo
       pressione_stasi1: editingItem?.pressione_stasi1 || 0,
       durata_stasi1: editingItem?.durata_stasi1 || 0,
       attiva_stasi2: editingItem?.attiva_stasi2 ?? false,
-      temperatura_stasi2: editingItem?.temperatura_stasi2 || 0,
-      pressione_stasi2: editingItem?.pressione_stasi2 || 0,
-      durata_stasi2: editingItem?.durata_stasi2 || 0,
+      temperatura_stasi2: editingItem?.temperatura_stasi2 || null,
+      pressione_stasi2: editingItem?.pressione_stasi2 || null,
+      durata_stasi2: editingItem?.durata_stasi2 || null,
     },
   })
 
   const onSubmit = async (data: CicloFormValues) => {
     try {
       setIsLoading(true)
+      
+      // Se la stasi 2 non è attiva, imposta i suoi campi a null
+      const dataToSubmit: CreateCicloCuraDto = {
+        nome: data.nome,
+        temperatura_stasi1: data.temperatura_stasi1,
+        pressione_stasi1: data.pressione_stasi1,
+        durata_stasi1: data.durata_stasi1,
+        attiva_stasi2: data.attiva_stasi2,
+        temperatura_stasi2: data.attiva_stasi2 ? Number(data.temperatura_stasi2) : null,
+        pressione_stasi2: data.attiva_stasi2 ? Number(data.pressione_stasi2) : null,
+        durata_stasi2: data.attiva_stasi2 ? Number(data.durata_stasi2) : null,
+      }
+
       if (editingItem) {
-        await cicloCuraApi.update(editingItem.id, data)
+        await cicloCuraApi.update(editingItem.id, dataToSubmit)
         toast({
           title: 'Ciclo aggiornato',
           description: 'Il ciclo di cura è stato aggiornato con successo.',
         })
       } else {
-        await cicloCuraApi.create(data)
+        await cicloCuraApi.create(dataToSubmit)
         toast({
           title: 'Ciclo creato',
           description: 'Il nuovo ciclo di cura è stato creato con successo.',
@@ -200,7 +216,25 @@ export function CicloModal({ open, onOpenChange, editingItem, onSuccess }: Ciclo
               render={({ field }) => (
                 <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
                   <div className="space-y-0.5">
-                    <FormLabel>Attiva Stasi 2</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormLabel>Attiva Stasi 2</FormLabel>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-4 w-4 text-muted-foreground" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>La Stasi 2 è opzionale e può essere utilizzata per cicli di cura più complessi.</p>
+                            <p>Se attivata, tutti i suoi campi (temperatura, pressione e durata) saranno obbligatori.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {field.value 
+                        ? "La Stasi 2 è attiva. Compila tutti i campi richiesti."
+                        : "La Stasi 2 è disattivata. I suoi campi non saranno utilizzati."}
+                    </p>
                   </div>
                   <FormControl>
                     <Switch
@@ -226,7 +260,8 @@ export function CicloModal({ open, onOpenChange, editingItem, onSuccess }: Ciclo
                           <Input 
                             type="number" 
                             {...field} 
-                            onChange={e => field.onChange(Number(e.target.value))}
+                            value={field.value ?? ''}
+                            onChange={e => field.onChange(e.target.value ? Number(e.target.value) : null)}
                           />
                         </FormControl>
                         <FormMessage />
@@ -244,7 +279,8 @@ export function CicloModal({ open, onOpenChange, editingItem, onSuccess }: Ciclo
                           <Input 
                             type="number" 
                             {...field} 
-                            onChange={e => field.onChange(Number(e.target.value))}
+                            value={field.value ?? ''}
+                            onChange={e => field.onChange(e.target.value ? Number(e.target.value) : null)}
                           />
                         </FormControl>
                         <FormMessage />
@@ -262,7 +298,8 @@ export function CicloModal({ open, onOpenChange, editingItem, onSuccess }: Ciclo
                           <Input 
                             type="number" 
                             {...field} 
-                            onChange={e => field.onChange(Number(e.target.value))}
+                            value={field.value ?? ''}
+                            onChange={e => field.onChange(e.target.value ? Number(e.target.value) : null)}
                           />
                         </FormControl>
                         <FormMessage />

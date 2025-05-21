@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { nestingApi } from '@/lib/api/nestingApi';
 import { NestingParameters } from '@/lib/types/nesting';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface ParametersFormProps {
     onParametersChange?: (params: NestingParameters) => void;
@@ -72,6 +73,33 @@ const ParametersForm: React.FC<ParametersFormProps> = ({
             debouncedOnParametersChange.current(newParams);
         }
         // Resetta il messaggio di successo
+        setSaved(false);
+    };
+
+    // Gestisce il cambiamento della priorità
+    const handlePriorityChange = (value: string) => {
+        let newPesoPriorita = 1.0;
+        switch (value) {
+            case 'valvole':
+                newPesoPriorita = 2.0;
+                break;
+            case 'area':
+                newPesoPriorita = 1.5;
+                break;
+            case 'catalogo':
+                newPesoPriorita = 1.0;
+                break;
+            case 'personalizzato':
+                newPesoPriorita = 1.0;
+                break;
+        }
+        
+        const newParams = { ...params, peso_priorita: newPesoPriorita };
+        setParams(newParams);
+        
+        if (debouncedOnParametersChange.current) {
+            debouncedOnParametersChange.current(newParams);
+        }
         setSaved(false);
     };
     
@@ -162,24 +190,26 @@ const ParametersForm: React.FC<ParametersFormProps> = ({
                     
                     <div>
                         <label className="block text-sm font-medium mb-1">
-                            Peso Priorità: {params.peso_priorita.toFixed(1)}
+                            Priorità di Nesting
                         </label>
-                        <input
-                            type="range"
-                            name="peso_priorita"
-                            min="0"
-                            max="10"
-                            step="0.1"
-                            value={params.peso_priorita}
-                            onChange={handleChange}
-                            className="w-full"
+                        <Select
+                            onValueChange={handlePriorityChange}
+                            defaultValue="catalogo"
                             disabled={disabled}
-                        />
-                        <div className="flex justify-between text-xs text-gray-500">
-                            <span>0.0</span>
-                            <span>5.0</span>
-                            <span>10.0</span>
-                        </div>
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Seleziona priorità" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="valvole">Priorità Valvole</SelectItem>
+                                <SelectItem value="area">Priorità Area</SelectItem>
+                                <SelectItem value="catalogo">Ordine Catalogo</SelectItem>
+                                <SelectItem value="personalizzato" disabled>Personalizzato (Prossimamente)</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <p className="mt-1 text-sm text-gray-500">
+                            Determina come vengono posizionati gli ODL nell'autoclave
+                        </p>
                     </div>
                     
                     <div>
@@ -189,7 +219,7 @@ const ParametersForm: React.FC<ParametersFormProps> = ({
                         <input
                             type="range"
                             name="spazio_minimo_mm"
-                            min="0"
+                            min="10"
                             max="100"
                             step="1"
                             value={params.spazio_minimo_mm}
@@ -198,23 +228,21 @@ const ParametersForm: React.FC<ParametersFormProps> = ({
                             disabled={disabled}
                         />
                         <div className="flex justify-between text-xs text-gray-500">
-                            <span>0</span>
-                            <span>50</span>
-                            <span>100</span>
+                            <span>10mm</span>
+                            <span>50mm</span>
+                            <span>100mm</span>
                         </div>
                     </div>
-                    
-                    {!disabled && (
-                        <div className="pt-2">
-                            <button
-                                type="submit"
-                                className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md shadow-sm disabled:opacity-50"
-                                disabled={loading}
-                            >
-                                {loading ? 'Salvataggio...' : 'Salva Parametri'}
-                            </button>
-                        </div>
-                    )}
+                </div>
+                
+                <div className="mt-6">
+                    <button
+                        type="submit"
+                        className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
+                        disabled={disabled || loading}
+                    >
+                        {loading ? 'Salvataggio...' : 'Salva Parametri'}
+                    </button>
                 </div>
             </form>
             
@@ -223,7 +251,7 @@ const ParametersForm: React.FC<ParametersFormProps> = ({
                 <ul className="space-y-1 list-disc pl-5">
                     <li><b>Peso Valvole:</b> Importanza dell'utilizzo ottimale delle valvole</li>
                     <li><b>Peso Area:</b> Importanza della densità di carico (ottimizzazione area)</li>
-                    <li><b>Peso Priorità:</b> Importanza di processare gli ODL ad alta priorità</li>
+                    <li><b>Priorità:</b> Determina come vengono posizionati gli ODL nell'autoclave</li>
                     <li><b>Spazio Minimo:</b> Distanza minima tra gli ODL nell'autoclave</li>
                 </ul>
             </div>
