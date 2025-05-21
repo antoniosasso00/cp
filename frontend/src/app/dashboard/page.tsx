@@ -9,6 +9,7 @@ import { ODLResponse, odlApi } from '@/lib/api'
 import { CalendarClock, Clipboard, Loader2, Settings, Factory, Gauge, Activity } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
+import { useQuery } from '@tanstack/react-query'
 
 // Badge varianti per i diversi stati
 const getStatusBadgeVariant = (status: string) => {
@@ -23,38 +24,24 @@ const getStatusBadgeVariant = (status: string) => {
 }
 
 export default function DashboardPage() {
-  const [odls, setODLs] = useState<ODLResponse[]>([])
-  const [odlStats, setODLStats] = useState<Record<string, number>>({})
-  const [loading, setLoading] = useState(true)
+  const {
+    data: odls = [],
+    isLoading,
+    isError
+  } = useQuery<ODLResponse[], Error>({
+    queryKey: ['odl'],
+    queryFn: () => odlApi.getAll()
+  })
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const odlData = await odlApi.getAll()
-        
-        // Ordina gli ODL per priorità decrescente
-        const sortedODLs = [...odlData].sort((a, b) => b.priorita - a.priorita)
-        setODLs(sortedODLs.slice(0, 5)) // Prendi solo i primi 5 ODL
-        
-        // Calcola le statistiche per stato
-        const stats: Record<string, number> = {}
-        for (const odl of odlData) {
-          if (!stats[odl.status]) {
-            stats[odl.status] = 0
-          }
-          stats[odl.status]++
-        }
-        setODLStats(stats)
-      } catch (error) {
-        console.error("Errore nel caricamento degli ODL:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-    
-    fetchData()
-  }, [])
-  
+  // Ordina e calcola stats solo quando i dati sono caricati
+  const sortedODLs = [...odls].sort((a, b) => b.priorita - a.priorita)
+  const lastODLs = sortedODLs.slice(0, 5)
+  const odlStats: Record<string, number> = {}
+  for (const odl of odls) {
+    if (!odlStats[odl.status]) odlStats[odl.status] = 0
+    odlStats[odl.status]++
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -72,9 +59,13 @@ export default function DashboardPage() {
             <Clipboard className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {loading ? (
+            {isLoading ? (
               <div className="flex justify-center py-4">
                 <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+            ) : isError ? (
+              <div className="text-center text-destructive py-8">
+                Errore nel caricamento degli ODL.
               </div>
             ) : (
               <>
@@ -85,13 +76,12 @@ export default function DashboardPage() {
                     </Badge>
                   ))}
                 </div>
-                
                 <div className="space-y-4">
                   <h3 className="text-sm font-medium">Ultimi ODL per priorità</h3>
                   <div className="border rounded-md">
-                    {odls.length > 0 ? (
+                    {lastODLs.length > 0 ? (
                       <div className="divide-y">
-                        {odls.map(odl => (
+                        {lastODLs.map(odl => (
                           <div key={odl.id} className="flex items-center justify-between p-3">
                             <div className="flex items-center gap-2">
                               <Badge variant={getStatusBadgeVariant(odl.status)}>
@@ -116,7 +106,6 @@ export default function DashboardPage() {
                       </div>
                     )}
                   </div>
-                  
                   <div className="flex justify-center mt-2">
                     <Link href="/dashboard/odl">
                       <Button variant="outline" size="sm">

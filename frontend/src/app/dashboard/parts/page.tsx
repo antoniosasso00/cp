@@ -21,36 +21,38 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import debounce from 'lodash.debounce'
 
 export default function PartiPage() {
-  const [parti, setParti] = useState<ParteResponse[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [filter, setFilter] = useState<{part_number?: string}>({})
   const [modalOpen, setModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<ParteResponse | null>(null)
   const { toast } = useToast()
+  const queryClient = useQueryClient()
 
-  const fetchParti = async () => {
-    try {
-      setIsLoading(true)
-      const data = await partiApi.getAll(filter)
-      setParti(data)
-    } catch (error) {
-      console.error('Errore nel caricamento delle parti:', error)
-      toast({
-        variant: 'destructive',
-        title: 'Errore',
-        description: 'Impossibile caricare le parti. Riprova più tardi.',
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  // Debounce per la ricerca
+  const debouncedSetFilter = debounce((query: string) => {
+    setFilter(query ? { part_number: query } : {})
+  }, 400)
 
+  // React Query per fetch delle parti
+  const {
+    data: parti = [],
+    isLoading,
+    isError,
+    refetch
+  } = useQuery<ParteResponse[], Error>({
+    queryKey: ['parti', filter],
+    queryFn: () => partiApi.getAll(filter)
+  })
+
+  // Aggiorna filtro con debounce
   useEffect(() => {
-    fetchParti()
-  }, [filter])
+    debouncedSetFilter(searchQuery)
+    return () => debouncedSetFilter.cancel()
+  }, [searchQuery])
 
   const handleCreateClick = () => {
     setEditingItem(null)
@@ -66,7 +68,6 @@ export default function PartiPage() {
     if (!window.confirm(`Sei sicuro di voler eliminare la parte con ID ${id}?`)) {
       return
     }
-
     try {
       await partiApi.delete(id)
       toast({
@@ -74,7 +75,7 @@ export default function PartiPage() {
         title: 'Eliminata',
         description: `Parte con ID ${id} eliminata con successo.`,
       })
-      fetchParti()
+      refetch()
     } catch (error) {
       console.error(`Errore durante l'eliminazione della parte ${id}:`, error)
       toast({
@@ -85,7 +86,7 @@ export default function PartiPage() {
     }
   }
 
-  const filteredParti = parti.filter(item => {
+  const filteredParti = parti.filter((item: ParteResponse) => {
     const searchLower = searchQuery.toLowerCase()
     return (
       item.part_number.toLowerCase().includes(searchLower) ||
@@ -119,6 +120,10 @@ export default function PartiPage() {
           <Loader2 className="h-8 w-8 animate-spin" />
           <span className="ml-2">Caricamento in corso...</span>
         </div>
+      ) : isError ? (
+        <div className="text-center text-destructive py-8">
+          Errore nel caricamento delle parti.
+        </div>
       ) : (
         <Table>
           <TableCaption>Lista delle parti in produzione</TableCaption>
@@ -140,7 +145,7 @@ export default function PartiPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredParti.map(item => (
+              filteredParti.map((item: ParteResponse) => (
                 <TableRow key={item.id}>
                   <TableCell className="font-medium">{item.id}</TableCell>
                   <TableCell>{item.part_number}</TableCell>
@@ -151,7 +156,7 @@ export default function PartiPage() {
                   <TableCell>
                     {item.tools.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
-                        {item.tools.map(tool => (
+                        {item.tools.map((tool: ToolInParteResponse) => (
                           <Badge key={tool.id} variant="secondary" className="mr-1">
                             {tool.codice}
                           </Badge>
@@ -195,7 +200,7 @@ export default function PartiPage() {
         onClose={() => setModalOpen(false)} 
         item={editingItem} 
         onSuccess={() => {
-          fetchParti()
+          refetch()
           setModalOpen(false)
         }}
       />

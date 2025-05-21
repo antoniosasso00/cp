@@ -153,51 +153,39 @@ class NestingOptimizer:
     
     def optimize_nesting(self, request: NestingRequest) -> NestingResponse:
         """
-        Esegue l'ottimizzazione del nesting in base alla richiesta.
+        Ottimizza il nesting degli ODL nelle autoclavi disponibili.
         
         Args:
-            request: Parametri della richiesta di nesting
+            request: Richiesta di nesting con parametri e ODL da posizionare
             
         Returns:
-            NestingResponse: Risultati dell'ottimizzazione
+            NestingResponse: Risultato dell'ottimizzazione con layout per ogni autoclave
         """
         start_time = time.time()
         
-        # Ottieni i parametri attivi o quelli personalizzati nella richiesta
-        params = request.parameters or self.get_active_parameters()
-        
-        # Ottieni ODL e autoclavi disponibili
-        odls = self.get_available_odls(request.odl_ids)
+        # Ottieni le autoclavi disponibili
         autoclaves = self.get_available_autoclaves(request.autoclave_ids)
-        
-        if not odls:
-            return NestingResponse(
-                success=False,
-                message="Nessun ODL in stato 'Attesa Cura' trovato."
-            )
-        
         if not autoclaves:
             return NestingResponse(
                 success=False,
-                message="Nessuna autoclave disponibile trovata."
+                message="Nessuna autoclave disponibile per il nesting."
             )
         
-        # Raggruppa gli ODL per ciclo di cura
-        odl_by_ciclo = {}
-        for odl in odls:
-            ciclo_id = odl["ciclo_cura_id"]
-            if ciclo_id not in odl_by_ciclo:
-                odl_by_ciclo[ciclo_id] = []
-            odl_by_ciclo[ciclo_id].append(odl)
+        # Ottieni gli ODL da posizionare
+        odls = self.get_available_odls(request.odl_ids)
+        if not odls:
+            return NestingResponse(
+                success=False,
+                message="Nessun ODL valido da posizionare."
+            )
         
-        # Ordina i gruppi per priorità totale (somma delle priorità)
-        ciclo_groups = list(odl_by_ciclo.values())
-        ciclo_groups.sort(key=lambda group: sum(odl["priorita"] for odl in group), reverse=True)
+        # Raggruppa gli ODL per ciclo
+        ciclo_groups = self._group_odls_by_ciclo(odls)
         
         # Per il nesting manuale, usa solo gli ODL specificati
         if request.manual and request.odl_ids:
             manual_odls = [odl for odl in odls if odl["odl_id"] in request.odl_ids]
-            result = self._pack_single_autoclave(manual_odls, autoclaves[0], params)
+            result = self._pack_single_autoclave(manual_odls, autoclaves[0], request.params)
             
             layout = AutoclaveLayout(
                 autoclave_id=autoclaves[0]["id"],
@@ -207,7 +195,8 @@ class NestingOptimizer:
                 area_utilizzata_mm2=result["area_utilizzata_mm2"],
                 efficienza_area=result["efficienza_area"],
                 valvole_totali=result["valvole_totali"],
-                valvole_utilizzate=result["valvole_utilizzate"]
+                valvole_utilizzate=result["valvole_utilizzate"],
+                nesting_id=result.get("nesting_id")
             )
             
             return NestingResponse(
@@ -220,61 +209,23 @@ class NestingOptimizer:
         final_layouts = []
         remaining_odls = [odl for group in ciclo_groups for odl in group]
         
-        # Itera le autoclavi e assegna i gruppi di ODL compatibili
+        # Prova a posizionare gli ODL in ogni autoclave
         for autoclave in autoclaves:
+            # Se non ci sono più ODL da posizionare, esci
             if not remaining_odls:
                 break
-                
-            odls_for_autoclave = []
-            current_ciclo_id = None
-            current_ciclo_odls = []
             
-            # Trova il gruppo con ciclo di cura compatibile che entra nell'autoclave
-            for group in ciclo_groups:
-                if not group:  # Salta gruppi vuoti
-                    continue
-                    
-                # Controlla se il gruppo può entrare nell'autoclave (area e valvole)
-                total_area = sum(odl["area"] for odl in group)
-                total_valvole = sum(odl["valvole_richieste"] for odl in group)
-                
-                if (total_area <= autoclave["area"] * 0.9 and 
-                    total_valvole <= autoclave["num_linee_vuoto"]):
-                    odls_for_autoclave = group.copy()
-                    current_ciclo_id = group[0]["ciclo_cura_id"]
-                    current_ciclo_odls = group
-                    break
-            
-            # Se nessun gruppo intero entra, prova a inserire singoli ODL con priorità alta
-            if not odls_for_autoclave:
-                # Ordina per priorità
-                sorted_odls = sorted(remaining_odls, key=lambda x: x["priorita"], reverse=True)
-                
-                # Trova gli ODL compatibili che possono entrare
-                available_area = autoclave["area"]
-                available_valvole = autoclave["num_linee_vuoto"]
-                
-                for odl in sorted_odls:
-                    if (odl["area"] <= available_area and 
-                        odl["valvole_richieste"] <= available_valvole):
-                        odls_for_autoclave.append(odl)
-                        available_area -= odl["area"]
-                        available_valvole -= odl["valvole_richieste"]
-                        
-                        # Imposta il ciclo corrente se è il primo ODL
-                        if current_ciclo_id is None:
-                            current_ciclo_id = odl["ciclo_cura_id"]
-                            
-                        # Continua ad aggiungere ODL solo se hanno lo stesso ciclo
-                        if odl["ciclo_cura_id"] != current_ciclo_id:
-                            odls_for_autoclave.pop()  # Rimuovi l'ultimo ODL aggiunto
-                            available_area += odl["area"]
-                            available_valvole += odl["valvole_richieste"]
+            # Seleziona gli ODL da posizionare in questa autoclave
+            odls_for_autoclave = self._select_odls_for_autoclave(
+                remaining_odls,
+                autoclave,
+                request.params
+            )
             
             # Se abbiamo ODL da posizionare nell'autoclave corrente
             if odls_for_autoclave:
                 # Ottimizza il layout per questa autoclave
-                result = self._pack_single_autoclave(odls_for_autoclave, autoclave, params)
+                result = self._pack_single_autoclave(odls_for_autoclave, autoclave, request.params)
                 
                 # Crea il layout
                 layout = AutoclaveLayout(
@@ -285,7 +236,8 @@ class NestingOptimizer:
                     area_utilizzata_mm2=result["area_utilizzata_mm2"],
                     efficienza_area=result["efficienza_area"],
                     valvole_totali=result["valvole_totali"],
-                    valvole_utilizzate=result["valvole_utilizzate"]
+                    valvole_utilizzate=result["valvole_utilizzate"],
+                    nesting_id=result.get("nesting_id")
                 )
                 
                 final_layouts.append(layout)
@@ -385,7 +337,8 @@ class NestingOptimizer:
         self, 
         odls: List[Dict[str, Any]], 
         autoclave: Dict[str, Any],
-        params: NestingParameters
+        params: NestingParameters,
+        nesting_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Implementa l'algoritmo di bin packing 2D per una singola autoclave.
@@ -395,6 +348,7 @@ class NestingOptimizer:
             odls: Lista di ODL da posizionare
             autoclave: Informazioni sull'autoclave
             params: Parametri di ottimizzazione
+            nesting_id: ID opzionale del risultato di nesting
             
         Returns:
             Dict: Risultato dell'ottimizzazione con layout degli ODL
@@ -505,7 +459,8 @@ class NestingOptimizer:
             "area_utilizzata_mm2": area_used,
             "efficienza_area": area_used / total_area if total_area > 0 else 0,
             "valvole_totali": autoclave["num_linee_vuoto"],
-            "valvole_utilizzate": valves_used
+            "valvole_utilizzate": valves_used,
+            "nesting_id": nesting_id
         }
     
     def _fallback_greedy_packing(

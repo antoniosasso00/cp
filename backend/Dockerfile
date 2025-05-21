@@ -1,13 +1,31 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# Installa netcat per il controllo della porta
-RUN apt-get update && apt-get install -y netcat-openbsd && rm -rf /var/lib/apt/lists/*
+# Installa le dipendenze di build
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
+# TODO: Considerare l'uso di poetry per una gestione più efficiente delle dipendenze
 RUN pip install --no-cache-dir -r requirements.txt
-# Assicurati che OR-Tools sia installato (anche se dovrebbe essere già nelle requirements.txt)
 RUN pip install --no-cache-dir ortools==9.8.3296
 
-COPY . . 
+FROM python:3.11-slim AS runner
+
+WORKDIR /app
+
+# Installa solo le dipendenze runtime
+RUN apt-get update && apt-get install -y \
+    netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
+COPY --from=builder /usr/local/bin/ /usr/local/bin/
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"] 

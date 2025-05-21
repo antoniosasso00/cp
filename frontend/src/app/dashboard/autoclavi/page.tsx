@@ -20,35 +20,41 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import debounce from 'lodash.debounce'
 
 export default function AutoclaviPage() {
-  const [autoclavi, setAutoclavi] = useState<Autoclave[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<Autoclave | null>(null)
   const { toast } = useToast()
+  const queryClient = useQueryClient()
 
-  const fetchAutoclavi = async () => {
-    try {
-      setIsLoading(true)
-      const data = await autoclaveApi.getAll()
-      setAutoclavi(data)
-    } catch (error) {
-      console.error('Errore nel caricamento delle autoclavi:', error)
-      toast({
-        variant: 'destructive',
-        title: 'Errore',
-        description: 'Impossibile caricare le autoclavi. Riprova più tardi.',
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  // Debounce per la ricerca
+  const debouncedSearch = debounce((query: string) => {
+    setSearchQuery(query)
+  }, 400)
 
-  useEffect(() => {
-    fetchAutoclavi()
-  }, [])
+  // React Query per fetch delle autoclavi
+  const {
+    data: autoclavi = [],
+    isLoading,
+    isError,
+    refetch
+  } = useQuery<Autoclave[], Error>({
+    queryKey: ['autoclavi'],
+    queryFn: () => autoclaveApi.getAll()
+  })
+
+  // Filtro locale
+  const filteredAutoclavi = autoclavi.filter((item: Autoclave) => {
+    const searchLower = searchQuery.toLowerCase()
+    return (
+      item.nome.toLowerCase().includes(searchLower) ||
+      item.codice.toLowerCase().includes(searchLower) ||
+      (item.produttore?.toLowerCase().includes(searchLower) || false)
+    )
+  })
 
   const handleCreateClick = () => {
     setEditingItem(null)
@@ -73,7 +79,7 @@ export default function AutoclaviPage() {
         title: 'Autoclave eliminata',
         description: 'L\'autoclave è stata eliminata con successo.',
       })
-      fetchAutoclavi()
+      refetch()
     } catch (error) {
       console.error('Errore durante l\'eliminazione:', error)
       toast({
@@ -83,15 +89,6 @@ export default function AutoclaviPage() {
       })
     }
   }
-
-  const filteredAutoclavi = autoclavi.filter(item => {
-    const searchLower = searchQuery.toLowerCase()
-    return (
-      item.nome.toLowerCase().includes(searchLower) ||
-      item.codice.toLowerCase().includes(searchLower) ||
-      (item.produttore?.toLowerCase().includes(searchLower) || false)
-    )
-  })
 
   const getStatoBadgeVariant = (stato: string) => {
     switch (stato) {
@@ -131,7 +128,7 @@ export default function AutoclaviPage() {
         <Input
           placeholder="Cerca nelle autoclavi..."
           value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
+          onChange={e => debouncedSearch(e.target.value)}
           className="max-w-sm"
         />
       </div>
@@ -140,6 +137,10 @@ export default function AutoclaviPage() {
         <div className="flex justify-center py-8">
           <Loader2 className="h-8 w-8 animate-spin" />
           <span className="ml-2">Caricamento in corso...</span>
+        </div>
+      ) : isError ? (
+        <div className="text-center text-destructive py-8">
+          Errore nel caricamento delle autoclavi.
         </div>
       ) : (
         <Table>
@@ -210,7 +211,7 @@ export default function AutoclaviPage() {
         open={modalOpen}
         onOpenChange={setModalOpen}
         editingItem={editingItem}
-        onSuccess={fetchAutoclavi}
+        onSuccess={refetch}
       />
     </div>
   )

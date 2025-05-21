@@ -74,7 +74,7 @@ export interface AutoclaveLayout {
     valvole_totali: number;
     /** Numero di valvole utilizzate */
     valvole_utilizzate: number;
-    /** ID del risultato di nesting salvato */
+    /** ID del risultato di nesting */
     nesting_id?: number;
 }
 

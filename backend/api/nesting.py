@@ -46,7 +46,7 @@ def run_auto_nesting(
             for layout in response.layouts:
                 nesting_id = optimizer.save_nesting_result(layout)
                 # Aggiungiamo l'ID del risultato salvato nel layout
-                layout.nesting_id = nesting_id
+                layout.nesting_result_id = nesting_id
         
         return response
     except Exception as e:

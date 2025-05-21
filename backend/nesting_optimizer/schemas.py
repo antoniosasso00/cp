@@ -56,6 +56,7 @@ class AutoclaveLayout(BaseModel):
     efficienza_area: float
     valvole_totali: int
     valvole_utilizzate: int
+    nesting_id: Optional[int] = None
 
 class NestingResponse(BaseModel):
     """Schema per la risposta del nesting"""

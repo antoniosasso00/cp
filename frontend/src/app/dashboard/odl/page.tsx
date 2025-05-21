@@ -42,6 +42,8 @@ import {
   DialogTrigger,
   DialogClose
 } from "@/components/ui/dialog"
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import debounce from 'lodash.debounce'
 
 // Badge varianti per i diversi stati
 const getStatusBadgeVariant = (status: string) => {
@@ -66,9 +68,6 @@ const STATO_A_FASE: Record<string, "laminazione" | "attesa_cura" | "cura"> = {
 }
 
 export default function ODLPage() {
-  const [odls, setODLs] = useState<ODLResponse[]>([])
-  const [odlsFiniti, setODLsFiniti] = useState<ODLResponse[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [filter, setFilter] = useState<{parte_id?: number, tool_id?: number, status?: string}>({})
   const [modalOpen, setModalOpen] = useState(false)
@@ -77,33 +76,29 @@ export default function ODLPage() {
   const [odlToAdvance, setOdlToAdvance] = useState<ODLResponse | null>(null)
   const [processingAdvance, setProcessingAdvance] = useState(false)
   const { toast } = useToast()
+  const queryClient = useQueryClient()
 
-  const fetchODLs = async () => {
-    try {
-      setIsLoading(true)
-      const data = await odlApi.getAll(filter)
-      
-      // Separa gli ODL in corso da quelli finiti
-      const odlAttivi = data.filter(odl => odl.status !== "Finito")
-      const odlFiniti = data.filter(odl => odl.status === "Finito")
-      
-      setODLs(odlAttivi)
-      setODLsFiniti(odlFiniti)
-    } catch (error) {
-      console.error('Errore nel caricamento degli ODL:', error)
-      toast({
-        variant: 'destructive',
-        title: 'Errore',
-        description: 'Impossibile caricare gli ordini di lavoro. Riprova più tardi.',
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  // Debounce per la ricerca
+  const debouncedSetFilter = debounce((query: string) => {
+    setFilter(query ? { ...filter, parte_id: Number(query) } : {})
+  }, 400)
 
+  // React Query per fetch degli ODL
+  const {
+    data: odls = [],
+    isLoading,
+    isError,
+    refetch
+  } = useQuery<ODLResponse[], Error>({
+    queryKey: ['odls', filter],
+    queryFn: () => odlApi.getAll(filter)
+  })
+
+  // Aggiorna filtro con debounce
   useEffect(() => {
-    fetchODLs()
-  }, [filter])
+    debouncedSetFilter(searchQuery)
+    return () => debouncedSetFilter.cancel()
+  }, [searchQuery])
 
   const handleCreateClick = () => {
     setEditingItem(null)
@@ -127,7 +122,7 @@ export default function ODLPage() {
         title: 'Eliminato',
         description: `ODL con ID ${id} eliminato con successo.`,
       })
-      fetchODLs()
+      refetch()
     } catch (error) {
       console.error(`Errore durante l'eliminazione dell'ODL ${id}:`, error)
       toast({
@@ -205,7 +200,7 @@ export default function ODLPage() {
       })
       
       // Ricarica i dati
-      fetchODLs()
+      refetch()
       setAdvanceDialogOpen(false)
       setOdlToAdvance(null)
     } catch (error) {
@@ -233,7 +228,6 @@ export default function ODLPage() {
   }
   
   const filteredODLs = filterODLs(odls, searchQuery)
-  const filteredODLsFiniti = filterODLs(odlsFiniti, searchQuery)
 
   return (
     <div className="space-y-6">
@@ -248,21 +242,22 @@ export default function ODLPage() {
       </div>
 
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-        <div className="relative w-full max-w-sm">
-          <ListFilter className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Cerca negli ODL..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="pl-8"
-          />
-        </div>
+        <Input
+          placeholder="Cerca ODL per parte ID..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          className="max-w-sm"
+        />
       </div>
 
       {isLoading ? (
         <div className="flex justify-center py-8">
           <Loader2 className="h-8 w-8 animate-spin" />
           <span className="ml-2">Caricamento in corso...</span>
+        </div>
+      ) : isError ? (
+        <div className="text-center text-destructive py-8">
+          Errore nel caricamento degli ODL.
         </div>
       ) : (
         <div className="space-y-6">
@@ -360,7 +355,7 @@ export default function ODLPage() {
                 <div className="flex items-center">
                   <h2 className="text-xl font-semibold">Storico ODL Completati</h2>
                   <Badge variant="outline" className="ml-2">
-                    {filteredODLsFiniti.length}
+                    {odls.length - filteredODLs.length}
                   </Badge>
                 </div>
               </AccordionTrigger>
@@ -378,14 +373,14 @@ export default function ODLPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredODLsFiniti.length === 0 ? (
+                    {odls.length - filteredODLs.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7} className="text-center py-4">
                           Nessun ordine di lavoro completato trovato
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredODLsFiniti.map(item => (
+                      odls.filter(item => !filteredODLs.includes(item)).map(item => (
                         <TableRow key={item.id}>
                           <TableCell className="font-medium">{item.id}</TableCell>
                           <TableCell>
@@ -448,7 +443,7 @@ export default function ODLPage() {
         onClose={() => setModalOpen(false)} 
         item={editingItem} 
         onSuccess={() => {
-          fetchODLs()
+          refetch()
           setModalOpen(false)
         }}
       />

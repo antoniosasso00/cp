@@ -1,0 +1,23 @@
+{
+  "folders": [
+    { "path": "backend" },
+    { "path": "frontend" },
+    { "path": "doc" }
+  ],
+  "settings": {
+    "terminal.integrated.defaultProfile.linux": "bash",
+    "files.exclude": {
+      "**/__pycache__": true,
+      "**/.next": true,
+      "**/node_modules": true,
+      "**/.venv": true
+    },
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": true
+    },
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": true,
+    "typescript.tsdk": "frontend/node_modules/typescript/lib"
+  }
+} 
