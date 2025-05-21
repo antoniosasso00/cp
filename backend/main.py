@@ -8,7 +8,7 @@ from api.routes import router
 from sqlalchemy import inspect
 
 # Importa gli oggetti necessari dal modulo database
-from api.database import engine, Base
+from api.database import engine, Base, create_nesting_tables
 
 # Inizializzazione logger
 logging.basicConfig(level=logging.INFO)
@@ -47,6 +47,8 @@ def create_tables_if_not_exist():
 @app.on_event("startup")
 async def startup_db_client():
     create_tables_if_not_exist()
+    # Assicurati che le tabelle nesting siano create
+    create_nesting_tables()
     logger.info("Database inizializzato!")
 
 # Inclusione dei router
