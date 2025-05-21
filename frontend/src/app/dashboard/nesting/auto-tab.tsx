@@ -2,13 +2,13 @@
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { nestingApi } from '@/lib/api/nestingApi';
 import { AutoclaveLayout, NestingParameters, NestingRequest, NestingResponse } from '@/lib/types/nesting';
 import ParametersForm from '@/components/nesting/ParametersForm';
 import NestingVisualizer from '@/components/nesting/NestingVisualizer';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Check } from 'lucide-react';
 
 export default function AutoNestingTab() {
     const [loading, setLoading] = useState(false);
@@ -17,6 +17,11 @@ export default function AutoNestingTab() {
     const [parameters, setParameters] = useState<NestingParameters | null>(null);
     const [result, setResult] = useState<NestingResponse | null>(null);
     const [selectedOdlId, setSelectedOdlId] = useState<number>(-1);
+    const [progress, setProgress] = useState<{
+        step: string;
+        percentage: number;
+        message: string;
+    } | null>(null);
     
     // Esegue il nesting automatico
     const handleRunNesting = async () => {
@@ -25,24 +30,51 @@ export default function AutoNestingTab() {
             setError(null);
             setSuccess(null);
             setResult(null);
+            setProgress({
+                step: 'Inizializzazione',
+                percentage: 0,
+                message: 'Preparazione dei parametri...'
+            });
             
             const request: NestingRequest = {
                 parameters: parameters
             };
             
+            setProgress({
+                step: 'Analisi ODL',
+                percentage: 20,
+                message: 'Analisi degli ODL disponibili...'
+            });
+            
             const response = await nestingApi.runAutoNesting(request);
             setResult(response);
             
             if (response.success) {
+                setProgress({
+                    step: 'Completato',
+                    percentage: 100,
+                    message: 'Nesting completato con successo'
+                });
                 setSuccess('Nesting automatico completato con successo.');
             } else {
                 setError(response.message || 'Errore durante l\'esecuzione del nesting automatico.');
             }
         } catch (err: any) {
-            setError(err.message || 'Errore durante l\'esecuzione del nesting automatico.');
-            console.error(err);
+            let errorMessage = 'Errore durante l\'esecuzione del nesting automatico.';
+            
+            if (err.message.includes('network')) {
+                errorMessage = 'Errore di connessione. Verifica la tua connessione internet e riprova.';
+            } else if (err.message.includes('timeout')) {
+                errorMessage = 'Timeout della richiesta. Il server sta impiegando troppo tempo a rispondere.';
+            } else if (err.message.includes('validation')) {
+                errorMessage = 'Errore di validazione dei parametri. Verifica i valori inseriti.';
+            }
+            
+            setError(errorMessage);
+            console.error('Errore nesting:', err);
         } finally {
             setLoading(false);
+            setProgress(null);
         }
     };
     
@@ -57,10 +89,20 @@ export default function AutoNestingTab() {
             setLoading(true);
             setError(null);
             setSuccess(null);
+            setProgress({
+                step: 'Conferma',
+                percentage: 0,
+                message: 'Preparazione della conferma...'
+            });
             
             const response = await nestingApi.confirmNesting(layout.nesting_id);
             
             if (response.success) {
+                setProgress({
+                    step: 'Completato',
+                    percentage: 100,
+                    message: 'Nesting confermato con successo'
+                });
                 setSuccess('Nesting confermato con successo. Gli ODL sono stati aggiornati a "Cura".');
                 // Rimuovi il layout confermato dai risultati
                 if (result) {
@@ -74,10 +116,19 @@ export default function AutoNestingTab() {
                 setError('Errore durante la conferma del nesting.');
             }
         } catch (err: any) {
-            setError(err.message || 'Errore durante la conferma del nesting.');
-            console.error(err);
+            let errorMessage = 'Errore durante la conferma del nesting.';
+            
+            if (err.message.includes('network')) {
+                errorMessage = 'Errore di connessione durante la conferma. Verifica la tua connessione internet.';
+            } else if (err.message.includes('timeout')) {
+                errorMessage = 'Timeout durante la conferma. Il server sta impiegando troppo tempo a rispondere.';
+            }
+            
+            setError(errorMessage);
+            console.error('Errore conferma:', err);
         } finally {
             setLoading(false);
+            setProgress(null);
         }
     };
     
@@ -105,13 +156,30 @@ export default function AutoNestingTab() {
                         {loading ? (
                             <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Elaborazione...
+                                {progress?.step || 'Elaborazione...'}
                             </>
                         ) : (
                             'Esegui Nesting Automatico'
                         )}
                     </Button>
                 </div>
+                
+                {/* Barra di progresso */}
+                {progress && (
+                    <div className="mt-4">
+                        <div className="flex justify-between text-sm text-gray-600 mb-1">
+                            <span>{progress.step}</span>
+                            <span>{progress.percentage}%</span>
+                        </div>
+                        <div className="w-full h-2 bg-gray-200 rounded-full">
+                            <div
+                                className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                                style={{ width: `${progress.percentage}%` }}
+                            />
+                        </div>
+                        <p className="text-sm text-gray-500 mt-1">{progress.message}</p>
+                    </div>
+                )}
                 
                 {error && (
                     <Alert variant="destructive" className="mt-4">
@@ -135,41 +203,44 @@ export default function AutoNestingTab() {
                 )}
             </div>
             
-            {/* Colonna destra: Risultati */}
+            {/* Colonna di destra: Risultati */}
             <div className="md:col-span-2">
-                {result && result.success && result.layouts.length > 0 ? (
+                {result && result.layouts.length > 0 ? (
                     <div className="space-y-6">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-xl font-semibold">Risultati Nesting</h2>
-                            <div className="text-sm text-gray-500">
-                                {result.layouts.length} autoclavi
-                            </div>
-                        </div>
-                        
                         {result.layouts.map((layout, index) => (
-                            <Card key={index} className="overflow-hidden">
-                                <NestingVisualizer 
-                                    layout={layout}
-                                    onSelect={setSelectedOdlId}
-                                    selectedOdlId={selectedOdlId}
-                                />
-                                
-                                <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end">
-                                    <Button
+                            <Card key={layout.nesting_id || index}>
+                                <CardHeader>
+                                    <CardTitle>Layout Autoclave {index + 1}</CardTitle>
+                                    <CardDescription>
+                                        Efficienza: {(layout.efficienza_area * 100).toFixed(1)}%
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <NestingVisualizer 
+                                        layout={layout}
+                                        onSelect={setSelectedOdlId}
+                                        selectedOdlId={selectedOdlId}
+                                    />
+                                </CardContent>
+                                <CardFooter className="border-t bg-gray-50">
+                                    <Button 
                                         onClick={() => handleConfirmNesting(layout)}
                                         disabled={loading}
-                                        className="bg-green-600 hover:bg-green-700"
+                                        className="ml-auto bg-green-600 hover:bg-green-700"
                                     >
                                         {loading ? (
                                             <>
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                                                 Confermando...
                                             </>
                                         ) : (
-                                            'Conferma e Carica'
+                                            <>
+                                                <Check className="h-4 w-4 mr-2" />
+                                                Conferma Layout
+                                            </>
                                         )}
                                     </Button>
-                                </div>
+                                </CardFooter>
                             </Card>
                         ))}
                     </div>
