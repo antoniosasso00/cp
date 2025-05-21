@@ -2,7 +2,7 @@
 
 Questo file contiene il registro dei cambiamenti più significativi del progetto.
 
-## [v0.5.0] - 2024-05-21
+## [v0.5.0] 
 
 ### Aggiunte
 - Implementato seed completo degli ODL (Ordini di Lavoro)
@@ -22,7 +22,7 @@ Questo file contiene il registro dei cambiamenti più significativi del progetto
 - Sistemata gestione degli eventi onChange nei form
 - Migliorata gestione degli errori durante il seeding
 
-## [v0.4.2] - 2024-03-20
+## [v0.4.2] 
 
 ### Aggiunte
 - Implementata sezione Strumenti nella dashboard
@@ -57,7 +57,7 @@ Questo file contiene il registro dei cambiamenti più significativi del progetto
 - Corretta gestione delle date nei form
 - Sistemata visualizzazione dei badge di stato
 
-## [v0.4.1] - Fix Routing e Test CRUD - 2024-05-20
+## [v0.4.1] - Fix Routing e Test CRUD 
 
 ### Correzioni
 - Risolto problema di routing per l'endpoint `/api/v1/parte/`
@@ -70,7 +70,7 @@ Questo file contiene il registro dei cambiamenti più significativi del progetto
 - Migliorato lo script di seed dei dati di test
 - Ottimizzata la gestione delle dipendenze tra modelli
 
-## [v0.3.0] - API CRUD Backend - 2023-10-25
+## [v0.3.0] - API CRUD Backend 
 
 ### Aggiunte
 - Implementate API CRUD complete per tutti i modelli principali:
@@ -89,7 +89,7 @@ Questo file contiene il registro dei cambiamenti più significativi del progetto
 - Migliorate le validazioni e gestione degli errori negli endpoint
 - Versione dell'API aggiornata a v0.3.0
 
-## [v0.2.0] - Modelli SQLAlchemy e Schemi - 2023-10-20
+## [v0.2.0] - Modelli SQLAlchemy e Schemi 
 
 ### Aggiunte
 - Definiti modelli SQLAlchemy completi:
@@ -108,7 +108,7 @@ Questo file contiene il registro dei cambiamenti più significativi del progetto
 - Aggiornata struttura del progetto con cartelle dedicate (schemas, models)
 - Migliorata configurazione di connessione al database
 
-## [v0.1.0] - Setup Iniziale - 2023-10-15
+## [v0.1.0] - Setup Iniziale 
 
 ### Aggiunte
 - Struttura base del progetto con Next.js per il frontend
@@ -116,6 +116,20 @@ Questo file contiene il registro dei cambiamenti più significativi del progetto
 - Configurazione Docker Compose
 - Setup di base per autenticazione
 - CI/CD iniziale
+
+## [v0.5.2] 
+
+### Miglioramenti
+- Uniformata l'interfaccia utente delle azioni (Modifica/Elimina) in tutte le tabelle dell'applicazione
+  - Implementato DropdownMenu per le azioni in Tools, Catalogo, Parti, Cicli Cura e Autoclavi
+  - Aggiunto feedback visivo con toast notifications per tutte le azioni
+  - Migliorata la coerenza UX/UI tra le diverse sezioni
+  - Ottimizzata la gestione degli stati di caricamento
+
+### Correzioni
+- Risolti problemi di allineamento nelle tabelle
+- Sistemata la gestione degli errori nelle operazioni CRUD
+- Migliorata la reattività dell'interfaccia durante le operazioni
 
 ---
 

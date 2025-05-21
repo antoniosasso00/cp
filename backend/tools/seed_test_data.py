@@ -10,6 +10,8 @@ import json
 import requests
 import logging
 import argparse
+import random
+import socket
 from pathlib import Path
 from dotenv import load_dotenv
 from typing import List, Dict, Any, Optional
@@ -23,7 +25,22 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT_DIR))
 load_dotenv()
 
-BASE_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+# Determina se stiamo eseguendo in Docker o in locale
+def is_running_in_docker():
+    try:
+        with open('/proc/self/cgroup', 'r') as f:
+            return 'docker' in f.read()
+    except:
+        return False
+
+# Imposta l'URL del backend in base all'ambiente
+if is_running_in_docker():
+    BASE_URL = "http://backend:8000"
+    logger.info("Esecuzione in ambiente Docker, utilizzo URL backend: %s", BASE_URL)
+else:
+    BASE_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+    logger.info("Esecuzione in ambiente locale, utilizzo URL backend: %s", BASE_URL)
+
 API_PREFIX = os.getenv("API_PREFIX", "/api/v1")
 
 # Dati di test predefiniti
@@ -72,7 +89,6 @@ TOOLS = [
         "lunghezza_piano": 2000.0,
         "larghezza_piano": 1000.0,
         "disponibile": True,
-        "in_manutenzione": False,
         "note": "Stampo principale per pannelli laterali"
     },
     {
@@ -81,7 +97,6 @@ TOOLS = [
         "lunghezza_piano": 1500.0,
         "larghezza_piano": 800.0,
         "disponibile": True,
-        "in_manutenzione": False,
         "note": "Stampo dedicato per supporti motore"
     },
     {
@@ -90,7 +105,6 @@ TOOLS = [
         "lunghezza_piano": 1800.0,
         "larghezza_piano": 900.0,
         "disponibile": True,
-        "in_manutenzione": False,
         "note": "Stampo versatile per coperchi e fasce"
     }
 ]
@@ -162,7 +176,8 @@ AUTOCLAVI = [
 # Variabile globale per memorizzare gli ID dei dati creati
 created_ids = {
     "cicli_cura": {},
-    "tools": {}
+    "tools": {},
+    "parti": {}
 }
 
 def post_if_missing(endpoint: str, unique_field: str, data: dict, debug: bool = False) -> Optional[dict]:
@@ -172,6 +187,7 @@ def post_if_missing(endpoint: str, unique_field: str, data: dict, debug: bool = 
     Args:
         endpoint: Nome dell'endpoint API (es. "catalogo", "tools")
         unique_field: Campo univoco per identificare il record (es. "part_number", "codice")
+                      Se l'endpoint è "odl", questo parametro è ignorato perché gli ODL non hanno un campo univoco
         data: Dati da inviare nella richiesta POST
         debug: Se True, mostra informazioni dettagliate sugli errori
     
@@ -180,7 +196,23 @@ def post_if_missing(endpoint: str, unique_field: str, data: dict, debug: bool = 
     """
     endpoint_url = f"{BASE_URL}{API_PREFIX}/{endpoint}/"
     try:
-        # Verifica se esiste già un record con lo stesso valore
+        # Per ODL non facciamo la verifica di esistenza, creiamo sempre un nuovo record
+        if endpoint == "odl":
+            if debug:
+                logger.debug(f"Creazione ODL: {json.dumps(data, indent=2)}")
+            
+            r = requests.post(endpoint_url, json=data)
+            if r.status_code == 200 or r.status_code == 201:
+                created_data = r.json()
+                logger.info(f"[✔] {endpoint} creato con ID {created_data.get('id', 'N/A')}")
+                return created_data
+            else:
+                logger.error(f"[!] Errore creazione {endpoint}: {r.status_code} - {r.text}")
+                if debug:
+                    logger.debug(f"Dati inviati: {json.dumps(data, indent=2)}")
+                return None
+        
+        # Per altri endpoint, verifica se esiste già
         r = requests.get(endpoint_url)
         if r.status_code == 200:
             existing_data = r.json()
@@ -198,35 +230,39 @@ def post_if_missing(endpoint: str, unique_field: str, data: dict, debug: bool = 
         if debug:
             logger.debug(f"Invio POST a {endpoint_url} con dati: {json.dumps(data, indent=2)}")
         
-        # Correzioni specifiche per endpoint
-        if endpoint == "cicli-cura":
-            # Rimuovi i campi calcolati non presenti nel database
-            if "temperatura_max" in data:
-                del data["temperatura_max"]
-            if "pressione_max" in data:
-                del data["pressione_max"]
-        
+        # POST per creare il record
         r = requests.post(endpoint_url, json=data)
-        if r.status_code in (200, 201):
+        if r.status_code == 200 or r.status_code == 201:
             created_data = r.json()
-            logger.info(f"[+] {endpoint} creato: {data[unique_field]} (ID: {created_data.get('id', 'N/A')})")
+            logger.info(f"[✔] {endpoint} creato: {data[unique_field]}")
             return created_data
-        elif r.status_code in (400, 422):
-            error_msg = r.json()
-            logger.warning(f"[!] Errore validazione {endpoint}: {error_msg}")
-            
+        elif r.status_code == 422:
+            error_data = r.json()
             if debug:
-                logger.debug(f"Dettagli errore: {json.dumps(error_msg, indent=2)}")
-                logger.debug(f"Dati inviati: {json.dumps(data, indent=2)}")
-            
-            # Tentativi di correzione dei dati
-            if endpoint == "autoclavi" and "stato" in data:
-                logger.debug(f"Tentativo correzione stato autoclave da {data['stato']} a DISPONIBILE")
-                data["stato"] = "DISPONIBILE"
+                logger.debug(f"Errore validazione: {json.dumps(error_data, indent=2)}")
+                
+            # Prova a correggere errori comuni
+            if 'detail' in error_data:
+                for error in error_data['detail']:
+                    if error['type'] == 'missing':
+                        field = error['loc'][1]
+                        logger.warning(f"Campo mancante: {field}. Tentativo di correzione...")
+                        
+                        # Valori di default
+                        if field in ['disponibile', 'attivo']:
+                            data[field] = True
+                        elif field.startswith('num_'):
+                            data[field] = 1
+                        elif field.endswith('_id'):
+                            data[field] = None
+                
+                # Riprova con i dati corretti
+                if debug:
+                    logger.debug(f"Riprovo con dati corretti: {json.dumps(data, indent=2)}")
                 r = requests.post(endpoint_url, json=data)
-                if r.status_code in (200, 201):
+                if r.status_code == 200 or r.status_code == 201:
                     created_data = r.json()
-                    logger.info(f"[+] {endpoint} creato (dopo correzione): {data[unique_field]}")
+                    logger.info(f"[✔] {endpoint} creato dopo correzione: {data[unique_field]}")
                     return created_data
                 else:
                     logger.error(f"[!] Errore creazione {endpoint} dopo correzione: {r.text}")
@@ -332,8 +368,59 @@ def seed_parti(debug: bool = False):
         modified_parti.append(modified_parte)
     
     # Crea le parti
-    for parte in modified_parti:
-        post_if_missing("parti", "part_number", parte, debug)
+    for i, parte in enumerate(modified_parti):
+        created_parte = post_if_missing("parti", "part_number", parte, debug)
+        if created_parte and created_parte.get('id'):
+            idx = i + 1
+            created_ids["parti"][idx] = created_parte.get('id')
+            if debug:
+                logger.debug(f"Memorizzato Parte ID: {created_parte.get('id')} per indice {idx}")
+
+def seed_odl(debug: bool = False):
+    """Popola gli ordini di lavoro con dati di test."""
+    logger.info("\n📝 Popolamento ordini di lavoro (ODL)...")
+    
+    # Ottieni tutte le parti
+    r = requests.get(f"{BASE_URL}{API_PREFIX}/parti/")
+    if r.status_code != 200:
+        logger.error(f"[!] Impossibile ottenere l'elenco delle parti: {r.status_code}")
+        return
+    
+    parti = r.json()
+    if not parti:
+        logger.error("[!] Nessuna parte trovata, impossibile creare ODL")
+        return
+    
+    status_options = ["Preparazione", "Laminazione", "Attesa Cura", "Cura", "Finito"]
+    
+    for i, parte in enumerate(parti):
+        parte_id = parte["id"]
+        
+        # Ottieni i tool associati a questa parte
+        tool_ids = [tool["id"] for tool in parte.get("tools", [])]
+        
+        if not tool_ids:
+            logger.warning(f"[!] La parte {parte['part_number']} non ha tool associati, salto creazione ODL")
+            continue
+        
+        # Crea da 1 a 2 ODL per ogni parte
+        num_odl = random.randint(1, 2)
+        for j in range(num_odl):
+            # Seleziona un tool casuale tra quelli associati alla parte
+            tool_id = random.choice(tool_ids)
+            
+            # Crea l'ODL
+            odl_data = {
+                "parte_id": parte_id,
+                "tool_id": tool_id,
+                "priorita": random.randint(1, 3),
+                "status": random.choice(status_options),
+                "note": f"ODL di test per {parte['part_number']}, creato automaticamente."
+            }
+            
+            created_odl = post_if_missing("odl", "id", odl_data, debug)
+            if not created_odl and debug:
+                logger.debug(f"ODL non creato o già esistente per parte_id={parte_id}, tool_id={tool_id}")
 
 def main():
     """Funzione principale per il seed dei dati di test."""
@@ -364,6 +451,7 @@ def main():
     seed_cicli_cura(debug)
     seed_autoclavi(debug)
     seed_parti(debug)
+    seed_odl(debug)
     
     # Verifica finale
     logger.info("\n🔍 Verifica endpoint in corso...")
@@ -372,7 +460,8 @@ def main():
         verify_endpoint("tools", len(TOOLS), debug),
         verify_endpoint("cicli-cura", len(CICLI_CURA), debug),
         verify_endpoint("autoclavi", len(AUTOCLAVI), debug),
-        verify_endpoint("parti", len(PARTI), debug)
+        verify_endpoint("parti", len(PARTI), debug),
+        verify_endpoint("odl", 1, debug)
     ])
     
     if success:

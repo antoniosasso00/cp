@@ -8,8 +8,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
-import { Loader2 } from 'lucide-react'
+import { Loader2, AlertTriangle } from 'lucide-react'
 import { cn } from "@/lib/utils"
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import React from 'react'
 
 interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
@@ -41,6 +42,8 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
   const { toast } = useToast()
   const [tools, setTools] = useState<Tool[]>([])
   const [parti, setParti] = useState<ParteResponse[]>([])
+  const [filteredTools, setFilteredTools] = useState<Tool[]>([])
+  const [selectedParte, setSelectedParte] = useState<ParteResponse | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   
@@ -75,9 +78,37 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
           status: "Preparazione",
           note: ""
         })
+        setSelectedParte(null)
+        setFilteredTools([])
       }
     }
   }, [isOpen, item])
+
+  // Aggiorna i tool filtrati quando cambia la parte selezionata
+  useEffect(() => {
+    if (formData.parte_id && parti.length > 0) {
+      const parte = parti.find(p => p.id === formData.parte_id)
+      setSelectedParte(parte || null)
+      
+      if (parte) {
+        // Filtra i tool associati alla parte selezionata
+        const parteTools = parte.tools || []
+        const toolIds = parteTools.map(t => t.id)
+        const filtered = tools.filter(tool => toolIds.includes(tool.id))
+        setFilteredTools(filtered)
+        
+        // Se il tool attualmente selezionato non è nella lista filtrata, lo resettiamo
+        if (formData.tool_id && !toolIds.includes(formData.tool_id)) {
+          setFormData(prev => ({...prev, tool_id: 0}))
+        }
+      } else {
+        setFilteredTools([])
+      }
+    } else {
+      setFilteredTools([])
+      setSelectedParte(null)
+    }
+  }, [formData.parte_id, parti, tools])
 
   const loadDependencies = async () => {
     try {
@@ -152,6 +183,10 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
     }
   }
 
+  const handleCreateNewTool = () => {
+    window.open('/dashboard/tools/new', '_blank')
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[500px]">
@@ -176,21 +211,41 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
                 Parte
               </Label>
               <div className="col-span-3">
-                <Select
-                  value={formData.parte_id?.toString() || ""}
-                  onValueChange={(value) => handleChange('parte_id', parseInt(value))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleziona una parte" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {parti.map(parte => (
-                      <SelectItem key={parte.id} value={parte.id.toString()}>
-                        {parte.part_number} - {parte.descrizione_breve}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="space-y-2">
+                  <Select
+                    value={formData.parte_id?.toString() || ""}
+                    onValueChange={(value) => handleChange('parte_id', parseInt(value))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleziona una parte" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {parti.length > 0 ? (
+                        parti.map(parte => (
+                          <SelectItem key={parte.id} value={parte.id.toString()}>
+                            {parte.part_number} - {parte.descrizione_breve}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <div className="px-2 py-4 text-center text-sm">
+                          Nessuna parte disponibile
+                        </div>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  
+                  {(formData.parte_id === 0 || formData.parte_id === undefined) && (
+                    <div className="flex justify-end">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => window.open('/dashboard/parts/new', '_blank')}
+                      >
+                        + Crea nuova parte
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -199,21 +254,53 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
                 Tool
               </Label>
               <div className="col-span-3">
-                <Select
-                  value={formData.tool_id?.toString() || ""}
-                  onValueChange={(value) => handleChange('tool_id', parseInt(value))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleziona un tool" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {tools.map(tool => (
-                      <SelectItem key={tool.id} value={tool.id.toString()}>
-                        {tool.codice} {tool.descrizione ? `- ${tool.descrizione}` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="space-y-2">
+                  {selectedParte && filteredTools.length === 0 ? (
+                    <Alert variant="warning" className="mb-2">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>
+                        Nessun tool associato alla parte selezionata
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+                  
+                  <Select
+                    value={formData.tool_id?.toString() || ""}
+                    onValueChange={(value) => handleChange('tool_id', parseInt(value))}
+                    disabled={!formData.parte_id || filteredTools.length === 0}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleziona un tool" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredTools.length > 0 ? (
+                        filteredTools.map(tool => (
+                          <SelectItem key={tool.id} value={tool.id.toString()}>
+                            {tool.codice} {tool.descrizione ? `- ${tool.descrizione}` : ''}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <div className="px-2 py-4 text-center text-sm">
+                          {formData.parte_id && formData.parte_id > 0 
+                            ? "Nessun tool disponibile per questa parte" 
+                            : "Seleziona prima una parte"}
+                        </div>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  
+                  {formData.parte_id && formData.parte_id > 0 && filteredTools.length === 0 && (
+                    <div className="flex justify-end">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={handleCreateNewTool}
+                      >
+                        + Crea nuovo tool
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 

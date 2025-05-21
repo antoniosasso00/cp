@@ -2,7 +2,7 @@
 
 Sistema modulare per la gestione avanzata della produzione in fibra di carbonio, con dashboard interattiva, gestione catalogo, parti, tools, autoclavi e cicli di cura.
 
-![versione](https://img.shields.io/badge/version-0.5.0-brightgreen)
+![versione](https://img.shields.io/badge/version-0.5.2-brightgreen)
 
 ## Tecnologie principali
 
@@ -11,7 +11,7 @@ Sistema modulare per la gestione avanzata della produzione in fibra di carbonio,
 - 🐳 Containerizzazione: Docker + Docker Compose
 - 📈 Dashboard amministrativa con filtri, CRUD e interfaccia minimal
 
-## Funzionalità implementate nella v0.5.0
+## Funzionalità implementate nella v0.5.2
 
 ✅ CRUD completo:
 - Catalogo (Part Number)
@@ -26,10 +26,13 @@ Sistema modulare per la gestione avanzata della produzione in fibra di carbonio,
 - Tabelle responsive filtrabili
 - Moduli dinamici per creazione e modifica
 - Gestione stati ODL e priorità
+- Interfaccia uniforme per le azioni (Modifica/Elimina)
+- Feedback visivo con toast notifications
 
-## 🚀 Stato del Progetto – v0.5.0
-- Completata la Fase 5
+## 🚀 Stato del Progetto – v0.5.1
+- Completata la Fase 5.1
 - Dashboard CRUD stabile per Tools, Cicli di Cura, Autoclavi, Catalogo, Parti, ODL
+- Interfaccia utente uniformata con DropdownMenu per le azioni
 - Backend FastAPI e frontend Next.js sincronizzati
 - Seed e migrazioni funzionanti
 - Build stabile in locale e Docker
@@ -97,9 +100,19 @@ progetto-root/
 ├── frontend/             # Applicazione Next.js
 │ ├── src/
 │ │ ├── app/              # Routes e layout
+│ │ │   ├── dashboard/    # Pagine della dashboard
+│ │ │   │   ├── tools/    # Gestione tools
+│ │ │   │   ├── catalog/  # Gestione catalogo
+│ │ │   │   ├── parts/    # Gestione parti
+│ │ │   │   ├── cicli-cura/ # Gestione cicli
+│ │ │   │   └── autoclavi/  # Gestione autoclavi
 │ │ ├── components/       # Componenti riutilizzabili
-│ │ ├── lib/              # Utilities e hooks
-│ │ └── styles/           # CSS e stili
+│ │ │   ├── ui/          # Componenti UI base
+│ │ │   └── shared/      # Componenti condivisi
+│ │ ├── lib/             # Utilities e hooks
+│ │ │   ├── api/         # Client API
+│ │ │   └── utils/       # Funzioni di utilità
+│ │ └── styles/          # CSS e stili
 ├── docs/                 # Documentazione
 │ └── changelog.md        # Registro dei cambiamenti
 ├── docker-compose.yml    # Configurazione Docker Compose
@@ -173,5 +186,3 @@ Per contribuire al progetto, segui questi passi:
 Per domande o supporto, contattaci a [email@example.com](mailto:email@example.com).
 
 ---
-
-Sviluppato con ❤️ dal team CarbonPilot

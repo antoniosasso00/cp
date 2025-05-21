@@ -21,8 +21,6 @@ class Tool(Base, TimestampMixin):
     # Stato e disponibilità
     disponibile = Column(Boolean, default=True, nullable=False,
                         doc="Indica se lo stampo è attualmente disponibile")
-    in_manutenzione = Column(Boolean, default=False, nullable=False,
-                           doc="Indica se lo stampo è in manutenzione")
     
     note = Column(Text, nullable=True, doc="Note aggiuntive sullo stampo")
     

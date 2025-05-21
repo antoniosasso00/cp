@@ -9,6 +9,18 @@ import { Badge } from '@/components/ui/badge'
 import { ParteResponse, partiApi } from '@/lib/api'
 import { formatDateIT } from '@/lib/utils'
 import ParteModal from './components/parte-modal'
+import { 
+  Loader2, 
+  MoreHorizontal, 
+  Pencil, 
+  Trash2 
+} from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 export default function PartiPage() {
   const [parti, setParti] = useState<ParteResponse[]>([])
@@ -104,7 +116,8 @@ export default function PartiPage() {
 
       {isLoading ? (
         <div className="flex justify-center py-8">
-          <p>Caricamento in corso...</p>
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <span className="ml-2">Caricamento in corso...</span>
         </div>
       ) : (
         <Table>
@@ -149,14 +162,26 @@ export default function PartiPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" size="sm" onClick={() => handleEditClick(item)}>
-                        Modifica
-                      </Button>
-                      <Button variant="destructive" size="sm" onClick={() => handleDeleteClick(item.id)}>
-                        Elimina
-                      </Button>
-                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleEditClick(item)}>
+                          <Pencil className="mr-2 h-4 w-4" />
+                          <span>Modifica</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => handleDeleteClick(item.id)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          <span>Elimina</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))

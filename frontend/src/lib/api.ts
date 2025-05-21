@@ -79,7 +79,6 @@ export interface Tool {
   lunghezza_piano: number
   larghezza_piano: number
   disponibile: boolean
-  in_manutenzione: boolean
   created_at: string
   updated_at: string
 }
@@ -90,7 +89,6 @@ export interface CreateToolDto {
   lunghezza_piano: number
   larghezza_piano: number
   disponibile: boolean
-  in_manutenzione: boolean
 }
 
 export interface UpdateToolDto extends Partial<CreateToolDto> {}

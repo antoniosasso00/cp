@@ -16,7 +16,6 @@ class ToolBase(BaseModel):
 # Schema per la creazione
 class ToolCreate(ToolBase):
     disponibile: bool = Field(True, description="Indica se lo stampo è attualmente disponibile")
-    in_manutenzione: bool = Field(False, description="Indica se lo stampo è in manutenzione")
 
 # Schema per gli aggiornamenti
 class ToolUpdate(BaseModel):
@@ -27,7 +26,6 @@ class ToolUpdate(BaseModel):
     larghezza_piano: Optional[float] = Field(None, gt=0, description="Larghezza utile del tool")
     
     disponibile: Optional[bool] = Field(None, description="Indica se lo stampo è attualmente disponibile")
-    in_manutenzione: Optional[bool] = Field(None, description="Indica se lo stampo è in manutenzione")
     
     note: Optional[str] = Field(None, description="Note aggiuntive sullo stampo")
 
@@ -35,7 +33,6 @@ class ToolUpdate(BaseModel):
 class ToolResponse(ToolBase):
     id: int = Field(..., description="ID univoco dello stampo")
     disponibile: bool = Field(..., description="Indica se lo stampo è attualmente disponibile")
-    in_manutenzione: bool = Field(..., description="Indica se lo stampo è in manutenzione")
     created_at: datetime = Field(..., description="Data e ora di creazione del record")
     updated_at: datetime = Field(..., description="Data e ora dell'ultimo aggiornamento")
 
