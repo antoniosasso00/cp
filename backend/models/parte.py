@@ -32,6 +32,9 @@ class Parte(Base, TimestampMixin):
     # Relazione molti-a-molti con i Tools
     tools = relationship(Tool, secondary=parte_tool_association, back_populates="parti")
     
+    # Relazione con gli ODL
+    odl = relationship("ODL", back_populates="parte")
+    
     # Campi aggiuntivi
     note_produzione = Column(Text, nullable=True,
                             doc="Note specifiche per la produzione")

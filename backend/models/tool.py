@@ -29,5 +29,8 @@ class Tool(Base, TimestampMixin):
     # Relazione molti-a-molti con le parti
     parti = relationship("Parte", secondary=parte_tool_association, back_populates="tools")
     
+    # Relazione con gli ODL
+    odl = relationship("ODL", back_populates="tool")
+    
     def __repr__(self):
         return f"<Tool(id={self.id}, codice='{self.codice}', disponibile={self.disponibile})>" 

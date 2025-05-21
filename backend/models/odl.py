@@ -1,0 +1,36 @@
+from sqlalchemy import Column, Integer, String, ForeignKey, Text, Enum
+from sqlalchemy.orm import relationship
+from .base import Base, TimestampMixin
+
+class ODL(Base, TimestampMixin):
+    """Modello che rappresenta gli Ordini di Lavoro (ODL)"""
+    __tablename__ = "odl"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Relazione con la parte (obbligatoria)
+    parte_id = Column(Integer, ForeignKey('parti.id'), nullable=False, index=True,
+                    doc="ID della parte associata all'ordine di lavoro")
+    parte = relationship("Parte", back_populates="odl")
+    
+    # Relazione con il tool (obbligatoria)
+    tool_id = Column(Integer, ForeignKey('tools.id'), nullable=False, index=True,
+                   doc="ID del tool utilizzato per l'ordine di lavoro")
+    tool = relationship("Tool", back_populates="odl")
+    
+    # Attributi dell'ordine di lavoro
+    priorita = Column(Integer, default=1, nullable=False,
+                     doc="Priorità dell'ordine di lavoro (numero più alto = priorità maggiore)")
+    
+    status = Column(
+        Enum("Preparazione", "Laminazione", "Attesa Cura", "Cura", "Finito", name="odl_status"),
+        default="Preparazione",
+        nullable=False,
+        doc="Stato corrente dell'ordine di lavoro"
+    )
+    
+    note = Column(Text, nullable=True,
+                 doc="Note aggiuntive sull'ordine di lavoro")
+    
+    def __repr__(self):
+        return f"<ODL(id={self.id}, parte_id={self.parte_id}, tool_id={self.tool_id}, status='{self.status}')>" 

@@ -22,6 +22,10 @@ const sidebarNavItems: SidebarNavItem[] = [
     href: "/dashboard/parts",
   },
   {
+    title: "ODL",
+    href: "/dashboard/odl",
+  },
+  {
     title: "Cicli Cura",
     href: "/dashboard/cicli-cura",
   },

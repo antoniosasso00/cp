@@ -321,4 +321,64 @@ export const autoclaveApi = {
   delete: async (id: number): Promise<void> => {
     await api.delete(`/autoclavi/${id}`)
   },
-} 
+}
+
+// Tipi per ODL
+export interface ODLBase {
+  parte_id: number;
+  tool_id: number;
+  priorita: number;
+  status: "Preparazione" | "Laminazione" | "Attesa Cura" | "Cura" | "Finito";
+  note?: string;
+}
+
+export interface ODLCreate extends ODLBase {}
+
+export interface ODLUpdate extends Partial<ODLBase> {}
+
+export interface ParteInODLResponse {
+  id: number;
+  part_number: string;
+  descrizione_breve: string;
+}
+
+export interface ToolInODLResponse {
+  id: number;
+  codice: string;
+  descrizione?: string;
+}
+
+export interface ODLResponse extends ODLBase {
+  id: number;
+  parte: ParteInODLResponse;
+  tool: ToolInODLResponse;
+  created_at: string;
+  updated_at: string;
+}
+
+// API ODL
+export const odlApi = {
+  getAll: async (params?: { skip?: number; limit?: number; parte_id?: number; tool_id?: number; status?: string }): Promise<ODLResponse[]> => {
+    const queryParams = new URLSearchParams();
+    if (params?.skip) queryParams.append('skip', params.skip.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.parte_id) queryParams.append('parte_id', params.parte_id.toString());
+    if (params?.tool_id) queryParams.append('tool_id', params.tool_id.toString());
+    if (params?.status) queryParams.append('status', params.status);
+    
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    return apiRequest<ODLResponse[]>(`/odl${query}`);
+  },
+  
+  getOne: async (id: number): Promise<ODLResponse> => 
+    apiRequest<ODLResponse>(`/odl/${id}`),
+  
+  create: async (data: ODLCreate): Promise<ODLResponse> => 
+    apiRequest<ODLResponse>('/odl/', 'POST', data),
+  
+  update: async (id: number, data: ODLUpdate): Promise<ODLResponse> => 
+    apiRequest<ODLResponse>(`/odl/${id}`, 'PUT', data),
+  
+  delete: async (id: number): Promise<void> => 
+    apiRequest<void>(`/odl/${id}`, 'DELETE'),
+}; 

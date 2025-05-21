@@ -2,6 +2,26 @@
 
 Questo file contiene il registro dei cambiamenti più significativi del progetto.
 
+## [v0.5.0] - 2024-05-21
+
+### Aggiunte
+- Implementato seed completo degli ODL (Ordini di Lavoro)
+  - Creazione automatica di 5 ODL di test con stati diversi
+  - Associazione corretta con parti e strumenti esistenti
+  - Gestione delle priorità e note per ogni ODL
+  - Verifica automatica del corretto seeding
+
+### Miglioramenti
+- Ottimizzato script `seed_test_data.py` con modalità debug
+- Migliorata gestione delle dipendenze tra modelli nel seeding
+- Aggiunta verifica automatica degli endpoint dopo il seeding
+
+### Correzioni
+- Risolti problemi di TypeScript nel componente ODLModal
+- Corretta implementazione del componente Textarea
+- Sistemata gestione degli eventi onChange nei form
+- Migliorata gestione degli errori durante il seeding
+
 ## [v0.4.2] - 2024-03-20
 
 ### Aggiunte

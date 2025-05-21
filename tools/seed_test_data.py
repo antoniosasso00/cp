@@ -23,8 +23,14 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT_DIR))
 load_dotenv()
 
-BASE_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+# Determina se lo script sta girando in un ambiente Docker
+IN_DOCKER = os.path.exists('/.dockerenv')
+
+# Se in Docker, usa l'host interno, altrimenti usa localhost
+BASE_URL = "http://backend:8000" if IN_DOCKER else os.getenv("BACKEND_URL", "http://localhost:8000")
 API_PREFIX = os.getenv("API_PREFIX", "/api/v1")
+
+logger.info(f"Usando URL backend: {BASE_URL}")
 
 # Dati di test predefiniti
 CATALOGO_PARTS = [
@@ -335,6 +341,76 @@ def seed_parti(debug: bool = False):
     for parte in modified_parti:
         post_if_missing("parti", "part_number", parte, debug)
 
+def seed_odl(debug: bool = False):
+    """Crea ODL di test, associandoli a Parti e Tools esistenti"""
+    logger.info("Popolamento ODL...")
+    
+    # Recupera le parti esistenti
+    parti_url = f"{BASE_URL}{API_PREFIX}/parti/"
+    try:
+        parti_response = requests.get(parti_url)
+        if parti_response.status_code != 200 or not parti_response.json():
+            logger.error(f"Impossibile recuperare le parti: {parti_response.status_code}")
+            return
+        
+        parti = parti_response.json()
+        logger.info(f"Recuperate {len(parti)} parti")
+        
+        # Recupera i tool esistenti
+        tools_url = f"{BASE_URL}{API_PREFIX}/tools/"
+        tools_response = requests.get(tools_url)
+        if tools_response.status_code != 200 or not tools_response.json():
+            logger.error(f"Impossibile recuperare i tools: {tools_response.status_code}")
+            return
+        
+        tools = tools_response.json()
+        logger.info(f"Recuperati {len(tools)} tools")
+        
+        # Creazione di 5 ODL di test con status diversi
+        odl_stati = ["Preparazione", "Laminazione", "Attesa Cura", "Cura", "Finito"]
+        
+        for i in range(min(5, len(parti))):
+            # Seleziona una parte e un tool esistenti
+            parte = parti[i % len(parti)]
+            tool = tools[i % len(tools)]
+            
+            # Crea l'ODL con priorità variabile e stato diverso
+            odl_data = {
+                "parte_id": parte["id"],
+                "tool_id": tool["id"],
+                "priorita": i + 1,
+                "status": odl_stati[i % len(odl_stati)],
+                "note": f"ODL di test #{i+1} creato automaticamente - {parte['part_number']} con {tool['codice']}"
+            }
+            
+            # Usa una ricerca per verificare se esiste già un ODL simile
+            odl_url = f"{BASE_URL}{API_PREFIX}/odl/"
+            search_params = {
+                "parte_id": odl_data["parte_id"],
+                "tool_id": odl_data["tool_id"],
+                "status": odl_data["status"]
+            }
+            
+            search_response = requests.get(odl_url, params=search_params)
+            if search_response.status_code == 200 and search_response.json():
+                logger.info(f"[✔] ODL già presente: Parte {parte['part_number']}, Tool {tool['codice']}, Status {odl_data['status']}")
+                continue
+            
+            # Crea l'ODL se non esiste già
+            result = requests.post(odl_url, json=odl_data)
+            if result.status_code in [200, 201]:
+                logger.info(f"[✓] Creato ODL: Parte {parte['part_number']}, Tool {tool['codice']}, Status {odl_data['status']}")
+            else:
+                logger.error(f"[✗] Errore nella creazione dell'ODL: {result.status_code}")
+                if debug:
+                    logger.debug(f"Dettagli errore: {result.text}")
+        
+        # Verifica se gli ODL sono stati creati
+        verify_endpoint("odl", expected_items=1, debug=debug)
+        
+    except Exception as e:
+        logger.error(f"Errore durante il popolamento degli ODL: {str(e)}")
+
 def main():
     """Funzione principale per il seed dei dati di test."""
     parser = argparse.ArgumentParser(description="Seed di dati di test per CarbonPilot")
@@ -364,6 +440,7 @@ def main():
     seed_cicli_cura(debug)
     seed_autoclavi(debug)
     seed_parti(debug)
+    seed_odl(debug)
     
     # Verifica finale
     logger.info("\n🔍 Verifica endpoint in corso...")
@@ -372,7 +449,8 @@ def main():
         verify_endpoint("tools", len(TOOLS), debug),
         verify_endpoint("cicli-cura", len(CICLI_CURA), debug),
         verify_endpoint("autoclavi", len(AUTOCLAVI), debug),
-        verify_endpoint("parti", len(PARTI), debug)
+        verify_endpoint("parti", len(PARTI), debug),
+        verify_endpoint("odl", expected_items=1, debug=debug)
     ])
     
     if success:
