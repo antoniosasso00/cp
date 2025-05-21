@@ -38,15 +38,28 @@ Sistema modulare per la gestione avanzata della produzione in fibra di carbonio,
 - Build stabile in locale e Docker
 - Sistema di seeding ODL implementato e testato
 
+## 🚀 Stato del Progetto – v0.7.1
+- Completata la Fase 7.1 con fix per problemi di avvio nesting
+- Implementato sistema di nesting automatico con OR-Tools funzionante in Docker
+- Dashboard completa per nesting automatico e manuale
+- Ottimizzazione 2D bin packing per disposizione ODL nelle autoclavi
+- Visualizzatore grafico delle soluzioni di nesting
+- Backend FastAPI e frontend Next.js sincronizzati
+
 ## Come avviare il progetto
 
 ```bash
+# Avvio normale
 docker-compose up -d --build
+
+# In caso di problemi con il modulo nesting
+./fix_nesting_docker.sh
 ```
 
 Accedi a:
 - Frontend: http://localhost:3000
 - API Swagger: http://localhost:8000/docs
+- Nesting dashboard: http://localhost:3000/dashboard/nesting
 
 ## Prossima fase
 

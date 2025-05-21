@@ -1,5 +1,5 @@
 # Importa i moduli per un più facile accesso
-from . import catalogo, ciclo_cura, parte, tool, autoclave, associations
+from . import catalogo, ciclo_cura, parte, tool, autoclave, associations, nesting_params, nesting_result
 
 # Esporta le classi principali per un più facile import
 from .base import Base, TimestampMixin
@@ -11,6 +11,8 @@ from .ciclo_cura import CicloCura
 from .associations import parte_tool_association
 from .odl import ODL
 from .tempo_fase import TempoFase
+from .nesting_params import NestingParams
+from .nesting_result import NestingResult
 
 # Lista completa di tutti i modelli per le migrazioni
 __all__ = [
@@ -24,5 +26,7 @@ __all__ = [
     "CicloCura",
     "parte_tool_association",
     "ODL",
-    "TempoFase"
+    "TempoFase",
+    "NestingParams",
+    "NestingResult"
 ] 

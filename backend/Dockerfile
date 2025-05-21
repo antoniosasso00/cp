@@ -7,5 +7,7 @@ RUN apt-get update && apt-get install -y netcat-openbsd && rm -rf /var/lib/apt/l
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# Assicurati che OR-Tools sia installato (anche se dovrebbe essere già nelle requirements.txt)
+RUN pip install --no-cache-dir ortools==9.8.3296
 
 COPY . . 

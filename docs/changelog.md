@@ -2,6 +2,55 @@
 
 Questo file contiene il registro dei cambiamenti più significativi del progetto.
 
+## [v0.7.1] - Fix Nesting Docker
+
+### Correzioni
+- Risolto problema di avvio in Docker dopo l'aggiunta del modulo di nesting
+- Aggiunta migrazione manuale per i modelli `NestingParams` e `NestingResult`
+- Implementata soluzione per garantire l'installazione di OR-Tools
+- Creato script di riparazione `fix_nesting_docker.sh` per applicare patch in modo automatico
+- Migliorati timeout di avvio e healthcheck nei container Docker
+
+### Miglioramenti
+- Documentata procedura di debugging Docker in `docker_debug_log.md`
+- Aggiunto script SQL diretto per la creazione delle tabelle di nesting
+- Ottimizzati parametri di connessione al database
+
+## [v0.7.0] - Nesting Automatico OR-Tools
+
+### Aggiunte
+- Implementato sistema completo di nesting automatico con OR-Tools
+  - Algoritmo di ottimizzazione per disposizione ODL nelle autoclavi
+  - Interfaccia utente per nesting automatico e manuale
+  - Visualizzazione grafica dei layout con canvas
+  - Parametri configurabili per l'ottimizzazione
+  - API backend complete per supporto nesting
+
+### Funzionalità
+- Nesting automatico multi-autoclave con ottimizzazione OR-Tools
+  - Rispetto di area utile e linee vuoto per ogni autoclave
+  - Accorpamento ODL con cicli di cura compatibili
+  - Ottimizzazione basata su priorità, area e valvole
+- Nesting manuale con selezione ODL
+  - Filtri per ciclo di cura, priorità e ricerca
+  - Visualizzazione dettagliata degli ODL selezionati
+- Gestione risultati nesting
+  - Conferma/rifiuto del layout proposto
+  - Aggiornamento stato ODL a "in cura" alla conferma
+  - Storia dei nesting eseguiti e statistiche
+
+### Backend
+- Modelli per parametri di nesting e risultati
+- API RESTful per tutte le operazioni
+- Algoritmo bin packing 2D con OR-Tools
+- Fallback greedy per casi non risolvibili
+
+### Frontend
+- Interfaccia suddivisa in tab (Automatico/Manuale/Risultati)
+- Visualizzatore del layout con canvas
+- Form per parametri di ottimizzazione
+- Statistiche di efficienza area e valvole
+
 ## [v0.5.0] 
 
 ### Aggiunte

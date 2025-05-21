@@ -182,6 +182,37 @@ created_ids = {
     "odl": {}
 }
 
+# Aggiungo i parametri di nesting predefiniti
+NESTING_PARAMS = [
+    {
+        "nome": "Configurazione Standard",
+        "peso_valvole": 2.0,
+        "peso_area": 3.0,
+        "peso_priorita": 5.0,
+        "spazio_minimo_mm": 30.0,
+        "attivo": True,
+        "descrizione": "Configurazione standard bilanciata"
+    },
+    {
+        "nome": "Alta Densità",
+        "peso_valvole": 1.0,
+        "peso_area": 8.0,
+        "peso_priorita": 1.0,
+        "spazio_minimo_mm": 15.0,
+        "attivo": False,
+        "descrizione": "Massimizza l'utilizzo dell'area"
+    },
+    {
+        "nome": "Alta Priorità",
+        "peso_valvole": 1.0,
+        "peso_area": 1.0,
+        "peso_priorita": 8.0,
+        "spazio_minimo_mm": 40.0,
+        "attivo": False,
+        "descrizione": "Massimizza la priorità degli ODL"
+    }
+]
+
 def post_if_missing(endpoint: str, unique_field: str, data: dict, debug: bool = False) -> Optional[dict]:
     """
     Crea un record solo se non esiste già un record con lo stesso valore nel campo unique_field.
@@ -489,26 +520,150 @@ def seed_tempo_fasi(debug: bool = False):
     
     logger.info("[✔] Seed dei tempi fase completato")
 
-def main():
-    parser = argparse.ArgumentParser(description="Script di seed per dati di test")
-    parser.add_argument("--debug", action="store_true", help="Abilita log di debug")
-    args = parser.parse_args()
+# Aggiungo nuovi ODL in stato "Attesa Cura" per testare il nesting
+def add_odl_for_nesting(debug: bool = False):
+    """Aggiunge ODL specifici per testare il nesting, in stato 'Attesa Cura'"""
+    
+    # Assicurati che ci siano abbastanza ODL in stato "Attesa Cura"
+    test_odls = [
+        {
+            "parte_id": 1,  # Usa gli ID creati precedentemente
+            "tool_id": 1,
+            "priorita": 5,
+            "status": "Attesa Cura",
+            "note": "ODL ad alta priorità per test nesting"
+        },
+        {
+            "parte_id": 2,
+            "tool_id": 1,
+            "priorita": 3,
+            "status": "Attesa Cura",
+            "note": "ODL media priorità per test nesting"
+        },
+        {
+            "parte_id": 3,
+            "tool_id": 2,
+            "priorita": 2,
+            "status": "Attesa Cura",
+            "note": "ODL bassa priorità per test nesting"
+        },
+        {
+            "parte_id": 4,
+            "tool_id": 3,
+            "priorita": 4,
+            "status": "Attesa Cura",
+            "note": "ODL media-alta priorità per test nesting"
+        },
+        {
+            "parte_id": 5,
+            "tool_id": 3,
+            "priorita": 1,
+            "status": "Attesa Cura",
+            "note": "ODL bassa priorità per test nesting"
+        }
+    ]
+    
+    # Crea alcuni ODL per il test del nesting
+    for odl_data in test_odls:
+        # Aggiorna gli ID basati sui dati effettivamente creati
+        if "parte_id" in odl_data and odl_data["parte_id"] in created_ids["parti"]:
+            odl_data["parte_id"] = created_ids["parti"][odl_data["parte_id"]]
+        if "tool_id" in odl_data and odl_data["tool_id"] in created_ids["tools"]:
+            odl_data["tool_id"] = created_ids["tools"][odl_data["tool_id"]]
+            
+        post_if_missing("odl", "id", odl_data, debug)
+    
+    logger.info("[✔] ODL per test nesting creati")
 
-    debug = args.debug
-
-    try:
-        seed_catalogo(debug)
-        seed_tools(debug)
-        seed_cicli_cura(debug)
-        seed_autoclavi(debug)
-        seed_parti(debug)
-        seed_odl(debug)
-        seed_tempo_fasi(debug)
+def seed_nesting_params(debug: bool = False):
+    """Inizializza i parametri di nesting predefiniti"""
+    
+    endpoint_url = f"{BASE_URL}{API_PREFIX}/nesting/params"
+    
+    # Prima verifica se ci sono già parametri configurati
+    r = requests.get(endpoint_url)
+    if r.status_code == 200:
+        # Se abbiamo già dei parametri, non facciamo nulla
+        params = r.json()
+        if params:
+            logger.info("[✔] Parametri di nesting già configurati")
+            return
+    
+    # Se non ci sono parametri o l'endpoint non è ancora disponibile,
+    # impostiamo i parametri predefiniti attraverso l'API
+    for param in NESTING_PARAMS:
+        endpoint_url = f"{BASE_URL}{API_PREFIX}/nesting/params"
+        if debug:
+            logger.debug(f"Invio PUT a {endpoint_url} con dati: {json.dumps(param, indent=2)}")
+            
+        # Filtriamo i campi che non sono nel modello pydantic
+        api_param = {
+            "peso_valvole": param["peso_valvole"],
+            "peso_area": param["peso_area"],
+            "peso_priorita": param["peso_priorita"],
+            "spazio_minimo_mm": param["spazio_minimo_mm"]
+        }
         
-        logger.info("✅ Seed completato con successo!")
-    except Exception as e:
-        logger.error(f"❌ Errore durante il seed: {e}", exc_info=True)
+        r = requests.put(endpoint_url, json=api_param)
+        if r.status_code == 200:
+            logger.info(f"[✔] Parametri di nesting creati: {param['nome']}")
+        else:
+            logger.warning(f"[!] Errore creazione parametri nesting: {r.status_code} - {r.text}")
+            if debug:
+                logger.debug(f"Dati inviati: {json.dumps(api_param, indent=2)}")
+
+def main():
+    """Funzione principale per il seed dei dati di test"""
+    parser = argparse.ArgumentParser(description='Seed di dati di test per CarbonPilot')
+    parser.add_argument('--debug', action='store_true', help='Mostra informazioni dettagliate di debug')
+    parser.add_argument('--endpoint', choices=['catalogo', 'tools', 'cicli_cura', 'autoclavi', 'parti', 'odl', 'tempo_fasi', 'nesting', 'all'], 
+                        default='all', help='Endpoint specifico da inizializzare')
+    args = parser.parse_args()
+    
+    logger.info("=== Avvio script di seed dati CarbonPilot ===")
+    logger.info(f"Server backend: {BASE_URL}")
+    
+    # Verifica connessione al backend
+    try:
+        r = requests.get(f"{BASE_URL}/docs")
+        if r.status_code == 200:
+            logger.info("[✔] Connessione al backend OK")
+        else:
+            logger.warning(f"[!] Server backend risponde con status {r.status_code}")
+    except requests.exceptions.ConnectionError:
+        logger.error("[!] Impossibile connettersi al backend. Verificare che il server sia in esecuzione.")
         sys.exit(1)
+    
+    # Esegui il seed dei dati
+    endpoint = args.endpoint
+    
+    if endpoint in ['catalogo', 'all']:
+        seed_catalogo(args.debug)
+    
+    if endpoint in ['tools', 'all']:
+        seed_tools(args.debug)
+    
+    if endpoint in ['cicli_cura', 'all']:
+        seed_cicli_cura(args.debug)
+    
+    if endpoint in ['autoclavi', 'all']:
+        seed_autoclavi(args.debug)
+    
+    if endpoint in ['parti', 'all']:
+        seed_parti(args.debug)
+    
+    if endpoint in ['odl', 'all']:
+        seed_odl(args.debug)
+        # Aggiungi ODL specifici per il nesting
+        add_odl_for_nesting(args.debug)
+    
+    if endpoint in ['tempo_fasi', 'all']:
+        seed_tempo_fasi(args.debug)
+    
+    if endpoint in ['nesting', 'all']:
+        seed_nesting_params(args.debug)
+    
+    logger.info("=== Seed dati completato ===")
 
 # Definizione delle parti (da usare dopo aver ottenuto gli ID dai cicli di cura e tool)
 PARTI = [

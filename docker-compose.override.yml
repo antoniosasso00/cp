@@ -1,0 +1,42 @@
+services:
+  backend:
+    healthcheck:
+      test: ["CMD", "nc", "-z", "db", "5432"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+    command: >
+      sh -c "sleep 15 && 
+             python -m alembic upgrade head && 
+             uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+    # Aumentato il timeout per l'avvio
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    
+  frontend:
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api
+      - NODE_OPTIONS=--max_old_space_size=4096
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    build:
+      context: ./frontend
+      args:
+        - NPM_TIMEOUT=120000
+
+  db:
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s 

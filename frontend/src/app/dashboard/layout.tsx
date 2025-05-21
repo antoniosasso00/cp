@@ -3,7 +3,7 @@
 import React from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
-import { Clock, BarChart3 } from 'lucide-react'
+import { Clock, BarChart3, LayoutGrid } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 
 interface SidebarNavItem {
@@ -40,6 +40,11 @@ const sidebarNavItems: SidebarNavItem[] = [
   {
     title: "Autoclavi",
     href: "/dashboard/autoclavi",
+  },
+  {
+    title: "Nesting",
+    href: "/dashboard/nesting",
+    icon: <LayoutGrid className="h-4 w-4" />
   },
   {
     title: "Tempi Produzione",
