@@ -28,7 +28,7 @@ IN_DOCKER = os.path.exists('/.dockerenv')
 
 # Se in Docker, usa l'host interno, altrimenti usa localhost
 BASE_URL = "http://localhost:8000" if IN_DOCKER else os.getenv("BACKEND_URL", "http://localhost:8000")
-API_PREFIX = os.getenv("API_PREFIX", "/api/v1")
+API_PREFIX = os.getenv("API_PREFIX", "/api")
 
 logger.info(f"{'Esecuzione in ambiente Docker, utilizzo' if IN_DOCKER else 'Utilizzo'} URL backend: {BASE_URL}")
 
