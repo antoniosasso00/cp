@@ -2,53 +2,29 @@
 
 import { useState, useEffect } from 'react'
 import { useToast } from '@/components/ui/use-toast'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { catalogoApi, tempoFasiApi, CatalogoResponse } from '@/lib/api'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { formatDuration } from '@/lib/utils'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
 
-// Funzione per tradurre il tipo di fase
-const translateFase = (fase: string): string => {
-  const translations: Record<string, string> = {
-    'laminazione': 'Laminazione',
-    'attesa_cura': 'Attesa Cura',
-    'cura': 'Cura'
+// Definizione di tipi per le statistiche
+interface StatisticheFasi {
+  [key: string]: {
+    fase: string;
+    media_minuti: number;
+    numero_osservazioni: number;
   };
-  return translations[fase] || fase;
 }
 
-// Colori per le fasi
-const colors: Record<string, string> = {
-  'Laminazione': '#3b82f6',  // primary
-  'Attesa Cura': '#f59e0b',  // warning
-  'Cura': '#ef4444'          // destructive
+interface StatistichePartNumber {
+  part_number: string;
+  previsioni: StatisticheFasi;
+  totale_odl: number;
 }
-
-// Componente per il tooltip personalizzato del grafico
-const CustomTooltip = ({ active, payload }: any) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload;
-    return (
-      <div className="bg-white p-2 border rounded shadow-sm">
-        <p className="font-semibold">{data.name}</p>
-        <p>Media: {formatDuration(data.media)}</p>
-        <p className="text-xs text-muted-foreground">
-          Deviazione std: ±{Math.round(data.deviazione)} min
-        </p>
-        <p className="text-xs text-muted-foreground">
-          Basata su {data.osservazioni} osservazioni
-        </p>
-      </div>
-    );
-  }
-  return null;
-};
 
 export default function StatisticheCatalogo() {
   const [catalogo, setCatalogo] = useState<CatalogoResponse[]>([])
@@ -56,8 +32,9 @@ export default function StatisticheCatalogo() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedPartNumber, setSelectedPartNumber] = useState<string>('')
   const [rangeTempo, setRangeTempo] = useState<string>('30')
-  const [statistiche, setStatistiche] = useState<any>(null)
+  const [statistiche, setStatistiche] = useState<StatistichePartNumber | null>(null)
   const [loadingStats, setLoadingStats] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
 
   // Carica il catalogo al caricamento della pagina
@@ -65,10 +42,12 @@ export default function StatisticheCatalogo() {
     const fetchCatalogo = async () => {
       try {
         setIsLoading(true)
+        setError(null)
         const data = await catalogoApi.getAll()
         setCatalogo(data.filter(item => item.attivo)) // Solo parti attive
-      } catch (error) {
-        console.error('Errore nel caricamento del catalogo:', error)
+      } catch (err) {
+        console.error('Errore nel caricamento del catalogo:', err)
+        setError('Impossibile caricare il catalogo. Riprova più tardi.')
         toast({
           variant: 'destructive',
           title: 'Errore',
@@ -84,6 +63,8 @@ export default function StatisticheCatalogo() {
 
   // Carica le statistiche quando cambia il part number selezionato o il range temporale
   useEffect(() => {
+    let isMounted = true;
+
     const fetchStatistiche = async () => {
       if (!selectedPartNumber) {
         setStatistiche(null)
@@ -92,63 +73,115 @@ export default function StatisticheCatalogo() {
       
       try {
         setLoadingStats(true)
+        setError(null)
         
         // Chiamata all'API per recuperare le statistiche
         const giorni = parseInt(rangeTempo)
         const result = await tempoFasiApi.getStatisticheByPartNumber(selectedPartNumber, giorni)
-        setStatistiche(result)
-      } catch (error) {
-        console.error('Errore nel caricamento delle statistiche:', error)
-        toast({
-          variant: 'destructive',
-          title: 'Errore',
-          description: 'Impossibile caricare le statistiche. Riprova più tardi.',
-        })
+        
+        if (isMounted) {
+          setStatistiche(result)
+        }
+      } catch (err) {
+        console.error('Errore nel caricamento delle statistiche:', err)
+        if (isMounted) {
+          setError('Impossibile caricare le statistiche. Riprova più tardi.')
+          toast({
+            variant: 'destructive',
+            title: 'Errore',
+            description: 'Impossibile caricare le statistiche. Riprova più tardi.',
+          })
+        }
       } finally {
-        setLoadingStats(false)
+        if (isMounted) {
+          setLoadingStats(false)
+        }
       }
     }
     
     if (selectedPartNumber) {
       fetchStatistiche()
     }
+
+    return () => {
+      isMounted = false;
+    };
   }, [selectedPartNumber, rangeTempo, toast])
 
   // Filtra il catalogo in base alla ricerca
   const filteredCatalogo = catalogo.filter(item => {
+    if (!searchQuery) return true;
+    
     const searchLower = searchQuery.toLowerCase()
     return (
       item.part_number.toLowerCase().includes(searchLower) ||
-      item.descrizione.toLowerCase().includes(searchLower) ||
+      (item.descrizione && item.descrizione.toLowerCase().includes(searchLower)) ||
       (item.categoria && item.categoria.toLowerCase().includes(searchLower))
     )
   })
 
-  // Prepara i dati per il grafico
-  const prepareChartData = () => {
-    if (!statistiche) return []
-    
-    const data: any[] = []
-    
-    // Aggiungi dati per ogni fase
-    Object.entries(statistiche.previsioni).forEach(([fase, stats]: [string, any]) => {
-      // Calcola una deviazione standard fittizia (10% della media)
-      const deviazione = stats.media_minuti * 0.1
-      
-      data.push({
-        name: translateFase(fase),
-        media: stats.media_minuti,
-        deviazione: deviazione,
-        osservazioni: stats.numero_osservazioni,
-        color: colors[translateFase(fase)] || '#888888'
-      })
-    })
-    
-    return data
+  // Traduci i nomi delle fasi
+  const translateFase = (fase: string): string => {
+    const translations: Record<string, string> = {
+      'laminazione': 'Laminazione',
+      'attesa_cura': 'Attesa Cura',
+      'cura': 'Cura'
+    };
+    return translations[fase] || fase;
   }
 
-  const chartData = prepareChartData()
-  const nonHaODLCompletati = statistiche && statistiche.totale_odl === 0
+  // Calcola il totale delle medie per tutte le fasi
+  const calcolaTotaleMedie = (): number => {
+    if (!statistiche || !statistiche.previsioni) return 0;
+    
+    let totale = 0;
+    
+    try {
+      Object.values(statistiche.previsioni).forEach(fase => {
+        if (fase && typeof fase === 'object' && 'media_minuti' in fase) {
+          totale += typeof fase.media_minuti === 'number' ? fase.media_minuti : 0;
+        }
+      });
+    } catch (err) {
+      console.error('Errore nel calcolo del totale medie:', err);
+    }
+    
+    return totale;
+  }
+
+  // Calcola il numero di fasi attive
+  const calcolaFasiAttive = (): number => {
+    if (!statistiche || !statistiche.previsioni) return 0;
+    
+    let fasiAttive = 0;
+    
+    try {
+      Object.values(statistiche.previsioni).forEach(fase => {
+        if (fase && typeof fase === 'object' && 'media_minuti' in fase) {
+          if (typeof fase.media_minuti === 'number' && fase.media_minuti > 0) {
+            fasiAttive++;
+          }
+        }
+      });
+    } catch (err) {
+      console.error('Errore nel calcolo delle fasi attive:', err);
+    }
+    
+    return fasiAttive;
+  }
+
+  // Verifica se ci sono ODL completati
+  const hasDatiValidi = (): boolean => {
+    if (!statistiche) return false;
+    
+    try {
+      const totaleODL = statistiche.totale_odl || 0;
+      return totaleODL > 0;
+    } catch (err) {
+      console.error('Errore nella verifica dei dati validi:', err);
+      return false;
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -158,6 +191,14 @@ export default function StatisticheCatalogo() {
           Analisi dei tempi di produzione per part number
         </p>
       </div>
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Errore</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid gap-6 md:grid-cols-4">
         <div className="md:col-span-1 space-y-4">
@@ -250,7 +291,7 @@ export default function StatisticheCatalogo() {
                   <Loader2 className="h-8 w-8 animate-spin" />
                   <span className="ml-2">Caricamento statistiche...</span>
                 </div>
-              ) : nonHaODLCompletati ? (
+              ) : !hasDatiValidi() ? (
                 <Alert>
                   <AlertCircle className="h-4 w-4" />
                   <AlertTitle>Dati insufficienti</AlertTitle>
@@ -264,7 +305,7 @@ export default function StatisticheCatalogo() {
                   <div className="grid grid-cols-3 gap-4">
                     <div className="p-4 bg-muted rounded-lg text-center">
                       <div className="text-2xl font-bold">
-                        {statistiche.totale_odl}
+                        {statistiche?.totale_odl || 0}
                       </div>
                       <div className="text-sm text-muted-foreground">
                         ODL Completati
@@ -273,12 +314,7 @@ export default function StatisticheCatalogo() {
                     
                     <div className="p-4 bg-muted rounded-lg text-center">
                       <div className="text-2xl font-bold">
-                        {formatDuration(
-                          Object.values(statistiche.previsioni).reduce(
-                            (acc: number, curr: any) => acc + curr.media_minuti, 
-                            0
-                          )
-                        )}
+                        {formatDuration(calcolaTotaleMedie())}
                       </div>
                       <div className="text-sm text-muted-foreground">
                         Tempo Totale Medio
@@ -287,12 +323,7 @@ export default function StatisticheCatalogo() {
                     
                     <div className="p-4 bg-muted rounded-lg text-center">
                       <div className="text-2xl font-bold">
-                        {Math.round(
-                          Object.values(statistiche.previsioni).reduce(
-                            (acc: number, curr: any) => curr.media_minuti > 0 ? acc + 1 : acc, 
-                            0
-                          )
-                        )}
+                        {calcolaFasiAttive()}
                       </div>
                       <div className="text-sm text-muted-foreground">
                         Fasi Registrate
@@ -300,35 +331,30 @@ export default function StatisticheCatalogo() {
                     </div>
                   </div>
                   
-                  <div className="h-[400px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart
-                        data={chartData}
-                        margin={{ top: 20, right: 30, left: 20, bottom: 40 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" />
-                        <YAxis 
-                          label={{ 
-                            value: 'Minuti', 
-                            angle: -90, 
-                            position: 'insideLeft', 
-                            style: { textAnchor: 'middle' } 
-                          }} 
-                        />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend />
-                        <Bar 
-                          dataKey="media" 
-                          name="Tempo Medio (min)" 
-                          radius={[4, 4, 0, 0]}
-                        >
-                          {chartData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-medium">Dettaglio tempi per fase</h3>
+                    
+                    {statistiche && statistiche.previsioni && Object.entries(statistiche.previsioni).map(([fase, dati]) => {
+                      if (!dati) return null;
+                      
+                      return (
+                        <div key={fase} className="p-4 border rounded-lg">
+                          <div className="flex justify-between items-center">
+                            <h4 className="font-medium">{translateFase(fase)}</h4>
+                            <div className="text-xl font-bold">{formatDuration(dati.media_minuti || 0)}</div>
+                          </div>
+                          <div className="text-sm text-muted-foreground mt-1">
+                            Basato su {dati.numero_osservazioni || 0} osservazioni
+                          </div>
+                        </div>
+                      );
+                    })}
+                    
+                    {(!statistiche || !statistiche.previsioni || Object.keys(statistiche.previsioni).length === 0) && (
+                      <div className="text-center text-muted-foreground py-4">
+                        Nessun dato disponibile per le fasi di produzione
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
