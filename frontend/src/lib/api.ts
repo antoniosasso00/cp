@@ -434,5 +434,38 @@ export const tempoFasiApi = {
     
     const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
     return apiRequest<PrevisioneTempo>(`/tempo-fasi/previsioni/${fase}${query}`);
+  },
+
+  // Nuova funzione per recuperare statistiche per part number
+  getStatisticheByPartNumber: async (partNumber: string, giorni?: number) => {
+    const queryParams = new URLSearchParams();
+    if (giorni) queryParams.append('giorni', giorni.toString());
+    
+    // Dati fittizi per ogni fase
+    const previsioni: Record<string, PrevisioneTempo> = {};
+    
+    // Recupera statistiche per ogni fase
+    for (const fase of ['laminazione', 'attesa_cura', 'cura']) {
+      try {
+        const result = await apiRequest<PrevisioneTempo>(
+          `/tempo-fasi/previsioni/${fase}?part_number=${partNumber}${queryParams.toString() ? `&${queryParams.toString()}` : ''}`
+        );
+        previsioni[fase] = result;
+      } catch (error) {
+        console.error(`Errore nel recupero delle statistiche per ${fase}:`, error);
+        // Inserisci un dato vuoto in caso di errore
+        previsioni[fase] = {
+          fase: fase as any,
+          media_minuti: 0,
+          numero_osservazioni: 0
+        };
+      }
+    }
+    
+    return {
+      part_number: partNumber,
+      previsioni,
+      totale_odl: previsioni.cura.numero_osservazioni || 0
+    };
   }
 }; 

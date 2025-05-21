@@ -411,6 +411,232 @@ def seed_odl(debug: bool = False):
     except Exception as e:
         logger.error(f"Errore durante il popolamento degli ODL: {str(e)}")
 
+def seed_odl_completati(debug: bool = False):
+    """Crea ODL completati con tempi di fase registrati per l'analisi statistica"""
+    logger.info("\n📊 Popolamento ODL completati con tempi di fase...")
+    
+    # Recupera le parti esistenti
+    parti_url = f"{BASE_URL}{API_PREFIX}/parti/"
+    try:
+        parti_response = requests.get(parti_url)
+        if parti_response.status_code != 200 or not parti_response.json():
+            logger.error(f"Impossibile recuperare le parti: {parti_response.status_code}")
+            return
+        
+        parti = parti_response.json()
+        
+        # Recupera i tool esistenti
+        tools_url = f"{BASE_URL}{API_PREFIX}/tools/"
+        tools_response = requests.get(tools_url)
+        if tools_response.status_code != 200 or not tools_response.json():
+            logger.error(f"Impossibile recuperare i tools: {tools_response.status_code}")
+            return
+        
+        tools = tools_response.json()
+        
+        # Elenco di durate di fase variabili (in minuti) per ODL completati
+        # [laminazione, attesa_cura, cura]
+        tempo_fasi_completate = [
+            # PN: CPX-101 - Pannello SX
+            [120, 45, 65],  # Primo ODL completato
+            [130, 40, 70],  # Secondo ODL completato 
+            [115, 50, 60],  # Terzo ODL completato
+            
+            # PN: CPX-201 - Supporto Motore 
+            [150, 60, 90],  # Primo ODL completato
+            [145, 65, 85],  # Secondo ODL completato
+            
+            # PN: CPX-401 - Fascia Frontale
+            [100, 30, 50],  # Primo ODL completato
+            [110, 35, 55],  # Secondo ODL completato
+        ]
+        
+        # Crea ODL completati per diverse parti
+        # Configura quali parti utilizzare per gli ODL completati
+        parti_odl_completati = [0, 0, 0, 2, 2, 4, 4]  # Indici delle parti in parti[]
+        
+        for i, idx_parte in enumerate(parti_odl_completati):
+            if idx_parte >= len(parti):
+                logger.warning(f"Indice parte non valido: {idx_parte}")
+                continue
+                
+            parte = parti[idx_parte]
+            tool = tools[idx_parte % len(tools)]
+            
+            # Verifica se esiste già un ODL simile
+            odl_url = f"{BASE_URL}{API_PREFIX}/odl/"
+            search_params = {
+                "parte_id": parte["id"],
+                "tool_id": tool["id"],
+                "status": "Finito"
+            }
+            
+            search_response = requests.get(odl_url, params=search_params)
+            if search_response.status_code == 200 and len(search_response.json()) > 0:
+                logger.info(f"[✔] ODL completato già presente: Parte {parte['part_number']}, Tool {tool['codice']}")
+                continue
+            
+            # Crea l'ODL completato
+            odl_data = {
+                "parte_id": parte["id"],
+                "tool_id": tool["id"],
+                "priorita": 1,  # Priorità bassa per ODL completati
+                "status": "Finito",
+                "note": f"ODL completato di test #{i+1} - {parte['part_number']} con {tool['codice']}"
+            }
+            
+            # Crea l'ODL
+            odl_response = requests.post(odl_url, json=odl_data)
+            if odl_response.status_code not in [200, 201]:
+                logger.error(f"[✗] Errore nella creazione dell'ODL completato: {odl_response.status_code}")
+                if debug:
+                    logger.debug(f"Dettagli errore: {odl_response.text}")
+                continue
+            
+            odl_creato = odl_response.json()
+            odl_id = odl_creato["id"]
+            logger.info(f"[✓] Creato ODL completato: ID {odl_id}, Parte {parte['part_number']}, Tool {tool['codice']}")
+            
+            # Per ogni ODL, crea i tempi delle 3 fasi
+            # Calcola le date di inizio/fine progressive partendo da 10 giorni fa
+            from datetime import datetime, timedelta
+            
+            tempo_fasi = ["laminazione", "attesa_cura", "cura"]
+            data_fine_corrente = datetime.now() - timedelta(days=1)  # ODL finito ieri
+            
+            # Inversione dell'ordine: prima cura, poi attesa, poi laminazione
+            for j in range(2, -1, -1):
+                fase = tempo_fasi[j]
+                durata = tempo_fasi_completate[i][j]
+                
+                # Calcola inizio sottraendo la durata dalla fine
+                data_inizio = data_fine_corrente - timedelta(minutes=durata)
+                
+                # Crea il record del tempo fase
+                tempo_fase_data = {
+                    "odl_id": odl_id,
+                    "fase": fase,
+                    "inizio_fase": data_inizio.isoformat(),
+                    "fine_fase": data_fine_corrente.isoformat(),
+                    "durata_minuti": durata,
+                    "note": f"Fase {fase} completata in {durata} minuti"
+                }
+                
+                tempo_fase_url = f"{BASE_URL}{API_PREFIX}/tempo-fasi/"
+                tempo_fase_response = requests.post(tempo_fase_url, json=tempo_fase_data)
+                
+                if tempo_fase_response.status_code in [200, 201]:
+                    tempo_fase_id = tempo_fase_response.json()["id"]
+                    logger.info(f"  [✓] Creato tempo fase: {fase}, durata {durata} min (ID: {tempo_fase_id})")
+                else:
+                    logger.error(f"  [✗] Errore nella creazione del tempo fase {fase}: {tempo_fase_response.status_code}")
+                    if debug:
+                        logger.debug(f"  Dettagli errore: {tempo_fase_response.text}")
+                
+                # La fine di questa fase diventa l'inizio della fase precedente
+                data_fine_corrente = data_inizio
+        
+        # Crea anche ODL in corso con solo prima/seconda fase
+        # Questa volta usando le parti rimanenti
+        stati_incompleti = ["Laminazione", "Attesa Cura"]
+        fasi_incomplete = ["laminazione", "attesa_cura"]
+        parti_odl_incompleti = [1, 3]  # Indici delle parti in parti[]
+        
+        for i, idx_parte in enumerate(parti_odl_incompleti):
+            if idx_parte >= len(parti):
+                continue
+                
+            parte = parti[idx_parte]
+            tool = tools[idx_parte % len(tools)]
+            
+            # Crea l'ODL in stato non completato
+            stato_odl = stati_incompleti[i % len(stati_incompleti)]
+            
+            # Verifica se esiste già un ODL simile
+            odl_url = f"{BASE_URL}{API_PREFIX}/odl/"
+            search_params = {
+                "parte_id": parte["id"],
+                "tool_id": tool["id"],
+                "status": stato_odl
+            }
+            
+            search_response = requests.get(odl_url, params=search_params)
+            if search_response.status_code == 200 and len(search_response.json()) > 0:
+                logger.info(f"[✔] ODL incompleto già presente: Parte {parte['part_number']}, Tool {tool['codice']}, Stato {stato_odl}")
+                continue
+            
+            odl_data = {
+                "parte_id": parte["id"],
+                "tool_id": tool["id"],
+                "priorita": 3,  # Priorità media
+                "status": stato_odl,
+                "note": f"ODL in corso di test - {parte['part_number']} con {tool['codice']}"
+            }
+            
+            odl_response = requests.post(odl_url, json=odl_data)
+            if odl_response.status_code not in [200, 201]:
+                logger.error(f"[✗] Errore nella creazione dell'ODL incompleto: {odl_response.status_code}")
+                continue
+            
+            odl_creato = odl_response.json()
+            odl_id = odl_creato["id"]
+            logger.info(f"[✓] Creato ODL incompleto: ID {odl_id}, Parte {parte['part_number']}, Tool {tool['codice']}, Stato {stato_odl}")
+            
+            # Registra solo le fasi precedenti a quella corrente
+            fase_corrente = fasi_incomplete[i % len(fasi_incomplete)]
+            fasi_da_registrare = []
+            
+            if fase_corrente == "attesa_cura":
+                fasi_da_registrare.append("laminazione")  # Registra laminazione se siamo in attesa cura
+            
+            # Aggiungi la fase corrente (senza fine)
+            tempo_fase_url = f"{BASE_URL}{API_PREFIX}/tempo-fasi/"
+            
+            # Prima registra le fasi completate
+            for fase in fasi_da_registrare:
+                durata = 120  # Durata standard per le fasi completate
+                data_fine = datetime.now() - timedelta(hours=2)
+                data_inizio = data_fine - timedelta(minutes=durata)
+                
+                tempo_fase_data = {
+                    "odl_id": odl_id,
+                    "fase": fase,
+                    "inizio_fase": data_inizio.isoformat(),
+                    "fine_fase": data_fine.isoformat(),
+                    "durata_minuti": durata,
+                    "note": f"Fase {fase} completata"
+                }
+                
+                tempo_fase_response = requests.post(tempo_fase_url, json=tempo_fase_data)
+                if tempo_fase_response.status_code in [200, 201]:
+                    logger.info(f"  [✓] Creato tempo fase completata: {fase}")
+                else:
+                    logger.error(f"  [✗] Errore nella creazione del tempo fase {fase}: {tempo_fase_response.status_code}")
+            
+            # Poi registra la fase corrente (senza fine)
+            tempo_fase_data = {
+                "odl_id": odl_id,
+                "fase": fase_corrente,
+                "inizio_fase": (datetime.now() - timedelta(minutes=30)).isoformat(),
+                "fine_fase": None,
+                "durata_minuti": None,
+                "note": f"Fase {fase_corrente} in corso"
+            }
+            
+            tempo_fase_response = requests.post(tempo_fase_url, json=tempo_fase_data)
+            if tempo_fase_response.status_code in [200, 201]:
+                logger.info(f"  [✓] Creato tempo fase in corso: {fase_corrente}")
+            else:
+                logger.error(f"  [✗] Errore nella creazione del tempo fase {fase_corrente}: {tempo_fase_response.status_code}")
+                if debug:
+                    logger.debug(f"  Dettagli errore: {tempo_fase_response.text}")
+        
+    except Exception as e:
+        logger.error(f"Errore durante il popolamento degli ODL completati: {str(e)}")
+        if debug:
+            import traceback
+            logger.debug(traceback.format_exc())
+
 def main():
     """Funzione principale per il seed dei dati di test."""
     parser = argparse.ArgumentParser(description="Seed di dati di test per CarbonPilot")
@@ -441,6 +667,7 @@ def main():
     seed_autoclavi(debug)
     seed_parti(debug)
     seed_odl(debug)
+    seed_odl_completati(debug)
     
     # Verifica finale
     logger.info("\n🔍 Verifica endpoint in corso...")

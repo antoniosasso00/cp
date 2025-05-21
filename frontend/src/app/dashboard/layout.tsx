@@ -1,6 +1,10 @@
+'use client'
+
 import React from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import { Clock, BarChart3 } from 'lucide-react'
+import { usePathname } from 'next/navigation'
 
 interface SidebarNavItem {
   title: string;
@@ -36,6 +40,16 @@ const sidebarNavItems: SidebarNavItem[] = [
   {
     title: "Autoclavi",
     href: "/dashboard/autoclavi",
+  },
+  {
+    title: "Tempi Produzione",
+    href: "/dashboard/tempi",
+    icon: <Clock className="h-4 w-4" />
+  },
+  {
+    title: "Statistiche",
+    href: "/dashboard/catalog/statistiche",
+    icon: <BarChart3 className="h-4 w-4" />
   }
 ]
 
@@ -44,6 +58,9 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+  const activeClass = "text-foreground bg-muted";
+
   return (
     <div className="flex min-h-screen flex-col">
       {/* Header */}
@@ -86,7 +103,8 @@ export default function DashboardLayout({
                   href={item.href}
                   className={cn(
                     "flex items-center gap-3 rounded-lg px-3 py-2 text-base font-medium transition-all hover:text-foreground",
-                    "text-muted-foreground hover:bg-muted"
+                    "text-muted-foreground hover:bg-muted",
+                    pathname?.startsWith(item.href) ? activeClass : ""
                   )}
                 >
                   {item.icon}

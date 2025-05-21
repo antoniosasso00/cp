@@ -21,6 +21,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { buttonVariants } from '@/components/ui/button'
+import Link from 'next/link'
 
 export default function CatalogoPage() {
   const [catalogo, setCatalogo] = useState<CatalogoResponse[]>([])
@@ -100,12 +102,20 @@ export default function CatalogoPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Catalogo</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Catalogo Parti</h1>
           <p className="text-muted-foreground">
-            Gestisci i part number disponibili nel catalogo
+            Gestisci il catalogo dei part number disponibili
           </p>
         </div>
-        <Button onClick={handleCreateClick}>Nuovo Part Number</Button>
+        <div className="flex gap-2">
+          <Link 
+            href="/dashboard/catalog/statistiche" 
+            className={buttonVariants({ variant: "outline" })}
+          >
+            Statistiche
+          </Link>
+          <Button onClick={handleCreateClick}>Nuovo Part Number</Button>
+        </div>
       </div>
 
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
