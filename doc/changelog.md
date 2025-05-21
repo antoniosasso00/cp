@@ -19,4 +19,10 @@
 - Enum personalizzato `tipo_fase` per limitare i valori possibili
 
 ### Note di Rilascio
-Le previsioni diventano più accurate con l'accumularsi dei dati storici. Si consiglia di compilare i dati per almeno 10 cicli produttivi completi per ottenere previsioni significative. 
+Le previsioni diventano più accurate con l'accumularsi dei dati storici. Si consiglia di compilare i dati per almeno 10 cicli produttivi completi per ottenere previsioni significative.
+
+## versione 0.6.1 - Correzioni visualizzazione tempi fasi
+- Correzione dashboard: aggiunto widget per visualizzazione tempi medi di produzione con grafico
+- Miglioramento monitoraggio tempo: visualizzazione dettagliata per ogni fase 
+- Correzioni bug nella visualizzazione delle previsioni tempi di fase
+- Ottimizzazione interfaccia utente per la gestione dei tempi 
