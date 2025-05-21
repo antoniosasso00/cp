@@ -10,6 +10,7 @@ from .tool import ToolCreate, ToolUpdate, ToolResponse
 from .ciclo_cura import CicloCuraCreate, CicloCuraUpdate, CicloCuraResponse
 from .autoclave import AutoclaveCreate, AutoclaveUpdate, AutoclaveResponse
 from .odl import ODLCreate, ODLUpdate, ODLRead, ODLReadBasic
+from .tempo_fase import TempoFaseCreate, TempoFaseUpdate, TempoFaseInDB, PrevisioneTempo, TipoFase
 
 __all__ = [
     'CatalogoCreate', 'CatalogoUpdate', 'CatalogoResponse',
@@ -17,5 +18,6 @@ __all__ = [
     'ToolCreate', 'ToolUpdate', 'ToolResponse',
     'CicloCuraCreate', 'CicloCuraUpdate', 'CicloCuraResponse',
     'AutoclaveCreate', 'AutoclaveUpdate', 'AutoclaveResponse',
-    'ODLCreate', 'ODLUpdate', 'ODLRead', 'ODLReadBasic'
+    'ODLCreate', 'ODLUpdate', 'ODLRead', 'ODLReadBasic',
+    'TempoFaseCreate', 'TempoFaseUpdate', 'TempoFaseInDB', 'PrevisioneTempo', 'TipoFase'
 ] 

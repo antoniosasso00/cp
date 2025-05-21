@@ -356,10 +356,8 @@ export interface ODLResponse extends ODLBase {
 
 // API ODL
 export const odlApi = {
-  getAll: async (params?: { skip?: number; limit?: number; parte_id?: number; tool_id?: number; status?: string }): Promise<ODLResponse[]> => {
+  getAll: (params?: { parte_id?: number; tool_id?: number; status?: string }) => {
     const queryParams = new URLSearchParams();
-    if (params?.skip) queryParams.append('skip', params.skip.toString());
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
     if (params?.parte_id) queryParams.append('parte_id', params.parte_id.toString());
     if (params?.tool_id) queryParams.append('tool_id', params.tool_id.toString());
     if (params?.status) queryParams.append('status', params.status);
@@ -368,15 +366,73 @@ export const odlApi = {
     return apiRequest<ODLResponse[]>(`/odl${query}`);
   },
   
-  getOne: async (id: number): Promise<ODLResponse> => 
+  getOne: (id: number) => 
     apiRequest<ODLResponse>(`/odl/${id}`),
   
-  create: async (data: ODLCreate): Promise<ODLResponse> => 
+  create: (data: ODLCreate) => 
     apiRequest<ODLResponse>('/odl/', 'POST', data),
   
-  update: async (id: number, data: ODLUpdate): Promise<ODLResponse> => 
+  update: (id: number, data: ODLUpdate) => 
     apiRequest<ODLResponse>(`/odl/${id}`, 'PUT', data),
   
-  delete: async (id: number): Promise<void> => 
+  delete: (id: number) => 
     apiRequest<void>(`/odl/${id}`, 'DELETE'),
+};
+
+// Tipi base per TempoFase
+export interface TempoFaseBase {
+  odl_id: number;
+  fase: "laminazione" | "attesa_cura" | "cura";
+  inizio_fase: string;
+  fine_fase?: string | null;
+  durata_minuti?: number | null;
+  note?: string | null;
+}
+
+export interface TempoFaseCreate extends TempoFaseBase {}
+
+export interface TempoFaseUpdate extends Partial<TempoFaseBase> {}
+
+export interface TempoFaseResponse extends TempoFaseBase {
+  id: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PrevisioneTempo {
+  fase: "laminazione" | "attesa_cura" | "cura";
+  media_minuti: number;
+  numero_osservazioni: number;
+}
+
+// API Tempo Fasi
+export const tempoFasiApi = {
+  getAll: (params?: { odl_id?: number; fase?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.odl_id) queryParams.append('odl_id', params.odl_id.toString());
+    if (params?.fase) queryParams.append('fase', params.fase);
+    
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    return apiRequest<TempoFaseResponse[]>(`/tempo-fasi${query}`);
+  },
+  
+  getOne: (id: number) => 
+    apiRequest<TempoFaseResponse>(`/tempo-fasi/${id}`),
+  
+  create: (data: TempoFaseCreate) => 
+    apiRequest<TempoFaseResponse>('/tempo-fasi/', 'POST', data),
+  
+  update: (id: number, data: TempoFaseUpdate) => 
+    apiRequest<TempoFaseResponse>(`/tempo-fasi/${id}`, 'PUT', data),
+  
+  delete: (id: number) => 
+    apiRequest<void>(`/tempo-fasi/${id}`, 'DELETE'),
+    
+  getPrevisione: (fase: string, partNumber?: string) => {
+    const queryParams = new URLSearchParams();
+    if (partNumber) queryParams.append('part_number', partNumber);
+    
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    return apiRequest<PrevisioneTempo>(`/tempo-fasi/previsioni/${fase}${query}`);
+  }
 }; 

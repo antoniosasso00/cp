@@ -15,6 +15,7 @@ import socket
 from pathlib import Path
 from dotenv import load_dotenv
 from typing import List, Dict, Any, Optional
+from datetime import datetime, timedelta
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -177,7 +178,8 @@ AUTOCLAVI = [
 created_ids = {
     "cicli_cura": {},
     "tools": {},
-    "parti": {}
+    "parti": {},
+    "odl": {}
 }
 
 def post_if_missing(endpoint: str, unique_field: str, data: dict, debug: bool = False) -> Optional[dict]:
@@ -377,100 +379,136 @@ def seed_parti(debug: bool = False):
                 logger.debug(f"Memorizzato Parte ID: {created_parte.get('id')} per indice {idx}")
 
 def seed_odl(debug: bool = False):
-    """Popola gli ordini di lavoro con dati di test."""
-    logger.info("\n📝 Popolamento ordini di lavoro (ODL)...")
+    """Crea gli ODL di test."""
+    logger.info("==== Creazione ODL di Test ====")
     
-    # Ottieni tutte le parti
+    # Recupera i tools creati
+    r = requests.get(f"{BASE_URL}{API_PREFIX}/tools/")
+    if r.status_code != 200:
+        logger.error(f"Errore nel recupero dei tools: {r.status_code}")
+        return
+    tools = r.json()
+    
+    # Recupera le parti create
     r = requests.get(f"{BASE_URL}{API_PREFIX}/parti/")
     if r.status_code != 200:
-        logger.error(f"[!] Impossibile ottenere l'elenco delle parti: {r.status_code}")
+        logger.error(f"Errore nel recupero delle parti: {r.status_code}")
         return
-    
     parti = r.json()
-    if not parti:
-        logger.error("[!] Nessuna parte trovata, impossibile creare ODL")
+    
+    if not tools or not parti:
+        logger.error("Impossibile creare ODL: nessun tool o parte disponibile")
         return
     
-    status_options = ["Preparazione", "Laminazione", "Attesa Cura", "Cura", "Finito"]
+    # Stati possibili per gli ODL
+    stati = ["Preparazione", "Laminazione", "Attesa Cura", "Cura", "Finito"]
     
-    for i, parte in enumerate(parti):
-        parte_id = parte["id"]
+    # Crea 5 ODL con stati diversi e priorità variabili
+    for i in range(5):
+        # Seleziona casualmente una parte e un tool
+        parte = random.choice(parti)
+        tool = random.choice(tools)
         
-        # Ottieni i tool associati a questa parte
-        tool_ids = [tool["id"] for tool in parte.get("tools", [])]
+        # Crea l'ODL
+        data = {
+            "parte_id": parte["id"],
+            "tool_id": tool["id"],
+            "priorita": random.randint(1, 10),
+            "status": stati[i],  # Un ODL per ogni stato
+            "note": f"ODL di test #{i+1} per {parte['descrizione_breve']}"
+        }
         
-        if not tool_ids:
-            logger.warning(f"[!] La parte {parte['part_number']} non ha tool associati, salto creazione ODL")
-            continue
+        # Crea l'ODL e salva l'ID
+        odl = post_if_missing("odl", None, data, debug)
+        if odl:
+            created_ids["odl"][odl["id"]] = odl
+    
+    logger.info(f"[✔] Creati {len(created_ids['odl'])} ODL di test")
+
+def seed_tempo_fasi(debug: bool = False):
+    """Crea dati di test per il monitoraggio dei tempi delle fasi di produzione."""
+    logger.info("==== Creazione Tempi Fasi di Test ====")
+    
+    # Otteniamo gli ODL per cui creare i dati di tempo
+    if not created_ids["odl"]:
+        logger.error("Nessun ODL disponibile per creare i tempi fase")
+        return
+    
+    # Useremo 3 ODL per creare tempi di fase completi
+    odl_ids = list(created_ids["odl"].keys())[:3]
+    
+    # Fasi di produzione da tracciare
+    fasi = ["laminazione", "attesa_cura", "cura"]
+    
+    # Per ogni ODL creiamo un set completo di fasi
+    for idx, odl_id in enumerate(odl_ids):
+        # Tempi base per ogni fase (minuti)
+        tempi_base = {
+            "laminazione": 120,  # 2 ore
+            "attesa_cura": 240,  # 4 ore
+            "cura": 180  # 3 ore
+        }
         
-        # Crea da 1 a 2 ODL per ogni parte
-        num_odl = random.randint(1, 2)
-        for j in range(num_odl):
-            # Seleziona un tool casuale tra quelli associati alla parte
-            tool_id = random.choice(tool_ids)
+        # Data di base (3 giorni fa)
+        now = datetime.now()
+        start_date = now - timedelta(days=3)
+        
+        # Per ogni fase, crea un record di tempo
+        for fase in fasi:
+            # Data di inizio per questa fase
+            inizio_fase = start_date.isoformat()
             
-            # Crea l'ODL
-            odl_data = {
-                "parte_id": parte_id,
-                "tool_id": tool_id,
-                "priorita": random.randint(1, 3),
-                "status": random.choice(status_options),
-                "note": f"ODL di test per {parte['part_number']}, creato automaticamente."
+            # Calcola la durata con una leggera variazione casuale
+            variazione = random.uniform(0.8, 1.2)  # +/- 20%
+            durata_minuti = int(tempi_base[fase] * variazione)
+            
+            # Calcola la data di fine per questa fase
+            fine_fase = (start_date + timedelta(minutes=durata_minuti)).isoformat()
+            
+            # Aggiorna la data di inizio per la prossima fase
+            start_date = start_date + timedelta(minutes=durata_minuti)
+            
+            # Creazione dati tempo fase
+            data = {
+                "odl_id": odl_id,
+                "fase": fase,
+                "inizio_fase": inizio_fase,
+                "fine_fase": fine_fase,
+                "note": f"Fase {fase} per ODL {odl_id} (test seed)"
             }
             
-            created_odl = post_if_missing("odl", "id", odl_data, debug)
-            if not created_odl and debug:
-                logger.debug(f"ODL non creato o già esistente per parte_id={parte_id}, tool_id={tool_id}")
+            # Crea il record tempo fase
+            response = requests.post(f"{BASE_URL}{API_PREFIX}/tempo-fasi/", json=data)
+            
+            if response.status_code in [200, 201]:
+                logger.info(f"[✔] Creato tempo fase {fase} per ODL {odl_id}")
+            else:
+                logger.error(f"[!] Errore nella creazione tempo fase: {response.status_code} - {response.text}")
+                if debug:
+                    logger.debug(f"Dati inviati: {json.dumps(data, indent=2)}")
+    
+    logger.info("[✔] Seed dei tempi fase completato")
 
 def main():
-    """Funzione principale per il seed dei dati di test."""
-    parser = argparse.ArgumentParser(description="Seed di dati di test per CarbonPilot")
-    parser.add_argument("--debug", action="store_true", help="Attiva la modalità debug con dettagli aggiuntivi")
+    parser = argparse.ArgumentParser(description="Script di seed per dati di test")
+    parser.add_argument("--debug", action="store_true", help="Abilita log di debug")
     args = parser.parse_args()
-    
+
     debug = args.debug
-    if debug:
-        logger.setLevel(logging.DEBUG)
-    
-    logger.info("\n🌱 Seed dati di test in corso...")
-    
-    # Verifica connessione al backend
+
     try:
-        r = requests.get(f"{BASE_URL}/docs")
-        if r.status_code != 200:
-            logger.warning(f"⚠️ Il backend potrebbe non essere attivo. Status: {r.status_code}")
-    except requests.exceptions.ConnectionError:
-        logger.error(f"❌ Impossibile connettersi al backend su {BASE_URL}")
-        logger.info("Assicurati che il backend sia in esecuzione e l'URL sia corretto.")
-        logger.info(f"URL backend corrente: {BASE_URL}")
-        exit(1)
-    
-    # Popolamento dati
-    seed_catalogo(debug)
-    seed_tools(debug)
-    seed_cicli_cura(debug)
-    seed_autoclavi(debug)
-    seed_parti(debug)
-    seed_odl(debug)
-    
-    # Verifica finale
-    logger.info("\n🔍 Verifica endpoint in corso...")
-    success = all([
-        verify_endpoint("catalogo", len(CATALOGO_PARTS), debug),
-        verify_endpoint("tools", len(TOOLS), debug),
-        verify_endpoint("cicli-cura", len(CICLI_CURA), debug),
-        verify_endpoint("autoclavi", len(AUTOCLAVI), debug),
-        verify_endpoint("parti", len(PARTI), debug),
-        verify_endpoint("odl", 1, debug)
-    ])
-    
-    if success:
-        logger.info("\n✨ Seed e verifica completati con successo!")
-        logger.info("\n✅ Seed completato. Dati visibili nel frontend. Dashboard pronta.")
-    else:
-        logger.error("\n❌ Alcuni endpoint non hanno restituito i dati attesi. Controlla i log per i dettagli.")
-        if not debug:
-            logger.info("🔍 Riprova con l'opzione --debug per ottenere maggiori informazioni: python tools/seed_test_data.py --debug")
+        seed_catalogo(debug)
+        seed_tools(debug)
+        seed_cicli_cura(debug)
+        seed_autoclavi(debug)
+        seed_parti(debug)
+        seed_odl(debug)
+        seed_tempo_fasi(debug)
+        
+        logger.info("✅ Seed completato con successo!")
+    except Exception as e:
+        logger.error(f"❌ Errore durante il seed: {e}", exc_info=True)
+        sys.exit(1)
 
 # Definizione delle parti (da usare dopo aver ottenuto gli ID dai cicli di cura e tool)
 PARTI = [

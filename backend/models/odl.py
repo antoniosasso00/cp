@@ -32,5 +32,8 @@ class ODL(Base, TimestampMixin):
     note = Column(Text, nullable=True,
                  doc="Note aggiuntive sull'ordine di lavoro")
     
+    # Relazione con i tempi delle fasi
+    tempo_fasi = relationship("TempoFase", back_populates="odl", cascade="all, delete-orphan")
+    
     def __repr__(self):
         return f"<ODL(id={self.id}, parte_id={self.parte_id}, tool_id={self.tool_id}, status='{self.status}')>" 

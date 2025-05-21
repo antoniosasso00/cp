@@ -3,10 +3,14 @@
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ODLResponse, odlApi } from '@/lib/api'
-import { CalendarClock, Clipboard, Loader2, Settings } from 'lucide-react'
+import { CalendarClock, Clipboard, Loader2, Settings, Factory, Gauge, Activity, Clock } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { PieChart, Pie, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts'
+import { tempoFasiApi, PrevisioneTempo } from "@/lib/api"
+import { formatDuration } from "@/lib/utils"
 
 // Badge varianti per i diversi stati
 const getStatusBadgeVariant = (status: string) => {
@@ -20,10 +24,22 @@ const getStatusBadgeVariant = (status: string) => {
   return variants[status] || "default"
 }
 
+// Funzione per tradurre il tipo di fase
+const translateFase = (fase: string): string => {
+  const translations: Record<string, string> = {
+    'laminazione': 'Laminazione',
+    'attesa_cura': 'Attesa Cura',
+    'cura': 'Cura'
+  };
+  return translations[fase] || fase;
+}
+
 export default function DashboardPage() {
   const [odls, setODLs] = useState<ODLResponse[]>([])
   const [odlStats, setODLStats] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
+  const [tempiFasi, setTempiFasi] = useState<PrevisioneTempo[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     async function fetchData() {
@@ -52,6 +68,50 @@ export default function DashboardPage() {
     
     fetchData()
   }, [])
+  
+  useEffect(() => {
+    const fetchPrevisioni = async () => {
+      try {
+        setIsLoading(true)
+        
+        // Fetch previsioni per tutte le fasi
+        const fasi = ['laminazione', 'attesa_cura', 'cura']
+        const previsioni: PrevisioneTempo[] = []
+        
+        for (const fase of fasi) {
+          try {
+            const previsione = await tempoFasiApi.getPrevisione(fase)
+            if (previsione.numero_osservazioni > 0) {
+              previsioni.push(previsione)
+            }
+          } catch (error) {
+            console.error(`Errore nel caricamento previsione per ${fase}:`, error)
+          }
+        }
+        
+        setTempiFasi(previsioni)
+      } catch (error) {
+        console.error('Errore nel caricamento dei dati:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    
+    fetchPrevisioni()
+  }, [])
+  
+  // Converti i dati per il grafico
+  const chartData = tempiFasi.map(item => ({
+    fase: translateFase(item.fase),
+    minuti: item.media_minuti
+  }))
+  
+  // Colori per le fasi
+  const colors = {
+    'Laminazione': '#3b82f6',  // primary
+    'Attesa Cura': '#f59e0b',  // warning
+    'Cura': '#ef4444'          // destructive
+  }
   
   return (
     <div className="space-y-6">
