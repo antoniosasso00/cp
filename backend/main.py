@@ -1,14 +1,13 @@
 import logging
 import os
-import importlib
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 from api.routes import router
 from sqlalchemy import inspect
 
-# Importa gli oggetti necessari dal modulo database
-from api.database import engine, Base
+# Importa gli oggetti necessari dal modulo database corretto
+from models.db import engine, Base
 
 # Inizializzazione logger
 logging.basicConfig(level=logging.INFO)
@@ -23,14 +22,14 @@ app = FastAPI(
 # Configurazione CORS per permettere richieste dal frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In produzione, specificare l'origine esatta
+    allow_origins=["*"],  # In produzione, specificare l'origine esatta come ["http://carbonpilot-frontend:3000"]
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
 
 # Importa tutti i modelli per assicurarsi che siano registrati
-from models import *
+import models
 
 # Crea le tabelle se non esistono (fallback se Alembic non è configurato o fallisce)
 def create_tables_if_not_exist():

@@ -1,6 +1,15 @@
+# Configurazione cache condivisa
+x-build-cache: &build-cache
+  cache_from:
+    - type=local,src=./.docker-cache
+  cache_to:
+    - type=local,dest=./.docker-cache
+
 services:
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      <<: *build-cache
     container_name: carbonpilot-backend
     volumes:
       - ./backend:/app
@@ -17,18 +26,17 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    command: >
-      sh -c "sleep 10 && 
-             python -m alembic upgrade head && 
-             uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      <<: *build-cache
     container_name: carbonpilot-frontend
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000/v1
+      - NEXT_PUBLIC_API_URL=http://carbonpilot-backend:8000/api
     depends_on:
       - backend
     restart: unless-stopped
