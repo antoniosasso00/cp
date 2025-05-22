@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Text, Enum
+from sqlalchemy import Column, Integer, String, ForeignKey, Text, Enum, DateTime, func
 from sqlalchemy.orm import relationship
 from .base import Base, TimestampMixin
 
@@ -34,6 +34,13 @@ class ODL(Base, TimestampMixin):
     
     # Relazione con i tempi delle fasi
     tempo_fasi = relationship("TempoFase", back_populates="odl", cascade="all, delete-orphan")
+    
+    # Relazioni inverse
+    nesting_results = relationship("NestingResult", secondary="nesting_result_odl", back_populates="odl_list")
+    
+    # Metadati
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     
     def __repr__(self):
         return f"<ODL(id={self.id}, parte_id={self.parte_id}, tool_id={self.tool_id}, status='{self.status}')>" 

@@ -1,48 +1,44 @@
-FROM node:18-alpine AS base
+FROM node:18-alpine AS builder
 
-# Installa le dipendenze solo quando necessario
-FROM base AS deps
 WORKDIR /app
 
-# Copia i file necessari per l'installazione
-COPY package.json package-lock.json* ./
-# Installa tutte le dipendenze, incluse quelle di sviluppo
+# Copia solo i file necessari per npm ci
+COPY package*.json ./
+
+# Usa solo le dipendenze locali, non installa next globalmente
 RUN npm ci
 
-# Rebuilda il codice sorgente solo quando necessario
-FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+# Copia il resto dei file
 COPY . .
 
-# Copia anche i file di configurazione di PostCSS e Tailwind
-COPY postcss.config.js ./
-COPY tailwind.config.ts ./
+# Crea la cartella public se non esiste
+RUN mkdir -p public
 
-# Esegue la build dell'applicazione
+# Esegui la build specificando il percorso completo nel node_modules
 ENV NEXT_TELEMETRY_DISABLED 1
-RUN npm run build
+ENV NODE_ENV=production
+RUN node node_modules/next/dist/bin/next build
 
-# Immagine di produzione
-FROM base AS runner
+# Crea l'immagine di produzione
+FROM node:18-alpine AS runner
 WORKDIR /app
-
-ENV NODE_ENV production
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NODE_ENV=production
 
 # Configura l'utente non-root per motivi di sicurezza
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copia il codice compilato
-COPY --from=builder /app/public ./public
+# Crea la directory public nella destinazione
+RUN mkdir -p .next/static
+RUN mkdir -p public
+
+# Copia solo i file necessari per l'esecuzione
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/public ./public
 
-# Imposta i permessi corretti per la directory .next
-RUN chown -R nextjs:nodejs /app/.next
+# Imposta i permessi corretti
+RUN chown -R nextjs:nodejs /app
 
 # Passa all'utente non-root
 USER nextjs
@@ -51,5 +47,4 @@ USER nextjs
 EXPOSE 3000
 ENV PORT 3000
 
-# Comando corretto per avviare l'app in produzione
 CMD ["node", "server.js"] 

@@ -17,9 +17,22 @@ export const cicloSchema = z.object({
   pressione_stasi1: z.number().min(0, 'La pressione deve essere positiva'),
   durata_stasi1: z.number().min(1, 'La durata deve essere almeno 1 minuto'),
   attiva_stasi2: z.boolean(),
-  temperatura_stasi2: z.number().min(0, 'La temperatura deve essere positiva').optional(),
-  pressione_stasi2: z.number().min(0, 'La pressione deve essere positiva').optional(),
-  durata_stasi2: z.number().min(1, 'La durata deve essere almeno 1 minuto').optional(),
+  temperatura_stasi2: z.number().optional(),
+  pressione_stasi2: z.number().optional(),
+  durata_stasi2: z.number().optional(),
+}).refine((data) => {
+  // Valida i campi della stasi 2 solo se attiva_stasi2 è true
+  if (data.attiva_stasi2) {
+    return (
+      data.temperatura_stasi2 !== undefined && data.temperatura_stasi2 >= 0 &&
+      data.pressione_stasi2 !== undefined && data.pressione_stasi2 >= 0 &&
+      data.durata_stasi2 !== undefined && data.durata_stasi2 >= 1
+    )
+  }
+  return true
+}, {
+  message: "I campi della stasi 2 sono obbligatori quando la stasi 2 è attiva",
+  path: ["stasi2"]
 })
 
 export type CicloFormValues = z.infer<typeof cicloSchema>

@@ -1,1 +1,3 @@
-# File di inizializzazione del pacchetto api 
+"""
+API package initialization
+""" 

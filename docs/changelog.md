@@ -131,6 +131,16 @@ Questo file contiene il registro dei cambiamenti più significativi del progetto
 - Sistemata la gestione degli errori nelle operazioni CRUD
 - Migliorata la reattività dell'interfaccia durante le operazioni
 
+### [2023-05-23 - Modulo di Nesting Automatico]
+
+- Implementata pagina `/nesting` con visualizzazione tabellare dei nesting generati
+- Aggiunta funzionalità per la generazione automatica di nesting tramite `POST /api/v1/nesting/auto`
+- Visualizzazione dettagliata dei nesting con ODL inclusi
+- Ottimizzazione automatica degli ODL in stato "in_attesa_di_cura"
+- Interfaccia utente con feedback visivo durante la generazione (toast e spinner)
+- Aggiornamento automatico della tabella dopo la generazione di nuovi nesting
+- Integrazione completa con il modulo backend di ottimizzazione
+
 ---
 
 _Il formato di questo changelog è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)._ 

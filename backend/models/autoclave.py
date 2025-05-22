@@ -1,9 +1,10 @@
-from sqlalchemy import Column, Integer, Float, String, Boolean, Text
+from sqlalchemy import Column, Integer, Float, String, Boolean, Text, DateTime, func
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum
-from enum import Enum
+from sqlalchemy.orm import relationship
+from enum import Enum as PyEnum
 from .base import Base, TimestampMixin
 
-class StatoAutoclaveEnum(str, Enum):
+class StatoAutoclaveEnum(str, PyEnum):
     """Enum per lo stato operativo dell'autoclave"""
     DISPONIBILE = "DISPONIBILE"
     IN_USO = "IN_USO"
@@ -16,28 +17,25 @@ class Autoclave(Base, TimestampMixin):
     __tablename__ = "autoclavi"
     
     id = Column(Integer, primary_key=True, index=True)
-    nome = Column(String(100), nullable=False, unique=True,
+    nome = Column(String(100), unique=True, index=True,
                  doc="Nome identificativo dell'autoclave")
-    codice = Column(String(50), nullable=False, unique=True,
+    codice = Column(String(50), unique=True, index=True,
                    doc="Codice univoco dell'autoclave")
     
     # Dimensioni fisiche
-    lunghezza = Column(Float, nullable=False, doc="Lunghezza interna in mm")
-    larghezza_piano = Column(Float, nullable=False, doc="Larghezza utile del piano di carico")
+    lunghezza = Column(Float, doc="Lunghezza interna in mm")
+    larghezza_piano = Column(Float, doc="Larghezza utile del piano di carico")
     
     # Capacità e specifiche tecniche
-    num_linee_vuoto = Column(Integer, nullable=False, 
-                           doc="Numero di linee vuoto disponibili")
-    temperatura_max = Column(Float, nullable=False,
-                           doc="Temperatura massima in gradi Celsius")
-    pressione_max = Column(Float, nullable=False,
-                         doc="Pressione massima in bar")
+    num_linee_vuoto = Column(Integer, doc="Numero di linee vuoto disponibili")
+    temperatura_max = Column(Float, doc="Temperatura massima in gradi Celsius")
+    pressione_max = Column(Float, doc="Pressione massima in bar")
     
     # Stato operativo
     stato = Column(
         PgEnum(StatoAutoclaveEnum, name="statoautoclave", create_type=True, validate_strings=True),
-        nullable=False,
         default=StatoAutoclaveEnum.DISPONIBILE,
+        nullable=False,
         doc="Stato attuale dell'autoclave"
     )
     
@@ -47,6 +45,9 @@ class Autoclave(Base, TimestampMixin):
     anno_produzione = Column(Integer, nullable=True,
                            doc="Anno di produzione dell'autoclave")
     note = Column(Text, nullable=True, doc="Note aggiuntive sull'autoclave")
+    
+    # Relazioni
+    nesting_results = relationship("NestingResult", back_populates="autoclave")
     
     @property
     def disponibile(self) -> bool:

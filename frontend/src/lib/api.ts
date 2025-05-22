@@ -2,7 +2,7 @@
 
 import axios from 'axios'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
 // Tipi base per Catalogo
 export interface CatalogoBase {
@@ -468,4 +468,51 @@ export const tempoFasiApi = {
       totale_odl: previsioni.cura.numero_osservazioni || 0
     };
   }
+};
+
+// Tipi per Nesting
+export interface NestingResponse {
+  id: number;
+  autoclave: {
+    id: number;
+    nome: string;
+    codice: string;
+    num_linee_vuoto: number;
+    lunghezza: number;
+    larghezza_piano: number;
+  };
+  odl_list: Array<{
+    id: number;
+    parte: {
+      id: number;
+      part_number: string;
+      descrizione_breve: string;
+      num_valvole_richieste: number;
+    };
+    tool: {
+      id: number;
+      codice: string;
+      descrizione?: string;
+      lunghezza_piano: number;
+      larghezza_piano: number;
+    };
+    priorita: number;
+  }>;
+  area_utilizzata: number;
+  area_totale: number;
+  valvole_utilizzate: number;
+  valvole_totali: number;
+  created_at: string;
+}
+
+// API Nesting
+export const nestingApi = {
+  getAll: () => 
+    apiRequest<NestingResponse[]>('/nesting/'),
+  
+  getOne: (id: number) => 
+    apiRequest<NestingResponse>(`/nesting/${id}`),
+  
+  generateAuto: () => 
+    apiRequest<NestingResponse>('/nesting/auto', 'POST'),
 }; 

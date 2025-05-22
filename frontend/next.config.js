@@ -5,8 +5,8 @@ const nextConfig = {
   async rewrites() {
     return [
       {
-        source: '/v1/:path*',
-        destination: 'http://backend:8000/v1/:path*',
+        source: '/api/:path*',
+        destination: 'http://carbonpilot-backend:8000/api/:path*',
       },
     ]
   },

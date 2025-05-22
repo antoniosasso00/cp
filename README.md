@@ -2,7 +2,7 @@
 
 Sistema modulare per la gestione avanzata della produzione in fibra di carbonio, con dashboard interattiva, gestione catalogo, parti, tools, autoclavi e cicli di cura.
 
-![versione](https://img.shields.io/badge/version-0.5.2-brightgreen)
+![versione](https://img.shields.io/badge/version-0.7.0-brightgreen)
 
 ## Tecnologie principali
 
@@ -10,8 +10,9 @@ Sistema modulare per la gestione avanzata della produzione in fibra di carbonio,
 - 💻 Frontend: Next.js + TypeScript + TailwindCSS + shadcn/ui
 - 🐳 Containerizzazione: Docker + Docker Compose
 - 📈 Dashboard amministrativa con filtri, CRUD e interfaccia minimal
+- 🧠 Algoritmi di ottimizzazione per nesting
 
-## Funzionalità implementate nella v0.5.2
+## Funzionalità implementate nella v0.7.0
 
 ✅ CRUD completo:
 - Catalogo (Part Number)
@@ -20,6 +21,12 @@ Sistema modulare per la gestione avanzata della produzione in fibra di carbonio,
 - Autoclavi
 - Cicli di Cura
 - ODL (Ordini di Lavoro)
+
+✅ Nesting Automatico:
+- Ottimizzazione degli ODL nelle autoclavi
+- Gestione automatica del processo di cura
+- Visualizzazione dei nesting generati
+- Dettagli completi dei nesting e ODL inclusi
 
 ✅ Frontend con:
 - Sidebar navigabile

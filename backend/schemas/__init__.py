@@ -1,3 +1,7 @@
+"""
+Schemas package initialization
+"""
+
 # Esporta gli schemi principali per un più facile import
 # Ad esempio:
 # from .user import UserCreate, UserUpdate, UserResponse

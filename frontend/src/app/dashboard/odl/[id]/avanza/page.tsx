@@ -133,7 +133,6 @@ export default function AvanzaODLPage() {
       toast({
         title: 'Stato aggiornato',
         description: `ODL avanzato con successo a "${prossimoStato}"`,
-        variant: 'default',
       })
       
       // Aggiorna stato locale
@@ -143,6 +142,9 @@ export default function AvanzaODLPage() {
       // Ricarica le fasi di tempo
       const tempiData = await tempoFasiApi.getAll({ odl_id: Number(odlId) })
       setTempoFasi(tempiData)
+      
+      // Refresh della UI per aggiornare la lista ODL globale
+      router.refresh()
       
       // Se lo stato è "Finito", redireziona alla pagina di dettaglio dopo 2 secondi
       if (updatedOdl.status === "Finito") {

@@ -51,14 +51,23 @@ export function CicloModal({ open, onOpenChange, editingItem, onSuccess }: Ciclo
   const onSubmit = async (data: CicloFormValues) => {
     try {
       setIsLoading(true)
+      
+      // Rimuovi i campi della stasi 2 se non è attiva
+      const formData = { ...data };
+      if (!formData.attiva_stasi2) {
+        formData.temperatura_stasi2 = undefined;
+        formData.pressione_stasi2 = undefined;
+        formData.durata_stasi2 = undefined;
+      }
+      
       if (editingItem) {
-        await cicloCuraApi.update(editingItem.id, data)
+        await cicloCuraApi.update(editingItem.id, formData)
         toast({
           title: 'Ciclo aggiornato',
           description: 'Il ciclo di cura è stato aggiornato con successo.',
         })
       } else {
-        await cicloCuraApi.create(data)
+        await cicloCuraApi.create(formData)
         toast({
           title: 'Ciclo creato',
           description: 'Il nuovo ciclo di cura è stato creato con successo.',
