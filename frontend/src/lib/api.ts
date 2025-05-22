@@ -297,27 +297,27 @@ export interface UpdateAutoclaveDto extends Partial<CreateAutoclaveDto> {}
 
 export const autoclaveApi = {
   getAll: async (): Promise<Autoclave[]> => {
-    const response = await api.get<Autoclave[]>('/autoclavi')
+    const response = await api.get<Autoclave[]>('/v1/autoclavi/')
     return response.data
   },
 
   getById: async (id: number): Promise<Autoclave> => {
-    const response = await api.get<Autoclave>(`/autoclavi/${id}`)
+    const response = await api.get<Autoclave>(`/v1/autoclavi/${id}/`)
     return response.data
   },
 
   create: async (data: CreateAutoclaveDto): Promise<Autoclave> => {
-    const response = await api.post<Autoclave>('/autoclavi', data)
+    const response = await api.post<Autoclave>('/v1/autoclavi/', data)
     return response.data
   },
 
   update: async (id: number, data: UpdateAutoclaveDto): Promise<Autoclave> => {
-    const response = await api.put<Autoclave>(`/autoclavi/${id}`, data)
+    const response = await api.put<Autoclave>(`/v1/autoclavi/${id}/`, data)
     return response.data
   },
 
   delete: async (id: number): Promise<void> => {
-    await api.delete(`/autoclavi/${id}`)
+    await api.delete(`/v1/autoclavi/${id}/`)
   },
 }
 
@@ -515,4 +515,37 @@ export const nestingApi = {
   
   generateAuto: () => 
     apiRequest<NestingResponse>('/nesting/auto', 'POST'),
+};
+
+import {
+  ScheduleEntry,
+  ScheduleEntryCreateData,
+  ScheduleEntryUpdateData,
+  AutoScheduleResponseData
+} from './types/schedule';
+
+// API Schedule
+export const scheduleApi = {
+  getAll: (params?: { include_done?: boolean }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.include_done !== undefined) queryParams.append('include_done', params.include_done.toString());
+    
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    return apiRequest<ScheduleEntry[]>(`/schedules${query}`);
+  },
+  
+  getOne: (id: number) => 
+    apiRequest<ScheduleEntry>(`/schedules/${id}`),
+  
+  create: (data: ScheduleEntryCreateData) => 
+    apiRequest<ScheduleEntry>('/schedules/', 'POST', data),
+  
+  update: (id: number, data: ScheduleEntryUpdateData) => 
+    apiRequest<ScheduleEntry>(`/schedules/${id}`, 'PUT', data),
+  
+  delete: (id: number) => 
+    apiRequest<void>(`/schedules/${id}`, 'DELETE'),
+    
+  autoGenerate: (date: string) => 
+    apiRequest<AutoScheduleResponseData>(`/schedules/auto-generate?date=${date}`),
 }; 
