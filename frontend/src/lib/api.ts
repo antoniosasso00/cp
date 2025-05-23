@@ -2,12 +2,13 @@
 
 import axios from 'axios'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
 // Tipi base per Catalogo
 export interface CatalogoBase {
   descrizione: string;
   categoria?: string;
+  sotto_categoria?: string;
   attivo: boolean;
   note?: string;
 }
@@ -159,12 +160,14 @@ const apiRequest = async <T>(
 
 // API Catalogo
 export const catalogoApi = {
-  getAll: (params?: { skip?: number; limit?: number; categoria?: string; attivo?: boolean }) => {
+  getAll: (params?: { skip?: number; limit?: number; categoria?: string; sotto_categoria?: string; attivo?: boolean; search?: string }) => {
     const queryParams = new URLSearchParams();
     if (params?.skip) queryParams.append('skip', params.skip.toString());
     if (params?.limit) queryParams.append('limit', params.limit.toString());
     if (params?.categoria) queryParams.append('categoria', params.categoria);
+    if (params?.sotto_categoria) queryParams.append('sotto_categoria', params.sotto_categoria);
     if (params?.attivo !== undefined) queryParams.append('attivo', params.attivo.toString());
+    if (params?.search) queryParams.append('search', params.search);
     
     const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
     return apiRequest<CatalogoResponse[]>(`/catalogo${query}`);

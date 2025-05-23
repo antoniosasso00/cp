@@ -21,6 +21,7 @@ const catalogoSchema = z.object({
   part_number: z.string().min(1, "Part Number obbligatorio").max(50, "Massimo 50 caratteri"),
   descrizione: z.string().min(1, "Descrizione obbligatoria"),
   categoria: z.string().optional(),
+  sotto_categoria: z.string().optional(),
   attivo: z.boolean(),
   note: z.string().optional()
 })
@@ -30,6 +31,7 @@ export default function CatalogoModal({ isOpen, onClose, onSuccess, item }: Cata
     part_number: '',
     descrizione: '',
     categoria: '',
+    sotto_categoria: '',
     attivo: true,
     note: ''
   })
@@ -44,6 +46,7 @@ export default function CatalogoModal({ isOpen, onClose, onSuccess, item }: Cata
         part_number: item.part_number,
         descrizione: item.descrizione,
         categoria: item.categoria || '',
+        sotto_categoria: item.sotto_categoria || '',
         attivo: item.attivo,
         note: item.note || ''
       })
@@ -53,6 +56,7 @@ export default function CatalogoModal({ isOpen, onClose, onSuccess, item }: Cata
         part_number: '',
         descrizione: '',
         categoria: '',
+        sotto_categoria: '',
         attivo: true,
         note: ''
       })
@@ -106,6 +110,7 @@ export default function CatalogoModal({ isOpen, onClose, onSuccess, item }: Cata
         const updateData: CatalogoUpdate = {
           descrizione: formData.descrizione,
           categoria: formData.categoria || undefined,
+          sotto_categoria: formData.sotto_categoria || undefined,
           attivo: formData.attivo,
           note: formData.note || undefined
         }
@@ -191,6 +196,19 @@ export default function CatalogoModal({ isOpen, onClose, onSuccess, item }: Cata
               id="categoria"
               value={formData.categoria || ''}
               onChange={e => handleChange('categoria', e.target.value)}
+              className="col-span-3"
+              placeholder="Opzionale"
+            />
+          </div>
+
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="sotto_categoria" className="text-right">
+              Sotto Categoria
+            </Label>
+            <Input
+              id="sotto_categoria"
+              value={formData.sotto_categoria || ''}
+              onChange={e => handleChange('sotto_categoria', e.target.value)}
               className="col-span-3"
               placeholder="Opzionale"
             />
