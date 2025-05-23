@@ -363,20 +363,20 @@ export const odlApi = {
     if (params?.status) queryParams.append('status', params.status);
     
     const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
-    return apiRequest<ODLResponse[]>(`/odl${query}`);
+    return apiRequest<ODLResponse[]>(`/v1/odl${query}`);
   },
   
   getOne: (id: number) => 
-    apiRequest<ODLResponse>(`/odl/${id}`),
+    apiRequest<ODLResponse>(`/v1/odl/${id}`),
   
   create: (data: ODLCreate) => 
-    apiRequest<ODLResponse>('/odl/', 'POST', data),
+    apiRequest<ODLResponse>('/v1/odl/', 'POST', data),
   
   update: (id: number, data: ODLUpdate) => 
-    apiRequest<ODLResponse>(`/odl/${id}`, 'PUT', data),
+    apiRequest<ODLResponse>(`/v1/odl/${id}`, 'PUT', data),
   
   delete: (id: number) => 
-    apiRequest<void>(`/odl/${id}`, 'DELETE'),
+    apiRequest<void>(`/v1/odl/${id}`, 'DELETE'),
 };
 
 // Tipi base per TempoFase
