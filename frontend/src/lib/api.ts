@@ -548,4 +548,77 @@ export const scheduleApi = {
     
   autoGenerate: (date: string) => 
     apiRequest<AutoScheduleResponseData>(`/schedules/auto-generate?date=${date}`),
+};
+
+// Tipi per Reports
+export interface ReportFileInfo {
+  filename: string;
+  size: number;
+  created_at: string;
+  modified_at: string;
+}
+
+export interface ReportListResponse {
+  reports: ReportFileInfo[];
+}
+
+export interface ReportGenerateResponse {
+  message: string;
+  file_path: string;
+  file_name: string;
+}
+
+export type ReportRangeType = 'giorno' | 'settimana' | 'mese';
+export type ReportIncludeSection = 'odl' | 'tempi';
+
+// API Reports
+export const reportsApi = {
+  generate: async (
+    rangeType: ReportRangeType,
+    includeSections: ReportIncludeSection[] = [],
+    download: boolean = true
+  ): Promise<Blob | ReportGenerateResponse> => {
+    const queryParams = new URLSearchParams();
+    queryParams.append('range_type', rangeType);
+    queryParams.append('download', download.toString());
+    
+    if (includeSections.length > 0) {
+      queryParams.append('include', includeSections.join(','));
+    }
+    
+    const url = `${API_BASE_URL}/v1/reports/generate?${queryParams.toString()}`;
+    
+    if (download) {
+      // Per il download diretto, usiamo fetch per gestire il blob
+      const response = await fetch(url);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw {
+          status: response.status,
+          message: errorData.detail || `Errore API: ${response.status} ${response.statusText}`,
+          data: errorData,
+        };
+      }
+      return response.blob();
+    } else {
+      // Per ottenere solo le informazioni del file
+      return apiRequest<ReportGenerateResponse>(`/v1/reports/generate?${queryParams.toString()}`);
+    }
+  },
+  
+  list: () => 
+    apiRequest<ReportListResponse>('/v1/reports/list'),
+  
+  download: async (filename: string): Promise<Blob> => {
+    const response = await fetch(`${API_BASE_URL}/v1/reports/download/${filename}`);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw {
+        status: response.status,
+        message: errorData.detail || `Errore API: ${response.status} ${response.statusText}`,
+        data: errorData,
+      };
+    }
+    return response.blob();
+  },
 }; 

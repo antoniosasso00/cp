@@ -2,7 +2,7 @@
 
 Sistema modulare per la gestione avanzata della produzione in fibra di carbonio, con dashboard interattiva, gestione catalogo, parti, tools, autoclavi e cicli di cura.
 
-![versione](https://img.shields.io/badge/version-0.7.0-brightgreen)
+![versione](https://img.shields.io/badge/version-0.9.0-brightgreen)
 
 ## Tecnologie principali
 
@@ -11,8 +11,9 @@ Sistema modulare per la gestione avanzata della produzione in fibra di carbonio,
 - 🐳 Containerizzazione: Docker + Docker Compose
 - 📈 Dashboard amministrativa con filtri, CRUD e interfaccia minimal
 - 🧠 Algoritmi di ottimizzazione per nesting
+- 📄 Generazione report PDF automatici
 
-## Funzionalità implementate nella v0.7.0
+## Funzionalità implementate nella v0.9.0
 
 ✅ CRUD completo:
 - Catalogo (Part Number)
@@ -28,6 +29,20 @@ Sistema modulare per la gestione avanzata della produzione in fibra di carbonio,
 - Visualizzazione dei nesting generati
 - Dettagli completi dei nesting e ODL inclusi
 
+✅ Schedulazione Manuale:
+- Creazione manuale di schedule (ODL + Autoclave + orario)
+- Visualizzazione calendario con react-big-calendar
+- Auto-generazione schedulazioni tramite algoritmo backend
+- Editing e eliminazione schedulazioni esistenti
+
+✅ **Report PDF Automatici** (NUOVO v0.9.0):
+- Generazione report giornalieri, settimanali, mensili
+- Riepilogo nesting con tabelle dettagliate
+- Layout grafico visivo delle autoclavi
+- Sezioni opzionali: dettaglio ODL e tempi fase
+- Download diretto e gestione report esistenti
+- Salvataggio automatico su disco
+
 ✅ Frontend con:
 - Sidebar navigabile
 - Tabelle responsive filtrabili
@@ -35,15 +50,16 @@ Sistema modulare per la gestione avanzata della produzione in fibra di carbonio,
 - Gestione stati ODL e priorità
 - Interfaccia uniforme per le azioni (Modifica/Elimina)
 - Feedback visivo con toast notifications
+- **Pagina Reports con UI moderna per generazione PDF**
 
-## 🚀 Stato del Progetto – v0.5.1
-- Completata la Fase 5.1
-- Dashboard CRUD stabile per Tools, Cicli di Cura, Autoclavi, Catalogo, Parti, ODL
-- Interfaccia utente uniformata con DropdownMenu per le azioni
+## 🚀 Stato del Progetto – v0.9.0
+- Completata la Fase 9: Report PDF Automatici
+- Sistema completo di generazione report con reportlab
+- Dashboard CRUD stabile per tutti i moduli
+- Nesting automatico e schedulazione manuale funzionanti
+- **Nuova sezione Reports con download PDF**
 - Backend FastAPI e frontend Next.js sincronizzati
-- Seed e migrazioni funzionanti
 - Build stabile in locale e Docker
-- Sistema di seeding ODL implementato e testato
 
 ## Come avviare il progetto
 
@@ -98,27 +114,30 @@ progetto-root/
 ├── backend/              # Servizio API FastAPI
 │ ├── api/                # Implementazione API
 │ │ ├── routers/          # Router per le operazioni CRUD
-│ ├── models/             # Modelli SQLAlchemy
-│ ├── schemas/            # Schemi Pydantic
-│ ├── services/           # Logica di business
-│ ├── migrations/         # Migrazioni Alembic
-│ ├── nesting_optimizer/  # Algoritmi di ottimizzazione
-│ └── tests/              # Test unitari e di integrazione
-├── frontend/             # Applicazione Next.js
-│ ├── src/
-│ │ ├── app/              # Routes e layout
-│ │ │   ├── dashboard/    # Pagine della dashboard
-│ │ │   │   ├── tools/    # Gestione tools
-│ │ │   │   ├── catalog/  # Gestione catalogo
-│ │ │   │   ├── parts/    # Gestione parti
-│ │ │   │   ├── cicli-cura/ # Gestione cicli
-│ │ │   │   └── autoclavi/  # Gestione autoclavi
+│ │ │   ├── v1/           # Router per le operazioni CRUD v1
+│ │ │   └── nesting_optimizer/  # Algoritmi di ottimizzazione
+│ │ ├── models/             # Modelli SQLAlchemy
+│ │ ├── schemas/            # Schemi Pydantic
+│ │ ├── services/           # Logica di business
+│ │ ├── migrations/         # Migrazioni Alembic
+│ │ └── tests/              # Test unitari e di integrazione
+│ ├── frontend/             # Applicazione Next.js
+│ │ ├── src/
+│ │ │   ├── app/              # Routes e layout
+│ │ │   │   ├── dashboard/    # Pagine della dashboard
+│ │ │   │   │   ├── tools/    # Gestione tools
+│ │ │   │   │   ├── catalog/  # Gestione catalogo
+│ │ │   │   │   ├── parts/    # Gestione parti
+│ │ │   │   │   ├── cicli-cura/ # Gestione cicli
+│ │ │   │   │   └── autoclavi/  # Gestione autoclavi
+│ │ │   │   ├── components/       # Componenti riutilizzabili
+│ │ │   │   │   ├── ui/          # Componenti UI base
+│ │ │   │   │   └── shared/      # Componenti condivisi
+│ │ │   │   ├── lib/             # Utilities e hooks
+│ │ │   │   │   ├── api/         # Client API
+│ │ │   │   │   └── utils/       # Funzioni di utilità
+│ │ │   │   └── styles/          # CSS e stili
 │ │ ├── components/       # Componenti riutilizzabili
-│ │ │   ├── ui/          # Componenti UI base
-│ │ │   └── shared/      # Componenti condivisi
-│ │ ├── lib/             # Utilities e hooks
-│ │ │   ├── api/         # Client API
-│ │ │   └── utils/       # Funzioni di utilità
 │ │ └── styles/          # CSS e stili
 ├── docs/                 # Documentazione
 │ └── changelog.md        # Registro dei cambiamenti
@@ -158,16 +177,34 @@ CarbonPilot espone API CRUD complete per tutti i modelli principali:
 
 | Risorsa | Endpoint Base | Operazioni |
 |---------|--------------|------------|
-| Catalogo | `/api/catalogo` | GET, POST, PUT, DELETE |
-| Parti | `/api/parti` | GET, POST, PUT, DELETE |
-| Tools | `/api/tools` | GET, POST, PUT, DELETE |
-| Autoclavi | `/api/autoclavi` | GET, POST, PUT, DELETE |
-| Cicli di Cura | `/api/cicli-cura` | GET, POST, PUT, DELETE |
+| Catalogo | `/api/v1/catalogo` | GET, POST, PUT, DELETE |
+| Parti | `/api/v1/parti` | GET, POST, PUT, DELETE |
+| Tools | `/api/v1/tools` | GET, POST, PUT, DELETE |
+| Autoclavi | `/api/v1/autoclavi` | GET, POST, PUT, DELETE |
+| Cicli di Cura | `/api/v1/cicli-cura` | GET, POST, PUT, DELETE |
+| ODL | `/api/v1/odl` | GET, POST, PUT, DELETE |
+| Nesting | `/api/v1/nesting` | GET, POST (auto) |
+| Schedules | `/api/v1/schedules` | GET, POST, PUT, DELETE |
+| **Reports** | `/api/v1/reports` | **GET (generate, list, download)** |
+
+#### Endpoint Reports (NUOVO v0.9.0)
+
+| Endpoint | Metodo | Descrizione |
+|----------|--------|-------------|
+| `/api/v1/reports/generate` | GET | Genera e scarica report PDF |
+| `/api/v1/reports/list` | GET | Lista report esistenti |
+| `/api/v1/reports/download/{filename}` | GET | Scarica report specifico |
+
+**Parametri per generazione report:**
+- `range_type`: `giorno`, `settimana`, `mese`
+- `include`: `odl,tempi` (sezioni opzionali)
+- `download`: `true/false` (download diretto o info file)
 
 Ogni endpoint supporta operazioni di filtraggio e paginazione:
 
 ```
-GET /api/parti?part_number=ABC123&cliente=Cliente1&skip=0&limit=10
+GET /api/v1/parti?part_number=ABC123&skip=0&limit=10
+GET /api/v1/reports/generate?range_type=settimana&include=odl,tempi
 ```
 
 ### Autenticazione

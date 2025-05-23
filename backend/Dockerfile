@@ -41,6 +41,9 @@ RUN apt-get update && \
 COPY --from=builder /usr/local /usr/local
 COPY --from=builder /app /app
 
+# Crea la directory per i report PDF
+RUN mkdir -p /app/reports && chmod 755 /app/reports
+
 # Rendi eseguibile lo script di avvio
 RUN chmod +x /app/start.sh
 

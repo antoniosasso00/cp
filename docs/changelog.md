@@ -2,6 +2,48 @@
 
 Questo file contiene il registro dei cambiamenti più significativi del progetto.
 
+## [v0.9.0] - Fase 9: Report PDF Automatici
+
+### [2024-01-16 - Generazione Report PDF]
+
+- **Implementata generazione completa di report PDF** con contenuti dettagliati:
+  - Riepilogo nesting con tabelle autoclavi, ODL assegnati, area e valvole utilizzate
+  - Layout grafico visivo delle autoclavi con codifica colori per utilizzo
+  - Sezioni opzionali: dettaglio ODL e tempi fase
+  - Report per periodi: giornaliero, settimanale, mensile
+- **Nuove API backend per report**:
+  - `GET /api/v1/reports/generate` - Genera e scarica report PDF
+  - `GET /api/v1/reports/list` - Lista report esistenti
+  - `GET /api/v1/reports/download/{filename}` - Scarica report specifico
+- **Servizio ReportService** con generazione PDF tramite reportlab:
+  - Calcolo automatico intervalli di date (giorno/settimana/mese)
+  - Query ottimizzate per recupero dati nesting, ODL e tempi fase
+  - Layout grafico SVG per visualizzazione autoclavi
+  - Tabelle formattate con stili professionali
+- **Nuova pagina frontend `/dashboard/reports`**:
+  - UI moderna con card per generazione e gestione report
+  - Checkbox per selezione sezioni opzionali (ODL, tempi)
+  - Pulsanti dedicati per report giornaliero, settimanale, mensile
+  - Tabella report esistenti con download diretto
+  - Gestione completa errori e feedback utente
+- **Miglioramenti infrastruttura**:
+  - Aggiunta dipendenza reportlab==4.2.5
+  - Creazione directory `/app/reports` in Docker
+  - Componente Checkbox per shadcn/ui
+  - API client con gestione blob per download PDF
+
+### Funzionalità Tecniche
+- Generazione PDF con reportlab: tabelle, grafici, layout responsive
+- Salvataggio automatico file su disco con naming convention
+- Download diretto browser con gestione blob
+- Filtri temporali automatici per recupero dati
+- Gestione errori completa con toast notifications
+
+### Correzioni
+- Aggiunto router reports alle route principali
+- Installata dipendenza @radix-ui/react-checkbox
+- Corretta gestione tipi TypeScript per componenti checkbox
+
 ## [v0.6.0] - Fase 8: Schedulazione Manuale Stabile
 
 ### [2024-01-15 - Schedulazione ODL per Autoclavi]
