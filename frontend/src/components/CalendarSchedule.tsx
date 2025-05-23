@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Calendar, momentLocalizer, Views, SlotInfo } from 'react-big-calendar';
+import { Calendar, dateFnsLocalizer, Views, SlotInfo } from 'react-big-calendar';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -15,10 +15,14 @@ import { scheduleApi } from '@/lib/api';
 import { Autoclave } from '@/lib/api';
 import { ODLResponse } from '@/lib/api';
 
-// Localizzatore italiano per il calendario
-const locales = {
-  'it': it,
-};
+// Localizer ufficiale italiano per il calendario usando date-fns
+const localizer = dateFnsLocalizer({
+  format,
+  parse,
+  startOfWeek,
+  getDay,
+  locales: { it },
+});
 
 // Formato per date e orari
 const dateFormat = 'yyyy-MM-dd';
@@ -29,18 +33,6 @@ const dateTimeFormat = 'yyyy-MM-dd HH:mm:ss';
 const formatDate = (date: Date) => format(date, dateFormat);
 const formatTime = (date: Date) => format(date, timeFormat);
 const formatDateTime = (date: Date) => format(date, dateTimeFormat);
-
-// Localizer per il calendario
-const localizer = {
-  format: (value: Date, formatString: string) => 
-    format(value, formatString, { locale: locales['it'] }),
-  parse: (value: string, formatString: string) => 
-    parse(value, formatString, new Date(), { locale: locales['it'] }),
-  startOfWeek: () => startOfWeek(new Date(), { locale: locales['it'] }),
-  getDay: (date: Date) => getDay(date),
-  locales: locales,
-  firstDayOfWeek: 1, // Lunedì come primo giorno della settimana
-};
 
 // Interfaccia per le props del componente
 interface CalendarScheduleProps {
@@ -90,13 +82,8 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
     })));
   }, [autoclavi]);
 
-  // Carica gli eventi al cambio della data selezionata
-  useEffect(() => {
-    fetchSchedules();
-  }, [selectedDate]);
-
   // Funzione per recuperare le schedulazioni dal server
-  const fetchSchedules = async () => {
+  const fetchSchedules = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -120,7 +107,12 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Carica gli eventi al cambio della data selezionata
+  useEffect(() => {
+    fetchSchedules();
+  }, [selectedDate, fetchSchedules]);
 
   // Handler per il clic su uno slot vuoto del calendario
   const handleSelectSlot = useCallback(
@@ -411,7 +403,7 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
       ) : (
         <div className="flex-1 p-4">
           <Calendar
-            localizer={localizer as any}
+            localizer={localizer}
             events={events}
             resources={resources}
             resourceIdAccessor="id"

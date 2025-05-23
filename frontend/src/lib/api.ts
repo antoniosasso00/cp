@@ -297,27 +297,27 @@ export interface UpdateAutoclaveDto extends Partial<CreateAutoclaveDto> {}
 
 export const autoclaveApi = {
   getAll: async (): Promise<Autoclave[]> => {
-    const response = await api.get<Autoclave[]>('/v1/autoclavi/')
+    const response = await api.get<Autoclave[]>('/autoclavi')
     return response.data
   },
 
   getById: async (id: number): Promise<Autoclave> => {
-    const response = await api.get<Autoclave>(`/v1/autoclavi/${id}/`)
+    const response = await api.get<Autoclave>(`/autoclavi/${id}/`)
     return response.data
   },
 
   create: async (data: CreateAutoclaveDto): Promise<Autoclave> => {
-    const response = await api.post<Autoclave>('/v1/autoclavi/', data)
+    const response = await api.post<Autoclave>('/autoclavi', data)
     return response.data
   },
 
   update: async (id: number, data: UpdateAutoclaveDto): Promise<Autoclave> => {
-    const response = await api.put<Autoclave>(`/v1/autoclavi/${id}/`, data)
+    const response = await api.put<Autoclave>(`/autoclavi/${id}/`, data)
     return response.data
   },
 
   delete: async (id: number): Promise<void> => {
-    await api.delete(`/v1/autoclavi/${id}/`)
+    await api.delete(`/autoclavi/${id}/`)
   },
 }
 
@@ -363,20 +363,20 @@ export const odlApi = {
     if (params?.status) queryParams.append('status', params.status);
     
     const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
-    return apiRequest<ODLResponse[]>(`/v1/odl${query}`);
+    return apiRequest<ODLResponse[]>(`/odl/${query}`);
   },
   
   getOne: (id: number) => 
-    apiRequest<ODLResponse>(`/v1/odl/${id}`),
+    apiRequest<ODLResponse>(`/odl/${id}`),
   
   create: (data: ODLCreate) => 
-    apiRequest<ODLResponse>('/v1/odl/', 'POST', data),
+    apiRequest<ODLResponse>('/odl', 'POST', data),
   
   update: (id: number, data: ODLUpdate) => 
-    apiRequest<ODLResponse>(`/v1/odl/${id}`, 'PUT', data),
+    apiRequest<ODLResponse>(`/odl/${id}`, 'PUT', data),
   
   delete: (id: number) => 
-    apiRequest<void>(`/v1/odl/${id}`, 'DELETE'),
+    apiRequest<void>(`/odl/${id}`, 'DELETE'),
 };
 
 // Tipi base per TempoFase

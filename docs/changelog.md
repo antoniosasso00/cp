@@ -2,6 +2,33 @@
 
 Questo file contiene il registro dei cambiamenti più significativi del progetto.
 
+## [v0.6.0] - Fase 8: Schedulazione Manuale Stabile
+
+### [2024-01-15 - Schedulazione ODL per Autoclavi]
+
+- **Risolto crash "startOf is not a function"** nel componente CalendarSchedule.tsx
+- **Sostituito localizer manuale con dateFnsLocalizer ufficiale** di react-big-calendar
+  - Implementato localizer italiano con date-fns e locale 'it'
+  - Rimosso import errato di momentLocalizer
+  - Corretta implementazione con `dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales: { it } })`
+- **Stabilizzata pagina `/dashboard/schedule`** senza errori runtime
+- **Funzionalità complete di schedulazione manuale**:
+  - Creazione manuale di schedule (ODL in "Attesa Cura" + Autoclave + orario)
+  - Editing con caricamento automatico dei dati nel form
+  - Eliminazione di schedulazioni esistenti
+  - Visualizzazione su react-big-calendar con risorse (autoclavi)
+  - Auto-generazione di schedulazioni tramite algoritmo backend
+- **Miglioramenti tecnici**:
+  - Aggiunto useCallback per fetchSchedules per evitare loop infiniti
+  - Corrette dipendenze nei useEffect
+  - Rimosso cast "as any" dal localizer
+  - Integrazione completa con API backend per schedules, autoclavi e ODL
+
+### Correzioni
+- Risolto problema di compatibilità tra react-big-calendar e date-fns
+- Sistemata gestione delle date italiane nel calendario
+- Corretta visualizzazione degli eventi con colori differenziati (manuali vs automatici)
+
 ## [v0.5.0] 
 
 ### Aggiunte
