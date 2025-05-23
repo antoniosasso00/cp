@@ -17,24 +17,33 @@
                 └── 09a51a6ebee06125af7f4bf7799e52f80761483997a8d1e5f0246933dae17b88
                 └── 09c4893e5320a7c59acf82e87a07980214c1a955ef9f60cb9d0a48ba562c315a
                 └── 0b3bf016007e26e54618d2a268bfbeb136fe26b6780e80c21f7facc3b40b1bad
+                └── 113889ba669eb3f2b5046e0fff821d1467e3c33dbce4201ccd1cf1f3b6af4f3d
                 └── 1281a8ba689e630e021426f8c0c6748abf679c8859f3ebccc69c8c6dfe49d6a2
                 └── 1a98bf668d45a9c4dc96642a30a56f5f0eec164b6bc057f99f88c77a26b56210
                 └── 1bcdbf6d7c5323a612b1aaa2c96be1525e88f99ca337fbc87f0635b7b4e13883
                 └── 1e5a4c89cee5c0826c540ab06d4b6b491c96eda01837f430bd47f0d26702d6e3
+                └── 1f2f630eda2a7fd70444380fd9da6ce0e7bc8d083cf82e5957ec21cf4fb41cb4
+                └── 219e63b5cc3fb47a3b6e51047337f89aadcbdbfbdc9452e82788510919e9779b
                 └── 21ef46f90cf32dd2c803bea49ed04cd1ed75b9141ab15ffd6c005ab10c7176ea
+                └── 220c9f89220d1ccfc204d3afe6869077c2b7e03e69689d813960db5067705bb4
                 └── 25ff2da83641908f65c3a74d80409d6b1b62ccfaab220b9ea70b80df5a2e0549
                 └── 282011e91451b01ad7fa94e8dd26c6eefcb2383a4ee5751fd5bd7de0b7020f28
                 └── 2835502a122a1abbbe117d2cec8ebaee757c91034b22b139f32e96879590d601
                 └── 2a4385ee7f6101bd11a6d62c8e515485f10e9fae2156bd525fa811c3bf5e718a
                 └── 2aa37d3f8591e84bdb4cf4e2468895118e7a183fce9b99e6a54d32a457b9c837
                 └── 2c32b04d3d7baf052ab8e889aaee64416aaa2353e6b5597c507da153a3552867
+                └── 2dfef862b458753b879d11d27818baeddd0fca704b81d7e0e3f5ace80e6b00b3
                 └── 30153b172dcaf2bf590819db51642a5d683f06990a1a531aa42548b5654a4964
                 └── 344e3ae691d9d3fc5500b64c8c0911263d98155ddcea36bdac86643c51704696
                 └── 3505da72504d6629a57dbee315bb1448cfa44d757867848417ed63fa3ee17d33
                 └── 3764ca6902da5bd54ad405de2a8b5e57b5c79143d42c6ff4fce2950c4a951d6a
+                └── 39fe17497b35a6521592f68359f893fd5b0f753b96087e2419a83b82139ce22a
+                └── 3badbc8486225593e28a6007699ea9607992396559632dc22e083e41de59eeab
                 └── 3cced527db91575b385a07b5275a269aa50c7e9054ea6c11b0f395a20b4752b5
                 └── 3e3e848ab268be8917b301d02d164ee8485e071881239d4ebb8162d5549d1f73
                 └── 407b36e5861551eb55d27bab5e11bf6e9c6623ce71fc92afa7dda1cf7c1151ef
+                └── 42b2f67a87b8cf8949a423a8ac4a2630111b362d537d62d7ce9d3d2d4326078d
+                └── 464302535babeebfd759c7908e15f4be0451464d05afbd8405a0cc6cd425590c
                 └── 481eae116422699359a241cbad486a2c17fadc2e68df41c6a394739c60c0d995
                 └── 4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
                 └── 59b1612981a6dda325a9367c63d67d5d252f028cde3bcd93414a3c66bd32ea63
@@ -42,6 +51,8 @@
                 └── 5fce6424025637f07099afa8b82460b6856b7add2e9c0294aa9993301c364392
                 └── 61320b01ae5e0798393ef25f2dc72faf43703e60ba089b07d7170acbabbf8f62
                 └── 650f5f678148be74222b01bbd8092b3bc99b073f825640b8c169e4bddc097402
+                └── 65df5f2a186627a5141c05ce0a1193f56497614d4c82ea299d65f60ceaf10da0
+                └── 66a035e7e52bc4d9a6e04f55348cfad63b550d0757c16d7858a2deab448492d2
                 └── 671d12f78cdd23508edb636e48a9b5d32dc4abae0fd9d77782f8f56d5b146a90
                 └── 6a60b0e203c2b6db8a8142ffa1e34c51d9164df2375ab9117008ddcb7eb909b0
                 └── 6ed0e77a335281cd6425e90159ee61ea5a89ab67616159f6fad93ebc60dc11db
@@ -51,31 +62,42 @@
                 └── 750f3e9dffbfa442eab34e5857fa126df500a10ab1bc1d0862348273e81888e6
                 └── 7837436303dd35c74a96c22941eab71cca956804677afb79f808ea828119d9e1
                 └── 7b94da4e5ece4f378b168f511b1c7fd9e96302c012160558e2d77c3465422bc9
+                └── 7bec1fd4e94866968da9502991e3b9018f0ad4fa92cb6ff10be4c89e89cb4831
                 └── 7fefbba2bb420c0735d82b5661d6b16c0682e504558d3cf656f23653c20f99f1
+                └── 82d7fe8fbc5a18218f6606944c47400520a958bc60658f665b7177a330ec1ea4
+                └── 86eed546df78648dd650fc84ba7222071bbd7fc21e1364e6550ca8e07af340d7
                 └── 8a2ba25d6de4ae07f8cf466f79a3dcf3d92cb3264632221b7f0dd38b4383dc94
                 └── 8b706588b8e2374d1d380f0baa3a1b62fb3e1c8cea2a985e53b8a67380736636
                 └── 8c30cb90a661d600df443a70e52e99f4b3467474ab036f0698927a9f4f47d6a2
                 └── 8de7c8dc83c182c61f4e259e8f4721f8b4e89a49bf4fd6f09fd09b813890ca57
                 └── 8e3668ec0ca8b199480edf7cdf0310cc0d0b1a99fd0a0cb828760ec03514ec95
+                └── 906ffa4aacc9ea56a90c1d0e007e301686dba5b667e3371b402f944e276474d3
                 └── 923eff58819dac4829314a6d15df781c595fcf44ae038006f6e0ae35fcc64a54
                 └── 92783e3f37d9dc7e6c93b762e7b30639081fd9b208e7a7abb0b281a92dfd4107
                 └── 96975b498cc6a916bc8580d9d14d53f2feff4d6131f421c3ee766913ab0087f3
+                └── 96dc927fdb346a37f93026d13fc228612cfc161e5112c85763ea9bad9c56952a
                 └── 96f7b5ec638115dbd45d449dbd927d07d3f552d476268d96cd4797311eba91ff
+                └── 99a3dfd1f1b6fb80748dd97e3bad733f004c8f006f94d4beefd990a247c5d500
                 └── 9d545c45fb8c5b23b5b88114aeeefb48a96eface42af73e95458458524082e2d
                 └── 9e260211fa6f980e2d85346d0f46e50fed175aa4826aaa32c85d3089b01cd836
                 └── a2cc820b18a0aeb608de315da8b60457bae409d68db087c245809ce12d26aa82
                 └── a2dc039a18735b993242884d000aaa4db4b31c5cda8b2afe9d464cafdb6d1973
+                └── a429adf70634f257822dc69d869ecd233be76b61e89cca1f003676ecd5ab8588
                 └── a4f1940ac800ed3d7e8b082d2f0b3232212a71e6165ec00b4889a2bf22387745
                 └── a600c9fb5bae4ca85df6557eefbc43b78b656aaf1415d57ca1569857b149dc0c
                 └── a60ea393417e44cd7dad3970512e31a72a4f65ebb8eb64bd931679eafc4448d6
                 └── a7adaf9c4eee37589f0036e82955541fe7d0b411891218de1986423df845eddb
                 └── a7cb38bfd816258fffe95690d93b99d853aeccc9de6d773b2109bd047be09988
+                └── a82768bc6e3e9d514cf0102579b4b8aaa0a662c3a7891566d40e1ae1e514bc9f
                 └── a83eabb1cd9d87adefc5b18d06e06eb1d1ae348b3b2d4db0aa40ac2514cec460
                 └── aa9a7c8d848293495703aee21671c49a0d8725eff71766967feeeea14db38d43
+                └── ac1bc146b8d47deed1979b1247913da2c563e75a04de9936370268ac0d0126be
+                └── ae4183fd5479067d65a08aab6bd29794f93298d238df12cfbe2abc7c55650b40
                 └── af068b24eab8ee82c4382247de80ea9458686fa96e79b080fa667254bb5cc1f0
                 └── b20d952e44a326165dae097fcab27faf22ff1e2ddb814542ead191186ec55521
                 └── b32f5279904b0f18e478b51171ad944a21c15e0adf99d8da36bdea76e6b07632
                 └── b8c196ab9f1bf8d2b343f94effdcf20babd5601f6e2afb7f145ddd31d694a833
+                └── b9e8994f97e7df9b9ab1ce8155c900f8501c3b8428f12fa1c8b692fa7bd1bfa3
                 └── ba30ed0a1ab5c4daffa8cecb4c2cfe1963ffecd6f61e00baf7a9bb9bd8c9e15e
                 └── bb4e970e4bac891f10fff915993b7269cc0c2f62b4b369f94b9dcb13e6ddaa74
                 └── bdfc2f3c70f5d34e17211ae8bfb275382738978aaf84a5af960733d795d5344f
@@ -83,29 +105,44 @@
                 └── c03a8bca3743953c66476ef149410080410d44b1c0eddfae15ee1039b697bf03
                 └── c1879502e6ab812c980f8baae11a1412993ddfae656015d565bfcefd1afa8304
                 └── c1ea1a65b8ef26d34a44a5f20a51ea112420686c519c340b96fbc9708fed3746
+                └── c47ebabfe8286d984ef13aeec2487b8de6a06d7d91a155fe0ac041a0077ae340
                 └── c61915a57386df4c19403f54ef21fd38d6783c6d6b8f65edeaeefe53201cb875
                 └── d1093b2e9c8cf15f6c7db8186461bedcc060c829702e8f2504d72ab91ba9579f
                 └── d70eea6d9993b329af1a3063ae5a6ff6d6cabc7bcbc7aa32b938ab5f6ec1c082
                 └── da79d04dbccc8b59f1fb9e89e964b2ef957982232c773bb608545a6a490ccc72
                 └── dd71dde834b5c203d162902e6b8994cb2309ae049a0eabc4efea161b2b5a3d0e
                 └── e1703d2bcfbdc19ae6ae29f430c49b3167bfa0b9923aefca7e8fb59b974d1435
+                └── e17cb9d8c04200a164862cd4fb055c7c4c0d200574ff5a70576ddc93525f2c65
                 └── e48864c5202694bd2d45f5fba472a476e9b7d9039ce8551dcd8d74b5b56e6ccd
+                └── e93871125e04a89b818436079b204768fb8f3e0fe7cbf455cd7bced9dd2cad1e
+                └── e9440810988c6b2c98fbc7f0de96fc63b412b3c843d48d9f956abd707ed01974
+                └── eb527bf6db854aaed51ddc04b2b0068424069f62a2b8bb1fe36711bb566476a5
                 └── ed1b21127ad2a9068d473c89d95f10d3ff85b44bd7d7b5bdce8422aeaa6c0429
+                └── f00057b95c31e7edb21d1280c4ad8ddc626a9be9bb0f9fac6320a27c309f42f3
                 └── f18232174bc91741fdf3da96d85011092101a032a93a388b79e99e69c2d5c870
                 └── f4b92041072731f618759096e0c774ca051541b9eb94d58d33939e7c2f9fe5fb
                 └── f8342e709afb3d5531615ac3aee4f760a169803a8ff9a229fc9aac08546f0518
+                └── f9a5eb80f1c5dd59fa17d552cd7e7b149c997538e2a7177bc268689fd8027b92
                 └── fa70febde0f65a8b721a3ff8c13b09826c281b025abd1a92b4b08eb839b7cbd1
                 └── fe2db33da2facbfc0e415e783a2f3af7e49c7677e842efc698416a667314b734
+                └── fedc2fef4b0499d40c7ad960da4f26433d7bbec16bf5a393d428a223a1a9e109
         📁 ingest/
     📁 backend/
         └── Dockerfile
         └── __init__.py
         └── alembic.ini
+        └── create_tables.py
+        └── db_init.py
         └── main.py
         └── requirements.txt
+        └── seed_test_nesting.py
+        └── start-alt.sh
         └── start.sh
+        └── test_nesting_endpoint.py
+        └── verify_nesting_table.py
         📁 alembic/
             📁 versions/
+                └── add_nesting_result_table.py
                 └── add_odl_model.py
                 └── remove_in_manutenzione_and_reparto_fields.py
         📁 api/
@@ -1220,6 +1257,7 @@
             📁 versions/
                 └── 20250520_200528_init_schema.py
                 └── 20250520_220528_remove_tool_in_manutenzione.py
+                └── 20250522_185115_add_nesting_results_table.py
         📁 models/
             └── __init__.py
             └── associations.py
@@ -1228,6 +1266,7 @@
             └── catalogo.py
             └── ciclo_cura.py
             └── db.py
+            └── nesting_result.py
             └── odl.py
             └── parte.py
             └── tempo_fase.py
@@ -5311,6 +5350,41 @@
                         └── index.js.map
                         └── index.mjs
                         └── index.mjs.map
+                📁 react-progress/
+                    └── LICENSE
+                    └── README.md
+                    └── package.json
+                    📁 dist/
+                        └── index.d.mts
+                        └── index.d.ts
+                        └── index.js
+                        └── index.js.map
+                        └── index.mjs
+                        └── index.mjs.map
+                    📁 node_modules/
+                        📁 @radix-ui/
+                            📁 react-primitive/
+                                └── LICENSE
+                                └── README.md
+                                └── package.json
+                                📁 dist/
+                                    └── index.d.mts
+                                    └── index.d.ts
+                                    └── index.js
+                                    └── index.js.map
+                                    └── index.mjs
+                                    └── index.mjs.map
+                            📁 react-slot/
+                                └── LICENSE
+                                └── README.md
+                                └── package.json
+                                📁 dist/
+                                    └── index.d.mts
+                                    └── index.d.ts
+                                    └── index.js
+                                    └── index.js.map
+                                    └── index.mjs
+                                    └── index.mjs.map
                 📁 react-roving-focus/
                     └── LICENSE
                     └── README.md
@@ -30962,6 +31036,7 @@
                     └── form.tsx
                     └── input.tsx
                     └── label.tsx
+                    └── progress.tsx
                     └── select.tsx
                     └── separator.tsx
                     └── switch.tsx

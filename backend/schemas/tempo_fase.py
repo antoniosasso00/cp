@@ -48,7 +48,7 @@ class TempoFaseInDB(TempoFaseBase):
     updated_at: datetime
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 # Schema per la risposta previsionale

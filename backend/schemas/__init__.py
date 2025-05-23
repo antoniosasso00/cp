@@ -15,6 +15,10 @@ from .ciclo_cura import CicloCuraCreate, CicloCuraUpdate, CicloCuraResponse
 from .autoclave import AutoclaveCreate, AutoclaveUpdate, AutoclaveResponse
 from .odl import ODLCreate, ODLUpdate, ODLRead, ODLReadBasic
 from .tempo_fase import TempoFaseCreate, TempoFaseUpdate, TempoFaseInDB, PrevisioneTempo, TipoFase
+from .schedule import (
+    ScheduleEntryCreate, ScheduleEntryUpdate, ScheduleEntryRead, 
+    ScheduleEntryAutoCreate, AutoScheduleResponse, ScheduleEntryStatusEnum
+)
 
 __all__ = [
     'CatalogoCreate', 'CatalogoUpdate', 'CatalogoResponse',
@@ -23,5 +27,7 @@ __all__ = [
     'CicloCuraCreate', 'CicloCuraUpdate', 'CicloCuraResponse',
     'AutoclaveCreate', 'AutoclaveUpdate', 'AutoclaveResponse',
     'ODLCreate', 'ODLUpdate', 'ODLRead', 'ODLReadBasic',
-    'TempoFaseCreate', 'TempoFaseUpdate', 'TempoFaseInDB', 'PrevisioneTempo', 'TipoFase'
+    'TempoFaseCreate', 'TempoFaseUpdate', 'TempoFaseInDB', 'PrevisioneTempo', 'TipoFase',
+    'ScheduleEntryCreate', 'ScheduleEntryUpdate', 'ScheduleEntryRead', 
+    'ScheduleEntryAutoCreate', 'AutoScheduleResponse', 'ScheduleEntryStatusEnum'
 ] 
