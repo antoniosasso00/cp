@@ -4,65 +4,100 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Colori di base - Palette fredda professionale */
+    --background: 220 20% 98%;
+    --foreground: 220 15% 15%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 220 25% 99%;
+    --card-foreground: 220 15% 15%;
  
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 220 25% 99%;
+    --popover-foreground: 220 15% 15%;
  
-    --primary: 142.1 76.2% 36.3%;
-    --primary-foreground: 355.7 100% 97.3%;
+    /* Primary: Blu slate professionale */
+    --primary: 217 91% 60%;
+    --primary-foreground: 220 30% 98%;
  
-    --secondary: 220 14.3% 95.9%;
-    --secondary-foreground: 220.9 39.3% 11%;
+    /* Secondary: Grigio slate */
+    --secondary: 220 13% 91%;
+    --secondary-foreground: 220 15% 25%;
  
-    --muted: 220 14.3% 95.9%;
-    --muted-foreground: 220 8.9% 46.1%;
+    --muted: 220 13% 95%;
+    --muted-foreground: 220 8% 46%;
  
-    --accent: 220 14.3% 95.9%;
-    --accent-foreground: 220.9 39.3% 11%;
+    --accent: 217 19% 27%;
+    --accent-foreground: 220 30% 98%;
  
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    /* Destructive: Rosso meno aggressivo */
+    --destructive: 0 75% 58%;
+    --destructive-foreground: 220 30% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    /* Bordi e input */
+    --border: 220 13% 87%;
+    --input: 220 13% 91%;
+    --ring: 217 91% 60%;
  
-    --radius: 0.5rem;
+    --radius: 0.75rem;
+
+    /* Colori aggiuntivi per stati e utility */
+    --success: 142 71% 45%;
+    --success-foreground: 220 30% 98%;
+    
+    --warning: 45 93% 58%;
+    --warning-foreground: 220 15% 15%;
+    
+    --info: 199 89% 48%;
+    --info-foreground: 220 30% 98%;
+    
+    /* Colori per sidebar e navigazione */
+    --sidebar-bg: 220 25% 96%;
+    --sidebar-active: 217 91% 60%;
+    --sidebar-hover: 220 13% 91%;
   }
  
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 220 25% 6%;
+    --foreground: 220 15% 92%;
  
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 220 25% 8%;
+    --card-foreground: 220 15% 92%;
  
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 220 25% 8%;
+    --popover-foreground: 220 15% 92%;
  
-    --primary: 142.1 70.6% 45.3%;
-    --primary-foreground: 144.9 80.4% 10%;
+    --primary: 217 91% 65%;
+    --primary-foreground: 220 25% 8%;
  
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 220 15% 15%;
+    --secondary-foreground: 220 15% 85%;
  
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 220 15% 12%;
+    --muted-foreground: 220 8% 65%;
  
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 220 15% 18%;
+    --accent-foreground: 220 15% 92%;
  
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 75% 65%;
+    --destructive-foreground: 220 15% 92%;
  
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --border: 220 15% 18%;
+    --input: 220 15% 15%;
+    --ring: 217 91% 65%;
+
+    /* Dark mode per colori aggiuntivi */
+    --success: 142 71% 50%;
+    --success-foreground: 220 25% 6%;
+    
+    --warning: 45 93% 68%;
+    --warning-foreground: 220 25% 6%;
+    
+    --info: 199 89% 58%;
+    --info-foreground: 220 25% 6%;
+    
+    /* Dark mode sidebar */
+    --sidebar-bg: 220 25% 4%;
+    --sidebar-active: 217 91% 65%;
+    --sidebar-hover: 220 15% 12%;
   }
 }
  
@@ -70,7 +105,38 @@
   * {
     @apply border-border;
   }
+  
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
+
+  /* Tipografia base */
+  h1 { @apply text-3xl font-bold tracking-tight; }
+  h2 { @apply text-2xl font-semibold tracking-tight; }
+  h3 { @apply text-xl font-semibold; }
+  h4 { @apply text-lg font-medium; }
+  h5 { @apply text-base font-medium; }
+  h6 { @apply text-sm font-medium; }
+  
+  p { @apply text-base leading-7; }
+  small { @apply text-sm text-muted-foreground; }
+}
+
+@layer components {
+  /* Utility classes per spaziature coerenti */
+  .spacing-xs { @apply p-2; }
+  .spacing-sm { @apply p-4; }
+  .spacing-md { @apply p-6; }
+  .spacing-lg { @apply p-8; }
+  .spacing-xl { @apply p-12; }
+  
+  /* Ombre soft e moderne */
+  .shadow-soft { @apply shadow-lg shadow-slate-200/50; }
+  .shadow-card { @apply shadow-md shadow-slate-200/30; }
+  .shadow-modal { @apply shadow-2xl shadow-slate-900/10; }
+  
+  .dark .shadow-soft { @apply shadow-slate-900/50; }
+  .dark .shadow-card { @apply shadow-slate-900/30; }
+  .dark .shadow-modal { @apply shadow-slate-900/50; }
 } 

@@ -15,6 +15,7 @@
                 └── 008386f694bb557bc114d4020e0018fb0f25bbcdbaee8c32571bb7a1b7acb44e
                 └── 00d297bcb2440c3eedd2d5c14aac77e0344292bfe00300f81ca3f3539a2c13be
                 └── 0275526a56f1444d369df614184b2d6aaab50adf1b284f4815bcfec87ab40057
+                └── 0483dd3e7bf5f09034ef6f763776464dab4fa5bb2d1d04f1e29a6b1097c6e1de
                 └── 057dce2c8332cb04131aa04ced904812af42a1a4350ff30f2c481af3fad900ac
                 └── 05a496219c90509eda072386f0509a8664c1de8bbbdd52344770455781a34cd1
                 └── 09a51a6ebee06125af7f4bf7799e52f80761483997a8d1e5f0246933dae17b88
@@ -54,6 +55,7 @@
                 └── 3cb9b14c51cc4b407a8dc3aa3022127e89e3ed7318819684bbf9e738d0ae14ba
                 └── 3cced527db91575b385a07b5275a269aa50c7e9054ea6c11b0f395a20b4752b5
                 └── 3e3e848ab268be8917b301d02d164ee8485e071881239d4ebb8162d5549d1f73
+                └── 3f2f92a619a72f33ece735927fa4fcdc04efcbc3f4f4a8d5969609fca13f6d90
                 └── 3f3c2158fdfceb2ea2da79d208b41efe447c770dd69aa896c8440de94de21a0e
                 └── 407b36e5861551eb55d27bab5e11bf6e9c6623ce71fc92afa7dda1cf7c1151ef
                 └── 42b2f67a87b8cf8949a423a8ac4a2630111b362d537d62d7ce9d3d2d4326078d
@@ -62,6 +64,8 @@
                 └── 461006634f011cd79161a677dd74e105cef8cdd42832bf49fbb36083b9df7351
                 └── 464302535babeebfd759c7908e15f4be0451464d05afbd8405a0cc6cd425590c
                 └── 481eae116422699359a241cbad486a2c17fadc2e68df41c6a394739c60c0d995
+                └── 49a341f105d3733cb4f2d8dfc16f402f90ca5e630cd47c5eefcdf5a5138753b7
+                └── 4c863e14a1a75d8ec9bfee636d314648d593642fe4b03edbcbbc6d4b2c49423d
                 └── 4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1
                 └── 4f8fa9486d5e6731db7f0802579aa0cb3c126436682fb4e1de1ec326c03d1c65
                 └── 50b823834d05a29c62224343f761735acc45ba02a4b3a8538a35e8e4c63a0e97
@@ -94,6 +98,7 @@
                 └── 7b94da4e5ece4f378b168f511b1c7fd9e96302c012160558e2d77c3465422bc9
                 └── 7bec1fd4e94866968da9502991e3b9018f0ad4fa92cb6ff10be4c89e89cb4831
                 └── 7fefbba2bb420c0735d82b5661d6b16c0682e504558d3cf656f23653c20f99f1
+                └── 80c9d22ccc34158c32d59dfecc9f756f12286b8911273457a671739941634420
                 └── 82d7fe8fbc5a18218f6606944c47400520a958bc60658f665b7177a330ec1ea4
                 └── 86eed546df78648dd650fc84ba7222071bbd7fc21e1364e6550ca8e07af340d7
                 └── 8a2ba25d6de4ae07f8cf466f79a3dcf3d92cb3264632221b7f0dd38b4383dc94
@@ -102,7 +107,10 @@
                 └── 8c30cb90a661d600df443a70e52e99f4b3467474ab036f0698927a9f4f47d6a2
                 └── 8de7c8dc83c182c61f4e259e8f4721f8b4e89a49bf4fd6f09fd09b813890ca57
                 └── 8e3668ec0ca8b199480edf7cdf0310cc0d0b1a99fd0a0cb828760ec03514ec95
+                └── 8f67f2c7d6e706a2125025ca1948d680abe390a213c3502aa2ec0aae091ee57d
+                └── 8fce54a13931512a682964f9d037b085faecd803c1d2f1ec2ffad0523a8ac2bf
                 └── 906ffa4aacc9ea56a90c1d0e007e301686dba5b667e3371b402f944e276474d3
+                └── 90edb8404574f2f57cafbd1c1f1b1c4ce426b8aca63455906c83d88c7c519e37
                 └── 923eff58819dac4829314a6d15df781c595fcf44ae038006f6e0ae35fcc64a54
                 └── 92783e3f37d9dc7e6c93b762e7b30639081fd9b208e7a7abb0b281a92dfd4107
                 └── 9659276d83f205366de9e252c2bd45833a7300b77758652879a279f61b05a3cd
@@ -145,6 +153,7 @@
                 └── c03a8bca3743953c66476ef149410080410d44b1c0eddfae15ee1039b697bf03
                 └── c1879502e6ab812c980f8baae11a1412993ddfae656015d565bfcefd1afa8304
                 └── c1ea1a65b8ef26d34a44a5f20a51ea112420686c519c340b96fbc9708fed3746
+                └── c41ae116b758734e9617129c8306dfdf1ad2ebe5dfbd0f90b0f41005f1c7b53a
                 └── c47ebabfe8286d984ef13aeec2487b8de6a06d7d91a155fe0ac041a0077ae340
                 └── c61915a57386df4c19403f54ef21fd38d6783c6d6b8f65edeaeefe53201cb875
                 └── cb1340fb2f669e3008a9ab1acdf4151d5394bc717339ba31d0a9e41aac9f2644
@@ -173,6 +182,7 @@
                 └── f9a5eb80f1c5dd59fa17d552cd7e7b149c997538e2a7177bc268689fd8027b92
                 └── fa70febde0f65a8b721a3ff8c13b09826c281b025abd1a92b4b08eb839b7cbd1
                 └── fe2db33da2facbfc0e415e783a2f3af7e49c7677e842efc698416a667314b734
+                └── fea334ef93704ffc7e3dd703e7d2d1ef5b04b82f6c309ad120060c0f825300a6
                 └── fedc2fef4b0499d40c7ad960da4f26433d7bbec16bf5a393d428a223a1a9e109
         📁 ingest/
     📁 backend/
@@ -206,6 +216,7 @@
                 └── nesting.py
                 └── odl.py
                 └── parte.py
+                └── reports.py
                 └── schedule.py
                 └── tempo_fasi.py
                 └── tool.py
@@ -1333,12 +1344,14 @@
             └── nesting.py
             └── odl.py
             └── parte.py
+            └── reports.py
             └── schedule.py
             └── tempo_fase.py
             └── tool.py
         📁 services/
             └── __init__.py
             └── nesting_service.py
+            └── report_service.py
             └── schedule_service.py
         📁 tests/
             └── __init__.py
@@ -5099,6 +5112,41 @@
                         └── index.js.map
                         └── index.mjs
                         └── index.mjs.map
+                📁 react-checkbox/
+                    └── LICENSE
+                    └── README.md
+                    └── package.json
+                    📁 dist/
+                        └── index.d.mts
+                        └── index.d.ts
+                        └── index.js
+                        └── index.js.map
+                        └── index.mjs
+                        └── index.mjs.map
+                    📁 node_modules/
+                        📁 @radix-ui/
+                            📁 react-primitive/
+                                └── LICENSE
+                                └── README.md
+                                └── package.json
+                                📁 dist/
+                                    └── index.d.mts
+                                    └── index.d.ts
+                                    └── index.js
+                                    └── index.js.map
+                                    └── index.mjs
+                                    └── index.mjs.map
+                            📁 react-slot/
+                                └── LICENSE
+                                └── README.md
+                                └── package.json
+                                📁 dist/
+                                    └── index.d.mts
+                                    └── index.d.ts
+                                    └── index.js
+                                    └── index.js.map
+                                    └── index.mjs
+                                    └── index.mjs.map
                 📁 react-collapsible/
                     └── LICENSE
                     └── README.md
@@ -39649,6 +39697,8 @@
                         └── page.tsx
                         📁 components/
                             └── parte-modal.tsx
+                    📁 reports/
+                        └── page.tsx
                     📁 schedule/
                         └── page.tsx
                     📁 tempi/
@@ -39668,6 +39718,7 @@
                     └── badge.tsx
                     └── button.tsx
                     └── card.tsx
+                    └── checkbox.tsx
                     └── dialog.tsx
                     └── dropdown-menu.tsx
                     └── form.tsx

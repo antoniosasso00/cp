@@ -14,12 +14,24 @@ const badgeVariants = cva(
           "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
         destructive:
           "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
-        outline: "text-foreground",
-        success: "border-transparent bg-green-500 text-white hover:bg-green-500/80",
+        outline: "text-foreground border-border",
+        success: 
+          "border-transparent bg-success text-success-foreground hover:bg-success/80",
         warning:
-          "border-transparent bg-yellow-500 text-white hover:bg-yellow-500/80",
-        primary:
-          "border-transparent bg-blue-500 text-white hover:bg-blue-500/80",
+          "border-transparent bg-warning text-warning-foreground hover:bg-warning/80",
+        error:
+          "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
+        info:
+          "border-transparent bg-info text-info-foreground hover:bg-info/80",
+        // Stati specifici per ODL e processi
+        pending:
+          "border-transparent bg-muted text-muted-foreground hover:bg-muted/80",
+        active:
+          "border-transparent bg-primary text-primary-foreground hover:bg-primary/80 animate-pulse",
+        completed:
+          "border-transparent bg-success text-success-foreground hover:bg-success/80",
+        cancelled:
+          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
       },
     },
     defaultVariants: {
