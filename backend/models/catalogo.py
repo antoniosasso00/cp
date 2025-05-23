@@ -12,6 +12,8 @@ class Catalogo(Base, TimestampMixin):
                         doc="Descrizione dettagliata del part number")
     categoria = Column(String(100), nullable=True, 
                       doc="Categoria del prodotto")
+    sotto_categoria = Column(String(100), nullable=True,
+                            doc="Sotto-categoria del prodotto")
     attivo = Column(Boolean, default=True, nullable=False,
                    doc="Indica se il part number è ancora attivo nel catalogo")
     note = Column(Text, nullable=True,
@@ -21,4 +23,4 @@ class Catalogo(Base, TimestampMixin):
     parti = relationship("Parte", back_populates="catalogo")
     
     def __repr__(self):
-        return f"<Catalogo(part_number='{self.part_number}', categoria='{self.categoria}')>" 
+        return f"<Catalogo(part_number='{self.part_number}', categoria='{self.categoria}', sotto_categoria='{self.sotto_categoria}')>" 

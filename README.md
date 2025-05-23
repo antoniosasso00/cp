@@ -229,4 +229,56 @@ Per contribuire al progetto, segui questi passi:
 
 Per domande o supporto, contattaci a [email@example.com](mailto:email@example.com).
 
+## 🆕 Nuove Funzionalità - Catalogo Parti
+
+### Campo Sotto-categoria
+- Aggiunto campo opzionale "sotto-categoria" per una classificazione più granulare
+- Visibile in creazione, modifica e come filtro nell'elenco
+- Supporto completo backend e frontend
+
+### Ricerca Dinamica Ottimizzata
+- **Debounce**: Ricerca in tempo reale con ritardo di 300ms per ottimizzare le performance
+- **Ricerca Globale**: Cerca simultaneamente in part number, descrizione, categoria e sotto-categoria
+- **Indicatori Visivi**: Spinner di caricamento durante la ricerca
+- **Gestione Errori**: Alert visibili con possibilità di riprovare
+
+### Interfaccia Responsive
+- Layout ottimizzato per desktop e mobile
+- Tabella con scroll orizzontale per schermi piccoli
+- Filtri migliorati per categoria, sotto-categoria e stato
+- Messaggi informativi quando non ci sono risultati
+
+### Preparazione Statistiche
+- Pulsante "Statistiche" predisposto per future analisi
+- Struttura pronta per integrare grafici e dati analitici
+
+## 🚀 Come Testare le Nuove Funzionalità
+
+1. **Avvia l'applicazione**:
+   ```bash
+   docker-compose up -d
+   cd frontend && npm run dev
+   ```
+
+2. **Accedi al catalogo**: `http://localhost:3000/dashboard/catalog`
+
+3. **Testa le funzionalità**:
+   - Crea un nuovo part number con sotto-categoria
+   - Usa la ricerca in tempo reale
+   - Prova i filtri per categoria e sotto-categoria
+   - Testa la responsività su dispositivi mobili
+
+## 📋 Struttura File Modificati
+
+### Backend
+- `backend/models/catalogo.py` - Modello con campo sotto_categoria
+- `backend/schemas/catalogo.py` - Schema Pydantic aggiornati
+- `backend/api/routers/catalogo.py` - API con ricerca e filtri
+
+### Frontend
+- `frontend/src/lib/api.ts` - Client API aggiornato
+- `frontend/src/hooks/useDebounce.ts` - Hook per debounce
+- `frontend/src/app/dashboard/catalog/page.tsx` - Pagina principale
+- `frontend/src/app/dashboard/catalog/components/catalogo-modal.tsx` - Modal di creazione/modifica
+
 ---

@@ -210,6 +210,78 @@ Questo file contiene il registro dei cambiamenti più significativi del progetto
 - Aggiornamento automatico della tabella dopo la generazione di nuovi nesting
 - Integrazione completa con il modulo backend di ottimizzazione
 
+## [2024-01-XX - Miglioramento Catalogo Parti]
+
+### 🆕 Nuove Funzionalità
+
+#### 1. Campo "Sotto-categoria" 
+- **Backend**: Aggiunto campo `sotto_categoria` opzionale al modello `Catalogo`
+- **Database**: Aggiunta colonna `sotto_categoria VARCHAR(100)` alla tabella `cataloghi`
+- **API**: Supporto per filtro `sotto_categoria` nell'endpoint GET `/api/v1/catalogo`
+- **Frontend**: Campo sotto-categoria visibile in creazione/modifica e come filtro nell'elenco
+
+#### 2. Ricerca Dinamica Ottimizzata
+- **Debounce**: Implementato hook `useDebounce` con ritardo di 300ms per ottimizzare le chiamate API
+- **Ricerca Globale**: Ricerca simultanea in part_number, descrizione, categoria e sotto_categoria
+- **Indicatori Visivi**: Spinner di caricamento durante la ricerca
+- **Gestione Errori**: Alert visibili per errori di connessione con pulsante "Riprova"
+
+#### 3. Interfaccia Responsive e UX Migliorata
+- **Layout Responsive**: Ottimizzato per desktop e mobile
+- **Tabella Responsive**: Scroll orizzontale per schermi piccoli con larghezze minime delle colonne
+- **Filtri Migliorati**: Dropdown per categoria, sotto-categoria e stato attivo
+- **Messaggi Informativi**: Messaggi specifici quando non ci sono risultati
+
+#### 4. Preparazione per Statistiche
+- **Pulsante Statistiche**: Aggiunto pulsante con icona per future funzionalità di analisi
+- **Struttura Pronta**: Interfaccia predisposta per integrare grafici e dati analitici
+
+### 🔧 Modifiche Tecniche
+
+#### Backend
+- **Modello**: `backend/models/catalogo.py` - Aggiunto campo `sotto_categoria`
+- **Schema**: `backend/schemas/catalogo.py` - Aggiornati tutti gli schema Pydantic
+- **API**: `backend/api/routers/catalogo.py` - Aggiunto supporto per ricerca e filtro sotto_categoria
+- **Database**: Migrazione manuale per aggiungere colonna `sotto_categoria`
+
+#### Frontend
+- **API Client**: `frontend/src/lib/api.ts` - Aggiornati tipi TypeScript e parametri API
+- **Hook**: `frontend/src/hooks/useDebounce.ts` - Nuovo hook per debounce
+- **Pagina**: `frontend/src/app/dashboard/catalog/page.tsx` - Ricerca debounced e gestione errori
+- **Modal**: `frontend/src/app/dashboard/catalog/components/catalogo-modal.tsx` - Campo sotto_categoria
+
+### 🎯 Benefici per l'Utente
+
+1. **Organizzazione Migliorata**: Classificazione più granulare con sotto-categorie
+2. **Ricerca Veloce**: Ricerca in tempo reale senza sovraccarico del server
+3. **Esperienza Fluida**: Nessun freeze dell'interfaccia durante la digitazione
+4. **Feedback Visivo**: Indicatori chiari dello stato delle operazioni
+5. **Gestione Errori**: Recupero automatico da errori di connessione
+6. **Accessibilità**: Interfaccia responsive per tutti i dispositivi
+
+### 🔄 Compatibilità
+
+- **Dati Esistenti**: Tutti i part number esistenti mantengono la compatibilità
+- **API**: Retrocompatibilità garantita per tutti gli endpoint esistenti
+- **Docker**: Funziona con la configurazione Docker esistente
+- **Database**: Migrazione sicura senza perdita di dati
+
+### 📋 Test Consigliati
+
+1. **Creazione**: Creare un nuovo part number con sotto-categoria
+2. **Modifica**: Modificare un part number esistente aggiungendo sotto-categoria
+3. **Ricerca**: Testare la ricerca in tempo reale con vari termini
+4. **Filtri**: Verificare i filtri per categoria, sotto-categoria e stato
+5. **Responsive**: Testare l'interfaccia su dispositivi mobili
+6. **Errori**: Simulare errori di rete per testare la gestione degli errori
+
+### 🚀 Prossimi Sviluppi
+
+- **Statistiche Visive**: Grafici per analisi delle categorie e sotto-categorie
+- **Export**: Funzionalità di esportazione dati filtrati
+- **Import**: Caricamento massivo di part number da file
+- **Audit**: Tracciamento delle modifiche ai part number
+
 ---
 
 _Il formato di questo changelog è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)._ 

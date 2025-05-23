@@ -6,6 +6,7 @@ from datetime import datetime
 class CatalogoBase(BaseModel):
     descrizione: str = Field(..., description="Descrizione dettagliata del part number")
     categoria: Optional[str] = Field(None, description="Categoria del prodotto")
+    sotto_categoria: Optional[str] = Field(None, description="Sotto-categoria del prodotto")
     attivo: bool = Field(True, description="Indica se il part number è ancora attivo nel catalogo")
     note: Optional[str] = Field(None, description="Note aggiuntive sul part number")
 

@@ -56,7 +56,9 @@ def read_cataloghi(
     skip: int = 0, 
     limit: int = 100, 
     categoria: Optional[str] = Query(None, description="Filtra per categoria"),
+    sotto_categoria: Optional[str] = Query(None, description="Filtra per sotto-categoria"),
     attivo: Optional[bool] = Query(None, description="Filtra per stato attivo/inattivo"),
+    search: Optional[str] = Query(None, description="Ricerca nel part number, descrizione, categoria o sotto-categoria"),
     db: Session = Depends(get_db)
 ):
     """
@@ -64,15 +66,29 @@ def read_cataloghi(
     - **skip**: numero di elementi da saltare
     - **limit**: numero massimo di elementi da restituire
     - **categoria**: filtro opzionale per categoria
+    - **sotto_categoria**: filtro opzionale per sotto-categoria
     - **attivo**: filtro opzionale per attivo/non attivo
+    - **search**: ricerca per testo nei campi principali
     """
     query = db.query(Catalogo)
     
     # Applicazione filtri
     if categoria:
         query = query.filter(Catalogo.categoria == categoria)
+    if sotto_categoria:
+        query = query.filter(Catalogo.sotto_categoria == sotto_categoria)
     if attivo is not None:
         query = query.filter(Catalogo.attivo == attivo)
+    
+    # Ricerca testuale
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            (Catalogo.part_number.ilike(search_term)) |
+            (Catalogo.descrizione.ilike(search_term)) |
+            (Catalogo.categoria.ilike(search_term)) |
+            (Catalogo.sotto_categoria.ilike(search_term))
+        )
     
     return query.offset(skip).limit(limit).all()
 
