@@ -4,7 +4,7 @@ from datetime import datetime
 
 # Schema base per le proprietà comuni
 class ToolBase(BaseModel):
-    codice: str = Field(..., max_length=50, description="Codice identificativo univoco dello stampo")
+    part_number_tool: str = Field(..., max_length=50, description="Part Number Tool identificativo univoco dello stampo")
     descrizione: Optional[str] = Field(None, description="Descrizione dettagliata dello stampo")
     
     # Dimensioni fisiche
@@ -19,7 +19,7 @@ class ToolCreate(ToolBase):
 
 # Schema per gli aggiornamenti
 class ToolUpdate(BaseModel):
-    codice: Optional[str] = Field(None, max_length=50, description="Codice identificativo univoco dello stampo")
+    part_number_tool: Optional[str] = Field(None, max_length=50, description="Part Number Tool identificativo univoco dello stampo")
     descrizione: Optional[str] = Field(None, description="Descrizione dettagliata dello stampo")
     
     lunghezza_piano: Optional[float] = Field(None, gt=0, description="Lunghezza utile del tool")

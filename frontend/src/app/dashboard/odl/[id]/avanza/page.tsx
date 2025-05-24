@@ -45,9 +45,9 @@ const getProssimoStato = (statoCorrente: string): StatoODL | null => {
 
 // Badge varianti per i diversi stati
 const getStatusBadgeVariant = (status: string) => {
-  const variants: Record<string, "default" | "secondary" | "destructive" | "outline" | "primary" | "success" | "warning"> = {
+  const variants: Record<string, "default" | "secondary" | "destructive" | "outline" | "success" | "warning"> = {
     "Preparazione": "secondary",
-    "Laminazione": "primary",
+    "Laminazione": "default",
     "Attesa Cura": "warning",
     "Cura": "destructive",
     "Finito": "success"
@@ -139,25 +139,32 @@ export default function AvanzaODLPage() {
       setOdl(updatedOdl)
       setProssimoStato(getProssimoStato(updatedOdl.status))
       
-      // Ricarica le fasi di tempo
-      const tempiData = await tempoFasiApi.getAll({ odl_id: Number(odlId) })
-      setTempoFasi(tempiData)
+      // Ricarica le fasi di tempo con gestione errori
+      try {
+        const tempiData = await tempoFasiApi.getAll({ odl_id: Number(odlId) })
+        setTempoFasi(tempiData)
+      } catch (tempiError) {
+        console.warn('Errore nel caricamento tempi fasi:', tempiError)
+        // Non bloccare il flusso per questo errore
+      }
       
-      // Refresh della UI per aggiornare la lista ODL globale
-      router.refresh()
+      // Forza il refresh della pagina per aggiornare tutte le liste ODL
+      setTimeout(() => {
+        window.location.reload()
+      }, 1500)
       
-      // Se lo stato è "Finito", redireziona alla pagina di dettaglio dopo 2 secondi
+      // Se lo stato è "Finito", redireziona alla pagina di dettaglio dopo 3 secondi
       if (updatedOdl.status === "Finito") {
         setTimeout(() => {
           router.push(`/dashboard/odl/${odlId}`)
-        }, 2000)
+        }, 3000)
       }
     } catch (error) {
       console.error('Errore durante l\'avanzamento dello stato:', error)
       toast({
         variant: 'destructive',
         title: 'Errore',
-        description: 'Impossibile avanzare lo stato dell\'ODL',
+        description: 'Impossibile avanzare lo stato dell\'ODL. Riprova più tardi.',
       })
     } finally {
       setProcessingAction(false)
@@ -212,7 +219,7 @@ export default function AvanzaODLPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl">
             <ArrowRightCircle className="h-5 w-5" />
-            Avanzamento ODL #{odl.id}
+            Avanzamento ODL - {odl.parte.part_number}
           </CardTitle>
           <CardDescription>
             Gestisci il flusso di lavoro dell'ordine e registra i tempi delle fasi

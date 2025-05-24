@@ -26,7 +26,7 @@ class ParteUpdate(BaseModel):
 # Schema per tool incluso nella risposta
 class ToolInParteResponse(BaseModel):
     id: int = Field(..., description="ID univoco dello stampo")
-    codice: str = Field(..., description="Codice identificativo univoco dello stampo")
+    part_number_tool: str = Field(..., description="Part Number Tool identificativo univoco dello stampo")
     descrizione: Optional[str] = Field(None, description="Descrizione dettagliata dello stampo")
 
     class Config:

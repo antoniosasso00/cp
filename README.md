@@ -2,7 +2,7 @@
 
 Sistema modulare per la gestione avanzata della produzione in fibra di carbonio, con dashboard interattiva, gestione catalogo, parti, tools, autoclavi e cicli di cura.
 
-![versione](https://img.shields.io/badge/version-0.9.0-brightgreen)
+![versione](https://img.shields.io/badge/version-0.9.1-brightgreen)
 
 ## Tecnologie principali
 
@@ -23,11 +23,16 @@ Sistema modulare per la gestione avanzata della produzione in fibra di carbonio,
 - Cicli di Cura
 - ODL (Ordini di Lavoro)
 
-✅ Nesting Automatico:
-- Ottimizzazione degli ODL nelle autoclavi
+✅ **Nesting Automatico Ottimizzato** (AGGIORNATO v0.9.1):
+- **🐛 RISOLTO Bug CPX-102**: Algoritmo di posizionamento layout completamente ridisegnato
+- Ottimizzazione avanzata degli ODL nelle autoclavi con algoritmo bin packing
+- Anteprima layout interattiva con colori distintivi per ogni ODL
+- Sistema di filtri e ricerca avanzato (ID, autoclave, part number)
+- Dashboard statistiche con utilizzo medio area e valvole
 - Gestione automatica del processo di cura
-- Visualizzazione dei nesting generati
-- Dettagli completi dei nesting e ODL inclusi
+- Visualizzazione dettagliata dei nesting con informazioni complete
+- Indicatori visivi per overflow e ODL non posizionabili
+- **UI/UX completamente rinnovata** con design moderno e responsive
 
 ✅ Schedulazione Manuale:
 - Creazione manuale di schedule (ODL + Autoclave + orario)
@@ -52,12 +57,13 @@ Sistema modulare per la gestione avanzata della produzione in fibra di carbonio,
 - Feedback visivo con toast notifications
 - **Pagina Reports con UI moderna per generazione PDF**
 
-## 🚀 Stato del Progetto – v0.9.0
-- Completata la Fase 9: Report PDF Automatici
-- Sistema completo di generazione report con reportlab
-- Dashboard CRUD stabile per tutti i moduli
-- Nesting automatico e schedulazione manuale funzionanti
-- **Nuova sezione Reports con download PDF**
+## 🚀 Stato del Progetto – v0.9.1
+- **Completata la Fase 9.1**: Risoluzione Bug CPX-102 e Miglioramenti Nesting
+- **🐛 Bug CPX-102 RISOLTO**: Algoritmo di posizionamento ODL completamente ridisegnato
+- Sistema di nesting con anteprima layout ottimizzata e UI moderna
+- Dashboard CRUD stabile per tutti i moduli con filtri avanzati
+- Sistema completo di generazione report PDF con reportlab
+- Nesting automatico ottimizzato e schedulazione manuale funzionanti
 - Backend FastAPI e frontend Next.js sincronizzati
 - Build stabile in locale e Docker
 

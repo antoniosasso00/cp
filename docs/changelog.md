@@ -2,6 +2,117 @@
 
 Questo file contiene il registro dei cambiamenti più significativi del progetto.
 
+## [v1.0.2] - Risoluzione Errori di Fetch e Connessione API
+
+### [2024-01-19 - Fix Critico Connessione Frontend-Backend]
+
+- **Risolto problema configurazione hostname per sviluppo locale**:
+  - Corretto `next.config.js` da `carbonpilot-backend:8000` (Docker) a `localhost:8000` (locale)
+  - Eliminati errori "Failed to fetch" con status 0
+  - Ripristinata comunicazione corretta tra frontend e backend
+
+- **Inizializzazione database completa**:
+  - Eseguito `create_tables.py` per creare tutte le tabelle SQLAlchemy
+  - Risolti errori 500 causati da database vuoto
+  - Verificata presenza di tutte le tabelle necessarie
+
+- **Migliorata gestione errori API**:
+  - Aggiunto timeout di 10 secondi per le richieste Axios
+  - Implementato interceptors per logging dettagliato delle richieste/risposte
+  - Gestione errori specifica per ECONNREFUSED, 404, 500+
+  - Rimossa dichiarazione duplicata della variabile `api`
+
+- **Nuovo script di avvio intelligente**:
+  - Creato `start_dev_fixed.bat` con controlli automatici
+  - Verifica se backend/frontend sono già attivi prima dell'avvio
+  - Avvio sequenziale con attesa e verifiche di stato
+  - Apertura automatica del browser all'avvio completo
+
+### Funzionalità Tecniche
+- **Logging migliorato**: Console dettagliata per debug API con emoji e colori
+- **Auto-refresh**: Aggiornamento automatico ogni 5 secondi per dati tools
+- **Gestione focus**: Refresh automatico quando si torna alla finestra
+- **Error handling**: Toast notifications per errori di rete e API
+
+### Correzioni UX
+- Eliminati errori React "Objects are not valid as a React child"
+- Ripristinato caricamento corretto dei dati in tutte le sezioni
+- Indicatori visivi per stato di caricamento e aggiornamento
+- Messaggi di errore più chiari e informativi
+
+### Documentazione
+- Creato `docs/RISOLUZIONE_ERRORI_FETCH.md` con guida completa
+- Istruzioni per troubleshooting e verifica funzionamento
+- Note per configurazione Docker vs sviluppo locale
+
+## [v1.0.1] - Fix Connessione Database e Cicli di Cura
+
+### [2024-01-18 - Correzioni Critiche]
+
+- **Fix Connessione Database in ambiente locale**:
+  - Corretto il default hardcoded `@db:5432` in `@localhost:5432` nel file `backend/models/db.py`
+  - Aggiunto caricamento automatico del file `.env` con `load_dotenv()`
+  - Implementato logging della configurazione database per debug
+  - Creato file `.env` con configurazione locale: `DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/carbonpilot`
+  - Verificata dipendenza `python-dotenv==1.1.0` già presente nei requirements
+
+- **Fix Bug Modifica Cicli di Cura**:
+  - Corretto problema nel form di modifica dove i campi delle stasi andavano a `0`
+  - Aggiunto `useEffect` per precompilare correttamente il form quando `editingItem` cambia
+  - Migliorata gestione dei valori `undefined`/`null` per i campi della stasi 2
+  - Corretta logica backend per gestire disattivazione della stasi 2
+  - Aggiunta validazione migliorata per l'aggiornamento delle stasi
+
+### Correzioni Tecniche
+- **Backend**: Migliorata logica di update in `update_ciclo_cura()` per gestire correttamente l'attivazione/disattivazione della stasi 2
+- **Frontend**: Implementato reset automatico del form con valori corretti in modalità edit
+- **Database**: Configurazione locale ora caricata correttamente dal file `.env`
+- **Logging**: Aggiunto logging per debug della configurazione database
+
+### Test e Verifica
+- Creato script `test_fixes.py` per verificare le correzioni
+- Testata connessione database locale
+- Verificato funzionamento modifica cicli di cura
+- Confermato caricamento corretto variabili d'ambiente
+
+## [v1.0.0] - Miglioramenti Form Parti e Ricerca Smart
+
+### [2024-01-17 - Potenziamento Sezione Parti]
+
+- **Implementata ricerca smart nei campi form parti**:
+  - Debounce e filtro real-time per cicli di cura e tools
+  - Evidenziazione dei match nella ricerca
+  - Fallback intelligente se nessun risultato
+  - Miglioramento UX con feedback visivo
+- **Aggiunto sistema shortcut per creazione rapida**:
+  - Shortcut "+ Nuovo Tool" direttamente dal form parte
+  - Shortcut "+ Nuovo Ciclo" direttamente dal form parte  
+  - Modal in-place senza perdere dati del form principale
+  - Auto-selezione dell'item appena creato nel form parte
+- **Rinominato campo "codice" in "Part Number Tool"**:
+  - Aggiornati modelli SQLAlchemy e schemi Pydantic
+  - Aggiornati form frontend e interfacce UI
+  - Migrazione database per retrocompatibilità
+  - Aggiornate tabelle e label in tutta l'applicazione
+- **Rimosso completamente campo "in manutenzione" dai Tools**:
+  - Puliti modelli e schemi backend
+  - Aggiornate interfacce frontend
+  - Migrazione database per rimozione campo
+  - Verificata retrocompatibilità con dati esistenti
+
+### Funzionalità Tecniche
+- Implementazione debounce con hook personalizzato
+- Componenti modal riutilizzabili per shortcut
+- Gestione stato form complessa con context
+- Migrazioni SQLAlchemy per modifiche schema
+- Ricerca semantica con highlighting
+
+### Miglioramenti UX
+- Form più fluido e intuitivo per creazione parti
+- Riduzione dei click necessari per creare elementi collegati
+- Feedback visivo migliorato per ricerche e selezioni
+- Naming più chiaro e consistente in tutta l'app
+
 ## [v0.9.0] - Fase 9: Report PDF Automatici
 
 ### [2024-01-16 - Generazione Report PDF]
@@ -210,78 +321,206 @@ Questo file contiene il registro dei cambiamenti più significativi del progetto
 - Aggiornamento automatico della tabella dopo la generazione di nuovi nesting
 - Integrazione completa con il modulo backend di ottimizzazione
 
-## [2024-01-XX - Miglioramento Catalogo Parti]
+## [24 Maggio 2025 - Miglioramenti Sezione ODL]
 
-### 🆕 Nuove Funzionalità
+### 🚀 Nuove Funzionalità
 
-#### 1. Campo "Sotto-categoria" 
-- **Backend**: Aggiunto campo `sotto_categoria` opzionale al modello `Catalogo`
-- **Database**: Aggiunta colonna `sotto_categoria VARCHAR(100)` alla tabella `cataloghi`
-- **API**: Supporto per filtro `sotto_categoria` nell'endpoint GET `/api/v1/catalogo`
-- **Frontend**: Campo sotto-categoria visibile in creazione/modifica e come filtro nell'elenco
+#### Pagina ODL Principale (`/dashboard/odl`)
+- **Barra di Avanzamento Migliorata**: Implementata barra di progresso visuale che mostra le fasi di produzione con:
+  - Icone rappresentative per ogni fase (⚙️ Preparazione, 🔨 Laminazione, ⏱️ Attesa Cura, 🔥 Cura, ✅ Finito)
+  - Colori progressivi che indicano lo stato di completamento
+  - Durata proporzionale di ogni segmento basata sui tempi medi di produzione
+  - Indicatore di fase corrente con animazioni fluide
 
-#### 2. Ricerca Dinamica Ottimizzata
-- **Debounce**: Implementato hook `useDebounce` con ritardo di 300ms per ottimizzare le chiamate API
-- **Ricerca Globale**: Ricerca simultanea in part_number, descrizione, categoria e sotto_categoria
-- **Indicatori Visivi**: Spinner di caricamento durante la ricerca
-- **Gestione Errori**: Alert visibili per errori di connessione con pulsante "Riprova"
+- **Sistema di Priorità Migliorato**: Visualizzazione priorità ODL con:
+  - Indicatori grafici colorati (🔴 Alta, 🟠 Media-Alta, 🟡 Media, 🟢 Bassa)
+  - Badge numerici con colori corrispondenti alla priorità
+  - Logica di priorità: ≥8 (Critica), ≥5 (Alta), ≥3 (Media), <3 (Bassa)
 
-#### 3. Interfaccia Responsive e UX Migliorata
-- **Layout Responsive**: Ottimizzato per desktop e mobile
-- **Tabella Responsive**: Scroll orizzontale per schermi piccoli con larghezze minime delle colonne
-- **Filtri Migliorati**: Dropdown per categoria, sotto-categoria e stato attivo
-- **Messaggi Informativi**: Messaggi specifici quando non ci sono risultati
+- **Interfaccia Semplificata**: 
+  - Rimosso storico ODL completati dalla pagina principale
+  - Rimosso bottone di avanzamento stato (spostato in Monitoraggio)
+  - Focus esclusivo su ODL attivi in produzione
+  - Link diretto alla nuova pagina di Monitoraggio ODL
 
-#### 4. Preparazione per Statistiche
-- **Pulsante Statistiche**: Aggiunto pulsante con icona per future funzionalità di analisi
-- **Struttura Pronta**: Interfaccia predisposta per integrare grafici e dati analitici
+#### Nuova Pagina Monitoraggio ODL (`/dashboard/odl/monitoraggio`)
+- **Monitoraggio in Tempo Reale**: 
+  - Visualizzazione stato corrente di tutti gli ODL in produzione
+  - Informazioni dettagliate sulla fase attuale con durata in tempo reale
+  - Bottone "Avanza" per gestire il passaggio tra le fasi
 
-### 🔧 Modifiche Tecniche
+- **Storico Completo delle Fasi**:
+  - Accordion espandibile con tutti gli ODL completati
+  - Timeline dettagliata di ogni fase con tempi di inizio/fine
+  - Calcolo automatico della durata di ogni fase
+  - Visualizzazione dello storico delle fasi per ogni ODL
 
-#### Backend
-- **Modello**: `backend/models/catalogo.py` - Aggiunto campo `sotto_categoria`
-- **Schema**: `backend/schemas/catalogo.py` - Aggiornati tutti gli schema Pydantic
-- **API**: `backend/api/routers/catalogo.py` - Aggiunto supporto per ricerca e filtro sotto_categoria
-- **Database**: Migrazione manuale per aggiungere colonna `sotto_categoria`
+- **Gestione Avanzamento Fasi**:
+  - Dialog di conferma per l'avanzamento di stato
+  - Integrazione automatica con il sistema `tempi_produzione`
+  - Chiusura automatica della fase corrente e apertura della successiva
 
-#### Frontend
-- **API Client**: `frontend/src/lib/api.ts` - Aggiornati tipi TypeScript e parametri API
-- **Hook**: `frontend/src/hooks/useDebounce.ts` - Nuovo hook per debounce
-- **Pagina**: `frontend/src/app/dashboard/catalog/page.tsx` - Ricerca debounced e gestione errori
-- **Modal**: `frontend/src/app/dashboard/catalog/components/catalogo-modal.tsx` - Campo sotto_categoria
+#### Form Modifica ODL Migliorato
+- **Titolo Descrittivo**: Il titolo del modal ora mostra il nome della parte invece dell'ID ODL
+- **Descrizione Dettagliata**: Sottotitolo con descrizione breve della parte
+- **Precompilazione Corretta**: Tutti i campi vengono precompilati correttamente durante la modifica
+- **Validazione Migliorata**: Controlli di validazione più robusti per parte e tool
 
-### 🎯 Benefici per l'Utente
+### 🔧 Miglioramenti Tecnici
 
-1. **Organizzazione Migliorata**: Classificazione più granulare con sotto-categorie
-2. **Ricerca Veloce**: Ricerca in tempo reale senza sovraccarico del server
-3. **Esperienza Fluida**: Nessun freeze dell'interfaccia durante la digitazione
-4. **Feedback Visivo**: Indicatori chiari dello stato delle operazioni
-5. **Gestione Errori**: Recupero automatico da errori di connessione
-6. **Accessibilità**: Interfaccia responsive per tutti i dispositivi
+#### Componenti UI
+- **BarraAvanzamento**: Nuovo componente React per visualizzare il progresso delle fasi
+- **Gestione Stati**: Logica migliorata per la gestione degli stati ODL
+- **Responsive Design**: Interfaccia ottimizzata per dispositivi mobili e desktop
 
-### 🔄 Compatibilità
+#### Integrazione Backend
+- **API tempoFasiApi**: Integrazione completa con il sistema di tracciamento tempi
+- **Gestione Errori**: Handling robusto degli errori con messaggi informativi
+- **Performance**: Caricamento ottimizzato dei dati con loading states
 
-- **Dati Esistenti**: Tutti i part number esistenti mantengono la compatibilità
-- **API**: Retrocompatibilità garantita per tutti gli endpoint esistenti
-- **Docker**: Funziona con la configurazione Docker esistente
-- **Database**: Migrazione sicura senza perdita di dati
+#### Struttura Dati
+- **Configurazione Fasi**: Array strutturato con durate, colori e icone per ogni fase
+- **Mapping Stati**: Mappatura corretta tra stati ODL e fasi di produzione
+- **Calcolo Durate**: Funzioni utility per calcolo e formattazione durate
 
-### 📋 Test Consigliati
+### 📊 Flusso di Lavoro Migliorato
 
-1. **Creazione**: Creare un nuovo part number con sotto-categoria
-2. **Modifica**: Modificare un part number esistente aggiungendo sotto-categoria
-3. **Ricerca**: Testare la ricerca in tempo reale con vari termini
-4. **Filtri**: Verificare i filtri per categoria, sotto-categoria e stato
-5. **Responsive**: Testare l'interfaccia su dispositivi mobili
-6. **Errori**: Simulare errori di rete per testare la gestione degli errori
+1. **Visualizzazione ODL**: Pagina principale mostra solo ODL attivi con barra di avanzamento
+2. **Monitoraggio Dettagliato**: Pagina dedicata per monitoraggio in tempo reale e storico
+3. **Gestione Fasi**: Avanzamento controllato delle fasi con tracciamento automatico
+4. **Modifica ODL**: Form migliorato con titoli descrittivi e validazione
 
-### 🚀 Prossimi Sviluppi
+### 🎨 Miglioramenti UX/UI
 
-- **Statistiche Visive**: Grafici per analisi delle categorie e sotto-categorie
-- **Export**: Funzionalità di esportazione dati filtrati
-- **Import**: Caricamento massivo di part number da file
-- **Audit**: Tracciamento delle modifiche ai part number
+- **Colori Semantici**: Schema colori coerente per stati e priorità
+- **Icone Intuitive**: Icone emoji per identificazione rapida delle fasi
+- **Feedback Visivo**: Animazioni e transizioni fluide per migliorare l'esperienza
+- **Navigazione Chiara**: Link e breadcrumb per navigazione intuitiva
+
+### 🧪 Testing e Validazione
+
+- **Dati di Test**: Popolamento automatico con dati realistici tramite `seed_test_data.py`
+- **Flusso Completo**: Test di creazione, modifica, visualizzazione e avanzamento ODL
+- **Integrazione**: Verifica dell'integrazione con sistema tempi di produzione
+
+### 📝 Documentazione
+
+- **Commenti Codice**: Documentazione inline per tutti i nuovi componenti
+- **Struttura Chiara**: Organizzazione logica dei file e componenti
+- **Esempi d'Uso**: Implementazione di esempi pratici per ogni funzionalità
 
 ---
+
+## Versioni Precedenti
+
+### [Versione Base - Sistema ODL]
+- Implementazione base del sistema ODL
+- CRUD operations per ordini di lavoro
+- Integrazione con parti e tools
+- Sistema di stati base
+
+## [2024-01-15 - Correzioni UX e Ottimizzazioni]
+
+### 🎨 **Interfaccia e UX**
+- **Migliorata visualizzazione calendario**: Aggiunto supporto completo per modalità dark con stili CSS personalizzati
+- **Nuova pagina Impostazioni**: Creata pagina dedicata con switch visibile per modalità dark/light
+- **Rimozione ID dalle visualizzazioni**: Nascosti tutti gli ID da tabelle ODL, calendario e moduli per migliorare l'UX
+- **Menu laterale aggiornato**: Aggiunta voce "Impostazioni" con icona appropriata
+
+### 📋 **ODL (Ordini di Lavoro)**
+- **Ordinamento cronologico**: Gli ODL sono ora ordinati dal più recente al più vecchio
+- **Rimozione duplicati**: Ogni ODL viene mostrato una sola volta con stato progressivo
+- **Bug fix avanzamento**: Corretto il bug del pulsante di avanzamento con refresh automatico della pagina
+- **Toast migliorati**: Messaggi di successo/errore più chiari e informativi
+
+### 🔧 **Tool/Stampi**
+- **Aggiornamento automatico stato**: I Tool vengono automaticamente marcati "In Autoclave" quando usati da ODL in fase "Cura"
+- **Refresh automatico**: Aggiornamento stato ogni 30 secondi nella tabella strumenti
+- **Nuovo endpoint API**: `/tools/update-status-from-odl` per sincronizzazione automatica
+- **Indicatori visivi**: Badge "In Autoclave" per Tool non disponibili
+
+### 🗄️ **Database**
+- **Flag configurazione**: Aggiunto flag `USE_SQLITE` per passare facilmente tra SQLite e PostgreSQL
+- **Compatibilità SQLite**: Assicurata compatibilità completa con SQLite per sviluppo
+- **Logging migliorato**: Messaggi più chiari sulla configurazione database attiva
+
+### 🌙 **Modalità Dark**
+- **Calendario ottimizzato**: Stili CSS personalizzati per perfetta leggibilità in dark mode
+- **Modali responsive**: Tutti i modali supportano correttamente la modalità dark
+- **Componenti uniformi**: Tutti i componenti UI seguono il tema selezionato
+
+### 🔄 **Refresh e Sincronizzazione**
+- **Aggiornamento automatico Tool**: Sincronizzazione stato basata su ODL attivi
+- **Refresh pagina ODL**: Forzato reload dopo avanzamento per aggiornare tutte le liste
+- **Cache disabilitata**: Rimozione cache API per dati sempre aggiornati
+
+### 🎯 **Miglioramenti Tecnici**
+- **Gestione errori**: Migliore handling degli errori con try/catch appropriati
+- **Performance**: Ottimizzazioni per ridurre chiamate API non necessarie
+- **Logging**: Messaggi di debug più informativi per troubleshooting
+
+## [2024-01-15 - Risoluzione Bug CPX-102 e Miglioramenti Nesting]
+
+### 🐛 **Bug Risolti**
+- **CPX-102**: Risolto problema critico nell'algoritmo di posizionamento degli ODL nell'anteprima del nesting
+  - **Problema**: Gli ODL si sovrapponevano nell'anteprima del layout dell'autoclave
+  - **Causa**: Algoritmo di posizionamento inadeguato che non gestiva correttamente il wrapping alle righe successive
+  - **Soluzione**: Implementato algoritmo bin packing avanzato con gestione intelligente delle righe multiple
+
+### ✨ **Nuove Funzionalità**
+- **Anteprima Layout Migliorata**: 
+  - Algoritmo di posizionamento ottimizzato che evita sovrapposizioni
+  - Colori distintivi per ogni ODL per facilità di identificazione
+  - Griglia di sfondo per migliore orientamento visivo
+  - Indicatori per ODL che non entrano nel layout (overflow)
+  - Tooltip informativi con dettagli ODL
+
+- **Sistema di Filtri e Ricerca Avanzato**:
+  - Ricerca per ID nesting, nome autoclave, codice autoclave, part number
+  - Filtro per autoclave specifica
+  - Ordinamento per data creazione, utilizzo area, utilizzo valvole
+  - Direzione di ordinamento (crescente/decrescente)
+
+- **Dashboard Statistiche**:
+  - Card informative con statistiche generali
+  - Nesting totali generati
+  - ODL processati complessivamente
+  - Utilizzo medio area e valvole
+
+- **UI/UX Migliorata**:
+  - Design moderno e responsive
+  - Badge colorati per indicatori di performance
+  - Progress bar per visualizzazione utilizzo
+  - Stati di caricamento migliorati
+  - Messaggi informativi per stati vuoti
+
+### 🔧 **Miglioramenti Tecnici**
+- **Conversione Unità di Misura**: Implementato fattore di scala corretto da millimetri a pixel
+- **Gestione Proporzioni**: L'anteprima mantiene le proporzioni reali dell'autoclave e dei tool
+- **Performance**: Ottimizzazione del rendering dell'anteprima layout
+- **Accessibilità**: Aggiunto supporto screen reader e tooltip informativi
+
+### 📊 **Modifiche ai Modelli DB**
+- Nessuna modifica ai modelli database richiesta
+- Utilizzo delle strutture dati esistenti ottimizzato
+
+### 🎨 **Effetti sulla UI**
+- **Pagina Nesting**: Completamente ridisegnata con layout moderno
+- **Dialog Dettagli**: Espanso con più informazioni e anteprima migliorata
+- **Tabella Nesting**: Aggiunta colonne informative e azioni migliorate
+- **Responsive Design**: Ottimizzato per dispositivi mobili e desktop
+
+### 🧪 **Testing**
+- ✅ Test algoritmo posizionamento ODL
+- ✅ Test filtri e ricerca
+- ✅ Test responsive design
+- ✅ Test performance anteprima layout
+- ✅ Test accessibilità
+
+### 📝 **Note per Sviluppatori**
+- Il nuovo algoritmo di posizionamento è in `calculateODLPositions()` nel componente `NestingDetails`
+- I filtri utilizzano `useEffect` per aggiornamento reattivo
+- Le statistiche sono calcolate in tempo reale dai dati esistenti
+- Il sistema è pronto per future implementazioni di export PDF/PNG
 
 _Il formato di questo changelog è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)._ 

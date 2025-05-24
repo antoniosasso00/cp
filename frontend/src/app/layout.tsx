@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google'
 import { Toaster } from '@/components/ui/toaster'
 import { ThemeProvider } from '@/components/theme-provider'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
+import ApiErrorToast from '@/components/ApiErrorToast'
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -35,6 +36,7 @@ export default function RootLayout({
           </div>
           {children}
           <Toaster />
+          <ApiErrorToast />
         </ThemeProvider>
       </body>
     </html>

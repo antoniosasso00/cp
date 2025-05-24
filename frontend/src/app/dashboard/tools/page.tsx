@@ -1,18 +1,21 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
-import { toolApi, Tool } from '@/lib/api'
+import { toolApi, ToolWithStatus } from '@/lib/api'
 import { ToolModal } from './components/tool-modal'
+import { ToolStatusBadge } from '@/components/ToolStatusBadge'
+import { useToolsWithStatus } from '@/hooks/useToolsWithStatus'
 import { 
   Loader2, 
   MoreHorizontal, 
   Pencil, 
-  Trash2 
+  Trash2,
+  RefreshCw,
+  RotateCcw
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -22,40 +25,31 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 export default function ToolsPage() {
-  const [tools, setTools] = useState<Tool[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
-  const [editingItem, setEditingItem] = useState<Tool | null>(null)
+  const [editingItem, setEditingItem] = useState<ToolWithStatus | null>(null)
+  const [isSyncing, setIsSyncing] = useState(false)
   const { toast } = useToast()
 
-  const fetchTools = async () => {
-    try {
-      setIsLoading(true)
-      const data = await toolApi.getAll()
-      setTools(data)
-    } catch (error) {
-      console.error('Errore nel caricamento dei tools:', error)
-      toast({
-        variant: 'destructive',
-        title: 'Errore',
-        description: 'Impossibile caricare i tools. Riprova più tardi.',
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchTools()
-  }, [])
+  const { 
+    tools, 
+    loading, 
+    error, 
+    refresh, 
+    syncStatus, 
+    lastUpdated 
+  } = useToolsWithStatus({
+    autoRefresh: true,
+    refreshInterval: 5000, // 5 secondi
+    refreshOnFocus: true
+  })
 
   const handleCreateClick = () => {
     setEditingItem(null)
     setModalOpen(true)
   }
 
-  const handleEditClick = (item: Tool) => {
+  const handleEditClick = (item: ToolWithStatus) => {
     setEditingItem(item)
     setModalOpen(true)
   }
@@ -68,11 +62,10 @@ export default function ToolsPage() {
     try {
       await toolApi.delete(id)
       toast({
-        variant: 'success',
         title: 'Eliminato',
         description: 'Tool eliminato con successo.',
       })
-      fetchTools()
+      refresh()
     } catch (error) {
       console.error('Errore durante l\'eliminazione del tool:', error)
       toast({
@@ -80,6 +73,26 @@ export default function ToolsPage() {
         title: 'Errore',
         description: 'Impossibile eliminare il tool.',
       })
+    }
+  }
+
+  const handleSyncStatus = async () => {
+    try {
+      setIsSyncing(true)
+      await syncStatus()
+      toast({
+        title: 'Sincronizzazione completata',
+        description: 'Stato dei tool aggiornato con successo.',
+      })
+    } catch (error) {
+      console.error('Errore nella sincronizzazione:', error)
+      toast({
+        variant: 'destructive',
+        title: 'Errore',
+        description: 'Impossibile sincronizzare lo stato dei tool.',
+      })
+    } finally {
+      setIsSyncing(false)
     }
   }
 
@@ -91,6 +104,31 @@ export default function ToolsPage() {
     )
   })
 
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Tools</h1>
+            <p className="text-muted-foreground">
+              Gestisci i tools disponibili per la produzione
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col items-center justify-center py-12 space-y-4">
+          <div className="text-red-500 text-center">
+            <h3 className="text-lg font-semibold">Errore nel caricamento</h3>
+            <p className="text-sm">{error}</p>
+          </div>
+          <Button onClick={refresh} variant="outline">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Riprova
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -100,7 +138,33 @@ export default function ToolsPage() {
             Gestisci i tools disponibili per la produzione
           </p>
         </div>
-        <Button onClick={handleCreateClick}>Nuovo Tool</Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={handleSyncStatus}
+            disabled={isSyncing}
+          >
+            {isSyncing ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RotateCcw className="h-4 w-4 mr-2" />
+            )}
+            Sincronizza Stato
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={refresh}
+            disabled={loading}
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            Aggiorna
+          </Button>
+          <Button onClick={handleCreateClick}>Nuovo Tool</Button>
+        </div>
       </div>
 
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
@@ -110,30 +174,44 @@ export default function ToolsPage() {
           onChange={e => setSearchQuery(e.target.value)}
           className="max-w-sm"
         />
+        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            Aggiornamento automatico ogni 5s
+          </div>
+          {lastUpdated && (
+            <div>
+              Ultimo aggiornamento: {lastUpdated.toLocaleTimeString()}
+            </div>
+          )}
+        </div>
       </div>
 
-      {isLoading ? (
+      {loading && tools.length === 0 ? (
         <div className="flex justify-center py-8">
           <Loader2 className="h-8 w-8 animate-spin" />
           <span className="ml-2">Caricamento in corso...</span>
         </div>
       ) : (
         <Table>
-          <TableCaption>Lista dei tools disponibili</TableCaption>
+          <TableCaption>
+            Lista dei tools disponibili ({filteredTools.length} di {tools.length})
+          </TableCaption>
           <TableHeader>
             <TableRow>
               <TableHead>Part Number Tool</TableHead>
               <TableHead>Descrizione</TableHead>
               <TableHead className="text-center">Dimensioni (mm)</TableHead>
               <TableHead className="text-center">Stato</TableHead>
+              <TableHead className="text-center">ODL Associato</TableHead>
               <TableHead className="text-right">Azioni</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredTools.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8">
-                  Nessun tool trovato
+                <TableCell colSpan={6} className="text-center py-8">
+                  {searchQuery ? 'Nessun tool trovato per la ricerca' : 'Nessun tool disponibile'}
                 </TableCell>
               </TableRow>
             ) : (
@@ -145,9 +223,19 @@ export default function ToolsPage() {
                     {item.lunghezza_piano} x {item.larghezza_piano}
                   </TableCell>
                   <TableCell className="text-center">
-                    <Badge variant={item.disponibile ? 'default' : 'secondary'}>
-                      {item.disponibile ? 'Disponibile' : 'Non Disponibile'}
-                    </Badge>
+                    <ToolStatusBadge status={item.status_display} />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {item.current_odl ? (
+                      <div className="text-sm">
+                        <div className="font-medium">ODL #{item.current_odl.id}</div>
+                        <div className="text-muted-foreground">
+                          Parte ID: {item.current_odl.parte_id}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
@@ -182,7 +270,7 @@ export default function ToolsPage() {
         open={modalOpen}
         onOpenChange={setModalOpen}
         editingItem={editingItem}
-        onSuccess={fetchTools}
+        onSuccess={refresh}
       />
     </div>
   )

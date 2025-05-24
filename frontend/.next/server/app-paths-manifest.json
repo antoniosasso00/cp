@@ -1,7 +1,10 @@
 {
-  "/styleguide/page": "app/styleguide/page.js",
   "/dashboard/catalog/page": "app/dashboard/catalog/page.js",
+  "/dashboard/nesting/page": "app/dashboard/nesting/page.js",
+  "/dashboard/odl/page": "app/dashboard/odl/page.js",
+  "/dashboard/reports/page": "app/dashboard/reports/page.js",
+  "/dashboard/catalog/statistiche/page": "app/dashboard/catalog/statistiche/page.js",
   "/dashboard/parts/page": "app/dashboard/parts/page.js",
   "/dashboard/cicli-cura/page": "app/dashboard/cicli-cura/page.js",
-  "/dashboard/tempi/page": "app/dashboard/tempi/page.js"
+  "/dashboard/tools/page": "app/dashboard/tools/page.js"
 }

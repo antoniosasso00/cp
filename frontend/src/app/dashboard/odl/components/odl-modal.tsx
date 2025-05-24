@@ -191,10 +191,15 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>{item ? `Modifica ODL #${item.id}` : 'Crea nuovo ODL'}</DialogTitle>
+          <DialogTitle>
+            {item 
+              ? `Modifica ODL - ${item.parte.part_number}` 
+              : 'Crea nuovo ODL'
+            }
+          </DialogTitle>
           <DialogDescription>
             {item 
-              ? 'Modifica i dettagli dell\'ordine di lavoro' 
+              ? `Modifica i dettagli dell'ordine di lavoro per ${item.parte.descrizione_breve}` 
               : 'Inserisci i dettagli per creare un nuovo ordine di lavoro'}
           </DialogDescription>
         </DialogHeader>
@@ -276,7 +281,7 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
                       {filteredTools.length > 0 ? (
                         filteredTools.map(tool => (
                           <SelectItem key={tool.id} value={tool.id.toString()}>
-                            {tool.codice} {tool.descrizione ? `- ${tool.descrizione}` : ''}
+                            {tool.part_number_tool} {tool.descrizione ? `- ${tool.descrizione}` : ''}
                           </SelectItem>
                         ))
                       ) : (

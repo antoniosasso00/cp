@@ -4,6 +4,58 @@ import axios from 'axios'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
+console.log('🔗 API Base URL configurata:', API_BASE_URL); // Log per debug
+
+// Configurazione axios con interceptors per logging e gestione errori
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 10000, // 10 secondi di timeout
+})
+
+// Interceptor per le richieste
+api.interceptors.request.use(
+  (config) => {
+    console.log(`🌐 API Request: ${config.method?.toUpperCase()} ${config.url}`, config.data || '');
+    return config;
+  },
+  (error) => {
+    console.error('❌ Errore nella richiesta API:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Interceptor per le risposte
+api.interceptors.response.use(
+  (response) => {
+    console.log(`✅ API Response: ${response.status} ${response.config.url}`);
+    return response;
+  },
+  (error) => {
+    console.error('❌ Errore nella risposta API:', {
+      url: error.config?.url,
+      method: error.config?.method,
+      status: error.response?.status,
+      message: error.message,
+      data: error.response?.data
+    });
+    
+    // Gestione errori specifici
+    if (error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK') {
+      throw new Error('Impossibile connettersi al server. Verifica che il backend sia in esecuzione.');
+    }
+    
+    if (error.response?.status === 404) {
+      throw new Error(`Endpoint non trovato: ${error.config?.url}`);
+    }
+    
+    if (error.response?.status >= 500) {
+      throw new Error('Errore interno del server. Riprova più tardi.');
+    }
+    
+    throw error;
+  }
+);
+
 // Tipi base per Catalogo
 export interface CatalogoBase {
   descrizione: string;
@@ -69,10 +121,6 @@ export interface ParteResponse extends ParteBase {
   updated_at: string;
 }
 
-const api = axios.create({
-  baseURL: API_BASE_URL,
-})
-
 export interface Tool {
   id: number
   part_number_tool: string
@@ -82,6 +130,16 @@ export interface Tool {
   disponibile: boolean
   created_at: string
   updated_at: string
+}
+
+export interface ToolWithStatus extends Tool {
+  status_display: string
+  current_odl?: {
+    id: number
+    status: string
+    parte_id: number
+    updated_at: string
+  } | null
 }
 
 export interface CreateToolDto {
@@ -98,6 +156,22 @@ export const toolApi = {
   getAll: async (): Promise<Tool[]> => {
     const response = await api.get<Tool[]>('/tools')
     return response.data
+  },
+
+  getAllWithStatus: async (params?: { 
+    skip?: number; 
+    limit?: number; 
+    part_number_tool?: string; 
+    disponibile?: boolean 
+  }): Promise<ToolWithStatus[]> => {
+    const queryParams = new URLSearchParams();
+    if (params?.skip) queryParams.append('skip', params.skip.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.part_number_tool) queryParams.append('part_number_tool', params.part_number_tool);
+    if (params?.disponibile !== undefined) queryParams.append('disponibile', params.disponibile.toString());
+    
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    return apiRequest<ToolWithStatus[]>(`/tools/with-status${query}`);
   },
 
   getById: async (id: number): Promise<Tool> => {
@@ -118,6 +192,24 @@ export const toolApi = {
   delete: async (id: number): Promise<void> => {
     await api.delete(`/tools/${id}`)
   },
+
+  updateStatusFromODL: async (): Promise<{
+    message: string;
+    updated_tools: Array<{
+      id: number;
+      part_number_tool: string;
+      old_status: string;
+      new_status: string;
+      odl_info?: any;
+    }>;
+    total_tools: number;
+    tools_in_use: number;
+    tools_available: number;
+    tools_by_status: Record<string, number>;
+  }> => {
+    const response = await api.put('/tools/update-status-from-odl')
+    return response.data
+  },
 }
 
 // Common fetch wrapper
@@ -126,6 +218,9 @@ const apiRequest = async <T>(
   method: string = 'GET', 
   data?: any
 ): Promise<T> => {
+  const fullUrl = `${API_BASE_URL}${endpoint}`;
+  console.log(`🌐 API Request: ${method} ${fullUrl}`, data ? { data } : ''); // Log per debug
+
   const options: RequestInit = {
     method,
     headers: {
@@ -138,24 +233,61 @@ const apiRequest = async <T>(
     options.body = JSON.stringify(data);
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+  try {
+    const response = await fetch(fullUrl, options);
 
-  // Gestione errori HTTP
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw {
-      status: response.status,
-      message: errorData.detail || `Errore API: ${response.status} ${response.statusText}`,
-      data: errorData,
-    };
+    // Gestione errori HTTP
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const error = {
+        status: response.status,
+        message: errorData.detail || `Errore API: ${response.status} ${response.statusText}`,
+        data: errorData,
+        url: fullUrl,
+        method
+      };
+      
+      console.error('❌ API Error:', error); // Log dettagliato dell'errore
+      
+      // Mostra toast se disponibile (in modo sicuro)
+      if (typeof window !== 'undefined' && window.dispatchEvent) {
+        window.dispatchEvent(new CustomEvent('api-error', { 
+          detail: { 
+            message: error.message, 
+            status: error.status,
+            url: fullUrl 
+          } 
+        }));
+      }
+      
+      throw error;
+    }
+
+    // Per DELETE (204 No Content)
+    if (response.status === 204) {
+      console.log('✅ API Success (No Content):', method, fullUrl);
+      return {} as T;
+    }
+
+    const result = await response.json();
+    console.log('✅ API Success:', method, fullUrl, result);
+    return result;
+  } catch (error) {
+    console.error('💥 API Network Error:', method, fullUrl, error);
+    
+    // Mostra toast per errori di rete
+    if (typeof window !== 'undefined' && window.dispatchEvent) {
+      window.dispatchEvent(new CustomEvent('api-error', { 
+        detail: { 
+          message: error instanceof Error ? error.message : 'Errore di connessione', 
+          status: 0,
+          url: fullUrl 
+        } 
+      }));
+    }
+    
+    throw error;
   }
-
-  // Per DELETE (204 No Content)
-  if (response.status === 204) {
-    return {} as T;
-  }
-
-  return response.json();
 };
 
 // API Catalogo
@@ -589,39 +721,47 @@ export const reportsApi = {
       queryParams.append('include', includeSections.join(','));
     }
     
-    const url = `${API_BASE_URL}/v1/reports/generate?${queryParams.toString()}`;
+    const url = `${API_BASE_URL}/reports/generate?${queryParams.toString()}`;
+    console.log('🔗 Report Generate Request:', url);
     
     if (download) {
       // Per il download diretto, usiamo fetch per gestire il blob
       const response = await fetch(url);
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw {
+        const error = {
           status: response.status,
           message: errorData.detail || `Errore API: ${response.status} ${response.statusText}`,
           data: errorData,
         };
+        console.error('❌ Report Generate Error:', error);
+        throw error;
       }
+      console.log('✅ Report Generate Success (Blob)');
       return response.blob();
     } else {
       // Per ottenere solo le informazioni del file
-      return apiRequest<ReportGenerateResponse>(`/v1/reports/generate?${queryParams.toString()}`);
+      return apiRequest<ReportGenerateResponse>(`/reports/generate?${queryParams.toString()}`);
     }
   },
   
   list: () => 
-    apiRequest<ReportListResponse>('/v1/reports/list'),
+    apiRequest<ReportListResponse>('/reports/list'),
   
   download: async (filename: string): Promise<Blob> => {
-    const response = await fetch(`${API_BASE_URL}/v1/reports/download/${filename}`);
+    const response = await fetch(`${API_BASE_URL}/reports/download/${filename}`);
+    console.log(`🔗 Report Download Request: ${filename}`);
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw {
+      const error = {
         status: response.status,
         message: errorData.detail || `Errore API: ${response.status} ${response.statusText}`,
         data: errorData,
       };
+      console.error('❌ Report Download Error:', error);
+      throw error;
     }
+    console.log('✅ Report Download Success');
     return response.blob();
   },
 }; 

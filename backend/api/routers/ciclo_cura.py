@@ -136,34 +136,48 @@ def update_ciclo_cura(ciclo_cura_id: int, ciclo_cura: CicloCuraUpdate, db: Sessi
             detail=f"Ciclo di cura con ID {ciclo_cura_id} non trovato"
         )
     
-    # Validazione speciale per gli aggiornamenti
+    # Ottieni i dati da aggiornare
     update_data = ciclo_cura.model_dump(exclude_unset=True)
     
-    # Verifica che se attiva_stasi2 è True, allora i parametri della stasi2 non sono None
-    if "attiva_stasi2" in update_data and update_data["attiva_stasi2"] == True:
-        if ("temperatura_stasi2" not in update_data or update_data["temperatura_stasi2"] is None) and db_ciclo_cura.temperatura_stasi2 is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, 
-                detail="Se attiva_stasi2 è True, temperatura_stasi2 deve essere specificata"
-            )
-        if ("pressione_stasi2" not in update_data or update_data["pressione_stasi2"] is None) and db_ciclo_cura.pressione_stasi2 is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, 
-                detail="Se attiva_stasi2 è True, pressione_stasi2 deve essere specificata"
-            )
-        if ("durata_stasi2" not in update_data or update_data["durata_stasi2"] is None) and db_ciclo_cura.durata_stasi2 is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, 
-                detail="Se attiva_stasi2 è True, durata_stasi2 deve essere specificata"
-            )
+    # Gestione logica della stasi 2
+    if "attiva_stasi2" in update_data:
+        if update_data["attiva_stasi2"] == True:
+            # Se si sta attivando la stasi2, verifica che i parametri necessari siano presenti
+            # sia nei dati di aggiornamento che nel database esistente
+            temperatura_stasi2 = update_data.get("temperatura_stasi2") or db_ciclo_cura.temperatura_stasi2
+            pressione_stasi2 = update_data.get("pressione_stasi2") or db_ciclo_cura.pressione_stasi2
+            durata_stasi2 = update_data.get("durata_stasi2") or db_ciclo_cura.durata_stasi2
+            
+            if temperatura_stasi2 is None or temperatura_stasi2 <= 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, 
+                    detail="Se attiva_stasi2 è True, temperatura_stasi2 deve essere specificata e maggiore di 0"
+                )
+            if pressione_stasi2 is None or pressione_stasi2 < 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, 
+                    detail="Se attiva_stasi2 è True, pressione_stasi2 deve essere specificata e maggiore o uguale a 0"
+                )
+            if durata_stasi2 is None or durata_stasi2 <= 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, 
+                    detail="Se attiva_stasi2 è True, durata_stasi2 deve essere specificata e maggiore di 0"
+                )
+        else:
+            # Se si sta disattivando la stasi2, imposta i campi a None
+            update_data["temperatura_stasi2"] = None
+            update_data["pressione_stasi2"] = None
+            update_data["durata_stasi2"] = None
     
-    # Aggiornamento dei campi presenti nella richiesta
+    # Aggiorna solo i campi specificati nell'update
     for key, value in update_data.items():
-        setattr(db_ciclo_cura, key, value)
+        if hasattr(db_ciclo_cura, key):
+            setattr(db_ciclo_cura, key, value)
     
     try:
         db.commit()
         db.refresh(db_ciclo_cura)
+        logger.info(f"Ciclo di cura {ciclo_cura_id} aggiornato con successo")
         return db_ciclo_cura
     except IntegrityError as e:
         db.rollback()

@@ -14,6 +14,7 @@ import {
 import { scheduleApi } from '@/lib/api';
 import { Autoclave } from '@/lib/api';
 import { ODLResponse } from '@/lib/api';
+import { useTheme } from 'next-themes';
 
 // Localizer ufficiale italiano per il calendario usando date-fns
 const localizer = dateFnsLocalizer({
@@ -92,7 +93,7 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
       // Converte le schedulazioni in eventi per il calendario
       const calendarEvents = schedules.map(schedule => ({
         id: schedule.id,
-        title: `ODL #${schedule.odl_id}${schedule.status === ScheduleEntryStatus.MANUAL ? ' (M)' : ''}`,
+        title: `${schedule.status === ScheduleEntryStatus.MANUAL ? '(M) ' : ''}${schedule.odl_id ? `Parte ${schedule.odl_id}` : 'ODL'}`,
         start: new Date(schedule.start_datetime),
         end: new Date(schedule.end_datetime),
         resourceId: schedule.autoclave_id,
@@ -224,18 +225,22 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
   // Componente per il modale di creazione/modifica
   const ScheduleModal = () => (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white p-6 rounded-lg w-full max-w-xl">
-        <h2 className="text-2xl mb-4">
+      <div className="bg-white dark:bg-gray-800 p-6 rounded-lg w-full max-w-xl border dark:border-gray-700">
+        <h2 className="text-2xl mb-4 text-gray-900 dark:text-white">
           {editingScheduleId ? 'Modifica Schedulazione' : 'Crea Nuova Schedulazione'}
         </h2>
         
-        {error && <div className="bg-red-100 text-red-700 p-2 mb-4 rounded">{error}</div>}
+        {error && (
+          <div className="bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 p-2 mb-4 rounded border dark:border-red-800">
+            {error}
+          </div>
+        )}
         
         <form onSubmit={handleFormSubmit}>
           <div className="mb-4">
-            <label className="block mb-1">ODL</label>
+            <label className="block mb-1 text-gray-700 dark:text-gray-300">ODL</label>
             <select 
-              className="w-full p-2 border rounded"
+              className="w-full p-2 border dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               value={formData.odl_id}
               onChange={e => setFormData({...formData, odl_id: Number(e.target.value)})}
               required
@@ -245,16 +250,16 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
                 .filter(odl => odl.status === 'Attesa Cura')
                 .map(odl => (
                   <option key={odl.id} value={odl.id}>
-                    ODL #{odl.id} - {odl.parte.descrizione_breve}
+                    {odl.parte.descrizione_breve}
                   </option>
                 ))}
             </select>
           </div>
           
           <div className="mb-4">
-            <label className="block mb-1">Autoclave</label>
+            <label className="block mb-1 text-gray-700 dark:text-gray-300">Autoclave</label>
             <select 
-              className="w-full p-2 border rounded"
+              className="w-full p-2 border dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               value={formData.autoclave_id}
               onChange={e => setFormData({...formData, autoclave_id: Number(e.target.value)})}
               required
@@ -270,20 +275,20 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
           
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
-              <label className="block mb-1">Data Inizio</label>
+              <label className="block mb-1 text-gray-700 dark:text-gray-300">Data Inizio</label>
               <input 
                 type="date" 
-                className="w-full p-2 border rounded"
+                className="w-full p-2 border dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 value={formData.start_date}
                 onChange={e => setFormData({...formData, start_date: e.target.value})}
                 required
               />
             </div>
             <div>
-              <label className="block mb-1">Ora Inizio</label>
+              <label className="block mb-1 text-gray-700 dark:text-gray-300">Ora Inizio</label>
               <input 
                 type="time" 
-                className="w-full p-2 border rounded"
+                className="w-full p-2 border dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 value={formData.start_time}
                 onChange={e => setFormData({...formData, start_time: e.target.value})}
                 required
@@ -293,20 +298,20 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
           
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
-              <label className="block mb-1">Data Fine</label>
+              <label className="block mb-1 text-gray-700 dark:text-gray-300">Data Fine</label>
               <input 
                 type="date" 
-                className="w-full p-2 border rounded"
+                className="w-full p-2 border dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 value={formData.end_date}
                 onChange={e => setFormData({...formData, end_date: e.target.value})}
                 required
               />
             </div>
             <div>
-              <label className="block mb-1">Ora Fine</label>
+              <label className="block mb-1 text-gray-700 dark:text-gray-300">Ora Fine</label>
               <input 
                 type="time" 
-                className="w-full p-2 border rounded"
+                className="w-full p-2 border dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 value={formData.end_time}
                 onChange={e => setFormData({...formData, end_time: e.target.value})}
                 required
@@ -315,7 +320,7 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
           </div>
           
           <div className="mb-4">
-            <label className="flex items-center">
+            <label className="flex items-center text-gray-700 dark:text-gray-300">
               <input 
                 type="checkbox" 
                 checked={formData.priority_override}
@@ -330,14 +335,14 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
             <div>
               <button 
                 type="submit" 
-                className="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 mr-2"
+                className="bg-blue-500 dark:bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-600 dark:hover:bg-blue-700 mr-2 transition-colors"
               >
                 {editingScheduleId ? 'Aggiorna' : 'Crea'}
               </button>
               <button 
                 type="button" 
                 onClick={() => setIsModalOpen(false)}
-                className="bg-gray-300 py-2 px-4 rounded hover:bg-gray-400"
+                className="bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 py-2 px-4 rounded hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors"
               >
                 Annulla
               </button>
@@ -347,7 +352,7 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
               <button 
                 type="button" 
                 onClick={handleDelete}
-                className="bg-red-500 text-white py-2 px-4 rounded hover:bg-red-600"
+                className="bg-red-500 dark:bg-red-600 text-white py-2 px-4 rounded hover:bg-red-600 dark:hover:bg-red-700 transition-colors"
               >
                 Elimina
               </button>
@@ -359,14 +364,14 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
   );
 
   return (
-    <div className="h-screen flex flex-col">
-      <div className="flex justify-between items-center p-4 bg-gray-100">
-        <h1 className="text-2xl font-bold">Scheduling ODL per Autoclavi</h1>
+    <div className="h-screen flex flex-col dark:bg-gray-900">
+      <div className="flex justify-between items-center p-4 bg-gray-100 dark:bg-gray-800 border-b dark:border-gray-700">
+        <h1 className="text-2xl font-bold dark:text-white">Scheduling ODL per Autoclavi</h1>
         
         <div>
           <button 
             onClick={handleAutoGenerate}
-            className="bg-green-500 text-white py-2 px-4 rounded hover:bg-green-600 mr-2"
+            className="bg-green-500 dark:bg-green-600 text-white py-2 px-4 rounded hover:bg-green-600 dark:hover:bg-green-700 mr-2 transition-colors"
           >
             Auto-genera
           </button>
@@ -385,7 +390,7 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
               setEditingScheduleId(null);
               setIsModalOpen(true);
             }}
-            className="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600"
+            className="bg-blue-500 dark:bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-600 dark:hover:bg-blue-700 transition-colors"
           >
             Nuova Schedulazione
           </button>
@@ -393,15 +398,115 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
       </div>
       
       {loading ? (
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex-1 flex items-center justify-center dark:text-white">
           <p>Caricamento in corso...</p>
         </div>
       ) : error ? (
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-red-500">{error}</p>
+          <p className="text-red-500 dark:text-red-400">{error}</p>
         </div>
       ) : (
         <div className="flex-1 p-4">
+          <style jsx global>{`
+            /* Stili personalizzati per il calendario in modalità dark */
+            .dark .rbc-calendar {
+              background-color: #1f2937;
+              color: #f9fafb;
+            }
+            
+            .dark .rbc-header {
+              background-color: #374151;
+              color: #f9fafb;
+              border-bottom: 1px solid #4b5563;
+            }
+            
+            .dark .rbc-month-view,
+            .dark .rbc-time-view {
+              background-color: #1f2937;
+              border-color: #4b5563;
+            }
+            
+            .dark .rbc-day-bg {
+              background-color: #1f2937;
+              border-color: #4b5563;
+            }
+            
+            .dark .rbc-today {
+              background-color: #065f46 !important;
+            }
+            
+            .dark .rbc-event {
+              background-color: #3b82f6;
+              border-color: #2563eb;
+              color: #ffffff;
+            }
+            
+            .dark .rbc-selected {
+              background-color: #1d4ed8;
+            }
+            
+            .dark .rbc-time-slot {
+              border-color: #4b5563;
+            }
+            
+            .dark .rbc-time-header {
+              background-color: #374151;
+              border-color: #4b5563;
+            }
+            
+            .dark .rbc-time-content {
+              border-color: #4b5563;
+            }
+            
+            .dark .rbc-allday-cell {
+              background-color: #374151;
+              border-color: #4b5563;
+            }
+            
+            .dark .rbc-row-bg {
+              border-color: #4b5563;
+            }
+            
+            .dark .rbc-off-range-bg {
+              background-color: #111827;
+            }
+            
+            .dark .rbc-toolbar {
+              background-color: #374151;
+              color: #f9fafb;
+            }
+            
+            .dark .rbc-toolbar button {
+              background-color: #4b5563;
+              color: #f9fafb;
+              border: 1px solid #6b7280;
+            }
+            
+            .dark .rbc-toolbar button:hover {
+              background-color: #6b7280;
+            }
+            
+            .dark .rbc-toolbar button.rbc-active {
+              background-color: #3b82f6;
+              color: #ffffff;
+            }
+            
+            .dark .rbc-month-row {
+              border-color: #4b5563;
+            }
+            
+            .dark .rbc-date-cell {
+              color: #f9fafb;
+            }
+            
+            .dark .rbc-date-cell a {
+              color: #f9fafb;
+            }
+            
+            .dark .rbc-button-link {
+              color: #f9fafb;
+            }
+          `}</style>
           <Calendar
             localizer={localizer}
             events={events}
@@ -422,9 +527,11 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
               style: {
                 backgroundColor: event.isManual ? '#F59E0B' : '#3B82F6',
                 borderColor: event.isManual ? '#D97706' : '#2563EB',
+                color: '#FFFFFF',
+                fontWeight: '500'
               },
             })}
-            className="h-full"
+            className="h-full rbc-calendar"
           />
         </div>
       )}

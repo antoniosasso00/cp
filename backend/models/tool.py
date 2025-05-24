@@ -9,8 +9,8 @@ class Tool(Base, TimestampMixin):
     __tablename__ = "tools"
     
     id = Column(Integer, primary_key=True, index=True)
-    codice = Column(String(50), nullable=False, unique=True,
-                   doc="Codice identificativo univoco dello stampo")
+    part_number_tool = Column(String(50), nullable=False, unique=True,
+                             doc="Part Number Tool identificativo univoco dello stampo")
     descrizione = Column(Text, nullable=True,
                         doc="Descrizione dettagliata dello stampo")
     
@@ -31,4 +31,4 @@ class Tool(Base, TimestampMixin):
     odl = relationship("ODL", back_populates="tool")
     
     def __repr__(self):
-        return f"<Tool(id={self.id}, codice='{self.codice}', disponibile={self.disponibile})>" 
+        return f"<Tool(id={self.id}, part_number_tool='{self.part_number_tool}', disponibile={self.disponibile})>" 

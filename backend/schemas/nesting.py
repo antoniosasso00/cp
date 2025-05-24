@@ -33,6 +33,40 @@ class NestingResultSchema(BaseModel):
     autoclavi: List[AutoclaveNestingInfo] = []
     odl_pianificati: List[ODLNestingInfo] = []
     odl_non_pianificabili: List[ODLNestingInfo] = []
+
+# Nuovi schemi per la preview
+class ODLPreviewInfo(BaseModel):
+    """Schema per l'anteprima di un ODL nel nesting"""
+    id: int
+    part_number: str
+    descrizione: str
+    area_cm2: float
+    num_valvole: int
+    priorita: int
+    color: str = Field(default="#3B82F6", description="Colore per la visualizzazione")
+
+class AutoclavePreviewInfo(BaseModel):
+    """Schema per l'anteprima dell'autoclave nel nesting"""
+    id: int
+    nome: str
+    codice: str
+    lunghezza: float  # mm
+    larghezza_piano: float  # mm
+    area_totale_cm2: float
+    area_utilizzata_cm2: float
+    valvole_totali: int
+    valvole_utilizzate: int
+    odl_inclusi: List[ODLPreviewInfo] = []
+    
+class NestingPreviewSchema(BaseModel):
+    """Schema per l'anteprima del nesting"""
+    success: bool
+    message: str
+    autoclavi: List[AutoclavePreviewInfo] = []
+    odl_esclusi: List[Dict[str, Any]] = Field(
+        default=[], 
+        description="Lista degli ODL esclusi con motivazioni"
+    )
     
 # Schema per la risposta del database
 class ParteInNestingResponse(BaseModel):
@@ -44,7 +78,7 @@ class ParteInNestingResponse(BaseModel):
     
 class ToolInNestingResponse(BaseModel):
     id: int
-    codice: str
+    part_number_tool: str
     descrizione: Optional[str] = None
 
 class ODLInNestingResponse(BaseModel):
@@ -69,7 +103,11 @@ class NestingResultRead(BaseModel):
     area_totale: float
     valvole_utilizzate: int
     valvole_totali: int
+    stato: str
+    odl_esclusi_ids: List[int] = []
+    motivi_esclusione: List[Dict] = []
     created_at: datetime
+    updated_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True
