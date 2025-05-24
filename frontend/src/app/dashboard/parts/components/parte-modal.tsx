@@ -15,9 +15,15 @@ import {
   catalogoApi, 
   toolApi, 
   cicloCuraApi,
-  ToolInParteResponse,
-  CicloCuraInParteResponse
+  CatalogoResponse,
+  Tool,
+  CicloCura
 } from '@/lib/api'
+import SmartCatalogoSelect from './smart-catalogo-select'
+import SmartCicloCuraSelect from './smart-ciclo-cura-select'
+import SmartToolsSelect from './smart-tools-select'
+import ToolQuickModal from './tool-quick-modal'
+import CicloCuraQuickModal from './ciclo-cura-quick-modal'
 
 interface ParteModalProps {
   isOpen: boolean
@@ -35,23 +41,6 @@ const parteSchema = z.object({
   ciclo_cura_id: z.number().optional().nullable(),
   tool_ids: z.array(z.number()).optional().default([])
 })
-
-type CatalogoOption = {
-  value: string;
-  label: string;
-  categoria?: string;
-}
-
-type ToolOption = {
-  id: number;
-  codice: string;
-  descrizione?: string;
-}
-
-type CicloCuraOption = {
-  id: number;
-  nome: string;
-}
 
 // Tipo personalizzato per il form con supporto a campi null
 interface ParteFormData {
@@ -74,10 +63,15 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [catalogo, setCatalogo] = useState<CatalogoOption[]>([])
-  const [tools, setTools] = useState<ToolOption[]>([])
-  const [cicliCura, setCicliCura] = useState<CicloCuraOption[]>([])
+  const [catalogo, setCatalogo] = useState<CatalogoResponse[]>([])
+  const [tools, setTools] = useState<Tool[]>([])
+  const [cicliCura, setCicliCura] = useState<CicloCura[]>([])
   const [isLoadingOptions, setIsLoadingOptions] = useState(false)
+  
+  // Stati per i modal di creazione rapida
+  const [toolModalOpen, setToolModalOpen] = useState(false)
+  const [cicloCuraModalOpen, setCicloCuraModalOpen] = useState(false)
+  
   const { toast } = useToast()
 
   // Carica opzioni per i dropdown
@@ -90,12 +84,7 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
         cicloCuraApi.getAll()
       ])
 
-      setCatalogo(catalogoRes.map(cat => ({
-        value: cat.part_number,
-        label: `${cat.part_number} - ${cat.descrizione}`,
-        categoria: cat.categoria
-      })))
-      
+      setCatalogo(catalogoRes)
       setTools(toolsRes)
       setCicliCura(cicliRes)
     } catch (error) {
@@ -239,153 +228,140 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
     }
   }
 
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px]">
-        <DialogHeader>
-          <DialogTitle>
-            {item ? `Modifica Parte: ${item.id}` : 'Crea Nuova Parte'}
-          </DialogTitle>
-        </DialogHeader>
+  // Gestori per i modal di creazione rapida
+  const handleToolCreated = (newTool: Tool) => {
+    setTools(prev => [...prev, newTool])
+    setFormData(prev => ({ ...prev, tool_ids: [...prev.tool_ids, newTool.id] }))
+    setToolModalOpen(false)
+    toast({
+      variant: 'success',
+      title: 'Tool Aggiunto',
+      description: `Tool "${newTool.part_number_tool}" aggiunto alla parte.`
+    })
+  }
 
-        <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="part_number" className="text-right">
-              Part Number
-            </Label>
-            <div className="col-span-3">
-              <select
-                id="part_number"
-                value={formData.part_number}
-                onChange={e => handleChange('part_number', e.target.value)}
-                disabled={!!item || isLoadingOptions} 
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option value="">Seleziona Part Number</option>
-                {catalogo.map(cat => (
-                  <option key={cat.value} value={cat.value}>
-                    {cat.label}
-                  </option>
-                ))}
-              </select>
-              {errors.part_number && (
-                <p className="text-sm text-destructive mt-1">{errors.part_number}</p>
+  const handleCicloCuraCreated = (newCiclo: CicloCura) => {
+    setCicliCura(prev => [...prev, newCiclo])
+    setFormData(prev => ({ ...prev, ciclo_cura_id: newCiclo.id }))
+    setCicloCuraModalOpen(false)
+    toast({
+      variant: 'success',
+      title: 'Ciclo Aggiunto',
+      description: `Ciclo "${newCiclo.nome}" selezionato per la parte.`
+    })
+  }
+
+  return (
+    <>
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {item ? `Modifica Parte: ${item.id}` : 'Crea Nuova Parte'}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            {/* Part Number con ricerca smart */}
+            <SmartCatalogoSelect
+              catalogo={catalogo}
+              selectedPartNumber={formData.part_number}
+              onSelect={(partNumber) => handleChange('part_number', partNumber)}
+              isLoading={isLoadingOptions}
+              error={errors.part_number}
+              disabled={!!item} // Disabilita in modifica
+            />
+
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="descrizione_breve" className="text-right">
+                Descrizione
+              </Label>
+              <Input
+                id="descrizione_breve"
+                value={formData.descrizione_breve}
+                onChange={e => handleChange('descrizione_breve', e.target.value)}
+                className="col-span-3"
+              />
+              {errors.descrizione_breve && (
+                <p className="col-span-4 text-right text-sm text-destructive">{errors.descrizione_breve}</p>
               )}
             </div>
-          </div>
 
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="descrizione_breve" className="text-right">
-              Descrizione
-            </Label>
-            <Input
-              id="descrizione_breve"
-              value={formData.descrizione_breve}
-              onChange={e => handleChange('descrizione_breve', e.target.value)}
-              className="col-span-3"
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="num_valvole_richieste" className="text-right">
+                Valvole
+              </Label>
+              <Input
+                id="num_valvole_richieste"
+                type="number"
+                min="1"
+                value={formData.num_valvole_richieste}
+                onChange={e => handleChange('num_valvole_richieste', e.target.value ? Number(e.target.value) : 1)}
+                className="col-span-3"
+              />
+              {errors.num_valvole_richieste && (
+                <p className="col-span-4 text-right text-sm text-destructive">{errors.num_valvole_richieste}</p>
+              )}
+            </div>
+
+            {/* Ciclo di Cura con ricerca smart */}
+            <SmartCicloCuraSelect
+              cicliCura={cicliCura}
+              selectedId={formData.ciclo_cura_id}
+              onSelect={(id) => handleChange('ciclo_cura_id', id)}
+              onCreateNew={() => setCicloCuraModalOpen(true)}
+              isLoading={isLoadingOptions}
+              error={errors.ciclo_cura_id}
             />
-            {errors.descrizione_breve && (
-              <p className="col-span-4 text-right text-sm text-destructive">{errors.descrizione_breve}</p>
-            )}
-          </div>
 
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="num_valvole_richieste" className="text-right">
-              Valvole
-            </Label>
-            <Input
-              id="num_valvole_richieste"
-              type="number"
-              min="1"
-              value={formData.num_valvole_richieste}
-              onChange={e => handleChange('num_valvole_richieste', e.target.value ? Number(e.target.value) : 1)}
-              className="col-span-3"
+            {/* Tools con ricerca smart */}
+            <SmartToolsSelect
+              tools={tools}
+              selectedIds={formData.tool_ids}
+              onSelect={(ids) => handleChange('tool_ids', ids)}
+              onCreateNew={() => setToolModalOpen(true)}
+              isLoading={isLoadingOptions}
+              error={errors.tool_ids}
             />
-            {errors.num_valvole_richieste && (
-              <p className="col-span-4 text-right text-sm text-destructive">{errors.num_valvole_richieste}</p>
-            )}
-          </div>
 
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="ciclo_cura_id" className="text-right">
-              Ciclo di Cura
-            </Label>
-            <div className="col-span-3">
-              <select
-                id="ciclo_cura_id"
-                value={formData.ciclo_cura_id !== null ? formData.ciclo_cura_id : ''}
-                onChange={e => handleChange('ciclo_cura_id', e.target.value ? Number(e.target.value) : null)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                disabled={isLoadingOptions}
-              >
-                <option value="">Nessun ciclo di cura</option>
-                {cicliCura.map(ciclo => (
-                  <option key={ciclo.id} value={ciclo.id}>
-                    {ciclo.nome}
-                  </option>
-                ))}
-              </select>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="note_produzione" className="text-right">
+                Note Produzione
+              </Label>
+              <textarea
+                id="note_produzione"
+                value={formData.note_produzione || ''}
+                onChange={e => handleChange('note_produzione', e.target.value || null)}
+                className="col-span-3 flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder="Note opzionali sulla produzione"
+              />
             </div>
           </div>
 
-          <div className="grid grid-cols-4 items-start gap-4">
-            <Label htmlFor="tool_ids" className="text-right pt-2">
-              Tools/Stampi
-            </Label>
-            <div className="col-span-3">
-              <div className="p-2 border rounded-md max-h-40 overflow-y-auto">
-                {tools.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nessun tool disponibile</p>
-                ) : (
-                  tools.map(tool => (
-                    <div key={tool.id} className="flex items-center gap-2 mb-1">
-                      <input
-                        type="checkbox"
-                        id={`tool-${tool.id}`}
-                        checked={formData.tool_ids.includes(tool.id)}
-                        onChange={e => {
-                          const currentTools = [...formData.tool_ids];
-                          const updatedTools = e.target.checked
-                            ? [...currentTools, tool.id]
-                            : currentTools.filter(id => id !== tool.id)
-                          handleChange('tool_ids', updatedTools)
-                        }}
-                        disabled={isLoadingOptions}
-                        className="h-4 w-4 rounded border-gray-300"
-                      />
-                      <label htmlFor={`tool-${tool.id}`} className="text-sm">
-                        {tool.codice} {tool.descrizione && `- ${tool.descrizione}`}
-                      </label>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting || isLoadingOptions}>
+              Annulla
+            </Button>
+            <Button type="button" onClick={handleSubmit} disabled={isSubmitting || isLoadingOptions}>
+              {isSubmitting ? 'Salvataggio...' : item ? 'Aggiorna' : 'Crea'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="note_produzione" className="text-right">
-              Note Produzione
-            </Label>
-            <textarea
-              id="note_produzione"
-              value={formData.note_produzione || ''}
-              onChange={e => handleChange('note_produzione', e.target.value || null)}
-              className="col-span-3 flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              placeholder="Note opzionali sulla produzione"
-            />
-          </div>
-        </div>
+      {/* Modal per creazione rapida Tool */}
+      <ToolQuickModal
+        isOpen={toolModalOpen}
+        onClose={() => setToolModalOpen(false)}
+        onSuccess={handleToolCreated}
+      />
 
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting || isLoadingOptions}>
-            Annulla
-          </Button>
-          <Button type="button" onClick={handleSubmit} disabled={isSubmitting || isLoadingOptions}>
-            {isSubmitting ? 'Salvataggio...' : item ? 'Aggiorna' : 'Crea'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      {/* Modal per creazione rapida Ciclo di Cura */}
+      <CicloCuraQuickModal
+        isOpen={cicloCuraModalOpen}
+        onClose={() => setCicloCuraModalOpen(false)}
+        onSuccess={handleCicloCuraCreated}
+      />
+    </>
   )
 } 

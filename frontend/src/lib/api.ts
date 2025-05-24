@@ -45,7 +45,7 @@ export interface ParteUpdate extends Partial<ParteBase> {
 
 export interface ToolInParteResponse {
   id: number;
-  codice: string;
+  part_number_tool: string;
   descrizione?: string;
 }
 
@@ -75,7 +75,7 @@ const api = axios.create({
 
 export interface Tool {
   id: number
-  codice: string
+  part_number_tool: string
   descrizione?: string
   lunghezza_piano: number
   larghezza_piano: number
@@ -85,7 +85,7 @@ export interface Tool {
 }
 
 export interface CreateToolDto {
-  codice: string
+  part_number_tool: string
   descrizione?: string
   lunghezza_piano: number
   larghezza_piano: number
@@ -345,7 +345,7 @@ export interface ParteInODLResponse {
 
 export interface ToolInODLResponse {
   id: number;
-  codice: string;
+  part_number_tool: string;
   descrizione?: string;
 }
 
@@ -494,7 +494,7 @@ export interface NestingResponse {
     };
     tool: {
       id: number;
-      codice: string;
+      part_number_tool: string;
       descrizione?: string;
       lunghezza_piano: number;
       larghezza_piano: number;

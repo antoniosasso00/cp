@@ -1,30 +1,32 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
-import { toolApi } from '@/lib/api'
-import { toolSchema, type ToolFormValues } from '@/lib/types/form'
+import { toolApi, Tool } from '@/lib/api'
+
+// Schema di validazione per il tool
+const toolSchema = z.object({
+  part_number_tool: z.string().min(1, "Part Number Tool obbligatorio"),
+  descrizione: z.string().optional(),
+  lunghezza_piano: z.number().min(0.1, "Lunghezza deve essere maggiore di 0"),
+  larghezza_piano: z.number().min(0.1, "Larghezza deve essere maggiore di 0"),
+  disponibile: z.boolean()
+})
+
+type ToolFormValues = z.infer<typeof toolSchema>
 
 interface ToolModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  editingItem?: {
-    id: number
-    codice: string
-    descrizione?: string
-    lunghezza_piano: number
-    larghezza_piano: number
-    disponibile: boolean
-    in_manutenzione: boolean
-  } | null
+  editingItem?: Tool | null
   onSuccess: () => void
 }
 
@@ -35,14 +37,34 @@ export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolMo
   const form = useForm<ToolFormValues>({
     resolver: zodResolver(toolSchema),
     defaultValues: {
-      codice: editingItem?.codice || '',
-      descrizione: editingItem?.descrizione || '',
-      lunghezza_piano: editingItem?.lunghezza_piano || 0,
-      larghezza_piano: editingItem?.larghezza_piano || 0,
-      disponibile: editingItem?.disponibile ?? true,
-      in_manutenzione: editingItem?.in_manutenzione ?? false,
+      part_number_tool: '',
+      descrizione: '',
+      lunghezza_piano: 100,
+      larghezza_piano: 50,
+      disponibile: true,
     },
   })
+
+  // Aggiorna i valori del form quando editingItem cambia
+  useEffect(() => {
+    if (editingItem) {
+      form.reset({
+        part_number_tool: editingItem.part_number_tool,
+        descrizione: editingItem.descrizione || '',
+        lunghezza_piano: editingItem.lunghezza_piano,
+        larghezza_piano: editingItem.larghezza_piano,
+        disponibile: editingItem.disponibile,
+      })
+    } else {
+      form.reset({
+        part_number_tool: '',
+        descrizione: '',
+        lunghezza_piano: 100,
+        larghezza_piano: 50,
+        disponibile: true,
+      })
+    }
+  }, [editingItem, form])
 
   const onSubmit = async (data: ToolFormValues) => {
     try {
@@ -50,12 +72,14 @@ export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolMo
       if (editingItem) {
         await toolApi.update(editingItem.id, data)
         toast({
+          variant: 'success',
           title: 'Tool aggiornato',
           description: 'Il tool è stato aggiornato con successo.',
         })
       } else {
         await toolApi.create(data)
         toast({
+          variant: 'success',
           title: 'Tool creato',
           description: 'Il nuovo tool è stato creato con successo.',
         })
@@ -84,12 +108,12 @@ export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolMo
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
               control={form.control}
-              name="codice"
+              name="part_number_tool"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Codice</FormLabel>
+                  <FormLabel>Part Number Tool</FormLabel>
                   <FormControl>
-                    <Input {...field} />
+                    <Input {...field} placeholder="es. T001" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -103,7 +127,7 @@ export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolMo
                 <FormItem>
                   <FormLabel>Descrizione</FormLabel>
                   <FormControl>
-                    <Input {...field} />
+                    <Input {...field} placeholder="Descrizione opzionale" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -120,6 +144,8 @@ export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolMo
                     <FormControl>
                       <Input 
                         type="number" 
+                        step="0.1"
+                        min="0.1"
                         {...field} 
                         onChange={e => field.onChange(Number(e.target.value))}
                       />
@@ -138,6 +164,8 @@ export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolMo
                     <FormControl>
                       <Input 
                         type="number" 
+                        step="0.1"
+                        min="0.1"
                         {...field} 
                         onChange={e => field.onChange(Number(e.target.value))}
                       />
@@ -148,43 +176,23 @@ export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolMo
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="disponibile"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                    <div className="space-y-0.5">
-                      <FormLabel>Disponibile</FormLabel>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="in_manutenzione"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                    <div className="space-y-0.5">
-                      <FormLabel>In Manutenzione</FormLabel>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-            </div>
+            <FormField
+              control={form.control}
+              name="disponibile"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <FormLabel>Disponibile</FormLabel>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

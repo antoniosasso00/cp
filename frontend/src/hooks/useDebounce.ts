@@ -1,18 +1,16 @@
 import { useState, useEffect } from 'react'
 
 /**
- * Hook personalizzato per implementare il debounce su un valore
- * Utile per ottimizzare le chiamate API durante la digitazione
- * 
+ * Hook personalizzato per implementare il debounce
  * @param value - Il valore da "debounceare"
- * @param delay - Il ritardo in millisecondi (default: 500ms)
- * @returns Il valore debounced
+ * @param delay - Il ritardo in millisecondi (default: 300ms)
+ * @returns Il valore debouncato
  */
-export function useDebounce<T>(value: T, delay: number = 500): T {
+export function useDebounce<T>(value: T, delay: number = 300): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value)
 
   useEffect(() => {
-    // Imposta un timer per aggiornare il valore debounced
+    // Imposta un timer per aggiornare il valore debouncato
     const handler = setTimeout(() => {
       setDebouncedValue(value)
     }, delay)

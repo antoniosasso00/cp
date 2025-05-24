@@ -27,7 +27,7 @@ load_dotenv()
 IN_DOCKER = os.path.exists('/.dockerenv')
 
 # Se in Docker, usa l'host interno, altrimenti usa localhost
-BASE_URL = "http://localhost:8000" if IN_DOCKER else os.getenv("BACKEND_URL", "http://localhost:8000")
+BASE_URL = "http://localhost:8000" if not IN_DOCKER else os.getenv("BACKEND_URL", "http://localhost:8000")
 API_PREFIX = os.getenv("API_PREFIX", "/api/v1")
 
 logger.info(f"{'Esecuzione in ambiente Docker, utilizzo' if IN_DOCKER else 'Utilizzo'} URL backend: {BASE_URL}")
@@ -73,30 +73,27 @@ CATALOGO_PARTS = [
 
 TOOLS = [
     {
-        "codice": "ST-101",
+        "part_number_tool": "ST-101",
         "descrizione": "Stampo pannelli laterali",
         "lunghezza_piano": 2000.0,
         "larghezza_piano": 1000.0,
         "disponibile": True,
-        "in_manutenzione": False,
         "note": "Stampo principale per pannelli laterali"
     },
     {
-        "codice": "ST-201",
+        "part_number_tool": "ST-201",
         "descrizione": "Stampo supporto motore",
         "lunghezza_piano": 1500.0,
         "larghezza_piano": 800.0,
         "disponibile": True,
-        "in_manutenzione": False,
         "note": "Stampo dedicato per supporti motore"
     },
     {
-        "codice": "ST-301",
+        "part_number_tool": "ST-301",
         "descrizione": "Stampo coperchi e fasce",
         "lunghezza_piano": 1800.0,
         "larghezza_piano": 900.0,
         "disponibile": True,
-        "in_manutenzione": False,
         "note": "Stampo versatile per coperchi e fasce"
     }
 ]
@@ -177,7 +174,7 @@ def post_if_missing(endpoint: str, unique_field: str, data: dict, debug: bool = 
     
     Args:
         endpoint: Nome dell'endpoint API (es. "catalogo", "tools")
-        unique_field: Campo univoco per identificare il record (es. "part_number", "codice")
+        unique_field: Campo univoco per identificare il record (es. "part_number", "part_number_tool")
         data: Dati da inviare nella richiesta POST
         debug: Se True, mostra informazioni dettagliate sugli errori
     
@@ -204,14 +201,6 @@ def post_if_missing(endpoint: str, unique_field: str, data: dict, debug: bool = 
         if debug:
             logger.debug(f"Invio POST a {endpoint_url} con dati: {json.dumps(data, indent=2)}")
         
-        # Correzioni specifiche per endpoint
-        if endpoint == "cicli-cura":
-            # Rimuovi i campi calcolati non presenti nel database
-            if "temperatura_max" in data:
-                del data["temperatura_max"]
-            if "pressione_max" in data:
-                del data["pressione_max"]
-        
         r = requests.post(endpoint_url, json=data)
         if r.status_code in (200, 201):
             created_data = r.json()
@@ -224,18 +213,6 @@ def post_if_missing(endpoint: str, unique_field: str, data: dict, debug: bool = 
             if debug:
                 logger.debug(f"Dettagli errore: {json.dumps(error_msg, indent=2)}")
                 logger.debug(f"Dati inviati: {json.dumps(data, indent=2)}")
-            
-            # Tentativi di correzione dei dati
-            if endpoint == "autoclavi" and "stato" in data:
-                logger.debug(f"Tentativo correzione stato autoclave da {data['stato']} a DISPONIBILE")
-                data["stato"] = "DISPONIBILE"
-                r = requests.post(endpoint_url, json=data)
-                if r.status_code in (200, 201):
-                    created_data = r.json()
-                    logger.info(f"[+] {endpoint} creato (dopo correzione): {data[unique_field]}")
-                    return created_data
-                else:
-                    logger.error(f"[!] Errore creazione {endpoint} dopo correzione: {r.text}")
         else:
             logger.error(f"[!] Errore creazione {endpoint} (status {r.status_code}): {r.text}")
             if debug:
@@ -248,106 +225,159 @@ def post_if_missing(endpoint: str, unique_field: str, data: dict, debug: bool = 
     return None
 
 def verify_endpoint(endpoint: str, expected_items: int = 1, debug: bool = False) -> bool:
-    """
-    Verifica che un endpoint restituisca i dati attesi.
-    
-    Args:
-        endpoint: Nome dell'endpoint API
-        expected_items: Numero minimo di elementi attesi
-        debug: Se True, mostra informazioni dettagliate
-    """
+    """Verifica che un endpoint sia raggiungibile e restituisca dati."""
     endpoint_url = f"{BASE_URL}{API_PREFIX}/{endpoint}/"
     try:
         r = requests.get(endpoint_url)
         if r.status_code == 200:
             data = r.json()
-            if debug:
-                logger.debug(f"Risposta da {endpoint_url}: {len(data)} elementi")
-            
-            if len(data) >= expected_items:
-                logger.info(f"[✔] {endpoint} verificato: {len(data)} elementi trovati")
-                return True
-            else:
-                logger.error(f"[!] {endpoint} ha meno elementi del previsto: {len(data)} < {expected_items}")
+            count = len(data) if isinstance(data, list) else 1
+            logger.info(f"[✔] {endpoint}: {count} elementi trovati")
+            return count >= expected_items
         else:
-            logger.error(f"[!] Errore verifica {endpoint}: {r.status_code} - {r.text}")
+            logger.error(f"[!] {endpoint}: errore {r.status_code}")
+            return False
     except Exception as e:
-        logger.error(f"[!] Errore verifica {endpoint}: {e}")
-    return False
+        logger.error(f"[!] {endpoint}: errore di connessione - {str(e)}")
+        return False
 
 def seed_catalogo(debug: bool = False):
-    """Popola il catalogo con parti predefinite."""
-    logger.info("\n📦 Popolamento catalogo parti...")
+    """Popola la tabella catalogo con dati di test."""
+    logger.info("🌱 Seeding catalogo...")
     for part in CATALOGO_PARTS:
         post_if_missing("catalogo", "part_number", part, debug)
 
 def seed_tools(debug: bool = False):
-    """Popola gli stampi con dati predefiniti."""
-    logger.info("\n🔧 Popolamento stampi...")
-    for i, tool in enumerate(TOOLS):
-        created_tool = post_if_missing("tools", "codice", tool, debug)
-        if created_tool and created_tool.get('id'):
-            idx = i + 1  # Gli indici iniziano da 1 nello script seed
-            created_ids["tools"][idx] = created_tool.get('id')
-            if debug:
-                logger.debug(f"Memorizzato Tool ID: {created_tool.get('id')} per indice {idx}")
+    """Popola la tabella tools con dati di test."""
+    logger.info("🌱 Seeding tools...")
+    for tool in TOOLS:
+        result = post_if_missing("tools", "part_number_tool", tool, debug)
+        if result and result.get('id'):
+            created_ids["tools"][tool["part_number_tool"]] = result["id"]
 
 def seed_cicli_cura(debug: bool = False):
-    """Popola i cicli di cura con dati predefiniti."""
-    logger.info("\n🔄 Popolamento cicli di cura...")
-    for i, ciclo in enumerate(CICLI_CURA):
-        created_ciclo = post_if_missing("cicli-cura", "nome", ciclo, debug)
-        if created_ciclo and created_ciclo.get('id'):
-            idx = i + 1  # Gli indici iniziano da 1 nello script seed
-            created_ids["cicli_cura"][idx] = created_ciclo.get('id')
-            if debug:
-                logger.debug(f"Memorizzato Ciclo Cura ID: {created_ciclo.get('id')} per indice {idx}")
+    """Popola la tabella cicli_cura con dati di test."""
+    logger.info("🌱 Seeding cicli cura...")
+    for ciclo in CICLI_CURA:
+        result = post_if_missing("cicli-cura", "nome", ciclo, debug)
+        if result and result.get('id'):
+            created_ids["cicli_cura"][ciclo["nome"]] = result["id"]
 
 def seed_autoclavi(debug: bool = False):
-    """Popola le autoclavi con dati predefiniti."""
-    logger.info("\n🏭 Popolamento autoclavi...")
+    """Popola la tabella autoclavi con dati di test."""
+    logger.info("🌱 Seeding autoclavi...")
     for autoclave in AUTOCLAVI:
         post_if_missing("autoclavi", "codice", autoclave, debug)
 
 def seed_parti(debug: bool = False):
-    """Popola le parti con dati predefiniti."""
-    logger.info("\n📋 Popolamento parti...")
+    """Popola la tabella parti con dati di test."""
+    logger.info("🌱 Seeding parti...")
     
-    # Adatta i dati delle parti usando gli ID effettivi
-    modified_parti = []
-    for parte in PARTI:
-        modified_parte = parte.copy()
-        
-        # Sostituisci gli ID dei cicli di cura con quelli effettivi
-        if "ciclo_cura_id" in modified_parte and modified_parte["ciclo_cura_id"] in created_ids["cicli_cura"]:
-            idx = modified_parte["ciclo_cura_id"]
-            modified_parte["ciclo_cura_id"] = created_ids["cicli_cura"].get(idx)
-            if debug:
-                logger.debug(f"Sostituito ciclo_cura_id {idx} con {modified_parte['ciclo_cura_id']}")
-        
-        # Sostituisci gli ID dei tool con quelli effettivi
-        if "tool_ids" in modified_parte:
-            tool_ids = []
-            for tool_idx in modified_parte["tool_ids"]:
-                if tool_idx in created_ids["tools"]:
-                    tool_ids.append(created_ids["tools"][tool_idx])
-            modified_parte["tool_ids"] = tool_ids
-            if debug:
-                logger.debug(f"Sostituiti tool_ids {parte['tool_ids']} con {modified_parte['tool_ids']}")
-        
-        modified_parti.append(modified_parte)
+    # Definizione delle parti (da usare dopo aver ottenuto gli ID dai cicli di cura e tool)
+    PARTI = [
+        {
+            "part_number": "CPX-101",
+            "descrizione_breve": "Pannello SX",
+            "num_valvole_richieste": 4,
+            "ciclo_cura_id": None,  # Sarà impostato dinamicamente
+            "tool_ids": [],         # Sarà impostato dinamicamente
+            "note_produzione": "Pannello laterale sinistro"
+        },
+        {
+            "part_number": "CPX-102",
+            "descrizione_breve": "Pannello DX",
+            "num_valvole_richieste": 4,
+            "ciclo_cura_id": None,
+            "tool_ids": [],
+            "note_produzione": "Pannello laterale destro"
+        },
+        {
+            "part_number": "CPX-201",
+            "descrizione_breve": "Supporto Motore",
+            "num_valvole_richieste": 6,
+            "ciclo_cura_id": None,
+            "tool_ids": [],
+            "note_produzione": "Supporto motore con rinforzi"
+        },
+        {
+            "part_number": "CPX-301",
+            "descrizione_breve": "Coperchio Batterie",
+            "num_valvole_richieste": 2,
+            "ciclo_cura_id": None,
+            "tool_ids": [],
+            "note_produzione": "Coperchio vano batterie"
+        },
+        {
+            "part_number": "CPX-401",
+            "descrizione_breve": "Fascia Frontale",
+            "num_valvole_richieste": 3,
+            "ciclo_cura_id": None,
+            "tool_ids": [],
+            "note_produzione": "Fascia frontale con rinforzi"
+        }
+    ]
     
-    # Crea le parti
-    for parte in modified_parti:
-        post_if_missing("parti", "part_number", parte, debug)
+    try:
+        # Recupera i cicli di cura esistenti
+        cicli_url = f"{BASE_URL}{API_PREFIX}/cicli-cura/"
+        cicli_response = requests.get(cicli_url)
+        if cicli_response.status_code != 200:
+            logger.error(f"Impossibile recuperare i cicli di cura: {cicli_response.status_code}")
+            return
+        
+        cicli = cicli_response.json()
+        if not cicli:
+            logger.error("Nessun ciclo di cura trovato. Esegui prima seed_cicli_cura()")
+            return
+        
+        # Recupera i tools esistenti
+        tools_url = f"{BASE_URL}{API_PREFIX}/tools/"
+        tools_response = requests.get(tools_url)
+        if tools_response.status_code != 200:
+            logger.error(f"Impossibile recuperare i tools: {tools_response.status_code}")
+            return
+        
+        tools = tools_response.json()
+        if not tools:
+            logger.error("Nessun tool trovato. Esegui prima seed_tools()")
+            return
+        
+        # Mappa i cicli di cura per nome
+        cicli_map = {ciclo["nome"]: ciclo["id"] for ciclo in cicli}
+        tools_map = {tool["part_number_tool"]: tool["id"] for tool in tools}
+        
+        # Assegna cicli di cura e tools alle parti
+        for i, parte in enumerate(PARTI):
+            # Assegna ciclo di cura alternando tra Standard e Avanzato
+            if i % 2 == 0:
+                parte["ciclo_cura_id"] = cicli_map.get("Ciclo Standard")
+            else:
+                parte["ciclo_cura_id"] = cicli_map.get("Ciclo Avanzato")
+            
+            # Assegna tool in base al part number
+            if parte["part_number"] in ["CPX-101", "CPX-102"]:
+                parte["tool_ids"] = [tools_map.get("ST-101")]
+            elif parte["part_number"] == "CPX-201":
+                parte["tool_ids"] = [tools_map.get("ST-201")]
+            else:
+                parte["tool_ids"] = [tools_map.get("ST-301")]
+            
+            # Rimuovi None values
+            parte["tool_ids"] = [tid for tid in parte["tool_ids"] if tid is not None]
+            
+            # Crea la parte
+            post_if_missing("parti", "part_number", parte, debug)
+            
+    except Exception as e:
+        logger.error(f"Errore durante il popolamento delle parti: {str(e)}")
 
 def seed_odl(debug: bool = False):
-    """Crea ODL di test, associandoli a Parti e Tools esistenti"""
-    logger.info("Popolamento ODL...")
+    """Popola la tabella ODL con dati di test."""
+    logger.info("🌱 Seeding ODL...")
     
-    # Recupera le parti esistenti
-    parti_url = f"{BASE_URL}{API_PREFIX}/parti/"
     try:
+        # Recupera le parti esistenti
+        parti_url = f"{BASE_URL}{API_PREFIX}/parti/"
         parti_response = requests.get(parti_url)
         if parti_response.status_code != 200 or not parti_response.json():
             logger.error(f"Impossibile recuperare le parti: {parti_response.status_code}")
@@ -380,7 +410,7 @@ def seed_odl(debug: bool = False):
                 "tool_id": tool["id"],
                 "priorita": i + 1,
                 "status": odl_stati[i % len(odl_stati)],
-                "note": f"ODL di test #{i+1} creato automaticamente - {parte['part_number']} con {tool['codice']}"
+                "note": f"ODL di test #{i+1} creato automaticamente - {parte['part_number']} con {tool['part_number_tool']}"
             }
             
             # Usa una ricerca per verificare se esiste già un ODL simile
@@ -393,13 +423,13 @@ def seed_odl(debug: bool = False):
             
             search_response = requests.get(odl_url, params=search_params)
             if search_response.status_code == 200 and search_response.json():
-                logger.info(f"[✔] ODL già presente: Parte {parte['part_number']}, Tool {tool['codice']}, Status {odl_data['status']}")
+                logger.info(f"[✔] ODL già presente: Parte {parte['part_number']}, Tool {tool['part_number_tool']}, Status {odl_data['status']}")
                 continue
             
             # Crea l'ODL se non esiste già
             result = requests.post(odl_url, json=odl_data)
             if result.status_code in [200, 201]:
-                logger.info(f"[✓] Creato ODL: Parte {parte['part_number']}, Tool {tool['codice']}, Status {odl_data['status']}")
+                logger.info(f"[✓] Creato ODL: Parte {parte['part_number']}, Tool {tool['part_number_tool']}, Status {odl_data['status']}")
             else:
                 logger.error(f"[✗] Errore nella creazione dell'ODL: {result.status_code}")
                 if debug:
@@ -473,7 +503,7 @@ def seed_odl_completati(debug: bool = False):
             
             search_response = requests.get(odl_url, params=search_params)
             if search_response.status_code == 200 and len(search_response.json()) > 0:
-                logger.info(f"[✔] ODL completato già presente: Parte {parte['part_number']}, Tool {tool['codice']}")
+                logger.info(f"[✔] ODL completato già presente: Parte {parte['part_number']}, Tool {tool['part_number_tool']}")
                 continue
             
             # Crea l'ODL completato
@@ -482,7 +512,7 @@ def seed_odl_completati(debug: bool = False):
                 "tool_id": tool["id"],
                 "priorita": 1,  # Priorità bassa per ODL completati
                 "status": "Finito",
-                "note": f"ODL completato di test #{i+1} - {parte['part_number']} con {tool['codice']}"
+                "note": f"ODL completato di test #{i+1} - {parte['part_number']} con {tool['part_number_tool']}"
             }
             
             # Crea l'ODL
@@ -495,7 +525,7 @@ def seed_odl_completati(debug: bool = False):
             
             odl_creato = odl_response.json()
             odl_id = odl_creato["id"]
-            logger.info(f"[✓] Creato ODL completato: ID {odl_id}, Parte {parte['part_number']}, Tool {tool['codice']}")
+            logger.info(f"[✓] Creato ODL completato: ID {odl_id}, Parte {parte['part_number']}, Tool {tool['part_number_tool']}")
             
             # Per ogni ODL, crea i tempi delle 3 fasi
             # Calcola le date di inizio/fine progressive partendo da 10 giorni fa
@@ -562,7 +592,7 @@ def seed_odl_completati(debug: bool = False):
             
             search_response = requests.get(odl_url, params=search_params)
             if search_response.status_code == 200 and len(search_response.json()) > 0:
-                logger.info(f"[✔] ODL incompleto già presente: Parte {parte['part_number']}, Tool {tool['codice']}, Stato {stato_odl}")
+                logger.info(f"[✔] ODL incompleto già presente: Parte {parte['part_number']}, Tool {tool['part_number_tool']}, Stato {stato_odl}")
                 continue
             
             odl_data = {
@@ -570,7 +600,7 @@ def seed_odl_completati(debug: bool = False):
                 "tool_id": tool["id"],
                 "priorita": 3,  # Priorità media
                 "status": stato_odl,
-                "note": f"ODL in corso di test - {parte['part_number']} con {tool['codice']}"
+                "note": f"ODL in corso di test - {parte['part_number']} con {tool['part_number_tool']}"
             }
             
             odl_response = requests.post(odl_url, json=odl_data)
@@ -580,7 +610,7 @@ def seed_odl_completati(debug: bool = False):
             
             odl_creato = odl_response.json()
             odl_id = odl_creato["id"]
-            logger.info(f"[✓] Creato ODL incompleto: ID {odl_id}, Parte {parte['part_number']}, Tool {tool['codice']}, Stato {stato_odl}")
+            logger.info(f"[✓] Creato ODL incompleto: ID {odl_id}, Parte {parte['part_number']}, Tool {tool['part_number_tool']}, Stato {stato_odl}")
             
             # Registra solo le fasi precedenti a quella corrente
             fase_corrente = fasi_incomplete[i % len(fasi_incomplete)]
@@ -676,7 +706,7 @@ def main():
         verify_endpoint("tools", len(TOOLS), debug),
         verify_endpoint("cicli-cura", len(CICLI_CURA), debug),
         verify_endpoint("autoclavi", len(AUTOCLAVI), debug),
-        verify_endpoint("parti", len(PARTI), debug),
+        verify_endpoint("parti", expected_items=5, debug=debug),  # 5 parti definite nella funzione seed_parti
         verify_endpoint("odl", expected_items=1, debug=debug)
     ])
     
@@ -687,50 +717,6 @@ def main():
         logger.error("\n❌ Alcuni endpoint non hanno restituito i dati attesi. Controlla i log per i dettagli.")
         if not debug:
             logger.info("🔍 Riprova con l'opzione --debug per ottenere maggiori informazioni: python tools/seed_test_data.py --debug")
-
-# Definizione delle parti (da usare dopo aver ottenuto gli ID dai cicli di cura e tool)
-PARTI = [
-    {
-        "part_number": "CPX-101",
-        "descrizione_breve": "Pannello SX",
-        "num_valvole_richieste": 4,
-        "ciclo_cura_id": 1,  # Ciclo Standard
-        "tool_ids": [1],     # ST-101
-        "note_produzione": "Pannello laterale sinistro"
-    },
-    {
-        "part_number": "CPX-102",
-        "descrizione_breve": "Pannello DX",
-        "num_valvole_richieste": 4,
-        "ciclo_cura_id": 1,  # Ciclo Standard
-        "tool_ids": [1],     # ST-101
-        "note_produzione": "Pannello laterale destro"
-    },
-    {
-        "part_number": "CPX-201",
-        "descrizione_breve": "Supporto Motore",
-        "num_valvole_richieste": 6,
-        "ciclo_cura_id": 2,  # Ciclo Avanzato
-        "tool_ids": [2],     # ST-201
-        "note_produzione": "Supporto motore con rinforzi"
-    },
-    {
-        "part_number": "CPX-301",
-        "descrizione_breve": "Coperchio Batterie",
-        "num_valvole_richieste": 2,
-        "ciclo_cura_id": 1,  # Ciclo Standard
-        "tool_ids": [3],     # ST-301
-        "note_produzione": "Coperchio vano batterie"
-    },
-    {
-        "part_number": "CPX-401",
-        "descrizione_breve": "Fascia Frontale",
-        "num_valvole_richieste": 3,
-        "ciclo_cura_id": 2,  # Ciclo Avanzato
-        "tool_ids": [3],     # ST-301
-        "note_produzione": "Fascia frontale con rinforzi"
-    }
-]
 
 if __name__ == "__main__":
     main() 

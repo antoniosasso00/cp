@@ -153,7 +153,7 @@ export default function PartiPage() {
                       <div className="flex flex-wrap gap-1">
                         {item.tools.map(tool => (
                           <Badge key={tool.id} variant="secondary" className="mr-1">
-                            {tool.codice}
+                            {tool.part_number_tool}
                           </Badge>
                         ))}
                       </div>

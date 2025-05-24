@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Toaster } from '@/components/ui/toaster'
 import { ThemeProvider } from '@/components/theme-provider'
+import { ThemeToggle } from '@/components/ui/theme-toggle'
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -29,10 +30,13 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          <div className="flex justify-end p-4">
+            <ThemeToggle />
+          </div>
           {children}
           <Toaster />
         </ThemeProvider>
       </body>
     </html>
   )
-} 
+}

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { toolApi } from '@/lib/api'
+import { toolApi, Tool } from '@/lib/api'
 import { ToolModal } from './components/tool-modal'
 import { 
   Loader2, 
@@ -21,18 +21,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
-interface Tool {
-  id: number
-  codice: string
-  descrizione?: string
-  lunghezza_piano: number
-  larghezza_piano: number
-  disponibile: boolean
-  in_manutenzione: boolean
-  created_at: string
-  updated_at: string
-}
-
 export default function ToolsPage() {
   const [tools, setTools] = useState<Tool[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -45,7 +33,7 @@ export default function ToolsPage() {
     try {
       setIsLoading(true)
       const data = await toolApi.getAll()
-      setTools(data as Tool[])
+      setTools(data)
     } catch (error) {
       console.error('Errore nel caricamento dei tools:', error)
       toast({
@@ -81,16 +69,16 @@ export default function ToolsPage() {
       await toolApi.delete(id)
       toast({
         variant: 'success',
-        title: 'Tool eliminato',
-        description: 'Il tool è stato eliminato con successo.',
+        title: 'Eliminato',
+        description: 'Tool eliminato con successo.',
       })
       fetchTools()
     } catch (error) {
-      console.error('Errore durante l\'eliminazione:', error)
+      console.error('Errore durante l\'eliminazione del tool:', error)
       toast({
         variant: 'destructive',
         title: 'Errore',
-        description: 'Impossibile eliminare il tool. Potrebbe essere in uso.',
+        description: 'Impossibile eliminare il tool.',
       })
     }
   }
@@ -98,7 +86,7 @@ export default function ToolsPage() {
   const filteredTools = tools.filter(item => {
     const searchLower = searchQuery.toLowerCase()
     return (
-      item.codice.toLowerCase().includes(searchLower) ||
+      item.part_number_tool.toLowerCase().includes(searchLower) ||
       (item.descrizione?.toLowerCase().includes(searchLower) || false)
     )
   })
@@ -134,7 +122,7 @@ export default function ToolsPage() {
           <TableCaption>Lista dei tools disponibili</TableCaption>
           <TableHeader>
             <TableRow>
-              <TableHead>Codice</TableHead>
+              <TableHead>Part Number Tool</TableHead>
               <TableHead>Descrizione</TableHead>
               <TableHead className="text-center">Dimensioni (mm)</TableHead>
               <TableHead className="text-center">Stato</TableHead>
@@ -151,20 +139,15 @@ export default function ToolsPage() {
             ) : (
               filteredTools.map(item => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.codice}</TableCell>
+                  <TableCell className="font-medium">{item.part_number_tool}</TableCell>
                   <TableCell className="max-w-xs truncate">{item.descrizione || '-'}</TableCell>
                   <TableCell className="text-center">
                     {item.lunghezza_piano} x {item.larghezza_piano}
                   </TableCell>
                   <TableCell className="text-center">
-                    <div className="flex justify-center gap-2">
-                      <Badge variant={item.disponibile ? 'success' : 'destructive'}>
-                        {item.disponibile ? 'Disponibile' : 'Non Disponibile'}
-                      </Badge>
-                      {item.in_manutenzione && (
-                        <Badge variant="warning">In Manutenzione</Badge>
-                      )}
-                    </div>
+                    <Badge variant={item.disponibile ? 'default' : 'secondary'}>
+                      {item.disponibile ? 'Disponibile' : 'Non Disponibile'}
+                    </Badge>
                   </TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>

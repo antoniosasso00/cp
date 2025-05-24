@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useToast } from '@/components/ui/use-toast'
@@ -37,16 +37,45 @@ export function CicloModal({ open, onOpenChange, editingItem, onSuccess }: Ciclo
   const form = useForm<CicloFormValues>({
     resolver: zodResolver(cicloSchema),
     defaultValues: {
-      nome: editingItem?.nome || '',
-      temperatura_stasi1: editingItem?.temperatura_stasi1 || 0,
-      pressione_stasi1: editingItem?.pressione_stasi1 || 0,
-      durata_stasi1: editingItem?.durata_stasi1 || 0,
-      attiva_stasi2: editingItem?.attiva_stasi2 ?? false,
-      temperatura_stasi2: editingItem?.temperatura_stasi2 || 0,
-      pressione_stasi2: editingItem?.pressione_stasi2 || 0,
-      durata_stasi2: editingItem?.durata_stasi2 || 0,
+      nome: '',
+      temperatura_stasi1: 0,
+      pressione_stasi1: 0,
+      durata_stasi1: 0,
+      attiva_stasi2: false,
+      temperatura_stasi2: 0,
+      pressione_stasi2: 0,
+      durata_stasi2: 0,
     },
   })
+
+  // Effect per aggiornare i valori del form quando editingItem cambia
+  useEffect(() => {
+    if (editingItem) {
+      // Precompila il form con i valori dell'elemento da modificare
+      form.reset({
+        nome: editingItem.nome,
+        temperatura_stasi1: editingItem.temperatura_stasi1,
+        pressione_stasi1: editingItem.pressione_stasi1,
+        durata_stasi1: editingItem.durata_stasi1,
+        attiva_stasi2: editingItem.attiva_stasi2,
+        temperatura_stasi2: editingItem.temperatura_stasi2 ?? 0,
+        pressione_stasi2: editingItem.pressione_stasi2 ?? 0,
+        durata_stasi2: editingItem.durata_stasi2 ?? 0,
+      })
+    } else {
+      // Reset per nuovo elemento
+      form.reset({
+        nome: '',
+        temperatura_stasi1: 0,
+        pressione_stasi1: 0,
+        durata_stasi1: 0,
+        attiva_stasi2: false,
+        temperatura_stasi2: 0,
+        pressione_stasi2: 0,
+        durata_stasi2: 0,
+      })
+    }
+  }, [editingItem, form])
 
   const onSubmit = async (data: CicloFormValues) => {
     try {
