@@ -50,11 +50,8 @@ async def get_nesting_preview(db: Session) -> NestingPreviewSchema:
     Returns:
         Schema NestingPreviewSchema con l'anteprima del nesting
     """
-    # Recupera tutti gli ODL in stato "Attesa Cura"
-    odl_list = db.query(ODL).options(
-        joinedload(ODL.parte).joinedload(Parte.catalogo),
-        joinedload(ODL.tool)
-    ).filter(ODL.status == "Attesa Cura").all()
+    # Recupera tutti gli ODL in stato "Attesa Cura" filtrati e validati
+    odl_list = await get_odl_attesa_cura_filtered(db)
     
     # Recupera tutte le autoclavi disponibili
     autoclavi = db.query(Autoclave).filter(
@@ -160,11 +157,8 @@ async def run_automatic_nesting(db: Session) -> NestingResultSchema:
     Returns:
         Schema NestingResult con i risultati dell'ottimizzazione
     """
-    # Recupera tutti gli ODL in stato "Attesa Cura"
-    odl_list = db.query(ODL).options(
-        joinedload(ODL.parte).joinedload(Parte.catalogo),
-        joinedload(ODL.tool)
-    ).filter(ODL.status == "Attesa Cura").all()
+    # Recupera tutti gli ODL in stato "Attesa Cura" filtrati e validati
+    odl_list = await get_odl_attesa_cura_filtered(db)
     
     # Recupera tutte le autoclavi disponibili
     autoclavi = db.query(Autoclave).filter(
@@ -347,3 +341,195 @@ async def update_nesting_status(db: Session, nesting_id: int, nuovo_stato: str, 
     db.refresh(nesting)
     
     return nesting 
+
+async def save_nesting_draft(db: Session, nesting_data: dict) -> dict:
+    """
+    Salva una bozza di nesting senza modificare lo stato degli ODL
+    
+    Args:
+        db: Sessione del database
+        nesting_data: Dati del nesting da salvare come bozza
+        
+    Returns:
+        Dizionario con il risultato del salvataggio
+    """
+    try:
+        # Valida i dati in input
+        if not nesting_data.get("autoclavi") or not isinstance(nesting_data["autoclavi"], list):
+            return {
+                "success": False,
+                "message": "Dati autoclavi non validi",
+                "draft_id": None
+            }
+        
+        # Salva ogni autoclave come bozza separata
+        draft_ids = []
+        
+        for autoclave_data in nesting_data["autoclavi"]:
+            autoclave_id = autoclave_data.get("id")
+            odl_ids = autoclave_data.get("odl_inclusi", [])
+            
+            if not autoclave_id or not odl_ids:
+                continue
+                
+            # Trova l'autoclave
+            autoclave = db.query(Autoclave).filter(Autoclave.id == autoclave_id).first()
+            if not autoclave:
+                continue
+            
+            # Crea un record di bozza
+            nesting_draft = NestingResult(
+                autoclave_id=autoclave_id,
+                odl_ids=[odl["id"] for odl in odl_ids],
+                odl_esclusi_ids=nesting_data.get("odl_esclusi", []),
+                motivi_esclusione=[],
+                stato="Bozza",  # Stato speciale per le bozze
+                area_utilizzata=float(autoclave_data.get("area_utilizzata_cm2", 0.0)),
+                area_totale=float(autoclave_data.get("area_totale_cm2", 0.0)),
+                valvole_utilizzate=int(autoclave_data.get("valvole_utilizzate", 0)),
+                valvole_totali=autoclave.num_linee_vuoto,
+                note="Bozza salvata automaticamente"
+            )
+            
+            # Salva nel database
+            db.add(nesting_draft)
+            db.flush()  # Per ottenere l'ID
+            draft_ids.append(nesting_draft.id)
+        
+        # Commit delle modifiche
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": f"Bozza salvata con successo ({len(draft_ids)} autoclavi)",
+            "draft_ids": draft_ids
+        }
+        
+    except Exception as e:
+        db.rollback()
+        return {
+            "success": False,
+            "message": f"Errore nel salvataggio della bozza: {str(e)}",
+            "draft_ids": []
+        }
+
+async def load_nesting_draft(db: Session, draft_id: int) -> dict:
+    """
+    Carica una bozza di nesting salvata
+    
+    Args:
+        db: Sessione del database
+        draft_id: ID della bozza da caricare
+        
+    Returns:
+        Dizionario con i dati della bozza
+    """
+    try:
+        # Recupera la bozza dal database
+        draft = db.query(NestingResult).options(
+            joinedload(NestingResult.autoclave),
+            joinedload(NestingResult.odl_list).joinedload(ODL.parte).joinedload(Parte.catalogo)
+        ).filter(
+            NestingResult.id == draft_id,
+            NestingResult.stato == "Bozza"
+        ).first()
+        
+        if not draft:
+            return {
+                "success": False,
+                "message": "Bozza non trovata",
+                "data": None
+            }
+        
+        # Prepara i dati della bozza
+        autoclave_data = {
+            "id": draft.autoclave.id,
+            "nome": draft.autoclave.nome,
+            "codice": draft.autoclave.codice,
+            "lunghezza": draft.autoclave.lunghezza,
+            "larghezza_piano": draft.autoclave.larghezza_piano,
+            "area_totale_cm2": draft.area_totale,
+            "area_utilizzata_cm2": draft.area_utilizzata,
+            "valvole_totali": draft.valvole_totali,
+            "valvole_utilizzate": draft.valvole_utilizzate,
+            "odl_inclusi": []
+        }
+        
+        # Aggiungi gli ODL inclusi
+        for odl in draft.odl_list:
+            if odl.parte and odl.parte.catalogo:
+                autoclave_data["odl_inclusi"].append({
+                    "id": odl.id,
+                    "part_number": odl.parte.catalogo.part_number,
+                    "descrizione": odl.parte.descrizione_breve,
+                    "area_cm2": odl.parte.catalogo.area_cm2,
+                    "num_valvole": odl.parte.num_valvole_richieste,
+                    "priorita": odl.priorita,
+                    "color": generate_color_for_odl(odl.id)
+                })
+        
+        return {
+            "success": True,
+            "message": "Bozza caricata con successo",
+            "data": {
+                "id": draft.id,
+                "created_at": draft.created_at.isoformat(),
+                "autoclave": autoclave_data,
+                "odl_esclusi": draft.odl_esclusi_ids or []
+            }
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Errore nel caricamento della bozza: {str(e)}",
+            "data": None
+        }
+
+async def get_odl_attesa_cura_filtered(db: Session) -> List[ODL]:
+    """
+    Recupera tutti gli ODL in stato "Attesa Cura" che possono essere inclusi nel nesting
+    
+    Args:
+        db: Sessione del database
+        
+    Returns:
+        Lista di ODL filtrati e validati
+    """
+    try:
+        # Recupera tutti gli ODL in stato "Attesa Cura"
+        odl_candidates = db.query(ODL).options(
+            joinedload(ODL.parte).joinedload(Parte.catalogo),
+            joinedload(ODL.tool)
+        ).filter(
+            ODL.status == "Attesa Cura"
+        ).all()
+        
+        # Filtra solo gli ODL validi per il nesting
+        odl_validi = []
+        
+        for odl in odl_candidates:
+            # Verifica che l'ODL non sia già in un nesting attivo
+            existing_nesting = db.query(NestingResult).filter(
+                NestingResult.odl_ids.contains([odl.id]),
+                NestingResult.stato.in_(["In attesa schedulazione", "Schedulato", "In corso"])
+            ).first()
+            
+            if existing_nesting:
+                continue  # Salta questo ODL
+            
+            # Verifica che abbia tutti i dati necessari
+            if (odl.parte and 
+                odl.parte.catalogo and 
+                odl.parte.catalogo.area_cm2 and 
+                odl.parte.catalogo.area_cm2 > 0 and
+                odl.parte.num_valvole_richieste and 
+                odl.parte.num_valvole_richieste > 0):
+                
+                odl_validi.append(odl)
+        
+        return odl_validi
+        
+    except Exception as e:
+        print(f"Errore nel filtro ODL Attesa Cura: {str(e)}")
+        return [] 

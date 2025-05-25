@@ -12,6 +12,7 @@ from models.parte import Parte
 from models.tool import Tool
 from models.tempo_fase import TempoFase
 from schemas.odl import ODLCreate, ODLRead, ODLUpdate
+from services.odl_queue_service import ODLQueueService
 
 # Configurazione logger
 logger = logging.getLogger(__name__)
@@ -274,4 +275,54 @@ def delete_odl(odl_id: int, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante l'eliminazione dell'ODL."
+        )
+
+@router.post("/check-queue", 
+             summary="Controlla e aggiorna automaticamente la coda degli ODL")
+def check_odl_queue(db: Session = Depends(get_db)):
+    """
+    Controlla tutti gli ODL e aggiorna automaticamente lo stato in coda
+    quando tutti i tool associati a una parte sono occupati.
+    
+    Restituisce la lista degli ODL che sono stati aggiornati.
+    """
+    try:
+        updated_odls = ODLQueueService.check_and_update_odl_queue(db)
+        
+        return {
+            "message": f"Controllo coda completato. {len(updated_odls)} ODL aggiornati.",
+            "updated_odls": updated_odls
+        }
+    except Exception as e:
+        logger.error(f"Errore durante il controllo della coda ODL: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Si è verificato un errore durante il controllo della coda ODL."
+        )
+
+@router.post("/{odl_id}/check-status", 
+             summary="Controlla lo stato di un singolo ODL")
+def check_single_odl_status(odl_id: int, db: Session = Depends(get_db)):
+    """
+    Forza il controllo dello stato di un singolo ODL per verificare
+    se deve essere messo in coda o rimosso dalla coda.
+    """
+    try:
+        result = ODLQueueService.force_check_odl_status(db, odl_id)
+        
+        if result:
+            return {
+                "message": f"ODL {odl_id} aggiornato da '{result['old_status']}' a '{result['new_status']}'",
+                "update_info": result
+            }
+        else:
+            return {
+                "message": f"ODL {odl_id} non necessita aggiornamenti",
+                "update_info": None
+            }
+    except Exception as e:
+        logger.error(f"Errore durante il controllo dello stato ODL {odl_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Si è verificato un errore durante il controllo dello stato ODL."
         ) 

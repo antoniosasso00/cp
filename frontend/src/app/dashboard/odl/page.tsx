@@ -8,6 +8,7 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import { Badge } from '@/components/ui/badge'
 import { ODLResponse, odlApi } from '@/lib/api'
 import ODLModal from './components/odl-modal'
+import { BarraAvanzamentoODL, getPriorityInfo } from '@/components/BarraAvanzamentoODL'
 import { 
   Loader2, 
   MoreHorizontal, 
@@ -38,45 +39,6 @@ const getStatusBadgeVariant = (status: string) => {
   return variants[status] || "default"
 }
 
-// Configurazione delle fasi per la barra di avanzamento
-const FASI_ODL = [
-  { 
-    nome: "Preparazione", 
-    colore: "bg-gray-400", 
-    coloreCompleto: "bg-gray-600",
-    durata: 30, // durata media in minuti
-    icona: "⚙️"
-  },
-  { 
-    nome: "Laminazione", 
-    colore: "bg-blue-400", 
-    coloreCompleto: "bg-blue-600",
-    durata: 120,
-    icona: "🔨"
-  },
-  { 
-    nome: "Attesa Cura", 
-    colore: "bg-yellow-400", 
-    coloreCompleto: "bg-yellow-600",
-    durata: 60,
-    icona: "⏱️"
-  },
-  { 
-    nome: "Cura", 
-    colore: "bg-red-400", 
-    coloreCompleto: "bg-red-600",
-    durata: 180,
-    icona: "🔥"
-  },
-  { 
-    nome: "Finito", 
-    colore: "bg-green-400", 
-    coloreCompleto: "bg-green-600",
-    durata: 0,
-    icona: "✅"
-  }
-]
-
 // Funzione per ottenere l'icona di priorità
 const getPriorityIcon = (priorita: number) => {
   if (priorita >= 8) return "🔴"
@@ -91,73 +53,6 @@ const getPriorityBadgeVariant = (priorita: number) => {
   if (priorita >= 5) return "warning"
   if (priorita >= 3) return "secondary"
   return "outline"
-}
-
-// Componente barra di avanzamento
-const BarraAvanzamento = ({ statoAttuale }: { statoAttuale: string }) => {
-  const indiceAttuale = FASI_ODL.findIndex(fase => fase.nome === statoAttuale)
-  const durationTotal = FASI_ODL.reduce((acc, fase) => acc + fase.durata, 0)
-  
-  return (
-    <div className="space-y-2">
-      {/* Etichette delle fasi */}
-      <div className="flex justify-between text-xs font-medium">
-        {FASI_ODL.map((fase, index) => (
-          <div 
-            key={fase.nome} 
-            className={`flex flex-col items-center ${
-              index <= indiceAttuale ? 'text-gray-900' : 'text-gray-400'
-            }`}
-          >
-            <span className="text-lg mb-1">{fase.icona}</span>
-            <span className="text-center leading-tight">
-              {fase.nome.split(' ').map((word, i) => (
-                <span key={i} className="block">{word}</span>
-              ))}
-            </span>
-          </div>
-        ))}
-      </div>
-      
-      {/* Barra di progresso */}
-      <div className="flex h-3 bg-gray-200 rounded-full overflow-hidden">
-        {FASI_ODL.map((fase, index) => {
-          const percentuale = (fase.durata / durationTotal) * 100
-          const isCompleted = index < indiceAttuale
-          const isCurrent = index === indiceAttuale
-          
-          return (
-            <div
-              key={fase.nome}
-              className={`
-                ${isCompleted ? fase.coloreCompleto : (isCurrent ? fase.colore : 'bg-gray-200')}
-                transition-all duration-300
-              `}
-              style={{ width: `${percentuale}%` }}
-            />
-          )
-        })}
-      </div>
-      
-      {/* Indicatore di completamento */}
-      <div className="flex justify-between text-xs text-gray-500">
-        <span>Inizio</span>
-        <span className="flex items-center gap-1">
-          {indiceAttuale === FASI_ODL.length - 1 ? (
-            <>
-              <CheckCircle2 className="h-3 w-3 text-green-600" />
-              Completato
-            </>
-          ) : (
-            <>
-              <Activity className="h-3 w-3 text-blue-600" />
-              In corso: {FASI_ODL[indiceAttuale]?.nome}
-            </>
-          )}
-        </span>
-      </div>
-    </div>
-  )
 }
 
 export default function ODLPage() {
@@ -343,9 +238,14 @@ export default function ODLPage() {
                         </Badge>
                       </div>
                     </TableCell>
-                    <TableCell className="w-64">
-                      <BarraAvanzamento statoAttuale={item.status} />
-                    </TableCell>
+                                          <TableCell className="w-64">
+                        <BarraAvanzamentoODL 
+                          status={item.status} 
+                          priorita={item.priorita}
+                          motivo_blocco={item.motivo_blocco}
+                          variant="compact"
+                        />
+                      </TableCell>
                     <TableCell className="max-w-[200px] truncate">
                       {item.note || '-'}
                     </TableCell>

@@ -5,7 +5,6 @@ import { scheduleApi, autoclaveApi, odlApi } from '@/lib/api';
 import { Autoclave, ODLResponse } from '@/lib/api';
 import CalendarSchedule from '@/components/CalendarSchedule';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 
 export default function SchedulePage() {
   const [autoclavi, setAutoclavi] = useState<Autoclave[]>([]);
@@ -23,8 +22,8 @@ export default function SchedulePage() {
         // Recupera le autoclavi usando l'API client configurato
         const autoclaviData = await autoclaveApi.getAll();
         
-        // Recupera gli ODL in stato "Attesa Cura" usando l'API client configurato
-        const odlData = await odlApi.getAll({ status: 'Attesa Cura' });
+        // Recupera tutti gli ODL (non solo quelli in "Attesa Cura")
+        const odlData = await odlApi.getAll();
         
         setAutoclavi(autoclaviData);
         setOdlList(odlData);
@@ -41,34 +40,36 @@ export default function SchedulePage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <p className="text-lg">Caricamento in corso...</p>
+      <div className="flex items-center justify-center h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-lg text-gray-700 dark:text-gray-300">Caricamento sistema di scheduling...</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen">
-        <p className="text-red-500 text-lg">{error}</p>
-        <Button 
-          variant="outline" 
-          className="mt-4"
-          onClick={() => window.location.reload()}
-        >
-          Riprova
-        </Button>
+      <div className="flex flex-col items-center justify-center h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="text-center">
+          <div className="text-red-500 text-6xl mb-4">⚠️</div>
+          <p className="text-red-500 dark:text-red-400 text-lg mb-4">{error}</p>
+          <Button 
+            variant="outline" 
+            onClick={() => window.location.reload()}
+            className="bg-blue-500 hover:bg-blue-600 text-white"
+          >
+            🔄 Riprova
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-4 h-screen">
-      <h1 className="text-2xl font-bold mb-4">Scheduling ODL per Autoclavi</h1>
-      
-      <Card className="h-[calc(100vh-150px)]">
-        <CalendarSchedule autoclavi={autoclavi} odlList={odlList} />
-      </Card>
+    <div className="h-screen overflow-hidden">
+      <CalendarSchedule autoclavi={autoclavi} odlList={odlList} />
     </div>
   );
 }

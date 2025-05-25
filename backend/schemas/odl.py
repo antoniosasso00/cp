@@ -7,10 +7,11 @@ class ODLBase(BaseModel):
     parte_id: int = Field(..., description="ID della parte associata all'ordine di lavoro")
     tool_id: int = Field(..., description="ID del tool utilizzato per l'ordine di lavoro")
     priorita: int = Field(1, ge=1, description="Priorità dell'ordine di lavoro (numero più alto = priorità maggiore)")
-    status: Literal["Preparazione", "Laminazione", "Attesa Cura", "Cura", "Finito"] = Field(
+    status: Literal["Preparazione", "Laminazione", "In Coda", "Attesa Cura", "Cura", "Finito"] = Field(
         "Preparazione", description="Stato corrente dell'ordine di lavoro"
     )
     note: Optional[str] = Field(None, description="Note aggiuntive sull'ordine di lavoro")
+    motivo_blocco: Optional[str] = Field(None, description="Motivo per cui l'ODL è bloccato")
 
 # Schema per la creazione
 class ODLCreate(ODLBase):
@@ -21,10 +22,11 @@ class ODLUpdate(BaseModel):
     parte_id: Optional[int] = Field(None, description="ID della parte associata all'ordine di lavoro")
     tool_id: Optional[int] = Field(None, description="ID del tool utilizzato per l'ordine di lavoro")
     priorita: Optional[int] = Field(None, ge=1, description="Priorità dell'ordine di lavoro (numero più alto = priorità maggiore)")
-    status: Optional[Literal["Preparazione", "Laminazione", "Attesa Cura", "Cura", "Finito"]] = Field(
+    status: Optional[Literal["Preparazione", "Laminazione", "In Coda", "Attesa Cura", "Cura", "Finito"]] = Field(
         None, description="Stato corrente dell'ordine di lavoro"
     )
     note: Optional[str] = Field(None, description="Note aggiuntive sull'ordine di lavoro")
+    motivo_blocco: Optional[str] = Field(None, description="Motivo per cui l'ODL è bloccato")
 
 # Schema per parte inclusa nella risposta
 class ParteInODLResponse(BaseModel):

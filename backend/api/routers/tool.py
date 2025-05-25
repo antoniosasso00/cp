@@ -56,6 +56,8 @@ def create_tool(tool: ToolCreate, db: Session = Depends(get_db)):
             detail="Si è verificato un errore durante la creazione del tool."
         )
 
+
+
 @router.get("/", response_model=List[ToolResponse], 
             summary="Ottiene la lista degli stampi (tools)")
 def read_tools(
@@ -81,6 +83,117 @@ def read_tools(
         query = query.filter(Tool.disponibile == disponibile)
     
     return query.offset(skip).limit(limit).all()
+
+@router.get("/with-status", response_model=List[dict], 
+            summary="Ottiene la lista degli stampi (tools) con stato dettagliato")
+def read_tools_with_status(
+    skip: int = 0, 
+    limit: int = 100,
+    part_number_tool: Optional[str] = Query(None, description="Filtra per part number"),
+    disponibile: Optional[bool] = Query(None, description="Filtra per disponibilità"),
+    db: Session = Depends(get_db)
+):
+    """
+    Recupera una lista di stampi (tools) con informazioni dettagliate sullo stato basato sugli ODL attivi:
+    - **skip**: numero di elementi da saltare
+    - **limit**: numero massimo di elementi da restituire
+    - **part_number_tool**: filtro opzionale per part number
+    - **disponibile**: filtro opzionale per disponibilità
+    
+    Ogni tool include:
+    - Informazioni base del tool
+    - Stato dettagliato ("Disponibile", "In uso – Preparazione", "In Laminazione", "In Attesa di Cura", "In Autoclave")
+    - Informazioni sull'ODL associato (se presente)
+    """
+    try:
+        query = db.query(Tool)
+        
+        # Applicazione filtri
+        if part_number_tool:
+            query = query.filter(Tool.part_number_tool == part_number_tool)
+        if disponibile is not None:
+            query = query.filter(Tool.disponibile == disponibile)
+        
+        tools = query.offset(skip).limit(limit).all()
+        
+        # Ottieni tutti gli ODL attivi per calcolare gli stati
+        active_odl = db.query(ODL).filter(ODL.status.in_([
+            "Preparazione", "Laminazione", "Attesa Cura", "Cura"
+        ])).order_by(ODL.updated_at.desc()).all()
+        
+        # Crea mapping tool_id -> stato ODL
+        tool_status_map = {}
+        status_priority = {
+            "Preparazione": 1,
+            "Laminazione": 2,
+            "Attesa Cura": 3,
+            "Cura": 4
+        }
+        
+        for odl in active_odl:
+            if odl.tool_id:
+                current_priority = status_priority.get(odl.status, 0)
+                
+                if (odl.tool_id not in tool_status_map or 
+                    current_priority > status_priority.get(tool_status_map[odl.tool_id]["status"], 0)):
+                    
+                    tool_status_map[odl.tool_id] = {
+                        "status": odl.status,
+                        "odl_id": odl.id,
+                        "parte_id": odl.parte_id,
+                        "priority": current_priority,
+                        "updated_at": odl.updated_at
+                    }
+        
+        # Mapping stato ODL → stato display
+        status_display_map = {
+            "Preparazione": "In uso – Preparazione",
+            "Laminazione": "In Laminazione",
+            "Attesa Cura": "In Attesa di Cura",
+            "Cura": "In Autoclave"
+        }
+        
+        # Costruisci la risposta con stato dettagliato
+        result = []
+        for tool in tools:
+            # Serializza correttamente le date come stringhe ISO
+            tool_data = {
+                "id": tool.id,
+                "part_number_tool": tool.part_number_tool,
+                "descrizione": tool.descrizione,
+                "lunghezza_piano": tool.lunghezza_piano,
+                "larghezza_piano": tool.larghezza_piano,
+                "disponibile": tool.disponibile,
+                "note": tool.note,
+                "created_at": tool.created_at.isoformat() if tool.created_at else None,
+                "updated_at": tool.updated_at.isoformat() if tool.updated_at else None,
+            }
+            
+            # Aggiungi informazioni di stato
+            if tool.id in tool_status_map:
+                odl_info = tool_status_map[tool.id]
+                tool_data["status_display"] = status_display_map.get(odl_info["status"], "In uso")
+                tool_data["current_odl"] = {
+                    "id": odl_info["odl_id"],
+                    "status": odl_info["status"],
+                    "parte_id": odl_info["parte_id"],
+                    "updated_at": odl_info["updated_at"].isoformat() if odl_info["updated_at"] else None
+                }
+            else:
+                tool_data["status_display"] = "Disponibile"
+                tool_data["current_odl"] = None
+            
+            result.append(tool_data)
+        
+        logger.info(f"Restituiti {len(result)} tools con stato dettagliato")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Errore durante il recupero dei tools con stato: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Si è verificato un errore durante il recupero dei tools con stato."
+        )
 
 @router.get("/{tool_id}", response_model=ToolResponse, 
             summary="Ottiene uno stampo (tool) specifico")
@@ -294,105 +407,4 @@ def update_tools_status_from_odl(db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante l'aggiornamento dello stato dei Tool."
-        )
-
-@router.get("/with-status", response_model=List[dict], 
-            summary="Ottiene la lista degli stampi (tools) con stato dettagliato")
-def read_tools_with_status(
-    skip: int = 0, 
-    limit: int = 100,
-    part_number_tool: Optional[str] = Query(None, description="Filtra per part number"),
-    disponibile: Optional[bool] = Query(None, description="Filtra per disponibilità"),
-    db: Session = Depends(get_db)
-):
-    """
-    Recupera una lista di stampi (tools) con informazioni dettagliate sullo stato basato sugli ODL attivi:
-    - **skip**: numero di elementi da saltare
-    - **limit**: numero massimo di elementi da restituire
-    - **part_number_tool**: filtro opzionale per part number
-    - **disponibile**: filtro opzionale per disponibilità
-    
-    Ogni tool include:
-    - Informazioni base del tool
-    - Stato dettagliato ("Disponibile", "In uso – Preparazione", "In Laminazione", "In Attesa di Cura", "In Autoclave")
-    - Informazioni sull'ODL associato (se presente)
-    """
-    query = db.query(Tool)
-    
-    # Applicazione filtri
-    if part_number_tool:
-        query = query.filter(Tool.part_number_tool == part_number_tool)
-    if disponibile is not None:
-        query = query.filter(Tool.disponibile == disponibile)
-    
-    tools = query.offset(skip).limit(limit).all()
-    
-    # Ottieni tutti gli ODL attivi per calcolare gli stati
-    active_odl = db.query(ODL).filter(ODL.status.in_([
-        "Preparazione", "Laminazione", "Attesa Cura", "Cura"
-    ])).order_by(ODL.updated_at.desc()).all()
-    
-    # Crea mapping tool_id -> stato ODL
-    tool_status_map = {}
-    status_priority = {
-        "Preparazione": 1,
-        "Laminazione": 2,
-        "Attesa Cura": 3,
-        "Cura": 4
-    }
-    
-    for odl in active_odl:
-        if odl.tool_id:
-            current_priority = status_priority.get(odl.status, 0)
-            
-            if (odl.tool_id not in tool_status_map or 
-                current_priority > status_priority.get(tool_status_map[odl.tool_id]["status"], 0)):
-                
-                tool_status_map[odl.tool_id] = {
-                    "status": odl.status,
-                    "odl_id": odl.id,
-                    "parte_id": odl.parte_id,
-                    "priority": current_priority,
-                    "updated_at": odl.updated_at
-                }
-    
-    # Mapping stato ODL → stato display
-    status_display_map = {
-        "Preparazione": "In uso – Preparazione",
-        "Laminazione": "In Laminazione",
-        "Attesa Cura": "In Attesa di Cura",
-        "Cura": "In Autoclave"
-    }
-    
-    # Costruisci la risposta con stato dettagliato
-    result = []
-    for tool in tools:
-        tool_data = {
-            "id": tool.id,
-            "part_number_tool": tool.part_number_tool,
-            "descrizione": tool.descrizione,
-            "lunghezza_piano": tool.lunghezza_piano,
-            "larghezza_piano": tool.larghezza_piano,
-            "disponibile": tool.disponibile,
-            "note": tool.note,
-            "created_at": tool.created_at.isoformat() if tool.created_at else None,
-            "updated_at": tool.updated_at.isoformat() if tool.updated_at else None,
-        }
-        
-        # Aggiungi informazioni di stato
-        if tool.id in tool_status_map:
-            odl_info = tool_status_map[tool.id]
-            tool_data["status_display"] = status_display_map.get(odl_info["status"], "In uso")
-            tool_data["current_odl"] = {
-                "id": odl_info["odl_id"],
-                "status": odl_info["status"],
-                "parte_id": odl_info["parte_id"],
-                "updated_at": odl_info["updated_at"].isoformat() if odl_info["updated_at"] else None
-            }
-        else:
-            tool_data["status_display"] = "Disponibile"
-            tool_data["current_odl"] = None
-        
-        result.append(tool_data)
-    
-    return result 
+        ) 

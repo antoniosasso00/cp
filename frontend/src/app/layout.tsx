@@ -4,7 +4,7 @@ import { Inter } from 'next/font/google'
 import { Toaster } from '@/components/ui/toaster'
 import { ThemeProvider } from '@/components/theme-provider'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
-import ApiErrorToast from '@/components/ApiErrorToast'
+import { ApiErrorProvider } from '@/components/ApiErrorProvider'
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -34,9 +34,10 @@ export default function RootLayout({
           <div className="flex justify-end p-4">
             <ThemeToggle />
           </div>
-          {children}
-          <Toaster />
-          <ApiErrorToast />
+          <ApiErrorProvider>
+            {children}
+            <Toaster />
+          </ApiErrorProvider>
         </ThemeProvider>
       </body>
     </html>

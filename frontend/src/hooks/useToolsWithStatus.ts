@@ -45,12 +45,36 @@ export function useToolsWithStatus(options: UseToolsWithStatusOptions = {}): Use
     
     try {
       setError(null)
+      console.log('🔄 Fetching tools with status...', filters)
       const data = await toolApi.getAllWithStatus(filters)
-      setTools(data)
+      console.log('✅ Tools fetched successfully:', data)
+      
+      // Validazione dei dati ricevuti
+      if (!Array.isArray(data)) {
+        throw new Error('I dati ricevuti non sono un array valido')
+      }
+      
+      // Validazione di ogni tool
+      const validatedTools = data.map((tool, index) => {
+        if (!tool || typeof tool !== 'object') {
+          console.warn(`Tool ${index} non è un oggetto valido:`, tool)
+          return null
+        }
+        
+        // Assicurati che tutti i campi necessari siano presenti
+        return {
+          ...tool,
+          status_display: tool.status_display || 'Sconosciuto',
+          current_odl: tool.current_odl || null
+        }
+      }).filter(Boolean) as ToolWithStatus[]
+      
+      setTools(validatedTools)
       setLastUpdated(new Date())
     } catch (err) {
-      console.error('Errore nel caricamento dei tool:', err)
-      setError(err instanceof Error ? err.message : 'Errore sconosciuto')
+      console.error('❌ Errore nel caricamento dei tool:', err)
+      const errorMessage = err instanceof Error ? err.message : 'Errore sconosciuto nel caricamento dei tools'
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }

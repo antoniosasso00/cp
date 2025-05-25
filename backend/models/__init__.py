@@ -16,7 +16,8 @@ from .associations import parte_tool_association
 from .odl import ODL
 from .tempo_fase import TempoFase
 from .nesting_result import NestingResult
-from .schedule_entry import ScheduleEntry, ScheduleEntryStatus
+from .schedule_entry import ScheduleEntry, ScheduleEntryStatus, ScheduleEntryType
+from .tempo_produzione import TempoProduzione
 
 # Lista completa di tutti i modelli per le migrazioni
 __all__ = [
@@ -33,5 +34,7 @@ __all__ = [
     "TempoFase",
     "NestingResult",
     "ScheduleEntry",
-    "ScheduleEntryStatus"
+    "ScheduleEntryStatus",
+    "ScheduleEntryType",
+    "TempoProduzione"
 ] 

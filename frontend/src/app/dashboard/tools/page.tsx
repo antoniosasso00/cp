@@ -118,7 +118,7 @@ export default function ToolsPage() {
         <div className="flex flex-col items-center justify-center py-12 space-y-4">
           <div className="text-red-500 text-center">
             <h3 className="text-lg font-semibold">Errore nel caricamento</h3>
-            <p className="text-sm">{error}</p>
+            <p className="text-sm">{typeof error === 'string' ? error : 'Errore sconosciuto'}</p>
           </div>
           <Button onClick={refresh} variant="outline">
             <RefreshCw className="h-4 w-4 mr-2" />
@@ -223,7 +223,7 @@ export default function ToolsPage() {
                     {item.lunghezza_piano} x {item.larghezza_piano}
                   </TableCell>
                   <TableCell className="text-center">
-                    <ToolStatusBadge status={item.status_display} />
+                    <ToolStatusBadge status={item.status_display || 'Sconosciuto'} />
                   </TableCell>
                   <TableCell className="text-center">
                     {item.current_odl ? (

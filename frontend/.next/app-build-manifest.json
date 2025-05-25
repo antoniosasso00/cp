@@ -21,26 +21,31 @@
       "static/chunks/main-app.js",
       "static/chunks/app/dashboard/layout.js"
     ],
-    "/dashboard/catalog/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/catalog/page.js"
-    ],
-    "/dashboard/nesting/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/nesting/page.js"
-    ],
     "/dashboard/schedule/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/css/app/dashboard/schedule/page.css",
       "static/chunks/app/dashboard/schedule/page.js"
     ],
-    "/dashboard/odl/page": [
+    "/dashboard/cicli-cura/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/odl/page.js"
+      "static/chunks/app/dashboard/cicli-cura/page.js"
+    ],
+    "/dashboard/nesting/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/nesting/page.js"
+    ],
+    "/dashboard/autoclavi/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/autoclavi/page.js"
+    ],
+    "/dashboard/produzione/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/produzione/page.js"
     ],
     "/dashboard/reports/page": [
       "static/chunks/webpack.js",
@@ -52,20 +57,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/dashboard/catalog/statistiche/page.js"
     ],
-    "/dashboard/parts/page": [
+    "/dashboard/impostazioni/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/parts/page.js"
+      "static/chunks/app/dashboard/impostazioni/page.js"
     ],
-    "/dashboard/cicli-cura/page": [
+    "/not-found": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/cicli-cura/page.js"
-    ],
-    "/dashboard/tools/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/tools/page.js"
+      "static/chunks/app/not-found.js"
     ]
   }
 }

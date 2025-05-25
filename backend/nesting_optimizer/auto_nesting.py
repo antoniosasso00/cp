@@ -43,74 +43,99 @@ def validate_odl_for_nesting(db: Session, odl: ODL) -> Tuple[bool, str, Dict]:
     """
     Valida se un ODL può essere incluso nel nesting
     
+    Args:
+        db: Sessione del database
+        odl: ODL da validare
+        
     Returns:
-        (is_valid, error_message, odl_data)
+        Tupla (is_valid, error_message, data_dict)
     """
-    # Recupera la parte associata all'ODL
-    parte = db.query(Parte).options(
-        joinedload(Parte.catalogo)
-    ).filter(Parte.id == odl.parte_id).first()
-    
-    if not parte:
-        return False, "Parte non trovata", {}
-    
-    # Recupera il catalogo per le dimensioni
-    catalogo = parte.catalogo
-    if not catalogo:
-        return False, "Catalogo non trovato per la parte", {}
-    
-    # Verifica se ha dimensioni valide
-    if not catalogo.lunghezza or not catalogo.larghezza:
-        return False, "Dimensioni del pezzo non definite nel catalogo", {}
-    
-    # Calcola l'area in cm²
-    area_cm2 = catalogo.area_cm2
-    if area_cm2 <= 0:
-        return False, "Area del pezzo non valida", {}
-    
-    # Verifica se esiste già un nesting futuro per questo ODL
-    from models.nesting_result import NestingResult as NestingResultModel
-    existing_nesting = db.query(NestingResultModel).join(
-        NestingResultModel.odl_list
-    ).filter(
-        ODL.id == odl.id,
-        NestingResultModel.stato.in_(["In attesa schedulazione", "Schedulato"])
-    ).first()
-    
-    if existing_nesting:
-        return False, f"ODL già incluso nel nesting #{existing_nesting.id}", {}
-    
-    return True, "", {
-        "area_cm2": area_cm2,
-        "valvole": parte.num_valvole_richieste,
-        "priorita": odl.priorita,
-        "part_number": catalogo.part_number,
-        "descrizione": parte.descrizione_breve
-    }
+    try:
+        # Verifica che l'ODL abbia una parte associata
+        if not odl.parte:
+            return False, "ODL senza parte associata", {}
+        
+        parte = odl.parte
+        
+        # Verifica che la parte abbia un catalogo associato
+        if not parte.catalogo:
+            return False, "Parte senza catalogo associato", {}
+        
+        catalogo = parte.catalogo
+        
+        # Verifica che il catalogo abbia le informazioni necessarie
+        if not catalogo.area_cm2 or catalogo.area_cm2 <= 0:
+            return False, "Area della parte non definita o non valida", {}
+        
+        # Verifica che la parte abbia il numero di valvole richieste
+        if not parte.num_valvole_richieste or parte.num_valvole_richieste <= 0:
+            return False, "Numero di valvole richieste non definito", {}
+        
+        # Verifica che l'ODL non sia già in un nesting attivo
+        from models.nesting_result import NestingResult
+        existing_nesting = db.query(NestingResult).filter(
+            NestingResult.odl_ids.contains([odl.id]),
+            NestingResult.stato.in_(["In attesa schedulazione", "Schedulato", "In corso"])
+        ).first()
+        
+        if existing_nesting:
+            return False, f"ODL già incluso nel nesting #{existing_nesting.id}", {}
+        
+        # Prepara i dati dell'ODL per l'ottimizzazione
+        data = {
+            "area_cm2": float(catalogo.area_cm2),
+            "num_valvole": int(parte.num_valvole_richieste),
+            "priorita": int(odl.priorita) if odl.priorita else 1,
+            "part_number": catalogo.part_number,
+            "descrizione": parte.descrizione_breve or "Sconosciuta"
+        }
+        
+        return True, "", data
+        
+    except Exception as e:
+        return False, f"Errore nella validazione ODL: {str(e)}", {}
 
 def check_autoclave_availability(db: Session, autoclave: Autoclave) -> Tuple[bool, str]:
     """
     Verifica se un'autoclave è disponibile per il nesting
+    
+    Args:
+        db: Sessione del database
+        autoclave: Autoclave da verificare
+        
+    Returns:
+        Tupla (is_available, error_message)
     """
-    from models.nesting_result import NestingResult as NestingResultModel
-    
-    # Verifica se l'autoclave ha già un nesting attivo
-    existing_nesting = db.query(NestingResultModel).filter(
-        NestingResultModel.autoclave_id == autoclave.id,
-        NestingResultModel.stato.in_(["In attesa schedulazione", "Schedulato"])
-    ).first()
-    
-    if existing_nesting:
-        return False, f"Autoclave già occupata dal nesting #{existing_nesting.id}"
-    
-    # Verifica le dimensioni dell'autoclave
-    if not autoclave.lunghezza or not autoclave.larghezza_piano:
-        return False, "Dimensioni autoclave non definite"
-    
-    if not autoclave.num_linee_vuoto or autoclave.num_linee_vuoto <= 0:
-        return False, "Numero valvole non definito"
-    
-    return True, ""
+    try:
+        # Verifica che l'autoclave sia in stato disponibile
+        if autoclave.stato != StatoAutoclaveEnum.DISPONIBILE:
+            return False, f"Autoclave non disponibile (stato: {autoclave.stato})"
+        
+        # Verifica che l'autoclave abbia dimensioni valide
+        if not autoclave.lunghezza or autoclave.lunghezza <= 0:
+            return False, "Lunghezza autoclave non definita"
+        
+        if not autoclave.larghezza_piano or autoclave.larghezza_piano <= 0:
+            return False, "Larghezza piano autoclave non definita"
+        
+        # Verifica che l'autoclave abbia linee vuoto disponibili
+        if not autoclave.num_linee_vuoto or autoclave.num_linee_vuoto <= 0:
+            return False, "Numero linee vuoto non definito"
+        
+        # Verifica che non ci siano nesting attivi per questa autoclave
+        from models.nesting_result import NestingResult
+        active_nesting = db.query(NestingResult).filter(
+            NestingResult.autoclave_id == autoclave.id,
+            NestingResult.stato.in_(["Schedulato", "In corso"])
+        ).first()
+        
+        if active_nesting:
+            return False, f"Autoclave già occupata dal nesting #{active_nesting.id}"
+        
+        return True, ""
+        
+    except Exception as e:
+        return False, f"Errore nella verifica autoclave: {str(e)}"
 
 def compute_nesting(
     db: Session, 
@@ -203,7 +228,7 @@ def compute_nesting(
     
     # Vincolo 3: limite di valvole per ogni autoclave
     for j, autoclave in enumerate(autoclavi_valide):
-        constraint_valvole = solver.Sum([x[i][j] * odl_data[i]["valvole"] for i in range(len(odl_validi))])
+        constraint_valvole = solver.Sum([x[i][j] * odl_data[i]["num_valvole"] for i in range(len(odl_validi))])
         solver.Add(constraint_valvole <= autoclave.num_linee_vuoto)
     
     # Funzione obiettivo: massimizzare il numero di ODL assegnati, pesati per priorità
@@ -238,7 +263,7 @@ def compute_nesting(
         for j, autoclave in enumerate(autoclavi_valide):
             area_totale_cm2 = (autoclave.lunghezza * autoclave.larghezza_piano) / 100
             area_utilizzata_cm2 = sum(x[i][j].solution_value() * odl_data[i]["area_cm2"] for i in range(len(odl_validi)))
-            valvole_utilizzate = sum(x[i][j].solution_value() * odl_data[i]["valvole"] for i in range(len(odl_validi)))
+            valvole_utilizzate = sum(x[i][j].solution_value() * odl_data[i]["num_valvole"] for i in range(len(odl_validi)))
             
             # Solo se l'autoclave è stata effettivamente utilizzata
             if any(x[i][j].solution_value() > 0.5 for i in range(len(odl_validi))):

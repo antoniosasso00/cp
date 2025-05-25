@@ -23,7 +23,7 @@ class ODL(Base, TimestampMixin):
                      doc="Priorità dell'ordine di lavoro (numero più alto = priorità maggiore)")
     
     status = Column(
-        Enum("Preparazione", "Laminazione", "Attesa Cura", "Cura", "Finito", name="odl_status"),
+        Enum("Preparazione", "Laminazione", "In Coda", "Attesa Cura", "Cura", "Finito", name="odl_status"),
         default="Preparazione",
         nullable=False,
         doc="Stato corrente dell'ordine di lavoro"
@@ -31,6 +31,9 @@ class ODL(Base, TimestampMixin):
     
     note = Column(Text, nullable=True,
                  doc="Note aggiuntive sull'ordine di lavoro")
+    
+    motivo_blocco = Column(Text, nullable=True,
+                          doc="Motivo per cui l'ODL è bloccato (es. tool occupati)")
     
     # Relazione con i tempi delle fasi
     tempo_fasi = relationship("TempoFase", back_populates="odl", cascade="all, delete-orphan")

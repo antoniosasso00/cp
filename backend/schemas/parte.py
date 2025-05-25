@@ -54,7 +54,7 @@ class ParteResponse(ParteBase):
     id: int = Field(..., description="ID univoco della parte")
     ciclo_cura: Optional[CicloCuraInParteResponse] = Field(None, description="Ciclo di cura associato")
     tools: List[ToolInParteResponse] = Field([], description="Stampi associati alla parte")
-    catalogo: CatalogoInParteResponse = Field(..., description="Informazioni dal catalogo")
+    catalogo: Optional[CatalogoInParteResponse] = Field(None, description="Informazioni dal catalogo")
     created_at: datetime = Field(..., description="Data e ora di creazione del record")
     updated_at: datetime = Field(..., description="Data e ora dell'ultimo aggiornamento")
 

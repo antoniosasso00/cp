@@ -2,6 +2,198 @@
 
 Questo file contiene il registro dei cambiamenti più significativi del progetto.
 
+## [v1.3.0] - Sistema di Scheduling Completo
+
+### [2024-12-15 - Implementazione Sistema Scheduling Avanzato]
+- **Completato**: Sistema di scheduling completo per autoclavate con tutte le funzionalità richieste
+- **Form semplificato**: Nuovo componente `ScheduleForm.tsx` con calcolo automatico tempi di fine
+- **Calendario avanzato**: Aggiornato `CalendarSchedule.tsx` con supporto completo per nuovi tipi e stati
+- **Schedulazioni ricorrenti**: Nuovo componente `RecurringScheduleForm.tsx` per frequenze produttive
+- **Azioni operatore**: Sistema completo per avvio, posticipo e completamento schedulazioni
+- **Gestione priorità**: Visualizzazione e gestione priorità ODL con colori e badge distintivi
+- **Associazione automatica ODL**: Algoritmo per assegnazione automatica ODL compatibili
+- **Tempi di produzione**: Nuova tabella `tempi_produzione` per calcoli automatici durata
+
+#### Backend (FastAPI + SQLAlchemy)
+- **Modello esteso**: `ScheduleEntry` con nuovi campi per tipo, categoria, ricorrenza, durata stimata
+- **Nuovo modello**: `TempoProduzione` per gestione tempi storici di produzione
+- **API estese**: Nuovi endpoint per schedulazioni ricorrenti, azioni operatore, tempi produzione
+- **Servizi avanzati**: `schedule_service.py` con logica business completa
+- **Schema database**: Aggiornamento SQLite con nuove colonne e tabelle
+
+#### Frontend (Next.js + TypeScript + Tailwind)
+- **Tipi aggiornati**: Enum `ScheduleEntryType` e `ScheduleEntryStatus` estesi
+- **Componenti modulari**: Form separati per diversi tipi di schedulazione
+- **UI/UX migliorata**: Tooltip interattivi, colori distintivi, modalità dark completa
+- **API client**: `scheduleApi` esteso con tutti i nuovi endpoint
+
+#### Funzionalità Implementate
+1. **Form Semplificato**: Data/ora inizio, selezione autoclave, categoria/sotto-categoria, calcolo automatico fine
+2. **Visualizzazione Calendario**: Eventi con stati, tooltip, preview nesting, modalità dark
+3. **Schedulazione Automatica**: Configurazione frequenza, distribuzione eventi mensili
+4. **Associazione ODL**: Ricerca automatica ODL compatibili con priorità
+5. **Gestione Priorità**: Colori diversi, badge numerici, ordinamento automatico
+6. **Conferma Operatore**: Azioni avvia/posticipa/completa con feedback toast
+
+#### Database Schema Updates
+- **Nuove colonne `schedule_entries`**: `schedule_type`, `categoria`, `sotto_categoria`, `is_recurring`, `pieces_per_month`, `note`, `estimated_duration_minutes`
+- **Nuova tabella `tempi_produzione`**: Gestione tempi storici con statistiche
+- **Indici ottimizzati**: Per query veloci su categorie e tipi
+
+#### UI/UX Features
+- **Colori distintivi**: Blu (ODL), Viola (categoria), Ciano (sotto-categoria), Verde (ricorrente), Rosso (priorità alta)
+- **Badge emoji**: 🔥 priorità alta, 📋 previsionale, ⏳ in attesa, 🔄 in corso, ⏸️ posticipato
+- **Modalità dark**: Supporto completo con stili personalizzati per react-big-calendar
+- **Tooltip interattivi**: Dettagli completi con azioni disponibili
+
+#### File modificati/creati:
+- `backend/models/schedule_entry.py` (esteso)
+- `backend/models/tempo_produzione.py` (nuovo)
+- `backend/services/schedule_service.py` (esteso)
+- `backend/api/routers/schedule.py` (esteso)
+- `backend/update_schedule_schema_sqlite.py` (nuovo)
+- `frontend/src/components/ScheduleForm.tsx` (nuovo)
+- `frontend/src/components/RecurringScheduleForm.tsx` (nuovo)
+- `frontend/src/components/CalendarSchedule.tsx` (aggiornato)
+- `frontend/src/lib/types/schedule.ts` (esteso)
+- `frontend/src/lib/api.ts` (esteso)
+- `frontend/src/app/dashboard/schedule/page.tsx` (aggiornato)
+
+#### Effetti sulla UI
+- Calendario scheduling completamente funzionale con tutte le funzionalità richieste
+- Interfaccia intuitiva per creazione e gestione schedulazioni
+- Workflow operatore completo per gestione flusso produttivo
+- Integrazione seamless con sistema ODL e nesting esistente
+
+## [v1.2.0] - Completamento Roadmap Nesting Avanzato
+
+### [2024-01-15 - Punto 5: Fix Nesting]
+- **Completato**: Correzione e miglioramento dell'algoritmo di nesting automatico
+- **Validazione ODL migliorata**: Nuova funzione `validate_odl_for_nesting()` per controlli completi
+- **Filtri ODL "Attesa Cura"**: Implementata funzione `get_odl_attesa_cura_filtered()` per filtrare ODL validi
+- **Salvataggio temporaneo**: Nuove funzioni `save_nesting_draft()` e `load_nesting_draft()` per bozze
+- **Gestione errori robusta**: Migliorata gestione errori nell'algoritmo di ottimizzazione
+- **API endpoints**: Nuovi endpoint `/nesting/draft/save`, `/nesting/draft/{id}`, `/nesting/drafts`
+- **File modificati**:
+  - `backend/nesting_optimizer/auto_nesting.py` (aggiornato)
+  - `backend/services/nesting_service.py` (aggiornato)
+  - `backend/api/routers/nesting.py` (aggiornato)
+  - `frontend/src/lib/api.ts` (aggiornato)
+- **Effetti sulla UI**: Nesting più affidabile, possibilità di salvare configurazioni temporanee
+
+### [2024-01-15 - Punto 6: Preview e Manipolazione Nesting]
+- **Completato**: Interfaccia interattiva per preview e manipolazione manuale del nesting
+- **Preview interattiva**: Nuovo componente `NestingPreviewModal` con drag & drop
+- **Manipolazione manuale**: Possibilità di spostare ODL tra autoclavi tramite drag & drop
+- **Esclusione/Inclusione ODL**: Funzionalità per escludere/includere ODL manualmente
+- **Salvataggio modifiche**: Salvataggio automatico delle modifiche come bozza
+- **Approvazione nesting**: Workflow di approvazione prima della generazione finale
+- **Statistiche real-time**: Aggiornamento automatico delle statistiche di utilizzo
+- **File modificati**:
+  - `frontend/src/app/dashboard/nesting/components/nesting-preview-modal.tsx` (nuovo)
+  - `frontend/src/app/dashboard/nesting/page.tsx` (aggiornato)
+- **Dipendenze aggiunte**: `react-beautiful-dnd` per drag & drop
+- **Effetti sulla UI**: Controllo completo sul nesting, interfaccia intuitiva e visuale
+
+### [2024-01-15 - Punto 7: Gestione ODL Esclusi]
+- **Completato**: Sistema completo per gestire ODL esclusi dal nesting
+- **Visualizzazione separata**: Nuovo componente `ExcludedODLManager` per ODL esclusi
+- **Filtri avanzati**: Ricerca e filtri per status, priorità e motivo di esclusione
+- **Reintegrazione ODL**: Possibilità di reintegrare ODL nel prossimo nesting
+- **Forzatura nuovo nesting**: Opzione per forzare generazione di nuovo nesting con ODL selezionati
+- **Selezione multipla**: Gestione di selezione multipla per operazioni batch
+- **Statistiche dettagliate**: Contatori e informazioni sui motivi di esclusione
+- **File modificati**:
+  - `frontend/src/app/dashboard/nesting/components/excluded-odl-manager.tsx` (nuovo)
+  - `frontend/src/app/dashboard/nesting/page.tsx` (aggiornato)
+- **Effetti sulla UI**: Gestione completa degli ODL esclusi, possibilità di riutilizzo
+
+### [2024-01-15 - Roadmap Completata]
+- **Tutti i 7 punti implementati**: 
+  1. ✅ Merge pagine produzione (unificazione monitoraggio)
+  2. ✅ ODL + Tool (gestione coda automatica)
+  3. ✅ Sidebar riorganizzata (gruppi logici)
+  4. ✅ Bug Form ODL + Shortcut (ricerca dinamica e creazione rapida)
+  5. ✅ Fix Nesting (correzione algoritmo e salvataggio temporaneo)
+  6. ✅ Preview e Manipolazione Nesting (interfaccia interattiva drag & drop)
+  7. ✅ Gestione ODL Esclusi (visualizzazione separata e riutilizzo)
+- **Miglioramenti architetturali**: Servizi backend ottimizzati, componenti frontend modulari
+- **UX migliorata**: Interfacce intuitive, feedback visivo, operazioni drag & drop
+- **Robustezza**: Gestione errori completa, validazioni, salvataggio automatico
+- **Performance**: Debounce, lazy loading, ottimizzazioni query database
+
+## [v1.1.0] - Miglioramenti Interfaccia e Gestione ODL
+
+### [2024-01-20 - Unificazione Pagine e Miglioramenti UX]
+
+- **Componente Anteprima Nesting Interattivo Completato**:
+  - Implementato hover interattivo sugli ODL nell'anteprima layout
+  - Pannello informativo dinamico che mostra dettagli ODL al passaggio del mouse
+  - Effetti visivi migliorati: scale hover, ring di selezione, transizioni smooth
+  - Visualizzazione dettagliata: Part Number, descrizione, tool, dimensioni, valvole, priorità
+  - Codifica colori distintiva per ogni ODL con legenda integrata
+  - Algoritmo di posizionamento ottimizzato per massimizzare l'utilizzo spazio
+  - Indicatori per ODL non posizionati (overflow) con conteggio visivo
+
+- **Unificazione pagine Monitoraggio ODL + Tempi Produzione**:
+  - Creata nuova pagina unificata `/dashboard/produzione`
+  - Sezione 1: Stato avanzamento ODL attivi con barre visuali
+  - Sezione 2: Tempi registrati completi e modificabili
+  - Sezione 3: Storico ODL completati
+  - Eliminazione duplicati e miglioramento UX
+
+- **Nuovo stato ODL "In Coda"**:
+  - Aggiunto stato "In Coda" quando tutti i Tool associati a una Parte sono occupati
+  - Logica automatica per mettere ODL in coda e riattivazione quando tool disponibili
+  - Visualizzazione motivo blocco nella pagina produzione
+  - Aggiornamento modelli backend e frontend
+
+- **Sidebar riorganizzata**:
+  - Eliminato scroll verticale
+  - Organizzazione in gruppi logici:
+    - Sezione "Produzione": Dashboard, Catalogo, Parti, ODL, Produzione
+    - Sezione "Autoclave": Nesting, Autoclavi, Scheduling
+    - Sezione "Controllo": Reports, Statistiche, Impostazioni
+  - Miglioramento navigazione e UX
+
+- **Miglioramenti Form ODL**:
+  - Campo "Parte" con ricerca dinamica e debounce
+  - Shortcut "+ Crea Parte" con modal embedded
+  - Selezione automatica parte creata
+  - Validazione robusta e gestione errori
+
+- **Fix e miglioramenti Nesting**:
+  - Correzione errori generazione nesting automatico
+  - Filtro corretto per ODL in "Attesa Cura"
+  - Verifica disponibilità autoclave
+  - Implementazione salvataggio temporaneo
+
+- **Preview e manipolazione Nesting interattiva**:
+  - Schermata preview con layout nesting per tutte le autoclavi
+  - Possibilità di spostare ODL manualmente tra autoclavi
+  - Forzatura inserimento ODL specifici
+  - Esclusione manuale ODL
+  - Approvazione/rifiuto nesting con gestione stati ODL
+
+- **Gestione ODL esclusi**:
+  - Visualizzazione separata ODL esclusi per area o valvole
+  - Non salvataggio nel nesting finale
+  - Riutilizzo successivo degli ODL esclusi
+
+### Funzionalità Tecniche
+- Aggiornamento modelli SQLAlchemy per nuovo stato ODL
+- Nuove API per gestione stati e disponibilità tool
+- Componenti React riutilizzabili per preview nesting
+- Logica di ottimizzazione migliorata con gestione esclusioni
+- Sistema di notifiche per feedback utente
+
+### Miglioramenti UX
+- Interfaccia più intuitiva e organizzata
+- Feedback visivo migliorato per stati ODL
+- Navigazione semplificata con sidebar raggruppata
+- Preview interattiva per controllo completo nesting
+- Gestione errori più robusta
+
 ## [v1.0.2] - Risoluzione Errori di Fetch e Connessione API
 
 ### [2024-01-19 - Fix Critico Connessione Frontend-Backend]

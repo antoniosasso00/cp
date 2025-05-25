@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
 
 from api.database import get_db
@@ -85,7 +85,11 @@ def read_parti(
     - **limit**: numero massimo di elementi da restituire
     - **part_number**: filtro opzionale per part number
     """
-    query = db.query(Parte)
+    query = db.query(Parte).options(
+        joinedload(Parte.catalogo),
+        joinedload(Parte.ciclo_cura),
+        joinedload(Parte.tools)
+    )
     
     # Applicazione filtri
     if part_number:
@@ -99,7 +103,11 @@ def read_parte(parte_id: int, db: Session = Depends(get_db)):
     """
     Recupera una parte specifica tramite il suo ID.
     """
-    db_parte = db.query(Parte).filter(Parte.id == parte_id).first()
+    db_parte = db.query(Parte).options(
+        joinedload(Parte.catalogo),
+        joinedload(Parte.ciclo_cura),
+        joinedload(Parte.tools)
+    ).filter(Parte.id == parte_id).first()
     if db_parte is None:
         logger.warning(f"Tentativo di accesso a parte inesistente: {parte_id}")
         raise HTTPException(

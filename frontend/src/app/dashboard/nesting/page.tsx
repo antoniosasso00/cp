@@ -6,10 +6,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { NestingResponse, nestingApi } from '@/lib/api'
+import { NestingResponse, nestingApi, NestingPreview, NestingDraft } from '@/lib/api'
 import { formatDateIT } from '@/lib/utils'
 import { Loader2, RefreshCw, Info, Search, Filter, Download, Plus, AlertCircle } from 'lucide-react'
 import { NestingDetails } from './components/nesting-details'
+import NestingPreviewModal from './components/nesting-preview-modal'
+import ExcludedODLManager from './components/excluded-odl-manager'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -25,6 +27,17 @@ export default function NestingPage() {
   const [selectedAutoclave, setSelectedAutoclave] = useState<string>('all')
   const [sortBy, setSortBy] = useState<'created_at' | 'area_utilizzata' | 'valvole_utilizzate'>('created_at')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  
+  // Nuovi stati per preview e bozze
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewData, setPreviewData] = useState<NestingPreview | null>(null)
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false)
+  const [drafts, setDrafts] = useState<NestingDraft[]>([])
+  const [draftsOpen, setDraftsOpen] = useState(false)
+  
+  // Stati per gestione ODL esclusi
+  const [excludedODLOpen, setExcludedODLOpen] = useState(false)
+  
   const { toast } = useToast()
 
   // Funzione per caricare i nesting dal backend
@@ -172,6 +185,98 @@ export default function NestingPage() {
     totalODLProcessed: nestings.reduce((sum, n) => sum + n.odl_list.length, 0)
   }
 
+  // Nuova funzione per generare preview
+  const handleGeneratePreview = async () => {
+    try {
+      setIsLoadingPreview(true)
+      const preview = await nestingApi.getPreview()
+      setPreviewData(preview)
+      setPreviewOpen(true)
+      
+      if (preview.success) {
+        toast({
+          title: 'Preview generata!',
+          description: preview.message,
+        })
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Nessun ODL disponibile',
+          description: preview.message,
+        })
+      }
+    } catch (error) {
+      console.error('Errore nella generazione del preview:', error)
+      toast({
+        variant: 'destructive',
+        title: 'Errore nella preview',
+        description: 'Impossibile generare la preview del nesting.',
+      })
+    } finally {
+      setIsLoadingPreview(false)
+    }
+  }
+
+  // Funzione per salvare come bozza
+  const handleSaveDraft = async () => {
+    if (!previewData || !previewData.success) {
+      toast({
+        variant: 'destructive',
+        title: 'Nessuna preview disponibile',
+        description: 'Genera prima una preview per salvare come bozza.',
+      })
+      return
+    }
+
+    try {
+      const draftData = {
+        autoclavi: previewData.autoclavi,
+        odl_esclusi: previewData.odl_esclusi.map(odl => odl.id)
+      }
+      
+      const result = await nestingApi.saveDraft(draftData)
+      
+      if (result.success) {
+        toast({
+          title: 'Bozza salvata!',
+          description: result.message,
+        })
+        setPreviewOpen(false)
+        fetchDrafts() // Ricarica la lista delle bozze
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Errore nel salvataggio',
+          description: result.message,
+        })
+      }
+    } catch (error) {
+      console.error('Errore nel salvataggio della bozza:', error)
+      toast({
+        variant: 'destructive',
+        title: 'Errore nel salvataggio',
+        description: 'Impossibile salvare la bozza.',
+      })
+    }
+  }
+
+  // Funzione per caricare le bozze
+  const fetchDrafts = async () => {
+    try {
+      const result = await nestingApi.listDrafts()
+      if (result.success) {
+        setDrafts(result.drafts)
+      }
+    } catch (error) {
+      console.error('Errore nel caricamento delle bozze:', error)
+    }
+  }
+
+  // Carica le bozze all'avvio
+  useEffect(() => {
+    fetchDrafts()
+  }, [])
+
   return (
     <div className="space-y-6">
       {/* Header con titolo e azioni principali */}
@@ -192,6 +297,33 @@ export default function NestingPage() {
             <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Aggiorna
           </Button>
+                      <Button 
+              variant="outline"
+              onClick={handleGeneratePreview}
+              disabled={isLoadingPreview || isLoading}
+              size="sm"
+            >
+              {isLoadingPreview ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Preview...
+                </>
+              ) : (
+                <>
+                  <Search className="h-4 w-4 mr-2" />
+                  Preview Nesting
+                </>
+              )}
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => setExcludedODLOpen(true)}
+              disabled={isLoading}
+              size="sm"
+            >
+              <AlertCircle className="h-4 w-4 mr-2" />
+              ODL Esclusi
+            </Button>
           <Button 
             onClick={handleGenerateNesting} 
             disabled={isGenerating || isLoading}
@@ -502,6 +634,51 @@ export default function NestingPage() {
           onClose={() => setDetailsOpen(false)}
         />
       )}
+
+      {/* Modal preview nesting interattiva */}
+      <NestingPreviewModal
+        isOpen={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        previewData={previewData}
+        onSaveDraft={handleSaveDraft}
+        onApprove={async () => {
+          try {
+            // Genera il nesting finale basato sulla preview approvata
+            const finalNesting = await nestingApi.generateAuto()
+            
+            toast({
+              title: 'Nesting approvato e generato!',
+              description: `Nesting #${finalNesting.id} creato per autoclave ${finalNesting.autoclave.nome}`,
+            })
+            
+            // Ricarica la lista e chiudi il modal
+            fetchNestings()
+            setPreviewOpen(false)
+            
+            // Mostra automaticamente i dettagli del nuovo nesting
+            setSelectedNesting(finalNesting)
+            setDetailsOpen(true)
+            
+          } catch (error) {
+            console.error('Errore nell\'approvazione del nesting:', error)
+            toast({
+              variant: 'destructive',
+              title: 'Errore nell\'approvazione',
+              description: 'Impossibile generare il nesting finale.',
+            })
+          }
+        }}
+      />
+
+      {/* Modal gestione ODL esclusi */}
+      <ExcludedODLManager
+        isOpen={excludedODLOpen}
+        onClose={() => setExcludedODLOpen(false)}
+        onODLReintegrated={() => {
+          fetchNestings()
+          setExcludedODLOpen(false)
+        }}
+      />
     </div>
   )
 } 

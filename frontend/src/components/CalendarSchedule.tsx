@@ -6,15 +6,16 @@ import { it } from 'date-fns/locale';
 import { 
   ScheduleEntry, 
   ScheduleEntryStatus, 
+  ScheduleEntryType,
   CalendarEvent, 
   CalendarResource,
-  ScheduleEntryCreateData,
-  ScheduleEntryUpdateData
+  ScheduleOperatorActionData
 } from '@/lib/types/schedule';
 import { scheduleApi } from '@/lib/api';
-import { Autoclave } from '@/lib/api';
-import { ODLResponse } from '@/lib/api';
+import { Autoclave, ODLResponse } from '@/lib/api';
 import { useTheme } from 'next-themes';
+import ScheduleForm from './ScheduleForm';
+import RecurringScheduleForm from './RecurringScheduleForm';
 
 // Localizer ufficiale italiano per il calendario usando date-fns
 const localizer = dateFnsLocalizer({
@@ -28,12 +29,10 @@ const localizer = dateFnsLocalizer({
 // Formato per date e orari
 const dateFormat = 'yyyy-MM-dd';
 const timeFormat = 'HH:mm';
-const dateTimeFormat = 'yyyy-MM-dd HH:mm:ss';
 
 // Funzioni per formattare date
 const formatDate = (date: Date) => format(date, dateFormat);
 const formatTime = (date: Date) => format(date, timeFormat);
-const formatDateTime = (date: Date) => format(date, dateTimeFormat);
 
 // Interfaccia per le props del componente
 interface CalendarScheduleProps {
@@ -41,38 +40,21 @@ interface CalendarScheduleProps {
   odlList: ODLResponse[];
 }
 
-// Interfaccia per il form di creazione/modifica
-interface ScheduleFormData {
-  odl_id: number;
-  autoclave_id: number;
-  start_date: string;
-  start_time: string;
-  end_date: string;
-  end_time: string;
-  status: ScheduleEntryStatus;
-  priority_override: boolean;
-}
-
 // Componente principale
 const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList }) => {
+  const { theme } = useTheme();
+  
   // State
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [resources, setResources] = useState<CalendarResource[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
-  const [formData, setFormData] = useState<ScheduleFormData>({
-    odl_id: 0,
-    autoclave_id: 0,
-    start_date: formatDate(new Date()),
-    start_time: '08:00',
-    end_date: formatDate(new Date()),
-    end_time: '17:00',
-    status: ScheduleEntryStatus.MANUAL,
-    priority_override: false,
-  });
-  const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null);
+  const [showScheduleForm, setShowScheduleForm] = useState<boolean>(false);
+  const [showRecurringForm, setShowRecurringForm] = useState<boolean>(false);
+  const [selectedSlot, setSelectedSlot] = useState<SlotInfo | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<number | null>(null);
 
   // Inizializza le risorse del calendario (autoclavi)
   useEffect(() => {
@@ -91,15 +73,24 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
       const schedules = await scheduleApi.getAll({ include_done: false });
       
       // Converte le schedulazioni in eventi per il calendario
-      const calendarEvents = schedules.map(schedule => ({
-        id: schedule.id,
-        title: `${schedule.status === ScheduleEntryStatus.MANUAL ? '(M) ' : ''}${schedule.odl_id ? `Parte ${schedule.odl_id}` : 'ODL'}`,
-        start: new Date(schedule.start_datetime),
-        end: new Date(schedule.end_datetime),
-        resourceId: schedule.autoclave_id,
-        isManual: schedule.status === ScheduleEntryStatus.MANUAL,
-        scheduleData: schedule
-      }));
+      const calendarEvents: CalendarEvent[] = schedules.map(schedule => {
+        const title = getEventTitle(schedule);
+        const isPriority = Boolean(schedule.odl?.priorita && schedule.odl.priorita >= 8);
+        
+        return {
+          id: schedule.id,
+          title,
+          start: new Date(schedule.start_datetime),
+          end: schedule.end_datetime ? new Date(schedule.end_datetime) : new Date(schedule.start_datetime),
+          resourceId: schedule.autoclave_id,
+          isManual: schedule.status === ScheduleEntryStatus.MANUAL,
+          isPriority,
+          isRecurring: schedule.is_recurring,
+          scheduleType: schedule.schedule_type,
+          status: schedule.status,
+          scheduleData: schedule
+        };
+      });
       
       setEvents(calendarEvents);
     } catch (err) {
@@ -110,6 +101,50 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
     }
   }, []);
 
+  // Funzione per generare il titolo dell'evento
+  const getEventTitle = (schedule: ScheduleEntry): string => {
+    let title = '';
+    
+    // Prefisso per il tipo
+    switch (schedule.schedule_type) {
+      case ScheduleEntryType.ODL_SPECIFICO:
+        title = schedule.odl ? `ODL #${schedule.odl.id}` : 'ODL';
+        break;
+      case ScheduleEntryType.CATEGORIA:
+        title = `Cat: ${schedule.categoria}`;
+        break;
+      case ScheduleEntryType.SOTTO_CATEGORIA:
+        title = `Sub: ${schedule.sotto_categoria}`;
+        break;
+      case ScheduleEntryType.RICORRENTE:
+        title = `Ric: ${schedule.categoria || schedule.sotto_categoria}`;
+        break;
+    }
+    
+    // Aggiungi badge di priorità
+    if (schedule.odl?.priorita && schedule.odl.priorita >= 8) {
+      title = `🔥 ${title}`;
+    }
+    
+    // Aggiungi stato
+    switch (schedule.status) {
+      case ScheduleEntryStatus.PREVISIONALE:
+        title = `📋 ${title}`;
+        break;
+      case ScheduleEntryStatus.IN_ATTESA:
+        title = `⏳ ${title}`;
+        break;
+      case ScheduleEntryStatus.IN_CORSO:
+        title = `🔄 ${title}`;
+        break;
+      case ScheduleEntryStatus.POSTICIPATO:
+        title = `⏸️ ${title}`;
+        break;
+    }
+    
+    return title;
+  };
+
   // Carica gli eventi al cambio della data selezionata
   useEffect(() => {
     fetchSchedules();
@@ -118,19 +153,9 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
   // Handler per il clic su uno slot vuoto del calendario
   const handleSelectSlot = useCallback(
     (slotInfo: SlotInfo) => {
-      // Resetta il form con i dati dello slot selezionato
-      setFormData({
-        odl_id: 0, // Da selezionare
-        autoclave_id: slotInfo.resourceId ? Number(slotInfo.resourceId) : 0,
-        start_date: formatDate(slotInfo.start),
-        start_time: formatTime(slotInfo.start),
-        end_date: formatDate(slotInfo.end),
-        end_time: formatTime(slotInfo.end),
-        status: ScheduleEntryStatus.MANUAL,
-        priority_override: false,
-      });
-      setEditingScheduleId(null);
-      setIsModalOpen(true);
+      setSelectedSlot(slotInfo);
+      setSelectedEvent(null);
+      setShowScheduleForm(true);
     },
     []
   );
@@ -138,19 +163,9 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
   // Handler per il clic su un evento esistente
   const handleSelectEvent = useCallback(
     (event: CalendarEvent) => {
-      const { scheduleData } = event;
-      setFormData({
-        odl_id: scheduleData.odl_id,
-        autoclave_id: scheduleData.autoclave_id,
-        start_date: formatDate(new Date(scheduleData.start_datetime)),
-        start_time: formatTime(new Date(scheduleData.start_datetime)),
-        end_date: formatDate(new Date(scheduleData.end_datetime)),
-        end_time: formatTime(new Date(scheduleData.end_datetime)),
-        status: scheduleData.status,
-        priority_override: scheduleData.priority_override,
-      });
-      setEditingScheduleId(scheduleData.id);
-      setIsModalOpen(true);
+      setSelectedEvent(event);
+      setSelectedSlot(null);
+      // Non apriamo automaticamente il form, mostriamo solo il tooltip/azioni
     },
     []
   );
@@ -160,53 +175,16 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
     setSelectedDate(date);
   };
 
-  // Handler per l'invio del form
-  const handleFormSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    try {
-      // Crea l'oggetto con i dati per l'API
-      const startDateTime = `${formData.start_date} ${formData.start_time}:00`;
-      const endDateTime = `${formData.end_date} ${formData.end_time}:00`;
-      
-      const scheduleData: ScheduleEntryCreateData = {
-        odl_id: formData.odl_id,
-        autoclave_id: formData.autoclave_id,
-        start_datetime: startDateTime,
-        end_datetime: endDateTime,
-        status: formData.status,
-        priority_override: formData.priority_override,
-        created_by: 'UI-User', // Nome utente (in un'app reale verrebbe dal contesto di autenticazione)
-      };
-      
-      if (editingScheduleId) {
-        // Aggiornamento
-        await scheduleApi.update(editingScheduleId, scheduleData);
-      } else {
-        // Creazione
-        await scheduleApi.create(scheduleData);
-      }
-      
-      // Chiudi il modale e ricarica gli eventi
-      setIsModalOpen(false);
-      fetchSchedules();
-    } catch (err) {
-      console.error('Errore durante il salvataggio della schedulazione:', err);
-      setError('Impossibile salvare la schedulazione. Riprova più tardi.');
-    }
-  };
-
   // Handler per eliminare una schedulazione
-  const handleDelete = async () => {
-    if (!editingScheduleId) return;
-    
+  const handleDelete = async (scheduleId: number) => {
     try {
-      await scheduleApi.delete(editingScheduleId);
-      setIsModalOpen(false);
+      await scheduleApi.delete(scheduleId);
+      setSelectedEvent(null);
       fetchSchedules();
+      showToast('Schedulazione eliminata con successo', 'success');
     } catch (err) {
       console.error('Errore durante l\'eliminazione della schedulazione:', err);
-      setError('Impossibile eliminare la schedulazione. Riprova più tardi.');
+      showToast('Errore durante l\'eliminazione della schedulazione', 'error');
     }
   };
 
@@ -214,196 +192,284 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
   const handleAutoGenerate = async () => {
     try {
       const date = formatDate(selectedDate);
-      await scheduleApi.autoGenerate(date);
+      const result = await scheduleApi.autoGenerate(date);
       fetchSchedules();
+      showToast(`${result.count} schedulazioni generate automaticamente`, 'success');
     } catch (err) {
       console.error('Errore durante la generazione automatica:', err);
-      setError('Impossibile generare automaticamente le schedulazioni. Riprova più tardi.');
+      showToast('Errore durante la generazione automatica', 'error');
     }
   };
 
-  // Componente per il modale di creazione/modifica
-  const ScheduleModal = () => (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-lg w-full max-w-xl border dark:border-gray-700">
-        <h2 className="text-2xl mb-4 text-gray-900 dark:text-white">
-          {editingScheduleId ? 'Modifica Schedulazione' : 'Crea Nuova Schedulazione'}
-        </h2>
-        
-        {error && (
-          <div className="bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 p-2 mb-4 rounded border dark:border-red-800">
-            {error}
-          </div>
-        )}
-        
-        <form onSubmit={handleFormSubmit}>
-          <div className="mb-4">
-            <label className="block mb-1 text-gray-700 dark:text-gray-300">ODL</label>
-            <select 
-              className="w-full p-2 border dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              value={formData.odl_id}
-              onChange={e => setFormData({...formData, odl_id: Number(e.target.value)})}
-              required
+  // Handler per azioni dell'operatore
+  const handleOperatorAction = async (scheduleId: number, action: ScheduleOperatorActionData) => {
+    try {
+      setActionLoading(scheduleId);
+      await scheduleApi.executeAction(scheduleId, action);
+      fetchSchedules();
+      setSelectedEvent(null);
+      
+      let message = '';
+      switch (action.action) {
+        case 'avvia':
+          message = 'Schedulazione avviata con successo';
+          break;
+        case 'posticipa':
+          message = 'Schedulazione posticipata con successo';
+          break;
+        case 'completa':
+          message = 'Schedulazione completata con successo';
+          break;
+      }
+      showToast(message, 'success');
+    } catch (err) {
+      console.error('Errore durante l\'azione dell\'operatore:', err);
+      showToast('Errore durante l\'esecuzione dell\'azione', 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Funzione per mostrare toast (implementazione semplice)
+  const showToast = (message: string, type: 'success' | 'error') => {
+    // In una implementazione reale, useresti una libreria di toast
+    if (type === 'success') {
+      alert(`✅ ${message}`);
+    } else {
+      alert(`❌ ${message}`);
+    }
+  };
+
+  // Componente per il tooltip/azioni dell'evento
+  const EventTooltip = ({ event }: { event: CalendarEvent }) => {
+    const schedule = event.scheduleData;
+    const canStart = schedule.status === ScheduleEntryStatus.IN_ATTESA || schedule.status === ScheduleEntryStatus.SCHEDULED;
+    const canPostpone = schedule.status !== ScheduleEntryStatus.DONE && schedule.status !== ScheduleEntryStatus.IN_CORSO;
+    const canComplete = schedule.status === ScheduleEntryStatus.IN_CORSO;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setSelectedEvent(null)}>
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-md w-full mx-4 border dark:border-gray-700" onClick={e => e.stopPropagation()}>
+          <div className="flex justify-between items-start mb-4">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+              Dettagli Schedulazione
+            </h3>
+            <button 
+              onClick={() => setSelectedEvent(null)}
+              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
             >
-              <option value="">Seleziona un ODL</option>
-              {odlList
-                .filter(odl => odl.status === 'Attesa Cura')
-                .map(odl => (
-                  <option key={odl.id} value={odl.id}>
-                    {odl.parte.descrizione_breve}
-                  </option>
-                ))}
-            </select>
+              ✕
+            </button>
           </div>
           
-          <div className="mb-4">
-            <label className="block mb-1 text-gray-700 dark:text-gray-300">Autoclave</label>
-            <select 
-              className="w-full p-2 border dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              value={formData.autoclave_id}
-              onChange={e => setFormData({...formData, autoclave_id: Number(e.target.value)})}
-              required
-            >
-              <option value="">Seleziona un'autoclave</option>
-              {autoclavi.map(autoclave => (
-                <option key={autoclave.id} value={autoclave.id}>
-                  {autoclave.nome} ({autoclave.codice})
-                </option>
-              ))}
-            </select>
-          </div>
-          
-          <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="space-y-3 mb-6">
             <div>
-              <label className="block mb-1 text-gray-700 dark:text-gray-300">Data Inizio</label>
-              <input 
-                type="date" 
-                className="w-full p-2 border dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                value={formData.start_date}
-                onChange={e => setFormData({...formData, start_date: e.target.value})}
-                required
-              />
-            </div>
-            <div>
-              <label className="block mb-1 text-gray-700 dark:text-gray-300">Ora Inizio</label>
-              <input 
-                type="time" 
-                className="w-full p-2 border dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                value={formData.start_time}
-                onChange={e => setFormData({...formData, start_time: e.target.value})}
-                required
-              />
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block mb-1 text-gray-700 dark:text-gray-300">Data Fine</label>
-              <input 
-                type="date" 
-                className="w-full p-2 border dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                value={formData.end_date}
-                onChange={e => setFormData({...formData, end_date: e.target.value})}
-                required
-              />
-            </div>
-            <div>
-              <label className="block mb-1 text-gray-700 dark:text-gray-300">Ora Fine</label>
-              <input 
-                type="time" 
-                className="w-full p-2 border dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                value={formData.end_time}
-                onChange={e => setFormData({...formData, end_time: e.target.value})}
-                required
-              />
-            </div>
-          </div>
-          
-          <div className="mb-4">
-            <label className="flex items-center text-gray-700 dark:text-gray-300">
-              <input 
-                type="checkbox" 
-                checked={formData.priority_override}
-                onChange={e => setFormData({...formData, priority_override: e.target.checked})}
-                className="mr-2"
-              />
-              Priorità sovrascritta manualmente
-            </label>
-          </div>
-          
-          <div className="flex justify-between">
-            <div>
-              <button 
-                type="submit" 
-                className="bg-blue-500 dark:bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-600 dark:hover:bg-blue-700 mr-2 transition-colors"
-              >
-                {editingScheduleId ? 'Aggiorna' : 'Crea'}
-              </button>
-              <button 
-                type="button" 
-                onClick={() => setIsModalOpen(false)}
-                className="bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 py-2 px-4 rounded hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors"
-              >
-                Annulla
-              </button>
+              <span className="font-medium text-gray-700 dark:text-gray-300">Tipo: </span>
+              <span className="text-gray-900 dark:text-white">{schedule.schedule_type}</span>
             </div>
             
-            {editingScheduleId && (
-              <button 
-                type="button" 
-                onClick={handleDelete}
-                className="bg-red-500 dark:bg-red-600 text-white py-2 px-4 rounded hover:bg-red-600 dark:hover:bg-red-700 transition-colors"
-              >
-                Elimina
-              </button>
+            {schedule.odl && (
+              <div>
+                <span className="font-medium text-gray-700 dark:text-gray-300">ODL: </span>
+                <span className="text-gray-900 dark:text-white">#{schedule.odl.id} (Priorità: {schedule.odl.priorita})</span>
+              </div>
+            )}
+            
+            {schedule.categoria && (
+              <div>
+                <span className="font-medium text-gray-700 dark:text-gray-300">Categoria: </span>
+                <span className="text-gray-900 dark:text-white">{schedule.categoria}</span>
+              </div>
+            )}
+            
+            {schedule.sotto_categoria && (
+              <div>
+                <span className="font-medium text-gray-700 dark:text-gray-300">Sotto-categoria: </span>
+                <span className="text-gray-900 dark:text-white">{schedule.sotto_categoria}</span>
+              </div>
+            )}
+            
+            <div>
+              <span className="font-medium text-gray-700 dark:text-gray-300">Autoclave: </span>
+              <span className="text-gray-900 dark:text-white">{schedule.autoclave.nome}</span>
+            </div>
+            
+            <div>
+              <span className="font-medium text-gray-700 dark:text-gray-300">Stato: </span>
+              <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(schedule.status)}`}>
+                {getStatusLabel(schedule.status)}
+              </span>
+            </div>
+            
+            <div>
+              <span className="font-medium text-gray-700 dark:text-gray-300">Inizio: </span>
+              <span className="text-gray-900 dark:text-white">{format(new Date(schedule.start_datetime), 'dd/MM/yyyy HH:mm')}</span>
+            </div>
+            
+            {schedule.end_datetime && (
+              <div>
+                <span className="font-medium text-gray-700 dark:text-gray-300">Fine stimata: </span>
+                <span className="text-gray-900 dark:text-white">{format(new Date(schedule.end_datetime), 'dd/MM/yyyy HH:mm')}</span>
+              </div>
+            )}
+            
+            {schedule.estimated_duration_minutes && (
+              <div>
+                <span className="font-medium text-gray-700 dark:text-gray-300">Durata stimata: </span>
+                <span className="text-gray-900 dark:text-white">{Math.floor(schedule.estimated_duration_minutes / 60)}h {schedule.estimated_duration_minutes % 60}m</span>
+              </div>
+            )}
+            
+            {schedule.note && (
+              <div>
+                <span className="font-medium text-gray-700 dark:text-gray-300">Note: </span>
+                <span className="text-gray-900 dark:text-white">{schedule.note}</span>
+              </div>
             )}
           </div>
-        </form>
+          
+          <div className="flex flex-wrap gap-2">
+            {canStart && (
+              <button
+                onClick={() => handleOperatorAction(schedule.id, { action: 'avvia' })}
+                disabled={actionLoading === schedule.id}
+                className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded text-sm font-medium disabled:opacity-50"
+              >
+                {actionLoading === schedule.id ? '...' : '▶️ Avvia'}
+              </button>
+            )}
+            
+            {canPostpone && (
+              <button
+                onClick={() => {
+                  const newDateTime = prompt('Nuova data e ora (YYYY-MM-DD HH:MM):');
+                  if (newDateTime) {
+                    handleOperatorAction(schedule.id, { 
+                      action: 'posticipa', 
+                      new_datetime: newDateTime + ':00'
+                    });
+                  }
+                }}
+                disabled={actionLoading === schedule.id}
+                className="bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-2 rounded text-sm font-medium disabled:opacity-50"
+              >
+                ⏸️ Posticipa
+              </button>
+            )}
+            
+            {canComplete && (
+              <button
+                onClick={() => handleOperatorAction(schedule.id, { action: 'completa' })}
+                disabled={actionLoading === schedule.id}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm font-medium disabled:opacity-50"
+              >
+                ✅ Completa
+              </button>
+            )}
+            
+            <button
+              onClick={() => handleDelete(schedule.id)}
+              className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded text-sm font-medium"
+            >
+              🗑️ Elimina
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
+
+  // Funzioni helper per gli stati
+  const getStatusColor = (status: ScheduleEntryStatus): string => {
+    switch (status) {
+      case ScheduleEntryStatus.PREVISIONALE:
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
+      case ScheduleEntryStatus.IN_ATTESA:
+        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+      case ScheduleEntryStatus.IN_CORSO:
+        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+      case ScheduleEntryStatus.DONE:
+        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+      case ScheduleEntryStatus.POSTICIPATO:
+        return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
+      default:
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
+    }
+  };
+
+  const getStatusLabel = (status: ScheduleEntryStatus): string => {
+    switch (status) {
+      case ScheduleEntryStatus.SCHEDULED:
+        return 'Schedulato';
+      case ScheduleEntryStatus.MANUAL:
+        return 'Manuale';
+      case ScheduleEntryStatus.PREVISIONALE:
+        return 'Previsionale';
+      case ScheduleEntryStatus.IN_ATTESA:
+        return 'In Attesa';
+      case ScheduleEntryStatus.IN_CORSO:
+        return 'In Corso';
+      case ScheduleEntryStatus.DONE:
+        return 'Completato';
+      case ScheduleEntryStatus.POSTICIPATO:
+        return 'Posticipato';
+      default:
+        return status;
+    }
+  };
 
   return (
     <div className="h-screen flex flex-col dark:bg-gray-900">
       <div className="flex justify-between items-center p-4 bg-gray-100 dark:bg-gray-800 border-b dark:border-gray-700">
-        <h1 className="text-2xl font-bold dark:text-white">Scheduling ODL per Autoclavi</h1>
+        <h1 className="text-2xl font-bold dark:text-white">📅 Scheduling Avanzato</h1>
         
-        <div>
+        <div className="flex gap-2">
           <button 
             onClick={handleAutoGenerate}
-            className="bg-green-500 dark:bg-green-600 text-white py-2 px-4 rounded hover:bg-green-600 dark:hover:bg-green-700 mr-2 transition-colors"
+            className="bg-green-500 dark:bg-green-600 text-white py-2 px-4 rounded hover:bg-green-600 dark:hover:bg-green-700 transition-colors text-sm"
           >
-            Auto-genera
+            🤖 Auto-genera
           </button>
           <button 
-            onClick={() => {
-              setFormData({
-                odl_id: 0,
-                autoclave_id: 0,
-                start_date: formatDate(selectedDate),
-                start_time: '08:00',
-                end_date: formatDate(selectedDate),
-                end_time: '17:00',
-                status: ScheduleEntryStatus.MANUAL,
-                priority_override: false,
-              });
-              setEditingScheduleId(null);
-              setIsModalOpen(true);
-            }}
-            className="bg-blue-500 dark:bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-600 dark:hover:bg-blue-700 transition-colors"
+            onClick={() => setShowRecurringForm(true)}
+            className="bg-purple-500 dark:bg-purple-600 text-white py-2 px-4 rounded hover:bg-purple-600 dark:hover:bg-purple-700 transition-colors text-sm"
           >
-            Nuova Schedulazione
+            🔄 Ricorrente
+          </button>
+          <button 
+            onClick={() => setShowScheduleForm(true)}
+            className="bg-blue-500 dark:bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-600 dark:hover:bg-blue-700 transition-colors text-sm"
+          >
+            ➕ Nuova
           </button>
         </div>
       </div>
       
       {loading ? (
         <div className="flex-1 flex items-center justify-center dark:text-white">
-          <p>Caricamento in corso...</p>
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <p>Caricamento schedulazioni...</p>
+          </div>
         </div>
       ) : error ? (
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-red-500 dark:text-red-400">{error}</p>
+          <div className="text-center">
+            <p className="text-red-500 dark:text-red-400 mb-4">{error}</p>
+            <button 
+              onClick={fetchSchedules}
+              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            >
+              Riprova
+            </button>
+          </div>
+        </div>
+      ) : events.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center dark:text-white">
+          <div className="text-center">
+            <p className="text-gray-500 dark:text-gray-400 mb-4">📅 Nessun evento pianificato</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500">Clicca su "Nuova" per creare una schedulazione</p>
+          </div>
         </div>
       ) : (
         <div className="flex-1 p-4">
@@ -523,20 +589,100 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
             onSelectSlot={handleSelectSlot}
             onSelectEvent={handleSelectEvent}
             onNavigate={handleNavigate}
-            eventPropGetter={(event: any) => ({
-              style: {
-                backgroundColor: event.isManual ? '#F59E0B' : '#3B82F6',
-                borderColor: event.isManual ? '#D97706' : '#2563EB',
-                color: '#FFFFFF',
-                fontWeight: '500'
-              },
-            })}
+            eventPropGetter={(event: CalendarEvent) => {
+              let backgroundColor = '#3B82F6'; // Default blue
+              
+              // Colori basati sul tipo
+              switch (event.scheduleType) {
+                case ScheduleEntryType.CATEGORIA:
+                  backgroundColor = '#8B5CF6'; // Purple
+                  break;
+                case ScheduleEntryType.SOTTO_CATEGORIA:
+                  backgroundColor = '#06B6D4'; // Cyan
+                  break;
+                case ScheduleEntryType.RICORRENTE:
+                  backgroundColor = '#10B981'; // Green
+                  break;
+              }
+              
+              // Colori basati sullo stato
+              switch (event.status) {
+                case ScheduleEntryStatus.PREVISIONALE:
+                  backgroundColor = '#6B7280'; // Gray
+                  break;
+                case ScheduleEntryStatus.IN_ATTESA:
+                  backgroundColor = '#F59E0B'; // Yellow
+                  break;
+                case ScheduleEntryStatus.IN_CORSO:
+                  backgroundColor = '#3B82F6'; // Blue
+                  break;
+                case ScheduleEntryStatus.POSTICIPATO:
+                  backgroundColor = '#F97316'; // Orange
+                  break;
+                case ScheduleEntryStatus.DONE:
+                  backgroundColor = '#10B981'; // Green
+                  break;
+              }
+              
+              // Priorità alta
+              if (event.isPriority) {
+                backgroundColor = '#DC2626'; // Red for high priority
+              }
+              
+              return {
+                style: {
+                  backgroundColor,
+                  borderColor: backgroundColor,
+                  color: '#FFFFFF',
+                  fontWeight: event.isPriority ? 'bold' : '500',
+                  border: event.isPriority ? '2px solid #FEF3C7' : undefined
+                },
+              };
+            }}
             className="h-full rbc-calendar"
           />
         </div>
       )}
       
-      {isModalOpen && <ScheduleModal />}
+      {/* Form per nuova schedulazione */}
+      {showScheduleForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="max-h-[90vh] overflow-y-auto">
+            <ScheduleForm
+              autoclavi={autoclavi}
+              odlList={odlList}
+              onScheduleCreated={() => {
+                setShowScheduleForm(false);
+                fetchSchedules();
+              }}
+              onCancel={() => setShowScheduleForm(false)}
+              initialData={selectedSlot ? {
+                date: selectedSlot.start,
+                autoclave_id: selectedSlot.resourceId ? Number(selectedSlot.resourceId) : undefined
+              } : undefined}
+            />
+          </div>
+        </div>
+      )}
+      
+      {/* Form per schedulazione ricorrente */}
+      {showRecurringForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="max-h-[90vh] overflow-y-auto">
+            <RecurringScheduleForm
+              autoclavi={autoclavi}
+              onSchedulesCreated={() => {
+                setShowRecurringForm(false);
+                fetchSchedules();
+              }}
+              onCancel={() => setShowRecurringForm(false)}
+            />
+          </div>
+        </div>
+      )}
+      
+      {/* Tooltip per evento selezionato */}
+      {selectedEvent && <EventTooltip event={selectedEvent} />}
     </div>
   );
 };

@@ -3,13 +3,13 @@ Router per le operazioni di nesting automatico degli ODL nelle autoclavi.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List
 from pydantic import BaseModel
 from models.db import get_db
 from models.nesting_result import NestingResult
 from schemas.nesting import NestingResultSchema, NestingResultRead, NestingPreviewSchema
-from services.nesting_service import run_automatic_nesting, get_all_nesting_results, get_nesting_preview, update_nesting_status
+from services.nesting_service import run_automatic_nesting, get_all_nesting_results, get_nesting_preview, update_nesting_status, save_nesting_draft, load_nesting_draft
 
 # Schema per l'aggiornamento dello stato del nesting
 class NestingStatusUpdate(BaseModel):
@@ -140,4 +140,122 @@ def list_nesting(db: Session = Depends(get_db)):
     Returns:
         Lista di oggetti NestingResultRead
     """
-    return get_all_nesting_results(db) 
+    return get_all_nesting_results(db)
+
+@router.post(
+    "/draft/save",
+    summary="Salva una bozza di nesting",
+    description="""
+    Salva una bozza di nesting senza modificare lo stato degli ODL.
+    Utile per salvare configurazioni temporanee durante la manipolazione manuale.
+    """
+)
+async def save_draft(nesting_data: dict, db: Session = Depends(get_db)):
+    """
+    Endpoint per salvare una bozza di nesting.
+    
+    Args:
+        nesting_data: Dati del nesting da salvare come bozza
+        db: Sessione del database
+        
+    Returns:
+        Risultato del salvataggio della bozza
+    """
+    try:
+        result = await save_nesting_draft(db, nesting_data)
+        
+        if result["success"]:
+            return result
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result["message"]
+            )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante il salvataggio della bozza: {str(e)}"
+        )
+
+@router.get(
+    "/draft/{draft_id}",
+    summary="Carica una bozza di nesting",
+    description="""
+    Carica una bozza di nesting salvata precedentemente.
+    """
+)
+async def load_draft(draft_id: int, db: Session = Depends(get_db)):
+    """
+    Endpoint per caricare una bozza di nesting.
+    
+    Args:
+        draft_id: ID della bozza da caricare
+        db: Sessione del database
+        
+    Returns:
+        Dati della bozza caricata
+    """
+    try:
+        result = await load_nesting_draft(db, draft_id)
+        
+        if result["success"]:
+            return result
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=result["message"]
+            )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante il caricamento della bozza: {str(e)}"
+        )
+
+@router.get(
+    "/drafts",
+    summary="Lista delle bozze salvate",
+    description="""
+    Restituisce la lista di tutte le bozze di nesting salvate.
+    """
+)
+async def list_drafts(db: Session = Depends(get_db)):
+    """
+    Endpoint per ottenere la lista delle bozze salvate.
+    
+    Args:
+        db: Sessione del database
+        
+    Returns:
+        Lista delle bozze disponibili
+    """
+    try:
+        drafts = db.query(NestingResult).options(
+            joinedload(NestingResult.autoclave)
+        ).filter(
+            NestingResult.stato == "Bozza"
+        ).order_by(NestingResult.created_at.desc()).all()
+        
+        drafts_list = []
+        for draft in drafts:
+            drafts_list.append({
+                "id": draft.id,
+                "created_at": draft.created_at.isoformat(),
+                "autoclave_nome": draft.autoclave.nome,
+                "autoclave_codice": draft.autoclave.codice,
+                "num_odl": len(draft.odl_ids) if draft.odl_ids else 0,
+                "area_utilizzata": draft.area_utilizzata,
+                "area_totale": draft.area_totale,
+                "note": draft.note
+            })
+        
+        return {
+            "success": True,
+            "drafts": drafts_list,
+            "count": len(drafts_list)
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante il recupero delle bozze: {str(e)}"
+        ) 

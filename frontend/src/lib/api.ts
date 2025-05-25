@@ -138,7 +138,7 @@ export interface ToolWithStatus extends Tool {
     id: number
     status: string
     parte_id: number
-    updated_at: string
+    updated_at: string | null
   } | null
 }
 
@@ -461,8 +461,9 @@ export interface ODLBase {
   parte_id: number;
   tool_id: number;
   priorita: number;
-  status: "Preparazione" | "Laminazione" | "Attesa Cura" | "Cura" | "Finito";
+  status: "Preparazione" | "Laminazione" | "In Coda" | "Attesa Cura" | "Cura" | "Finito";
   note?: string;
+  motivo_blocco?: string;
 }
 
 export interface ODLCreate extends ODLBase {}
@@ -512,6 +513,28 @@ export const odlApi = {
   
   delete: (id: number) => 
     apiRequest<void>(`/odl/${id}`, 'DELETE'),
+
+  checkQueue: () => 
+    apiRequest<{
+      message: string;
+      updated_odls: Array<{
+        odl_id: number;
+        old_status: string;
+        new_status: string;
+        motivo_blocco?: string;
+      }>;
+    }>('/odl/check-queue', 'POST'),
+
+  checkSingleStatus: (id: number) => 
+    apiRequest<{
+      message: string;
+      update_info?: {
+        odl_id: number;
+        old_status: string;
+        new_status: string;
+        motivo_blocco?: string;
+      };
+    }>(`/odl/${id}/check-status`, 'POST'),
 };
 
 // Tipi base per TempoFase
@@ -637,7 +660,83 @@ export interface NestingResponse {
   area_totale: number;
   valvole_utilizzate: number;
   valvole_totali: number;
+  stato: string;
+  odl_esclusi_ids: number[];
+  motivi_esclusione: Array<{
+    odl_id: number;
+    motivo: string;
+  }>;
   created_at: string;
+  updated_at?: string;
+}
+
+// Tipi per le bozze di nesting
+export interface NestingDraft {
+  id: number;
+  created_at: string;
+  autoclave_nome: string;
+  autoclave_codice: string;
+  num_odl: number;
+  area_utilizzata: number;
+  area_totale: number;
+  note?: string;
+}
+
+export interface NestingDraftData {
+  autoclavi: Array<{
+    id: number;
+    nome: string;
+    codice: string;
+    lunghezza: number;
+    larghezza_piano: number;
+    area_totale_cm2: number;
+    area_utilizzata_cm2: number;
+    valvole_totali: number;
+    valvole_utilizzate: number;
+    odl_inclusi: Array<{
+      id: number;
+      part_number: string;
+      descrizione: string;
+      area_cm2: number;
+      num_valvole: number;
+      priorita: number;
+      color: string;
+    }>;
+  }>;
+  odl_esclusi: number[];
+}
+
+export interface NestingPreview {
+  success: boolean;
+  message: string;
+  autoclavi: Array<{
+    id: number;
+    nome: string;
+    codice: string;
+    lunghezza: number;
+    larghezza_piano: number;
+    area_totale_cm2: number;
+    area_utilizzata_cm2: number;
+    valvole_totali: number;
+    valvole_utilizzate: number;
+    odl_inclusi: Array<{
+      id: number;
+      part_number: string;
+      descrizione: string;
+      area_cm2: number;
+      num_valvole: number;
+      priorita: number;
+      color: string;
+    }>;
+  }>;
+  odl_esclusi: Array<{
+    id: number;
+    part_number: string;
+    descrizione: string;
+    motivo: string;
+    priorita: number;
+    num_valvole: number;
+  }>;
 }
 
 // API Nesting
@@ -650,20 +749,47 @@ export const nestingApi = {
   
   generateAuto: () => 
     apiRequest<NestingResponse>('/nesting/auto', 'POST'),
+  
+  // Nuovi endpoint per preview e bozze
+  getPreview: () => 
+    apiRequest<NestingPreview>('/nesting/preview'),
+  
+  saveDraft: (data: NestingDraftData) => 
+    apiRequest<{ success: boolean; message: string; draft_ids: number[] }>('/nesting/draft/save', 'POST', data),
+  
+  loadDraft: (draftId: number) => 
+    apiRequest<{ success: boolean; message: string; data: any }>(`/nesting/draft/${draftId}`),
+  
+  listDrafts: () => 
+    apiRequest<{ success: boolean; drafts: NestingDraft[]; count: number }>('/nesting/drafts'),
+  
+  updateStatus: (nestingId: number, stato: string, note?: string) => 
+    apiRequest<NestingResponse>(`/nesting/${nestingId}/status`, 'PUT', { stato, note }),
 };
 
 import {
   ScheduleEntry,
   ScheduleEntryCreateData,
   ScheduleEntryUpdateData,
-  AutoScheduleResponseData
+  AutoScheduleResponseData,
+  RecurringScheduleCreateData,
+  ScheduleOperatorActionData,
+  TempoProduzione,
+  TempoProduzioneData,
+  ProductionTimeEstimate
 } from './types/schedule';
 
 // API Schedule
 export const scheduleApi = {
-  getAll: (params?: { include_done?: boolean }) => {
+  getAll: (params?: { 
+    include_done?: boolean; 
+    start_date?: string; 
+    end_date?: string; 
+  }) => {
     const queryParams = new URLSearchParams();
     if (params?.include_done !== undefined) queryParams.append('include_done', params.include_done.toString());
+    if (params?.start_date) queryParams.append('start_date', params.start_date);
+    if (params?.end_date) queryParams.append('end_date', params.end_date);
     
     const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
     return apiRequest<ScheduleEntry[]>(`/schedules${query}`);
@@ -675,14 +801,41 @@ export const scheduleApi = {
   create: (data: ScheduleEntryCreateData) => 
     apiRequest<ScheduleEntry>('/schedules/', 'POST', data),
   
+  createRecurring: (data: RecurringScheduleCreateData) => 
+    apiRequest<ScheduleEntry[]>('/schedules/recurring', 'POST', data),
+  
   update: (id: number, data: ScheduleEntryUpdateData) => 
     apiRequest<ScheduleEntry>(`/schedules/${id}`, 'PUT', data),
+  
+  executeAction: (id: number, action: ScheduleOperatorActionData) => 
+    apiRequest<ScheduleEntry>(`/schedules/${id}/action`, 'POST', action),
   
   delete: (id: number) => 
     apiRequest<void>(`/schedules/${id}`, 'DELETE'),
     
   autoGenerate: (date: string) => 
     apiRequest<AutoScheduleResponseData>(`/schedules/auto-generate?date=${date}`),
+  
+  // API per i tempi di produzione
+  createProductionTime: (data: TempoProduzioneData) => 
+    apiRequest<TempoProduzione>('/schedules/production-times', 'POST', data),
+  
+  getProductionTimes: () => 
+    apiRequest<TempoProduzione[]>('/schedules/production-times'),
+  
+  estimateProductionTime: (params: {
+    part_number?: string;
+    categoria?: string;
+    sotto_categoria?: string;
+  }) => {
+    const queryParams = new URLSearchParams();
+    if (params.part_number) queryParams.append('part_number', params.part_number);
+    if (params.categoria) queryParams.append('categoria', params.categoria);
+    if (params.sotto_categoria) queryParams.append('sotto_categoria', params.sotto_categoria);
+    
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    return apiRequest<ProductionTimeEstimate>(`/schedules/production-times/estimate${query}`);
+  },
 };
 
 // Tipi per Reports
