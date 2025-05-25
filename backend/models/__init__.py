@@ -18,6 +18,7 @@ from .tempo_fase import TempoFase
 from .nesting_result import NestingResult
 from .schedule_entry import ScheduleEntry, ScheduleEntryStatus, ScheduleEntryType
 from .tempo_produzione import TempoProduzione
+from .report import Report, ReportTypeEnum
 
 # Lista completa di tutti i modelli per le migrazioni
 __all__ = [
@@ -36,5 +37,7 @@ __all__ = [
     "ScheduleEntry",
     "ScheduleEntryStatus",
     "ScheduleEntryType",
-    "TempoProduzione"
+    "TempoProduzione",
+    "Report",
+    "ReportTypeEnum"
 ] 

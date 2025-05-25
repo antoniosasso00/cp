@@ -840,10 +840,17 @@ export const scheduleApi = {
 
 // Tipi per Reports
 export interface ReportFileInfo {
+  id: number;
   filename: string;
-  size: number;
+  file_path: string;
+  report_type: ReportTypeEnum;
+  generated_for_user_id?: number;
+  period_start?: string;
+  period_end?: string;
+  include_sections?: string;
+  file_size_bytes?: number;
   created_at: string;
-  modified_at: string;
+  updated_at: string;
 }
 
 export interface ReportListResponse {
@@ -854,52 +861,69 @@ export interface ReportGenerateResponse {
   message: string;
   file_path: string;
   file_name: string;
+  report_id: number;
+}
+
+export interface ReportGenerateRequest {
+  report_type: ReportTypeEnum;
+  range_type?: ReportRangeType;
+  start_date?: string;
+  end_date?: string;
+  include_sections?: ReportIncludeSection[];
+  odl_filter?: string;
+  user_id?: number;
+  download?: boolean;
 }
 
 export type ReportRangeType = 'giorno' | 'settimana' | 'mese';
-export type ReportIncludeSection = 'odl' | 'tempi';
+export type ReportTypeEnum = 'produzione' | 'qualita' | 'tempi' | 'completo' | 'nesting';
+export type ReportIncludeSection = 'odl' | 'tempi' | 'nesting' | 'header';
 
 // API Reports
 export const reportsApi = {
-  generate: async (
-    rangeType: ReportRangeType,
-    includeSections: ReportIncludeSection[] = [],
-    download: boolean = true
-  ): Promise<Blob | ReportGenerateResponse> => {
-    const queryParams = new URLSearchParams();
-    queryParams.append('range_type', rangeType);
-    queryParams.append('download', download.toString());
-    
-    if (includeSections.length > 0) {
-      queryParams.append('include', includeSections.join(','));
-    }
-    
-    const url = `${API_BASE_URL}/reports/generate?${queryParams.toString()}`;
-    console.log('🔗 Report Generate Request:', url);
-    
-    if (download) {
-      // Per il download diretto, usiamo fetch per gestire il blob
-      const response = await fetch(url);
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const error = {
-          status: response.status,
-          message: errorData.detail || `Errore API: ${response.status} ${response.statusText}`,
-          data: errorData,
-        };
-        console.error('❌ Report Generate Error:', error);
-        throw error;
-      }
-      console.log('✅ Report Generate Success (Blob)');
-      return response.blob();
-    } else {
-      // Per ottenere solo le informazioni del file
-      return apiRequest<ReportGenerateResponse>(`/reports/generate?${queryParams.toString()}`);
-    }
+  generate: async (request: ReportGenerateRequest): Promise<ReportGenerateResponse> => {
+    console.log('🔗 Report Generate Request:', request);
+    return apiRequest<ReportGenerateResponse>('/reports/generate', 'POST', request);
   },
   
-  list: () => 
-    apiRequest<ReportListResponse>('/reports/list'),
+  list: (params?: {
+    report_type?: ReportTypeEnum;
+    start_date?: string;
+    end_date?: string;
+    odl_filter?: string;
+    user_id?: number;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.report_type) queryParams.append('report_type', params.report_type);
+    if (params?.start_date) queryParams.append('start_date', params.start_date);
+    if (params?.end_date) queryParams.append('end_date', params.end_date);
+    if (params?.odl_filter) queryParams.append('odl_filter', params.odl_filter);
+    if (params?.user_id) queryParams.append('user_id', params.user_id.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.offset) queryParams.append('offset', params.offset.toString());
+    
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    return apiRequest<ReportListResponse>(`/reports/${query}`);
+  },
+  
+  downloadById: async (reportId: number): Promise<Blob> => {
+    const response = await fetch(`${API_BASE_URL}/reports/${reportId}/download`);
+    console.log(`🔗 Report Download Request (ID): ${reportId}`);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const error = {
+        status: response.status,
+        message: errorData.detail || `Errore API: ${response.status} ${response.statusText}`,
+        data: errorData,
+      };
+      console.error('❌ Report Download Error:', error);
+      throw error;
+    }
+    console.log('✅ Report Download Success');
+    return response.blob();
+  },
   
   download: async (filename: string): Promise<Blob> => {
     const response = await fetch(`${API_BASE_URL}/reports/download/${filename}`);

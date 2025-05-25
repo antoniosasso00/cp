@@ -1,722 +1,592 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
-Script per il seed dei dati di test nel database CarbonPilot.
-Questo script è idempotente: crea i dati solo se non esistono già.
+Script per popolare il database con dati di test realistici
+Crea entità per Tools, Parts, ODL, Autoclavi, Cicli Cura, Nesting e Schedule
 """
 
-import os
 import sys
-import json
-import requests
-import logging
-import argparse
+import os
 from pathlib import Path
-from dotenv import load_dotenv
-from typing import List, Dict, Any, Optional
+from datetime import datetime, timedelta
+import logging
 
-# Setup logging
+# Setup del path per importare i moduli del backend
+ROOT_DIR = Path(__file__).resolve().parent.parent
+sys.path.append(str(ROOT_DIR / "backend"))
+
+# Configurazione logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Setup ambiente
-ROOT_DIR = Path(__file__).resolve().parent.parent
-sys.path.append(str(ROOT_DIR))
-load_dotenv()
-
-# Determina se lo script sta girando in un ambiente Docker
-IN_DOCKER = os.path.exists('/.dockerenv')
-
-# Se in Docker, usa l'host interno, altrimenti usa localhost
-BASE_URL = "http://localhost:8000" if not IN_DOCKER else os.getenv("BACKEND_URL", "http://localhost:8000")
-API_PREFIX = os.getenv("API_PREFIX", "/api/v1")
-
-logger.info(f"{'Esecuzione in ambiente Docker, utilizzo' if IN_DOCKER else 'Utilizzo'} URL backend: {BASE_URL}")
-
-# Dati di test predefiniti
-CATALOGO_PARTS = [
-    {
-        "part_number": "CPX-101",
-        "descrizione": "Pannello laterale sinistro",
-        "categoria": "PANNELLI",
-        "attivo": True,
-        "note": "Pannello in composito per lato sinistro"
-    },
-    {
-        "part_number": "CPX-102",
-        "descrizione": "Pannello laterale destro",
-        "categoria": "PANNELLI",
-        "attivo": True,
-        "note": "Pannello in composito per lato destro"
-    },
-    {
-        "part_number": "CPX-201",
-        "descrizione": "Supporto motore",
-        "categoria": "SUPPORTI",
-        "attivo": True,
-        "note": "Supporto in composito per motore"
-    },
-    {
-        "part_number": "CPX-301",
-        "descrizione": "Coperchio vano batterie",
-        "categoria": "COPERCHI",
-        "attivo": True,
-        "note": "Coperchio in composito per vano batterie"
-    },
-    {
-        "part_number": "CPX-401",
-        "descrizione": "Fascia frontale",
-        "categoria": "FASCE",
-        "attivo": True,
-        "note": "Fascia in composito per parte frontale"
-    }
-]
-
-TOOLS = [
-    {
-        "part_number_tool": "ST-101",
-        "descrizione": "Stampo pannelli laterali",
-        "lunghezza_piano": 2000.0,
-        "larghezza_piano": 1000.0,
-        "disponibile": True,
-        "note": "Stampo principale per pannelli laterali"
-    },
-    {
-        "part_number_tool": "ST-201",
-        "descrizione": "Stampo supporto motore",
-        "lunghezza_piano": 1500.0,
-        "larghezza_piano": 800.0,
-        "disponibile": True,
-        "note": "Stampo dedicato per supporti motore"
-    },
-    {
-        "part_number_tool": "ST-301",
-        "descrizione": "Stampo coperchi e fasce",
-        "lunghezza_piano": 1800.0,
-        "larghezza_piano": 900.0,
-        "disponibile": True,
-        "note": "Stampo versatile per coperchi e fasce"
-    }
-]
-
-CICLI_CURA = [
-    {
-        "nome": "Ciclo Standard",
-        "temperatura_stasi1": 120.0,
-        "pressione_stasi1": 4.0,
-        "durata_stasi1": 60,
-        "attiva_stasi2": False,
-        "descrizione": "Ciclo standard per parti non critiche"
-    },
-    {
-        "nome": "Ciclo Avanzato",
-        "temperatura_stasi1": 130.0,
-        "pressione_stasi1": 5.0,
-        "durata_stasi1": 45,
-        "attiva_stasi2": True,
-        "temperatura_stasi2": 140.0,
-        "pressione_stasi2": 6.0,
-        "durata_stasi2": 30,
-        "descrizione": "Ciclo avanzato per parti strutturali"
-    }
-]
-
-AUTOCLAVI = [
-    {
-        "nome": "Autoclave Principale",
-        "codice": "AUTO-001",
-        "lunghezza": 3000.0,
-        "larghezza_piano": 1500.0,
-        "num_linee_vuoto": 4,
-        "temperatura_max": 180.0,
-        "pressione_max": 7.0,
-        "stato": "DISPONIBILE",
-        "produttore": "Scholz",
-        "anno_produzione": 2023,
-        "note": "Autoclave principale per produzione"
-    },
-    {
-        "nome": "Autoclave Secondaria",
-        "codice": "AUTO-002",
-        "lunghezza": 2500.0,
-        "larghezza_piano": 1200.0,
-        "num_linee_vuoto": 3,
-        "temperatura_max": 180.0,
-        "pressione_max": 7.0,
-        "stato": "DISPONIBILE",
-        "produttore": "Scholz",
-        "anno_produzione": 2022,
-        "note": "Autoclave secondaria per piccole parti"
-    },
-    {
-        "nome": "Autoclave Manutenzione",
-        "codice": "AUTO-003",
-        "lunghezza": 2800.0,
-        "larghezza_piano": 1400.0,
-        "num_linee_vuoto": 4,
-        "temperatura_max": 180.0,
-        "pressione_max": 7.0,
-        "stato": "MANUTENZIONE",
-        "produttore": "Scholz",
-        "anno_produzione": 2021,
-        "note": "In manutenzione programmata"
-    }
-]
-
-# Variabile globale per memorizzare gli ID dei dati creati
-created_ids = {
-    "cicli_cura": {},
-    "tools": {}
-}
-
-def post_if_missing(endpoint: str, unique_field: str, data: dict, debug: bool = False) -> Optional[dict]:
-    """
-    Crea un record solo se non esiste già un record con lo stesso valore nel campo unique_field.
-    
-    Args:
-        endpoint: Nome dell'endpoint API (es. "catalogo", "tools")
-        unique_field: Campo univoco per identificare il record (es. "part_number", "part_number_tool")
-        data: Dati da inviare nella richiesta POST
-        debug: Se True, mostra informazioni dettagliate sugli errori
-    
-    Returns:
-        dict: Dati creati con l'ID incluso o None se fallisce o l'elemento esiste già
-    """
-    endpoint_url = f"{BASE_URL}{API_PREFIX}/{endpoint}/"
+def setup_database():
+    """Configura la connessione al database e crea le tabelle"""
     try:
-        # Verifica se esiste già un record con lo stesso valore
-        r = requests.get(endpoint_url)
-        if r.status_code == 200:
-            existing_data = r.json()
-            if any(d.get(unique_field) == data[unique_field] for d in existing_data):
-                logger.info(f"[✔] {endpoint} già presente: {data[unique_field]}")
-                # Recupera l'ID dell'elemento esistente per uso futuro
-                for item in existing_data:
-                    if item.get(unique_field) == data[unique_field]:
-                        if debug:
-                            logger.debug(f"ID recuperato per {endpoint}/{data[unique_field]}: {item.get('id')}")
-                        return item
-                return None
+        from models.db import engine, Base, SessionLocal
+        from models import *  # Importa tutti i modelli
         
-        # Se non esiste, crea il record
-        if debug:
-            logger.debug(f"Invio POST a {endpoint_url} con dati: {json.dumps(data, indent=2)}")
+        logger.info("🗃️ Creazione tabelle database...")
+        Base.metadata.create_all(bind=engine)
+        logger.info("✅ Tabelle create con successo!")
         
-        r = requests.post(endpoint_url, json=data)
-        if r.status_code in (200, 201):
-            created_data = r.json()
-            logger.info(f"[+] {endpoint} creato: {data[unique_field]} (ID: {created_data.get('id', 'N/A')})")
-            return created_data
-        elif r.status_code in (400, 422):
-            error_msg = r.json()
-            logger.warning(f"[!] Errore validazione {endpoint}: {error_msg}")
-            
-            if debug:
-                logger.debug(f"Dettagli errore: {json.dumps(error_msg, indent=2)}")
-                logger.debug(f"Dati inviati: {json.dumps(data, indent=2)}")
-        else:
-            logger.error(f"[!] Errore creazione {endpoint} (status {r.status_code}): {r.text}")
-            if debug:
-                logger.debug(f"Dati inviati: {json.dumps(data, indent=2)}")
-    except requests.exceptions.RequestException as e:
-        logger.error(f"[!] Errore di connessione su {endpoint}: {e}")
+        return SessionLocal()
     except Exception as e:
-        logger.error(f"[!] Errore imprevisto su {endpoint}: {str(e)}")
-    
-    return None
+        logger.error(f"❌ Errore nella configurazione database: {str(e)}")
+        raise
 
-def verify_endpoint(endpoint: str, expected_items: int = 1, debug: bool = False) -> bool:
-    """Verifica che un endpoint sia raggiungibile e restituisca dati."""
-    endpoint_url = f"{BASE_URL}{API_PREFIX}/{endpoint}/"
+def clear_existing_data(db):
+    """Pulisce i dati esistenti (opzionale)"""
     try:
-        r = requests.get(endpoint_url)
-        if r.status_code == 200:
-            data = r.json()
-            count = len(data) if isinstance(data, list) else 1
-            logger.info(f"[✔] {endpoint}: {count} elementi trovati")
-            return count >= expected_items
-        else:
-            logger.error(f"[!] {endpoint}: errore {r.status_code}")
-            return False
+        from models.nesting import Nesting
+        from models.schedule import Schedule
+        from models.tempo_fasi import TempoFasi
+        from models.odl import ODL
+        from models.parte import Parte
+        from models.tool import Tool
+        from models.autoclave import Autoclave
+        from models.ciclo_cura import CicloCura
+        from models.catalogo import Catalogo
+        
+        logger.info("🧹 Pulizia dati esistenti...")
+        
+        # Ordine importante per rispettare le foreign key
+        db.query(TempoFasi).delete()
+        db.query(Nesting).delete()
+        db.query(Schedule).delete()
+        db.query(ODL).delete()
+        db.query(Parte).delete()
+        db.query(Tool).delete()
+        db.query(Autoclave).delete()
+        db.query(CicloCura).delete()
+        db.query(Catalogo).delete()
+        
+        db.commit()
+        logger.info("✅ Dati esistenti rimossi")
+        
     except Exception as e:
-        logger.error(f"[!] {endpoint}: errore di connessione - {str(e)}")
-        return False
+        logger.error(f"❌ Errore nella pulizia dati: {str(e)}")
+        db.rollback()
+        raise
 
-def seed_catalogo(debug: bool = False):
-    """Popola la tabella catalogo con dati di test."""
-    logger.info("🌱 Seeding catalogo...")
-    for part in CATALOGO_PARTS:
-        post_if_missing("catalogo", "part_number", part, debug)
-
-def seed_tools(debug: bool = False):
-    """Popola la tabella tools con dati di test."""
-    logger.info("🌱 Seeding tools...")
-    for tool in TOOLS:
-        result = post_if_missing("tools", "part_number_tool", tool, debug)
-        if result and result.get('id'):
-            created_ids["tools"][tool["part_number_tool"]] = result["id"]
-
-def seed_cicli_cura(debug: bool = False):
-    """Popola la tabella cicli_cura con dati di test."""
-    logger.info("🌱 Seeding cicli cura...")
-    for ciclo in CICLI_CURA:
-        result = post_if_missing("cicli-cura", "nome", ciclo, debug)
-        if result and result.get('id'):
-            created_ids["cicli_cura"][ciclo["nome"]] = result["id"]
-
-def seed_autoclavi(debug: bool = False):
-    """Popola la tabella autoclavi con dati di test."""
-    logger.info("🌱 Seeding autoclavi...")
-    for autoclave in AUTOCLAVI:
-        post_if_missing("autoclavi", "codice", autoclave, debug)
-
-def seed_parti(debug: bool = False):
-    """Popola la tabella parti con dati di test."""
-    logger.info("🌱 Seeding parti...")
+def create_catalogo_data(db):
+    """Crea dati di test per il catalogo"""
+    from models.catalogo import Catalogo
     
-    # Definizione delle parti (da usare dopo aver ottenuto gli ID dai cicli di cura e tool)
-    PARTI = [
+    logger.info("📦 Creazione dati Catalogo...")
+    
+    catalogo_items = [
         {
-            "part_number": "CPX-101",
-            "descrizione_breve": "Pannello SX",
-            "num_valvole_richieste": 4,
-            "ciclo_cura_id": None,  # Sarà impostato dinamicamente
-            "tool_ids": [],         # Sarà impostato dinamicamente
-            "note_produzione": "Pannello laterale sinistro"
+            "part_number": "CF-WING-001",
+            "descrizione": "Ala principale in fibra di carbonio",
+            "categoria": "Strutturale",
+            "sotto_categoria": "Ala",
+            "attivo": True,
+            "note": "Componente principale per aeromobili"
         },
         {
-            "part_number": "CPX-102",
-            "descrizione_breve": "Pannello DX",
-            "num_valvole_richieste": 4,
-            "ciclo_cura_id": None,
-            "tool_ids": [],
-            "note_produzione": "Pannello laterale destro"
+            "part_number": "CF-FUSE-002",
+            "descrizione": "Sezione fusoliera anteriore",
+            "categoria": "Strutturale", 
+            "sotto_categoria": "Fusoliera",
+            "attivo": True,
+            "note": "Sezione anteriore della fusoliera"
         },
         {
-            "part_number": "CPX-201",
-            "descrizione_breve": "Supporto Motore",
-            "num_valvole_richieste": 6,
-            "ciclo_cura_id": None,
-            "tool_ids": [],
-            "note_produzione": "Supporto motore con rinforzi"
+            "part_number": "CF-TAIL-003",
+            "descrizione": "Stabilizzatore verticale",
+            "categoria": "Strutturale",
+            "sotto_categoria": "Coda",
+            "attivo": True,
+            "note": "Componente di controllo verticale"
         },
         {
-            "part_number": "CPX-301",
-            "descrizione_breve": "Coperchio Batterie",
-            "num_valvole_richieste": 2,
-            "ciclo_cura_id": None,
-            "tool_ids": [],
-            "note_produzione": "Coperchio vano batterie"
+            "part_number": "CF-PANEL-004",
+            "descrizione": "Pannello decorativo interno",
+            "categoria": "Estetico",
+            "sotto_categoria": "Interni",
+            "attivo": True,
+            "note": "Pannello per interni cabina"
         },
         {
-            "part_number": "CPX-401",
-            "descrizione_breve": "Fascia Frontale",
-            "num_valvole_richieste": 3,
-            "ciclo_cura_id": None,
-            "tool_ids": [],
-            "note_produzione": "Fascia frontale con rinforzi"
+            "part_number": "CF-BRACKET-005",
+            "descrizione": "Staffa di supporto motore",
+            "categoria": "Strutturale",
+            "sotto_categoria": "Supporti",
+            "attivo": True,
+            "note": "Supporto per montaggio motore"
         }
     ]
     
-    try:
-        # Recupera i cicli di cura esistenti
-        cicli_url = f"{BASE_URL}{API_PREFIX}/cicli-cura/"
-        cicli_response = requests.get(cicli_url)
-        if cicli_response.status_code != 200:
-            logger.error(f"Impossibile recuperare i cicli di cura: {cicli_response.status_code}")
-            return
-        
-        cicli = cicli_response.json()
-        if not cicli:
-            logger.error("Nessun ciclo di cura trovato. Esegui prima seed_cicli_cura()")
-            return
-        
-        # Recupera i tools esistenti
-        tools_url = f"{BASE_URL}{API_PREFIX}/tools/"
-        tools_response = requests.get(tools_url)
-        if tools_response.status_code != 200:
-            logger.error(f"Impossibile recuperare i tools: {tools_response.status_code}")
-            return
-        
-        tools = tools_response.json()
-        if not tools:
-            logger.error("Nessun tool trovato. Esegui prima seed_tools()")
-            return
-        
-        # Mappa i cicli di cura per nome
-        cicli_map = {ciclo["nome"]: ciclo["id"] for ciclo in cicli}
-        tools_map = {tool["part_number_tool"]: tool["id"] for tool in tools}
-        
-        # Assegna cicli di cura e tools alle parti
-        for i, parte in enumerate(PARTI):
-            # Assegna ciclo di cura alternando tra Standard e Avanzato
-            if i % 2 == 0:
-                parte["ciclo_cura_id"] = cicli_map.get("Ciclo Standard")
-            else:
-                parte["ciclo_cura_id"] = cicli_map.get("Ciclo Avanzato")
-            
-            # Assegna tool in base al part number
-            if parte["part_number"] in ["CPX-101", "CPX-102"]:
-                parte["tool_ids"] = [tools_map.get("ST-101")]
-            elif parte["part_number"] == "CPX-201":
-                parte["tool_ids"] = [tools_map.get("ST-201")]
-            else:
-                parte["tool_ids"] = [tools_map.get("ST-301")]
-            
-            # Rimuovi None values
-            parte["tool_ids"] = [tid for tid in parte["tool_ids"] if tid is not None]
-            
-            # Crea la parte
-            post_if_missing("parti", "part_number", parte, debug)
-            
-    except Exception as e:
-        logger.error(f"Errore durante il popolamento delle parti: {str(e)}")
-
-def seed_odl(debug: bool = False):
-    """Popola la tabella ODL con dati di test."""
-    logger.info("🌱 Seeding ODL...")
+    created_items = []
+    for item_data in catalogo_items:
+        item = Catalogo(**item_data)
+        db.add(item)
+        created_items.append(item)
     
-    try:
-        # Recupera le parti esistenti
-        parti_url = f"{BASE_URL}{API_PREFIX}/parti/"
-        parti_response = requests.get(parti_url)
-        if parti_response.status_code != 200 or not parti_response.json():
-            logger.error(f"Impossibile recuperare le parti: {parti_response.status_code}")
-            return
-        
-        parti = parti_response.json()
-        logger.info(f"Recuperate {len(parti)} parti")
-        
-        # Recupera i tool esistenti
-        tools_url = f"{BASE_URL}{API_PREFIX}/tools/"
-        tools_response = requests.get(tools_url)
-        if tools_response.status_code != 200 or not tools_response.json():
-            logger.error(f"Impossibile recuperare i tools: {tools_response.status_code}")
-            return
-        
-        tools = tools_response.json()
-        logger.info(f"Recuperati {len(tools)} tools")
-        
-        # Creazione di 5 ODL di test con status diversi
-        odl_stati = ["Preparazione", "Laminazione", "Attesa Cura", "Cura", "Finito"]
-        
-        for i in range(min(5, len(parti))):
-            # Seleziona una parte e un tool esistenti
-            parte = parti[i % len(parti)]
-            tool = tools[i % len(tools)]
-            
-            # Crea l'ODL con priorità variabile e stato diverso
-            odl_data = {
-                "parte_id": parte["id"],
-                "tool_id": tool["id"],
-                "priorita": i + 1,
-                "status": odl_stati[i % len(odl_stati)],
-                "note": f"ODL di test #{i+1} creato automaticamente - {parte['part_number']} con {tool['part_number_tool']}"
-            }
-            
-            # Usa una ricerca per verificare se esiste già un ODL simile
-            odl_url = f"{BASE_URL}{API_PREFIX}/odl/"
-            search_params = {
-                "parte_id": odl_data["parte_id"],
-                "tool_id": odl_data["tool_id"],
-                "status": odl_data["status"]
-            }
-            
-            search_response = requests.get(odl_url, params=search_params)
-            if search_response.status_code == 200 and search_response.json():
-                logger.info(f"[✔] ODL già presente: Parte {parte['part_number']}, Tool {tool['part_number_tool']}, Status {odl_data['status']}")
-                continue
-            
-            # Crea l'ODL se non esiste già
-            result = requests.post(odl_url, json=odl_data)
-            if result.status_code in [200, 201]:
-                logger.info(f"[✓] Creato ODL: Parte {parte['part_number']}, Tool {tool['part_number_tool']}, Status {odl_data['status']}")
-            else:
-                logger.error(f"[✗] Errore nella creazione dell'ODL: {result.status_code}")
-                if debug:
-                    logger.debug(f"Dettagli errore: {result.text}")
-        
-        # Verifica se gli ODL sono stati creati
-        verify_endpoint("odl", expected_items=1, debug=debug)
-        
-    except Exception as e:
-        logger.error(f"Errore durante il popolamento degli ODL: {str(e)}")
+    db.commit()
+    logger.info(f"✅ Creati {len(created_items)} elementi catalogo")
+    return created_items
 
-def seed_odl_completati(debug: bool = False):
-    """Crea ODL completati con tempi di fase registrati per l'analisi statistica"""
-    logger.info("\n📊 Popolamento ODL completati con tempi di fase...")
+def create_cicli_cura_data(db):
+    """Crea dati di test per i cicli di cura"""
+    from models.ciclo_cura import CicloCura
     
-    # Recupera le parti esistenti
-    parti_url = f"{BASE_URL}{API_PREFIX}/parti/"
-    try:
-        parti_response = requests.get(parti_url)
-        if parti_response.status_code != 200 or not parti_response.json():
-            logger.error(f"Impossibile recuperare le parti: {parti_response.status_code}")
-            return
+    logger.info("🔥 Creazione dati Cicli Cura...")
+    
+    cicli_data = [
+        {
+            "nome": "Ciclo Standard 180°C",
+            "temperatura_stasi1": 180.0,
+            "pressione_stasi1": 6.0,
+            "durata_stasi1": 120,
+            "attiva_stasi2": True,
+            "temperatura_stasi2": 200.0,
+            "pressione_stasi2": 8.0,
+            "durata_stasi2": 60
+        },
+        {
+            "nome": "Ciclo Rapido 160°C",
+            "temperatura_stasi1": 160.0,
+            "pressione_stasi1": 5.0,
+            "durata_stasi1": 90,
+            "attiva_stasi2": False
+        },
+        {
+            "nome": "Ciclo Alta Temperatura 220°C",
+            "temperatura_stasi1": 220.0,
+            "pressione_stasi1": 10.0,
+            "durata_stasi1": 180,
+            "attiva_stasi2": True,
+            "temperatura_stasi2": 240.0,
+            "pressione_stasi2": 12.0,
+            "durata_stasi2": 90
+        }
+    ]
+    
+    created_cicli = []
+    for ciclo_data in cicli_data:
+        ciclo = CicloCura(**ciclo_data)
+        db.add(ciclo)
+        created_cicli.append(ciclo)
+    
+    db.commit()
+    logger.info(f"✅ Creati {len(created_cicli)} cicli di cura")
+    return created_cicli
+
+def create_tools_data(db):
+    """Crea dati di test per i tools"""
+    from models.tool import Tool
+    
+    logger.info("🔧 Creazione dati Tools...")
+    
+    tools_data = [
+        {
+            "part_number_tool": "TOOL-WING-001",
+            "descrizione": "Stampo per ala principale",
+            "lunghezza_piano": 2000.0,
+            "larghezza_piano": 800.0,
+            "disponibile": True,
+            "note": "Stampo per componenti alari"
+        },
+        {
+            "part_number_tool": "TOOL-FUSE-002",
+            "descrizione": "Stampo fusoliera sezione A",
+            "lunghezza_piano": 1500.0,
+            "larghezza_piano": 600.0,
+            "disponibile": True,
+            "note": "Stampo per sezioni fusoliera"
+        },
+        {
+            "part_number_tool": "TOOL-PANEL-003",
+            "descrizione": "Stampo pannelli decorativi",
+            "lunghezza_piano": 1000.0,
+            "larghezza_piano": 500.0,
+            "disponibile": True,
+            "note": "Stampo per pannelli interni"
+        },
+        {
+            "part_number_tool": "TOOL-BRACKET-004",
+            "descrizione": "Stampo staffe supporto",
+            "lunghezza_piano": 800.0,
+            "larghezza_piano": 400.0,
+            "disponibile": False,
+            "note": "Stampo per staffe di supporto - in manutenzione"
+        }
+    ]
+    
+    created_tools = []
+    for tool_data in tools_data:
+        tool = Tool(**tool_data)
+        db.add(tool)
+        created_tools.append(tool)
+    
+    db.commit()
+    logger.info(f"✅ Creati {len(created_tools)} tools")
+    return created_tools
+
+def create_autoclavi_data(db):
+    """Crea dati di test per le autoclavi"""
+    from models.autoclave import Autoclave
+    
+    logger.info("🏭 Creazione dati Autoclavi...")
+    
+    autoclavi_data = [
+        {
+            "nome": "Autoclave Alpha",
+            "codice": "AUT-001",
+            "lunghezza": 3000.0,
+            "larghezza_piano": 1500.0,
+            "num_linee_vuoto": 4,
+            "stato": "DISPONIBILE",
+            "temperatura_max": 250.0,
+            "pressione_max": 15.0,
+            "produttore": "ThermoTech",
+            "anno_produzione": 2020,
+            "note": "Autoclave principale per produzione"
+        },
+        {
+            "nome": "Autoclave Beta",
+            "codice": "AUT-002", 
+            "lunghezza": 2500.0,
+            "larghezza_piano": 1200.0,
+            "num_linee_vuoto": 3,
+            "stato": "DISPONIBILE",
+            "temperatura_max": 220.0,
+            "pressione_max": 12.0,
+            "produttore": "CarbonCure",
+            "anno_produzione": 2019,
+            "note": "Autoclave secondaria"
+        },
+        {
+            "nome": "Autoclave Gamma",
+            "codice": "AUT-003",
+            "lunghezza": 2000.0,
+            "larghezza_piano": 1000.0,
+            "num_linee_vuoto": 2,
+            "stato": "MANUTENZIONE",
+            "temperatura_max": 200.0,
+            "pressione_max": 10.0,
+            "produttore": "CompositePro",
+            "anno_produzione": 2018,
+            "note": "In manutenzione programmata"
+        }
+    ]
+    
+    created_autoclavi = []
+    for autoclave_data in autoclavi_data:
+        autoclave = Autoclave(**autoclave_data)
+        db.add(autoclave)
+        created_autoclavi.append(autoclave)
+    
+    db.commit()
+    logger.info(f"✅ Creati {len(created_autoclavi)} autoclavi")
+    return created_autoclavi
+
+def create_parti_data(db, catalogo_items, cicli_cura, tools):
+    """Crea dati di test per le parti"""
+    from models.parte import Parte
+    
+    logger.info("🧩 Creazione dati Parti...")
+    
+    parti_data = [
+        {
+            "part_number": "CF-WING-001",
+            "descrizione_breve": "Ala principale",
+            "num_valvole_richieste": 8,
+            "note_produzione": "Richiede attenzione particolare nelle curve",
+            "ciclo_cura_id": cicli_cura[0].id,
+            "tool_ids": [tools[0].id]
+        },
+        {
+            "part_number": "CF-FUSE-002", 
+            "descrizione_breve": "Fusoliera anteriore",
+            "num_valvole_richieste": 6,
+            "note_produzione": "Verificare allineamento con sezioni adiacenti",
+            "ciclo_cura_id": cicli_cura[1].id,
+            "tool_ids": [tools[1].id]
+        },
+        {
+            "part_number": "CF-PANEL-004",
+            "descrizione_breve": "Pannello decorativo",
+            "num_valvole_richieste": 2,
+            "note_produzione": "Finitura superficiale critica",
+            "ciclo_cura_id": cicli_cura[0].id,
+            "tool_ids": [tools[2].id]
+        },
+        {
+            "part_number": "CF-BRACKET-005",
+            "descrizione_breve": "Staffa supporto motore",
+            "num_valvole_richieste": 4,
+            "note_produzione": "Controllo dimensionale rigoroso",
+            "ciclo_cura_id": cicli_cura[2].id,
+            "tool_ids": [tools[3].id]
+        }
+    ]
+    
+    created_parti = []
+    for parte_data in parti_data:
+        tool_ids = parte_data.pop('tool_ids')
+        parte = Parte(**parte_data)
         
-        parti = parti_response.json()
+        # Associa i tools
+        for tool_id in tool_ids:
+            tool = next((t for t in tools if t.id == tool_id), None)
+            if tool:
+                parte.tools.append(tool)
         
-        # Recupera i tool esistenti
-        tools_url = f"{BASE_URL}{API_PREFIX}/tools/"
-        tools_response = requests.get(tools_url)
-        if tools_response.status_code != 200 or not tools_response.json():
-            logger.error(f"Impossibile recuperare i tools: {tools_response.status_code}")
-            return
+        db.add(parte)
+        created_parti.append(parte)
+    
+    db.commit()
+    logger.info(f"✅ Creati {len(created_parti)} parti")
+    return created_parti
+
+def create_odl_data(db, parti, tools):
+    """Crea dati di test per gli ODL"""
+    from models.odl import ODL
+    
+    logger.info("📋 Creazione dati ODL...")
+    
+    odl_data = [
+        {
+            "parte_id": parti[0].id,
+            "tool_id": tools[0].id,
+            "priorita": 1,
+            "status": "Laminazione",
+            "note": "ODL prioritario per consegna urgente"
+        },
+        {
+            "parte_id": parti[1].id,
+            "tool_id": tools[1].id,
+            "priorita": 2,
+            "status": "Preparazione",
+            "note": "In preparazione per laminazione"
+        },
+        {
+            "parte_id": parti[2].id,
+            "tool_id": tools[2].id,
+            "priorita": 3,
+            "status": "Attesa Cura",
+            "note": "Pronto per autoclave"
+        },
+        {
+            "parte_id": parti[3].id,
+            "tool_id": tools[3].id,
+            "priorita": 4,
+            "status": "Finito",
+            "note": "Completato e controllato"
+        },
+        {
+            "parte_id": parti[0].id,
+            "tool_id": tools[0].id,
+            "priorita": 5,
+            "status": "Cura",
+            "note": "In autoclave - ciclo in corso"
+        }
+    ]
+    
+    created_odl = []
+    for odl_item_data in odl_data:
+        odl = ODL(**odl_item_data)
+        db.add(odl)
+        created_odl.append(odl)
+    
+    db.commit()
+    logger.info(f"✅ Creati {len(created_odl)} ODL")
+    return created_odl
+
+def create_tempo_fasi_data(db, odl_list):
+    """Crea dati di test per i tempi delle fasi"""
+    from models.tempo_fasi import TempoFasi
+    
+    logger.info("⏱️ Creazione dati Tempo Fasi...")
+    
+    base_time = datetime.now() - timedelta(days=2)
+    
+    tempo_fasi_data = []
+    
+    for i, odl in enumerate(odl_list[:3]):  # Solo per i primi 3 ODL
+        # Fase laminazione
+        inizio_lam = base_time + timedelta(hours=i*8)
+        fine_lam = inizio_lam + timedelta(hours=2, minutes=30)
         
-        tools = tools_response.json()
+        tempo_fasi_data.append({
+            "odl_id": odl.id,
+            "fase": "laminazione",
+            "inizio_fase": inizio_lam,
+            "fine_fase": fine_lam,
+            "durata_minuti": 150,
+            "note": f"Laminazione completata per ODL {odl.id}"
+        })
         
-        # Elenco di durate di fase variabili (in minuti) per ODL completati
-        # [laminazione, attesa_cura, cura]
-        tempo_fasi_completate = [
-            # PN: CPX-101 - Pannello SX
-            [120, 45, 65],  # Primo ODL completato
-            [130, 40, 70],  # Secondo ODL completato 
-            [115, 50, 60],  # Terzo ODL completato
-            
-            # PN: CPX-201 - Supporto Motore 
-            [150, 60, 90],  # Primo ODL completato
-            [145, 65, 85],  # Secondo ODL completato
-            
-            # PN: CPX-401 - Fascia Frontale
-            [100, 30, 50],  # Primo ODL completato
-            [110, 35, 55],  # Secondo ODL completato
-        ]
+        # Fase attesa cura
+        inizio_attesa = fine_lam
+        fine_attesa = inizio_attesa + timedelta(hours=4)
         
-        # Crea ODL completati per diverse parti
-        # Configura quali parti utilizzare per gli ODL completati
-        parti_odl_completati = [0, 0, 0, 2, 2, 4, 4]  # Indici delle parti in parti[]
+        tempo_fasi_data.append({
+            "odl_id": odl.id,
+            "fase": "attesa_cura",
+            "inizio_fase": inizio_attesa,
+            "fine_fase": fine_attesa,
+            "durata_minuti": 240,
+            "note": f"Attesa cura per ODL {odl.id}"
+        })
         
-        for i, idx_parte in enumerate(parti_odl_completati):
-            if idx_parte >= len(parti):
-                logger.warning(f"Indice parte non valido: {idx_parte}")
-                continue
-                
-            parte = parti[idx_parte]
-            tool = tools[idx_parte % len(tools)]
+        # Fase cura (solo per ODL completati)
+        if i < 2:
+            inizio_cura = fine_attesa
+            fine_cura = inizio_cura + timedelta(hours=3)
             
-            # Verifica se esiste già un ODL simile
-            odl_url = f"{BASE_URL}{API_PREFIX}/odl/"
-            search_params = {
-                "parte_id": parte["id"],
-                "tool_id": tool["id"],
-                "status": "Finito"
-            }
-            
-            search_response = requests.get(odl_url, params=search_params)
-            if search_response.status_code == 200 and len(search_response.json()) > 0:
-                logger.info(f"[✔] ODL completato già presente: Parte {parte['part_number']}, Tool {tool['part_number_tool']}")
-                continue
-            
-            # Crea l'ODL completato
-            odl_data = {
-                "parte_id": parte["id"],
-                "tool_id": tool["id"],
-                "priorita": 1,  # Priorità bassa per ODL completati
-                "status": "Finito",
-                "note": f"ODL completato di test #{i+1} - {parte['part_number']} con {tool['part_number_tool']}"
-            }
-            
-            # Crea l'ODL
-            odl_response = requests.post(odl_url, json=odl_data)
-            if odl_response.status_code not in [200, 201]:
-                logger.error(f"[✗] Errore nella creazione dell'ODL completato: {odl_response.status_code}")
-                if debug:
-                    logger.debug(f"Dettagli errore: {odl_response.text}")
-                continue
-            
-            odl_creato = odl_response.json()
-            odl_id = odl_creato["id"]
-            logger.info(f"[✓] Creato ODL completato: ID {odl_id}, Parte {parte['part_number']}, Tool {tool['part_number_tool']}")
-            
-            # Per ogni ODL, crea i tempi delle 3 fasi
-            # Calcola le date di inizio/fine progressive partendo da 10 giorni fa
-            from datetime import datetime, timedelta
-            
-            tempo_fasi = ["laminazione", "attesa_cura", "cura"]
-            data_fine_corrente = datetime.now() - timedelta(days=1)  # ODL finito ieri
-            
-            # Inversione dell'ordine: prima cura, poi attesa, poi laminazione
-            for j in range(2, -1, -1):
-                fase = tempo_fasi[j]
-                durata = tempo_fasi_completate[i][j]
-                
-                # Calcola inizio sottraendo la durata dalla fine
-                data_inizio = data_fine_corrente - timedelta(minutes=durata)
-                
-                # Crea il record del tempo fase
-                tempo_fase_data = {
-                    "odl_id": odl_id,
-                    "fase": fase,
-                    "inizio_fase": data_inizio.isoformat(),
-                    "fine_fase": data_fine_corrente.isoformat(),
-                    "durata_minuti": durata,
-                    "note": f"Fase {fase} completata in {durata} minuti"
-                }
-                
-                tempo_fase_url = f"{BASE_URL}{API_PREFIX}/tempo-fasi/"
-                tempo_fase_response = requests.post(tempo_fase_url, json=tempo_fase_data)
-                
-                if tempo_fase_response.status_code in [200, 201]:
-                    tempo_fase_id = tempo_fase_response.json()["id"]
-                    logger.info(f"  [✓] Creato tempo fase: {fase}, durata {durata} min (ID: {tempo_fase_id})")
-                else:
-                    logger.error(f"  [✗] Errore nella creazione del tempo fase {fase}: {tempo_fase_response.status_code}")
-                    if debug:
-                        logger.debug(f"  Dettagli errore: {tempo_fase_response.text}")
-                
-                # La fine di questa fase diventa l'inizio della fase precedente
-                data_fine_corrente = data_inizio
-        
-        # Crea anche ODL in corso con solo prima/seconda fase
-        # Questa volta usando le parti rimanenti
-        stati_incompleti = ["Laminazione", "Attesa Cura"]
-        fasi_incomplete = ["laminazione", "attesa_cura"]
-        parti_odl_incompleti = [1, 3]  # Indici delle parti in parti[]
-        
-        for i, idx_parte in enumerate(parti_odl_incompleti):
-            if idx_parte >= len(parti):
-                continue
-                
-            parte = parti[idx_parte]
-            tool = tools[idx_parte % len(tools)]
-            
-            # Crea l'ODL in stato non completato
-            stato_odl = stati_incompleti[i % len(stati_incompleti)]
-            
-            # Verifica se esiste già un ODL simile
-            odl_url = f"{BASE_URL}{API_PREFIX}/odl/"
-            search_params = {
-                "parte_id": parte["id"],
-                "tool_id": tool["id"],
-                "status": stato_odl
-            }
-            
-            search_response = requests.get(odl_url, params=search_params)
-            if search_response.status_code == 200 and len(search_response.json()) > 0:
-                logger.info(f"[✔] ODL incompleto già presente: Parte {parte['part_number']}, Tool {tool['part_number_tool']}, Stato {stato_odl}")
-                continue
-            
-            odl_data = {
-                "parte_id": parte["id"],
-                "tool_id": tool["id"],
-                "priorita": 3,  # Priorità media
-                "status": stato_odl,
-                "note": f"ODL in corso di test - {parte['part_number']} con {tool['part_number_tool']}"
-            }
-            
-            odl_response = requests.post(odl_url, json=odl_data)
-            if odl_response.status_code not in [200, 201]:
-                logger.error(f"[✗] Errore nella creazione dell'ODL incompleto: {odl_response.status_code}")
-                continue
-            
-            odl_creato = odl_response.json()
-            odl_id = odl_creato["id"]
-            logger.info(f"[✓] Creato ODL incompleto: ID {odl_id}, Parte {parte['part_number']}, Tool {tool['part_number_tool']}, Stato {stato_odl}")
-            
-            # Registra solo le fasi precedenti a quella corrente
-            fase_corrente = fasi_incomplete[i % len(fasi_incomplete)]
-            fasi_da_registrare = []
-            
-            if fase_corrente == "attesa_cura":
-                fasi_da_registrare.append("laminazione")  # Registra laminazione se siamo in attesa cura
-            
-            # Aggiungi la fase corrente (senza fine)
-            tempo_fase_url = f"{BASE_URL}{API_PREFIX}/tempo-fasi/"
-            
-            # Prima registra le fasi completate
-            for fase in fasi_da_registrare:
-                durata = 120  # Durata standard per le fasi completate
-                data_fine = datetime.now() - timedelta(hours=2)
-                data_inizio = data_fine - timedelta(minutes=durata)
-                
-                tempo_fase_data = {
-                    "odl_id": odl_id,
-                    "fase": fase,
-                    "inizio_fase": data_inizio.isoformat(),
-                    "fine_fase": data_fine.isoformat(),
-                    "durata_minuti": durata,
-                    "note": f"Fase {fase} completata"
-                }
-                
-                tempo_fase_response = requests.post(tempo_fase_url, json=tempo_fase_data)
-                if tempo_fase_response.status_code in [200, 201]:
-                    logger.info(f"  [✓] Creato tempo fase completata: {fase}")
-                else:
-                    logger.error(f"  [✗] Errore nella creazione del tempo fase {fase}: {tempo_fase_response.status_code}")
-            
-            # Poi registra la fase corrente (senza fine)
-            tempo_fase_data = {
-                "odl_id": odl_id,
-                "fase": fase_corrente,
-                "inizio_fase": (datetime.now() - timedelta(minutes=30)).isoformat(),
-                "fine_fase": None,
-                "durata_minuti": None,
-                "note": f"Fase {fase_corrente} in corso"
-            }
-            
-            tempo_fase_response = requests.post(tempo_fase_url, json=tempo_fase_data)
-            if tempo_fase_response.status_code in [200, 201]:
-                logger.info(f"  [✓] Creato tempo fase in corso: {fase_corrente}")
-            else:
-                logger.error(f"  [✗] Errore nella creazione del tempo fase {fase_corrente}: {tempo_fase_response.status_code}")
-                if debug:
-                    logger.debug(f"  Dettagli errore: {tempo_fase_response.text}")
-        
-    except Exception as e:
-        logger.error(f"Errore durante il popolamento degli ODL completati: {str(e)}")
-        if debug:
-            import traceback
-            logger.debug(traceback.format_exc())
+            tempo_fasi_data.append({
+                "odl_id": odl.id,
+                "fase": "cura",
+                "inizio_fase": inizio_cura,
+                "fine_fase": fine_cura,
+                "durata_minuti": 180,
+                "note": f"Cura completata per ODL {odl.id}"
+            })
+    
+    created_tempi = []
+    for tempo_data in tempo_fasi_data:
+        tempo = TempoFasi(**tempo_data)
+        db.add(tempo)
+        created_tempi.append(tempo)
+    
+    db.commit()
+    logger.info(f"✅ Creati {len(created_tempi)} record tempo fasi")
+    return created_tempi
+
+def create_nesting_data(db, autoclavi, odl_list):
+    """Crea dati di test per il nesting"""
+    from models.nesting import Nesting
+    
+    logger.info("🧩 Creazione dati Nesting...")
+    
+    # Crea un nesting con i primi 3 ODL nell'autoclave Alpha
+    nesting_data = {
+        "autoclave_id": autoclavi[0].id,
+        "odl_ids": [odl_list[0].id, odl_list[1].id, odl_list[2].id],
+        "area_utilizzata": 3500000.0,  # 3.5 m²
+        "area_totale": 4500000.0,      # 4.5 m²
+        "valvole_utilizzate": 16,
+        "valvole_totali": 20
+    }
+    
+    nesting = Nesting(
+        autoclave_id=nesting_data["autoclave_id"],
+        area_utilizzata=nesting_data["area_utilizzata"],
+        area_totale=nesting_data["area_totale"],
+        valvole_utilizzate=nesting_data["valvole_utilizzate"],
+        valvole_totali=nesting_data["valvole_totali"]
+    )
+    
+    # Associa gli ODL
+    for odl_id in nesting_data["odl_ids"]:
+        odl = next((o for o in odl_list if o.id == odl_id), None)
+        if odl:
+            nesting.odl_list.append(odl)
+    
+    db.add(nesting)
+    db.commit()
+    
+    logger.info("✅ Creato 1 nesting")
+    return [nesting]
+
+def create_schedule_data(db, autoclavi, nesting_list):
+    """Crea dati di test per gli schedule"""
+    from models.schedule import Schedule
+    
+    logger.info("📅 Creazione dati Schedule...")
+    
+    # Crea uno schedule per il nesting creato
+    schedule_data = {
+        "autoclave_id": autoclavi[0].id,
+        "nesting_id": nesting_list[0].id,
+        "data_inizio_prevista": datetime.now() + timedelta(hours=2),
+        "data_fine_prevista": datetime.now() + timedelta(hours=8),
+        "stato": "PROGRAMMATO",
+        "note": "Schedule automatico per nesting ottimizzato"
+    }
+    
+    schedule = Schedule(**schedule_data)
+    db.add(schedule)
+    db.commit()
+    
+    logger.info("✅ Creato 1 schedule")
+    return [schedule]
+
+def print_summary(db):
+    """Stampa un riepilogo dei dati creati"""
+    from models.catalogo import Catalogo
+    from models.ciclo_cura import CicloCura
+    from models.tool import Tool
+    from models.autoclave import Autoclave
+    from models.parte import Parte
+    from models.odl import ODL
+    from models.tempo_fasi import TempoFasi
+    from models.nesting import Nesting
+    from models.schedule import Schedule
+    
+    logger.info("\n📊 RIEPILOGO DATI CREATI")
+    logger.info("=" * 50)
+    
+    counts = {
+        "Catalogo": db.query(Catalogo).count(),
+        "Cicli Cura": db.query(CicloCura).count(),
+        "Tools": db.query(Tool).count(),
+        "Autoclavi": db.query(Autoclave).count(),
+        "Parti": db.query(Parte).count(),
+        "ODL": db.query(ODL).count(),
+        "Tempo Fasi": db.query(TempoFasi).count(),
+        "Nesting": db.query(Nesting).count(),
+        "Schedule": db.query(Schedule).count()
+    }
+    
+    for entity, count in counts.items():
+        logger.info(f"✅ {entity}: {count} record")
+    
+    total = sum(counts.values())
+    logger.info(f"\n🎯 Totale record creati: {total}")
 
 def main():
-    """Funzione principale per il seed dei dati di test."""
-    parser = argparse.ArgumentParser(description="Seed di dati di test per CarbonPilot")
-    parser.add_argument("--debug", action="store_true", help="Attiva la modalità debug con dettagli aggiuntivi")
-    args = parser.parse_args()
+    """Funzione principale"""
+    logger.info("🌱 SEED DATABASE CARBONPILOT")
+    logger.info("=" * 60)
     
-    debug = args.debug
-    if debug:
-        logger.setLevel(logging.DEBUG)
-    
-    logger.info("\n🌱 Seed dati di test in corso...")
-    
-    # Verifica connessione al backend
     try:
-        r = requests.get(f"{BASE_URL}/docs")
-        if r.status_code != 200:
-            logger.warning(f"⚠️ Il backend potrebbe non essere attivo. Status: {r.status_code}")
-    except requests.exceptions.ConnectionError:
-        logger.error(f"❌ Impossibile connettersi al backend su {BASE_URL}")
-        logger.info("Assicurati che il backend sia in esecuzione e l'URL sia corretto.")
-        logger.info(f"URL backend corrente: {BASE_URL}")
-        exit(1)
-    
-    # Popolamento dati
-    seed_catalogo(debug)
-    seed_tools(debug)
-    seed_cicli_cura(debug)
-    seed_autoclavi(debug)
-    seed_parti(debug)
-    seed_odl(debug)
-    seed_odl_completati(debug)
-    
-    # Verifica finale
-    logger.info("\n🔍 Verifica endpoint in corso...")
-    success = all([
-        verify_endpoint("catalogo", len(CATALOGO_PARTS), debug),
-        verify_endpoint("tools", len(TOOLS), debug),
-        verify_endpoint("cicli-cura", len(CICLI_CURA), debug),
-        verify_endpoint("autoclavi", len(AUTOCLAVI), debug),
-        verify_endpoint("parti", expected_items=5, debug=debug),  # 5 parti definite nella funzione seed_parti
-        verify_endpoint("odl", expected_items=1, debug=debug)
-    ])
-    
-    if success:
-        logger.info("\n✨ Seed e verifica completati con successo!")
-        logger.info("\n✅ Seed completato. Dati visibili nel frontend. Dashboard pronta.")
-    else:
-        logger.error("\n❌ Alcuni endpoint non hanno restituito i dati attesi. Controlla i log per i dettagli.")
-        if not debug:
-            logger.info("🔍 Riprova con l'opzione --debug per ottenere maggiori informazioni: python tools/seed_test_data.py --debug")
+        # Setup database
+        db = setup_database()
+        
+        # Opzione per pulire i dati esistenti
+        clear_existing = input("Vuoi pulire i dati esistenti? (y/N): ").lower().strip()
+        if clear_existing == 'y':
+            clear_existing_data(db)
+        
+        # Crea i dati in ordine di dipendenza
+        logger.info("🚀 Inizio creazione dati di test...")
+        
+        catalogo_items = create_catalogo_data(db)
+        cicli_cura = create_cicli_cura_data(db)
+        tools = create_tools_data(db)
+        autoclavi = create_autoclavi_data(db)
+        parti = create_parti_data(db, catalogo_items, cicli_cura, tools)
+        odl_list = create_odl_data(db, parti, tools)
+        tempo_fasi = create_tempo_fasi_data(db, odl_list)
+        nesting_list = create_nesting_data(db, autoclavi, odl_list)
+        schedule_list = create_schedule_data(db, autoclavi, nesting_list)
+        
+        # Riepilogo finale
+        print_summary(db)
+        
+        logger.info("\n🎉 SEED COMPLETATO CON SUCCESSO!")
+        logger.info("Il database è ora popolato con dati di test realistici.")
+        logger.info("Puoi testare l'applicazione con questi dati.")
+        
+    except Exception as e:
+        logger.error(f"❌ Errore durante il seed: {str(e)}")
+        raise
+    finally:
+        if 'db' in locals():
+            db.close()
 
 if __name__ == "__main__":
     main() 

@@ -1,18 +1,18 @@
 """
-Servizio per la generazione di report PDF.
+Servizio per la generazione di report PDF completo e scalabile.
 """
 
 import os
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, func, between
+from sqlalchemy import and_, func, between, or_
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.graphics.shapes import Drawing, Rect
+from reportlab.graphics.shapes import Drawing, Rect, String
 from reportlab.graphics import renderPDF
 
 from models.nesting_result import NestingResult
@@ -21,6 +21,7 @@ from models.autoclave import Autoclave
 from models.parte import Parte
 from models.tempo_fase import TempoFase
 from models.schedule_entry import ScheduleEntry
+from models.report import Report, ReportTypeEnum
 
 class ReportService:
     """Servizio per la generazione di report PDF"""
@@ -33,7 +34,7 @@ class ReportService:
             db: Sessione del database
         """
         self.db = db
-        self.reports_dir = "/app/reports"
+        self.reports_dir = "reports/generated"
         
         # Crea la directory dei report se non esiste
         os.makedirs(self.reports_dir, exist_ok=True)
@@ -73,18 +74,143 @@ class ReportService:
         
         return start_date, end_date
     
-    def _get_nesting_data(self, start_date: datetime, end_date: datetime) -> List[NestingResult]:
+    def _get_sections_for_report_type(self, report_type: ReportTypeEnum, custom_sections: List[str]) -> List[str]:
+        """
+        Determina quali sezioni includere in base al tipo di report.
+        
+        Args:
+            report_type: Tipo di report
+            custom_sections: Sezioni personalizzate richieste
+            
+        Returns:
+            Lista delle sezioni da includere
+        """
+        # Sezioni predefinite per ogni tipo di report
+        default_sections = {
+            ReportTypeEnum.PRODUZIONE: ["header", "odl", "tempi"],
+            ReportTypeEnum.QUALITA: ["header", "odl", "nesting"],
+            ReportTypeEnum.TEMPI: ["header", "tempi"],
+            ReportTypeEnum.NESTING: ["header", "nesting"],
+            ReportTypeEnum.COMPLETO: ["header", "nesting", "odl", "tempi"]
+        }
+        
+        # Usa le sezioni predefinite o quelle personalizzate
+        if custom_sections:
+            sections = ["header"] + custom_sections
+        else:
+            sections = default_sections.get(report_type, ["header", "nesting"])
+        
+        return list(set(sections))  # Rimuove duplicati
+    
+    def _save_report_to_db(
+        self, 
+        filename: str, 
+        file_path: str, 
+        report_type: ReportTypeEnum,
+        period_start: Optional[datetime] = None,
+        period_end: Optional[datetime] = None,
+        include_sections: Optional[List[str]] = None,
+        user_id: Optional[int] = None
+    ) -> Report:
+        """
+        Salva i metadati del report nel database.
+        
+        Args:
+            filename: Nome del file
+            file_path: Percorso completo del file
+            report_type: Tipo di report
+            period_start: Data di inizio del periodo
+            period_end: Data di fine del periodo
+            include_sections: Sezioni incluse nel report
+            user_id: ID dell'utente per cui è stato generato
+            
+        Returns:
+            Oggetto Report salvato
+        """
+        # Calcola la dimensione del file
+        file_size = None
+        if os.path.exists(file_path):
+            file_size = os.path.getsize(file_path)
+        
+        # Crea il record nel database
+        report = Report(
+            filename=filename,
+            file_path=file_path,
+            report_type=report_type,
+            generated_for_user_id=user_id,
+            period_start=period_start,
+            period_end=period_end,
+            include_sections=",".join(include_sections) if include_sections else None,
+            file_size_bytes=file_size
+        )
+        
+        self.db.add(report)
+        self.db.commit()
+        self.db.refresh(report)
+        
+        return report
+    
+    def get_reports_with_filters(
+        self,
+        report_type: Optional[ReportTypeEnum] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        odl_filter: Optional[str] = None,
+        user_id: Optional[int] = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[Report]:
+        """
+        Recupera i report dal database con filtri.
+        
+        Args:
+            report_type: Filtra per tipo di report
+            start_date: Data di inizio per il filtro
+            end_date: Data di fine per il filtro
+            odl_filter: Filtro per ODL o PN (non implementato in questa versione)
+            user_id: Filtra per utente
+            limit: Numero massimo di risultati
+            offset: Offset per la paginazione
+            
+        Returns:
+            Lista di report filtrati
+        """
+        query = self.db.query(Report)
+        
+        # Applica filtri
+        if report_type:
+            query = query.filter(Report.report_type == report_type)
+        
+        if start_date:
+            query = query.filter(Report.created_at >= start_date)
+        
+        if end_date:
+            query = query.filter(Report.created_at <= end_date)
+        
+        if user_id:
+            query = query.filter(Report.generated_for_user_id == user_id)
+        
+        # Ordina per data di creazione (più recente prima)
+        query = query.order_by(Report.created_at.desc())
+        
+        # Applica paginazione
+        query = query.offset(offset).limit(limit)
+        
+        return query.all()
+    
+    def _get_nesting_data(self, start_date: datetime, end_date: datetime, odl_filter: Optional[str] = None) -> List[NestingResult]:
         """
         Recupera i dati di nesting per il periodo specificato.
         
         Args:
             start_date: Data di inizio
             end_date: Data di fine
+            odl_filter: Filtro opzionale per ODL o PN
             
         Returns:
             Lista di risultati nesting
         """
-        return (
+        query = (
             self.db.query(NestingResult)
             .options(
                 joinedload(NestingResult.autoclave),
@@ -94,57 +220,85 @@ class ReportService:
             .filter(
                 between(NestingResult.created_at, start_date, end_date)
             )
-            .order_by(NestingResult.created_at.desc())
-            .all()
         )
+        
+        # Applica filtro ODL se specificato
+        if odl_filter:
+            query = query.join(NestingResult.odl_list).join(ODL.parte).filter(
+                or_(
+                    ODL.id.like(f"%{odl_filter}%"),
+                    Parte.part_number.like(f"%{odl_filter}%")
+                )
+            )
+        
+        return query.order_by(NestingResult.created_at.desc()).all()
     
-    def _get_odl_data(self, start_date: datetime, end_date: datetime) -> List[ODL]:
+    def _get_odl_data(self, start_date: datetime, end_date: datetime, odl_filter: Optional[str] = None) -> List[ODL]:
         """
         Recupera i dati ODL per il periodo specificato.
         
         Args:
             start_date: Data di inizio
             end_date: Data di fine
+            odl_filter: Filtro opzionale per ODL o PN
             
         Returns:
             Lista di ODL
         """
-        return (
+        query = (
             self.db.query(ODL)
             .options(
                 joinedload(ODL.parte),
                 joinedload(ODL.tool)
             )
             .filter(
-                between(ODL.data_creazione, start_date, end_date)
+                between(ODL.created_at, start_date, end_date)
             )
-            .order_by(ODL.data_creazione.desc())
-            .all()
         )
+        
+        # Applica filtro ODL se specificato
+        if odl_filter:
+            query = query.join(ODL.parte).filter(
+                or_(
+                    ODL.id.like(f"%{odl_filter}%"),
+                    Parte.part_number.like(f"%{odl_filter}%")
+                )
+            )
+        
+        return query.order_by(ODL.created_at.desc()).all()
     
-    def _get_tempo_fasi_data(self, start_date: datetime, end_date: datetime) -> List[TempoFase]:
+    def _get_tempo_fasi_data(self, start_date: datetime, end_date: datetime, odl_filter: Optional[str] = None) -> List[TempoFase]:
         """
         Recupera i dati dei tempi fase per il periodo specificato.
         
         Args:
             start_date: Data di inizio
             end_date: Data di fine
+            odl_filter: Filtro opzionale per ODL o PN
             
         Returns:
             Lista di tempi fase
         """
-        return (
+        query = (
             self.db.query(TempoFase)
             .options(
-                joinedload(TempoFase.parte),
-                joinedload(TempoFase.ciclo_cura)
+                joinedload(TempoFase.odl).joinedload(ODL.parte)
             )
             .filter(
-                between(TempoFase.data_aggiornamento, start_date, end_date)
+                between(TempoFase.updated_at, start_date, end_date)
             )
-            .order_by(TempoFase.data_aggiornamento.desc())
-            .all()
         )
+        
+        # Applica filtro ODL se specificato
+        if odl_filter:
+            query = query.join(TempoFase.odl).join(ODL.parte).filter(
+                or_(
+                    TempoFase.odl_id.like(f"%{odl_filter}%"),
+                    Parte.part_number.like(f"%{odl_filter}%")
+                )
+            )
+        
+        return query.order_by(TempoFase.updated_at.desc()).all()
     
     def _create_nesting_layout_drawing(self, nesting_results: List[NestingResult]) -> Drawing:
         """
@@ -190,7 +344,6 @@ class ReportService:
             drawing.add(rect)
             
             # Aggiungi testo con nome autoclave
-            from reportlab.graphics.shapes import String
             text = String(
                 x_offset + (i % 2) * 150 + 5,
                 y_offset - (i // 2) * 100 + 45,
@@ -218,24 +371,44 @@ class ReportService:
         
         return drawing
     
-    async def generate_report(self, range_type: str, include_sections: List[str]) -> str:
+    async def generate_report(
+        self, 
+        report_type: ReportTypeEnum,
+        range_type: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        include_sections: Optional[List[str]] = None,
+        odl_filter: Optional[str] = None,
+        user_id: Optional[int] = None
+    ) -> Tuple[str, Report]:
         """
         Genera un report PDF per il periodo specificato.
         
         Args:
+            report_type: Tipo di report da generare
             range_type: Tipo di periodo ('giorno', 'settimana', 'mese')
+            start_date: Data di inizio personalizzata
+            end_date: Data di fine personalizzata
             include_sections: Sezioni opzionali da includere
+            odl_filter: Filtro per ODL o PN specifico
+            user_id: ID dell'utente per cui generare il report
             
         Returns:
-            Path del file PDF generato
+            Tupla con path del file PDF generato e oggetto Report salvato
         """
-        # Calcola l'intervallo di date
-        start_date, end_date = self._get_date_range(range_type)
+        # Determina l'intervallo di date
+        if start_date and end_date:
+            period_start, period_end = start_date, end_date
+        elif range_type:
+            period_start, period_end = self._get_date_range(range_type)
+        else:
+            # Default: giorno corrente
+            period_start, period_end = self._get_date_range("giorno")
         
-        # Genera il nome del file
-        date_str = start_date.strftime("%Y-%m-%d")
-        filename = f"report_{range_type}_{date_str}.pdf"
-        file_path = os.path.join(self.reports_dir, filename)
+        # Genera il nome del file univoco
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+        filename = f"report_{report_type.value}_{timestamp}.pdf"
+        file_path = f"{self.reports_dir}/{filename}"
         
         # Crea il documento PDF
         doc = SimpleDocTemplate(file_path, pagesize=A4)
@@ -251,7 +424,7 @@ class ReportService:
             alignment=1  # Centrato
         )
         
-        title = f"Report CarbonPilot - {range_type.capitalize()}"
+        title = f"Report CarbonPilot - {report_type.value.capitalize()}"
         story.append(Paragraph(title, title_style))
         
         # Sottotitolo con periodo
@@ -263,60 +436,68 @@ class ReportService:
             alignment=1
         )
         
-        period_text = f"Periodo: {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}"
+        period_text = f"Periodo: {period_start.strftime('%d/%m/%Y')} - {period_end.strftime('%d/%m/%Y')}"
         story.append(Paragraph(period_text, subtitle_style))
         
         story.append(Spacer(1, 20))
         
-        # SEZIONE 1: Riepilogo Nesting
-        story.append(Paragraph("1. Riepilogo Nesting", styles['Heading2']))
+        # Determina quali sezioni includere in base al tipo di report
+        sections_to_include = self._get_sections_for_report_type(report_type, include_sections or [])
         
-        nesting_data = self._get_nesting_data(start_date, end_date)
+        section_counter = 1
         
-        if nesting_data:
-            # Tabella riassuntiva nesting
-            nesting_table_data = [['Autoclave', 'ODL Assegnati', 'Area Utilizzata', 'Valvole Utilizzate', 'Data']]
+        # SEZIONE NESTING (sempre inclusa per alcuni tipi)
+        if "nesting" in sections_to_include:
+            story.append(Paragraph(f"{section_counter}. Riepilogo Nesting", styles['Heading2']))
+            section_counter += 1
             
-            for nesting in nesting_data:
-                nesting_table_data.append([
-                    nesting.autoclave.nome,
-                    str(len(nesting.odl_list)),
-                    f"{nesting.area_utilizzata:.2f}/{nesting.area_totale:.2f} m²",
-                    f"{nesting.valvole_utilizzate}/{nesting.valvole_totali}",
-                    nesting.created_at.strftime('%d/%m/%Y %H:%M')
-                ])
+            nesting_data = self._get_nesting_data(period_start, period_end, odl_filter)
             
-            nesting_table = Table(nesting_table_data)
-            nesting_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('FONTSIZE', (0, 1), (-1, -1), 8),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ]))
-            
-            story.append(nesting_table)
-            story.append(Spacer(1, 20))
-            
-            # Layout grafico nesting
-            story.append(Paragraph("1.1 Layout Visivo Autoclavi", styles['Heading3']))
-            layout_drawing = self._create_nesting_layout_drawing(nesting_data)
-            story.append(layout_drawing)
-            story.append(Spacer(1, 20))
-            
-        else:
-            story.append(Paragraph("Nessun dato di nesting trovato per il periodo specificato.", styles['Normal']))
-            story.append(Spacer(1, 20))
+            if nesting_data:
+                # Tabella riassuntiva nesting
+                nesting_table_data = [['Autoclave', 'ODL Assegnati', 'Area Utilizzata', 'Valvole Utilizzate', 'Data']]
+                
+                for nesting in nesting_data:
+                    nesting_table_data.append([
+                        nesting.autoclave.nome,
+                        str(len(nesting.odl_list)),
+                        f"{nesting.area_utilizzata:.2f}/{nesting.area_totale:.2f} m²",
+                        f"{nesting.valvole_utilizzate}/{nesting.valvole_totali}",
+                        nesting.created_at.strftime('%d/%m/%Y %H:%M')
+                    ])
+                
+                nesting_table = Table(nesting_table_data)
+                nesting_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                    ('FONTSIZE', (0, 1), (-1, -1), 8),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ]))
+                
+                story.append(nesting_table)
+                story.append(Spacer(1, 20))
+                
+                # Layout grafico nesting
+                story.append(Paragraph(f"{section_counter-1}.1 Layout Visivo Autoclavi", styles['Heading3']))
+                layout_drawing = self._create_nesting_layout_drawing(nesting_data)
+                story.append(layout_drawing)
+                story.append(Spacer(1, 20))
+                
+            else:
+                story.append(Paragraph("Nessun dato di nesting trovato per il periodo specificato.", styles['Normal']))
+                story.append(Spacer(1, 20))
         
-        # SEZIONE 2: ODL (se richiesta)
-        if "odl" in include_sections:
-            story.append(Paragraph("2. Dettaglio ODL", styles['Heading2']))
+        # SEZIONE ODL (se richiesta)
+        if "odl" in sections_to_include:
+            story.append(Paragraph(f"{section_counter}. Dettaglio ODL", styles['Heading2']))
+            section_counter += 1
             
-            odl_data = self._get_odl_data(start_date, end_date)
+            odl_data = self._get_odl_data(period_start, period_end, odl_filter)
             
             if odl_data:
                 odl_table_data = [['ID ODL', 'Parte', 'Tool', 'Priorità', 'Status', 'Data Creazione']]
@@ -328,7 +509,7 @@ class ReportService:
                         odl.tool.codice if odl.tool else "N/A",
                         str(odl.priorita),
                         odl.status,
-                        odl.data_creazione.strftime('%d/%m/%Y')
+                        odl.created_at.strftime('%d/%m/%Y')
                     ])
                 
                 odl_table = Table(odl_table_data)
@@ -350,22 +531,23 @@ class ReportService:
                 story.append(Paragraph("Nessun ODL trovato per il periodo specificato.", styles['Normal']))
                 story.append(Spacer(1, 20))
         
-        # SEZIONE 3: Tempi Fase (se richiesta)
-        if "tempi" in include_sections:
-            story.append(Paragraph("3. Tempi Fase", styles['Heading2']))
+        # SEZIONE TEMPI (se richiesta)
+        if "tempi" in sections_to_include:
+            story.append(Paragraph(f"{section_counter}. Tempi Fase", styles['Heading2']))
+            section_counter += 1
             
-            tempi_data = self._get_tempo_fasi_data(start_date, end_date)
+            tempi_data = self._get_tempo_fasi_data(period_start, period_end, odl_filter)
             
             if tempi_data:
                 tempi_table_data = [['Parte', 'Ciclo Cura', 'Tempo (min)', 'Tipo Fase', 'Data Aggiornamento']]
                 
                 for tempo in tempi_data:
                     tempi_table_data.append([
-                        tempo.parte.descrizione_breve if tempo.parte else "N/A",
-                        tempo.ciclo_cura.descrizione if tempo.ciclo_cura else "N/A",
-                        str(tempo.tempo_minuti),
-                        tempo.tipo_fase,
-                        tempo.data_aggiornamento.strftime('%d/%m/%Y')
+                        tempo.odl.parte.descrizione_breve if tempo.odl and tempo.odl.parte else "N/A",
+                        tempo.fase,
+                        str(tempo.durata_minuti) if tempo.durata_minuti else "In corso",
+                        "Fase produzione",
+                        tempo.updated_at.strftime('%d/%m/%Y')
                     ])
                 
                 tempi_table = Table(tempi_table_data)
@@ -397,10 +579,21 @@ class ReportService:
             textColor=colors.grey
         )
         
-        footer_text = f"Report generato il {datetime.now().strftime('%d/%m/%Y alle %H:%M')} - CarbonPilot v0.9.0"
+        footer_text = f"Report generato il {datetime.now().strftime('%d/%m/%Y alle %H:%M')} - CarbonPilot v1.0.0"
         story.append(Paragraph(footer_text, footer_style))
         
         # Genera il PDF
         doc.build(story)
         
-        return file_path 
+        # Salva i metadati nel database
+        report_record = self._save_report_to_db(
+            filename=filename,
+            file_path=file_path,
+            report_type=report_type,
+            period_start=period_start,
+            period_end=period_end,
+            include_sections=include_sections,
+            user_id=user_id
+        )
+        
+        return file_path, report_record 

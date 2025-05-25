@@ -2,15 +2,23 @@
 Router per la generazione e gestione dei report PDF.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List
 import os
 from datetime import datetime, timedelta
 from models.db import get_db
+from models.report import Report, ReportTypeEnum
 from services.report_service import ReportService
-from schemas.reports import ReportGenerateRequest
+from schemas.reports import (
+    ReportGenerateRequest, 
+    ReportGenerateResponse, 
+    ReportListResponse, 
+    ReportFileInfo,
+    ReportFilterRequest,
+    ReportTypeEnum as SchemaReportTypeEnum
+)
 
 # Crea un router per la gestione dei report
 router = APIRouter(
@@ -18,72 +26,54 @@ router = APIRouter(
     responses={404: {"description": "Non trovato"}},
 )
 
-@router.get(
+@router.post(
     "/generate",
-    summary="Genera e scarica un report PDF",
+    response_model=ReportGenerateResponse,
+    summary="Genera un nuovo report PDF",
     description="""
-    Genera un report PDF per il periodo specificato contenente:
-    - Dettagli nesting (autoclavi, valvole, area, ODL assegnati)
-    - Layout grafico nesting (rappresentazione visiva)
-    - Dati opzionali: ODL con tempi, fasi, stato
-    
-    Il file viene salvato automaticamente su disco e può essere scaricato.
+    Genera un report PDF personalizzato con le seguenti caratteristiche:
+    - Tipi di report: produzione, qualità, tempi, completo, nesting
+    - Periodi configurabili: giorno, settimana, mese o date personalizzate
+    - Sezioni modulari: header, nesting, ODL, tempi
+    - Filtri per ODL o Part Number
+    - Salvataggio automatico nel database con metadati
     """
 )
 async def generate_report(
-    range_type: str = Query(..., description="Tipo di periodo: 'giorno', 'settimana', 'mese'"),
-    include: Optional[str] = Query(None, description="Sezioni da includere separate da virgola: 'odl,tempi'"),
-    download: bool = Query(True, description="Se true, restituisce il file per il download"),
+    request: ReportGenerateRequest,
     db: Session = Depends(get_db)
 ):
     """
-    Endpoint per generare report PDF.
+    Endpoint per generare report PDF personalizzati.
     
     Args:
-        range_type: Tipo di periodo (giorno, settimana, mese)
-        include: Sezioni opzionali da includere (CSV: "odl", "tempi")
-        download: Se restituire il file per il download
+        request: Dati della richiesta di generazione report
         db: Sessione del database
         
     Returns:
-        FileResponse con il PDF generato o info sul file salvato
+        Informazioni sul report generato
     """
     try:
-        # Validazione del range_type
-        if range_type not in ["giorno", "settimana", "mese"]:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="range_type deve essere 'giorno', 'settimana' o 'mese'"
-            )
-        
-        # Parse delle sezioni da includere
-        include_sections = []
-        if include:
-            include_sections = [section.strip() for section in include.split(",")]
-        
         # Inizializza il servizio report
         report_service = ReportService(db)
         
         # Genera il report
-        file_path = await report_service.generate_report(
-            range_type=range_type,
-            include_sections=include_sections
+        file_path, report_record = await report_service.generate_report(
+            report_type=request.report_type,
+            range_type=request.range_type,
+            start_date=request.start_date,
+            end_date=request.end_date,
+            include_sections=request.include_sections,
+            odl_filter=request.odl_filter,
+            user_id=request.user_id
         )
         
-        if download:
-            # Restituisce il file per il download
-            return FileResponse(
-                path=file_path,
-                filename=os.path.basename(file_path),
-                media_type="application/pdf"
-            )
-        else:
-            # Restituisce solo le informazioni del file
-            return {
-                "message": "Report generato con successo",
-                "file_path": file_path,
-                "file_name": os.path.basename(file_path)
-            }
+        return ReportGenerateResponse(
+            message="Report generato con successo",
+            file_path=file_path,
+            file_name=os.path.basename(file_path),
+            report_id=report_record.id
+        )
             
     except Exception as e:
         # In caso di errore, solleva una HTTPException
@@ -93,40 +83,79 @@ async def generate_report(
         )
 
 @router.get(
-    "/list",
-    summary="Lista dei report generati",
-    description="Restituisce la lista dei report PDF disponibili su disco"
+    "/",
+    response_model=ReportListResponse,
+    summary="Lista dei report generati con filtri",
+    description="Restituisce la lista dei report PDF salvati nel database con possibilità di filtro"
 )
-async def list_reports():
+async def list_reports(
+    report_type: Optional[SchemaReportTypeEnum] = Query(None, description="Filtra per tipo di report"),
+    start_date: Optional[datetime] = Query(None, description="Data di inizio per il filtro"),
+    end_date: Optional[datetime] = Query(None, description="Data di fine per il filtro"),
+    odl_filter: Optional[str] = Query(None, description="Filtro per ODL o PN"),
+    user_id: Optional[int] = Query(None, description="Filtra per utente"),
+    limit: int = Query(50, description="Numero massimo di risultati"),
+    offset: int = Query(0, description="Offset per la paginazione"),
+    db: Session = Depends(get_db)
+):
     """
-    Endpoint per ottenere la lista dei report disponibili.
+    Endpoint per ottenere la lista dei report con filtri.
+    
+    Args:
+        report_type: Filtra per tipo di report
+        start_date: Data di inizio per il filtro
+        end_date: Data di fine per il filtro
+        odl_filter: Filtro per ODL o PN
+        user_id: Filtra per utente
+        limit: Numero massimo di risultati
+        offset: Offset per la paginazione
+        db: Sessione del database
     
     Returns:
-        Lista dei file report disponibili con metadata
+        Lista dei report filtrati
     """
     try:
-        reports_dir = "/app/reports"
+        # Inizializza il servizio report
+        report_service = ReportService(db)
         
-        if not os.path.exists(reports_dir):
-            return {"reports": []}
+        # Converti il tipo di report se necessario
+        db_report_type = None
+        if report_type:
+            db_report_type = ReportTypeEnum(report_type.value)
         
-        reports = []
-        for filename in os.listdir(reports_dir):
-            if filename.endswith('.pdf'):
-                file_path = os.path.join(reports_dir, filename)
-                file_stats = os.stat(file_path)
-                
-                reports.append({
-                    "filename": filename,
-                    "size": file_stats.st_size,
-                    "created_at": datetime.fromtimestamp(file_stats.st_ctime).isoformat(),
-                    "modified_at": datetime.fromtimestamp(file_stats.st_mtime).isoformat()
-                })
+        # Recupera i report con filtri
+        reports = report_service.get_reports_with_filters(
+            report_type=db_report_type,
+            start_date=start_date,
+            end_date=end_date,
+            odl_filter=odl_filter,
+            user_id=user_id,
+            limit=limit,
+            offset=offset
+        )
         
-        # Ordina per data di creazione (più recente prima)
-        reports.sort(key=lambda x: x["created_at"], reverse=True)
+        # Converti in formato response
+        report_list = []
+        for report in reports:
+            # Usa direttamente il valore stringa per evitare problemi di conversione enum
+            report_type_value = report.report_type.value if hasattr(report.report_type, 'value') else str(report.report_type)
+            schema_report_type = SchemaReportTypeEnum(report_type_value)
+            
+            report_list.append(ReportFileInfo(
+                id=report.id,
+                filename=report.filename,
+                file_path=report.file_path,
+                report_type=schema_report_type,
+                generated_for_user_id=report.generated_for_user_id,
+                period_start=report.period_start,
+                period_end=report.period_end,
+                include_sections=report.include_sections,
+                file_size_bytes=report.file_size_bytes,
+                created_at=report.created_at,
+                updated_at=report.updated_at
+            ))
         
-        return {"reports": reports}
+        return ReportListResponse(reports=report_list)
         
     except Exception as e:
         raise HTTPException(
@@ -135,32 +164,106 @@ async def list_reports():
         )
 
 @router.get(
-    "/download/{filename}",
-    summary="Scarica un report specifico",
-    description="Scarica un report PDF esistente tramite nome file"
+    "/{report_id}/download",
+    summary="Scarica un report specifico per ID",
+    description="Scarica un report PDF esistente tramite ID del database"
 )
-async def download_report(filename: str):
+async def download_report_by_id(
+    report_id: int,
+    db: Session = Depends(get_db)
+):
     """
-    Endpoint per scaricare un report specifico.
+    Endpoint per scaricare un report specifico tramite ID.
     
     Args:
-        filename: Nome del file da scaricare
+        report_id: ID del report nel database
+        db: Sessione del database
         
     Returns:
         FileResponse con il PDF richiesto
     """
     try:
-        file_path = f"/app/reports/{filename}"
+        # Inizializza il servizio report
+        report_service = ReportService(db)
         
-        if not os.path.exists(file_path):
+        # Trova il report nel database
+        report = db.query(Report).filter(Report.id == report_id).first()
+        
+        if not report:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="File non trovato"
+                detail="Report non trovato nel database"
+            )
+        
+        # Verifica che il file esista fisicamente
+        if not os.path.exists(report.file_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File PDF non trovato su disco"
             )
         
         return FileResponse(
-            path=file_path,
-            filename=filename,
+            path=report.file_path,
+            filename=report.filename,
+            media_type="application/pdf"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante il download del report: {str(e)}"
+        )
+
+@router.get(
+    "/download/{filename}",
+    summary="Scarica un report specifico per nome file",
+    description="Scarica un report PDF esistente tramite nome file (compatibilità)"
+)
+async def download_report_by_filename(
+    filename: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint per scaricare un report specifico tramite nome file.
+    
+    Args:
+        filename: Nome del file da scaricare
+        db: Sessione del database
+        
+    Returns:
+        FileResponse con il PDF richiesto
+    """
+    try:
+        # Trova il report nel database tramite filename
+        report = db.query(Report).filter(Report.filename == filename).first()
+        
+        if not report:
+            # Fallback: cerca direttamente nella directory
+            file_path = f"/app/reports/generated/{filename}"
+            if not os.path.exists(file_path):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="File non trovato"
+                )
+            
+            return FileResponse(
+                path=file_path,
+                filename=filename,
+                media_type="application/pdf"
+            )
+        
+        # Verifica che il file esista fisicamente
+        if not os.path.exists(report.file_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File PDF non trovato su disco"
+            )
+        
+        return FileResponse(
+            path=report.file_path,
+            filename=report.filename,
             media_type="application/pdf"
         )
         
