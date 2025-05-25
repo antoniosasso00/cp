@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from models.db import get_db
 from models.report import Report, ReportTypeEnum
 from services.report_service import ReportService
+from services.auto_report_service import AutoReportService
 from schemas.reports import (
     ReportGenerateRequest, 
     ReportGenerateResponse, 
@@ -80,6 +81,151 @@ async def generate_report(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Errore durante la generazione del report: {str(e)}"
+        )
+
+@router.post(
+    "/auto-generate",
+    summary="Genera automaticamente report per cicli di cura completati",
+    description="""
+    Controlla tutti i cicli di cura completati nelle ultime 24 ore e genera 
+    automaticamente i report PDF mancanti. Questo endpoint può essere chiamato:
+    - Manualmente dall'interfaccia utente
+    - Automaticamente da un job schedulato
+    - Come trigger dopo il completamento di un ciclo
+    """
+)
+async def auto_generate_reports(db: Session = Depends(get_db)):
+    """
+    Endpoint per la generazione automatica di report per cicli completati.
+    
+    Args:
+        db: Sessione del database
+        
+    Returns:
+        Statistiche sui report generati
+    """
+    try:
+        # Inizializza il servizio di auto-report
+        auto_report_service = AutoReportService(db)
+        
+        # Processa tutti i cicli completati
+        stats = await auto_report_service.process_all_completed_cycles()
+        
+        return {
+            "message": "Processo di auto-generazione completato",
+            "statistics": stats
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante l'auto-generazione dei report: {str(e)}"
+        )
+
+@router.post(
+    "/trigger-for-nesting/{nesting_id}",
+    summary="Genera report per un nesting specifico",
+    description="""
+    Genera un report PDF per un nesting specifico. Utile quando:
+    - Un ciclo di cura è appena terminato
+    - Si vuole rigenerare un report per un nesting esistente
+    - Si vuole forzare la generazione di un report
+    """
+)
+async def trigger_report_for_nesting(
+    nesting_id: int,
+    force_regenerate: bool = Query(False, description="Forza la rigenerazione anche se esiste già un report"),
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint per generare un report per un nesting specifico.
+    
+    Args:
+        nesting_id: ID del nesting per cui generare il report
+        force_regenerate: Se True, rigenera il report anche se esiste già
+        db: Sessione del database
+        
+    Returns:
+        Informazioni sul report generato
+    """
+    try:
+        from models.nesting_result import NestingResult
+        from models.schedule_entry import ScheduleEntry, ScheduleEntryStatus
+        
+        # Trova il nesting
+        nesting = db.query(NestingResult).filter(NestingResult.id == nesting_id).first()
+        if not nesting:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Nesting con ID {nesting_id} non trovato"
+            )
+        
+        # Controlla se esiste già un report
+        if nesting.report_id and not force_regenerate:
+            existing_report = db.query(Report).filter(Report.id == nesting.report_id).first()
+            if existing_report:
+                return {
+                    "message": "Report già esistente per questo nesting",
+                    "existing_report": {
+                        "id": existing_report.id,
+                        "filename": existing_report.filename,
+                        "created_at": existing_report.created_at
+                    }
+                }
+        
+        # Trova una schedule entry associata (per simulare un ciclo completato)
+        schedule = db.query(ScheduleEntry).filter(
+            ScheduleEntry.autoclave_id == nesting.autoclave_id
+        ).order_by(ScheduleEntry.updated_at.desc()).first()
+        
+        if not schedule:
+            # Crea una schedule entry fittizia per il report
+            schedule = ScheduleEntry(
+                autoclave_id=nesting.autoclave_id,
+                start_datetime=nesting.created_at,
+                end_datetime=datetime.now(),
+                status=ScheduleEntryStatus.DONE.value
+            )
+        
+        # Inizializza il servizio di auto-report
+        auto_report_service = AutoReportService(db)
+        
+        # Prepara le informazioni del ciclo
+        cycle_info = {
+            'schedule_id': schedule.id if schedule.id else 0,
+            'nesting_id': nesting.id,
+            'autoclave_id': nesting.autoclave_id,
+            'odl_id': None,
+            'completed_at': datetime.now(),
+            'nesting': nesting,
+            'schedule': schedule
+        }
+        
+        # Genera il report
+        report = await auto_report_service.generate_cycle_completion_report(cycle_info)
+        
+        if report:
+            return {
+                "message": "Report generato con successo per il nesting",
+                "report": {
+                    "id": report.id,
+                    "filename": report.filename,
+                    "file_path": report.file_path,
+                    "created_at": report.created_at
+                }
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Errore durante la generazione del report"
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante la generazione del report per nesting: {str(e)}"
         )
 
 @router.get(

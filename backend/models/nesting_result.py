@@ -30,11 +30,14 @@ class NestingResult(Base):
     
     # Stato del nesting
     stato = Column(
-        Enum("Schedulato", "In attesa schedulazione", "Completato", "Annullato", name="nesting_stato"),
-        default="In attesa schedulazione",
+        String(50),
+        default="In sospeso",
         nullable=False,
         doc="Stato corrente del nesting"
     )
+    
+    # Ruolo che ha confermato il nesting (per audit)
+    confermato_da_ruolo = Column(String(50), nullable=True, doc="Ruolo dell'utente che ha confermato il nesting")
     
     # Statistiche sul nesting
     area_utilizzata = Column(Float, default=0.0)
@@ -44,6 +47,15 @@ class NestingResult(Base):
     
     # Note aggiuntive
     note = Column(Text, nullable=True, doc="Note aggiuntive sul nesting")
+    
+    # ✅ NUOVO: Posizioni 2D dei tool sul piano dell'autoclave
+    posizioni_tool = Column(JSON, default=list, 
+                           doc="Posizioni 2D dei tool: [{'odl_id': int, 'x': float, 'y': float, 'width': float, 'height': float}, ...]")
+    
+    # ✅ NUOVO: Collegamento ai report generati
+    report_id = Column(Integer, ForeignKey("reports.id"), nullable=True, index=True,
+                      doc="ID del report PDF generato per questo nesting")
+    report = relationship("Report", backref="nesting_results")
     
     # Metadati
     created_at = Column(DateTime, default=func.now())

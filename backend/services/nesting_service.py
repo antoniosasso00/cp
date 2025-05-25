@@ -13,6 +13,34 @@ from nesting_optimizer.auto_nesting import compute_nesting, NestingResult as Opt
 from schemas.nesting import NestingResultSchema, NestingPreviewSchema, AutoclavePreviewInfo, ODLPreviewInfo
 from schemas.nesting import AutoclaveNestingInfo, ODLNestingInfo, NestingODLStatus
 import random
+import re
+
+def extract_ciclo_cura_from_note(note: str) -> Tuple[Optional[int], Optional[str]]:
+    """
+    Estrae le informazioni del ciclo di cura dalle note del nesting
+    
+    Args:
+        note: Stringa delle note del nesting
+        
+    Returns:
+        Tupla (ciclo_cura_id, ciclo_cura_nome)
+    """
+    if not note:
+        return None, None
+    
+    try:
+        # Pattern per estrarre: "Ciclo di cura: Nome (ID: 123)"
+        pattern = r"Ciclo di cura: (.+?) \(ID: (\d+)\)"
+        match = re.search(pattern, note)
+        
+        if match:
+            nome = match.group(1)
+            ciclo_id = int(match.group(2))
+            return ciclo_id, nome
+        
+        return None, None
+    except Exception:
+        return None, None
 
 def get_all_nesting_results(db: Session) -> List[NestingResult]:
     """
@@ -78,6 +106,7 @@ async def get_nesting_preview(db: Session) -> NestingPreviewSchema:
         if autoclave.id in result.assegnamenti:
             # Recupera le statistiche per questa autoclave
             stats = result.statistiche_autoclavi.get(autoclave.id, {})
+            ciclo_info = result.cicli_cura_autoclavi.get(autoclave.id, {})
             
             # Prepara la lista degli ODL inclusi con le loro informazioni
             odl_inclusi = []
@@ -111,7 +140,9 @@ async def get_nesting_preview(db: Session) -> NestingPreviewSchema:
                 area_utilizzata_cm2=float(stats.get("area_utilizzata", 0.0)),
                 valvole_totali=autoclave.num_linee_vuoto,
                 valvole_utilizzate=int(stats.get("valvole_utilizzate", 0)),
-                odl_inclusi=odl_inclusi
+                odl_inclusi=odl_inclusi,
+                ciclo_cura_id=ciclo_info.get("id"),
+                ciclo_cura_nome=ciclo_info.get("nome")
             ))
     
     # Prepara la lista degli ODL esclusi
@@ -192,16 +223,30 @@ async def run_automatic_nesting(db: Session) -> NestingResultSchema:
         
         # Crea un nuovo record NestingResult
         stats = result.statistiche_autoclavi.get(autoclave_id, {})
+        ciclo_info = result.cicli_cura_autoclavi.get(autoclave_id, {})
+        
+        # Prepara le note con informazioni sul ciclo di cura e statistiche
+        efficienza_area = stats.get("efficienza_area", 0)
+        efficienza_valvole = stats.get("efficienza_valvole", 0)
+        note_ciclo = (f"Ciclo di cura: {ciclo_info.get('nome', 'Sconosciuto')} (ID: {ciclo_info.get('id', 'N/A')})\n"
+                     f"Efficienza area: {efficienza_area:.1f}% | Efficienza valvole: {efficienza_valvole:.1f}%\n"
+                     f"ODL posizionati: {stats.get('odl_posizionati', 0)}")
+        
+        # ✅ NUOVO: Recupera le posizioni 2D dei tool
+        posizioni_tool = result.posizioni_tool.get(autoclave_id, [])
+        
         nesting_record = NestingResult(
             autoclave_id=autoclave_id,
             odl_ids=odl_ids,
             odl_esclusi_ids=[item["odl_id"] for item in result.odl_non_pianificabili],
             motivi_esclusione=result.odl_non_pianificabili,
-            stato="In attesa schedulazione",
+            stato="In sospeso",
             area_utilizzata=float(stats.get("area_utilizzata", 0.0)),
             area_totale=float(stats.get("area_totale", 0.0)),
             valvole_utilizzate=int(stats.get("valvole_utilizzate", 0)),
-            valvole_totali=autoclave.num_linee_vuoto if autoclave else 0
+            valvole_totali=autoclave.num_linee_vuoto if autoclave else 0,
+            note=note_ciclo,
+            posizioni_tool=posizioni_tool  # ✅ NUOVO: Salva le posizioni 2D
         )
         
         # Aggiungi gli ODL al nesting
@@ -271,6 +316,8 @@ async def run_automatic_nesting(db: Session) -> NestingResultSchema:
             # Recupera le statistiche per questa autoclave
             stats = result.statistiche_autoclavi.get(autoclave.id, {})
             
+            ciclo_info = result.cicli_cura_autoclavi.get(autoclave.id, {})
+            
             autoclavi_info.append(AutoclaveNestingInfo(
                 id=autoclave.id,
                 nome=autoclave.nome,
@@ -278,7 +325,9 @@ async def run_automatic_nesting(db: Session) -> NestingResultSchema:
                 valvole_utilizzate=int(stats.get("valvole_utilizzate", 0)),
                 valvole_totali=autoclave.num_linee_vuoto,
                 area_utilizzata=float(stats.get("area_utilizzata", 0.0)),
-                area_totale=float(stats.get("area_totale", 0.0))
+                area_totale=float(stats.get("area_totale", 0.0)),
+                ciclo_cura_id=ciclo_info.get("id"),
+                ciclo_cura_nome=ciclo_info.get("nome")
             ))
     
     # Restituisci il risultato
@@ -290,7 +339,7 @@ async def run_automatic_nesting(db: Session) -> NestingResultSchema:
         odl_non_pianificabili=odl_non_pianificabili
     )
 
-async def update_nesting_status(db: Session, nesting_id: int, nuovo_stato: str, note: str = None) -> NestingResult:
+async def update_nesting_status(db: Session, nesting_id: int, nuovo_stato: str, note: str = None, ruolo_utente: str = None) -> NestingResult:
     """
     Aggiorna lo stato di un nesting e gestisce il cambio di stato degli ODL associati
     
@@ -299,12 +348,13 @@ async def update_nesting_status(db: Session, nesting_id: int, nuovo_stato: str, 
         nesting_id: ID del nesting da aggiornare
         nuovo_stato: Nuovo stato del nesting
         note: Note opzionali
+        ruolo_utente: Ruolo dell'utente che sta effettuando l'operazione
         
     Returns:
         Il nesting aggiornato
         
     Raises:
-        ValueError: Se il nesting non viene trovato
+        ValueError: Se il nesting non viene trovato o l'operazione non è permessa
     """
     # Recupera il nesting dal database
     nesting = db.query(NestingResult).options(
@@ -316,23 +366,48 @@ async def update_nesting_status(db: Session, nesting_id: int, nuovo_stato: str, 
     if not nesting:
         raise ValueError(f"Nesting con ID {nesting_id} non trovato")
     
+    # Validazione dei permessi basata sul ruolo
+    if ruolo_utente == "AUTOCLAVISTA":
+        # L'autoclavista può solo confermare nesting in sospeso
+        if nesting.stato != "In sospeso":
+            raise ValueError("L'autoclavista può confermare solo nesting in sospeso")
+        if nuovo_stato not in ["Confermato", "Annullato"]:
+            raise ValueError("L'autoclavista può solo confermare o annullare nesting")
+    elif ruolo_utente == "RESPONSABILE":
+        # Il responsabile può modificare qualsiasi nesting non completato
+        if nesting.stato == "Completato":
+            raise ValueError("Non è possibile modificare nesting già completati")
+    
     # Aggiorna lo stato del nesting
+    stato_precedente = nesting.stato
     nesting.stato = nuovo_stato
     if note:
         nesting.note = note
     
-    # Se il nesting viene schedulato, aggiorna lo stato degli ODL
-    if nuovo_stato == "Schedulato":
+    # Registra chi ha confermato il nesting
+    if nuovo_stato == "Confermato" and ruolo_utente:
+        nesting.confermato_da_ruolo = ruolo_utente
+    
+    # Gestione cambio stato degli ODL
+    if nuovo_stato == "Confermato":
+        # Quando il nesting viene confermato, gli ODL passano in "Cura"
         for odl in nesting.odl_list:
             if odl.status == "Attesa Cura":
                 odl.status = "Cura"  # Cambia lo stato a "Cura" (In Autoclave)
                 db.add(odl)
     
-    # Se il nesting viene annullato, riporta gli ODL in "Attesa Cura"
     elif nuovo_stato == "Annullato":
+        # Se il nesting viene annullato, riporta gli ODL in "Attesa Cura"
         for odl in nesting.odl_list:
             if odl.status == "Cura":
                 odl.status = "Attesa Cura"  # Riporta in attesa
+                db.add(odl)
+    
+    elif nuovo_stato == "Completato":
+        # Quando il nesting è completato, gli ODL passano a "Finito"
+        for odl in nesting.odl_list:
+            if odl.status == "Cura":
+                odl.status = "Finito"
                 db.add(odl)
     
     # Salva le modifiche
@@ -533,3 +608,167 @@ async def get_odl_attesa_cura_filtered(db: Session) -> List[ODL]:
     except Exception as e:
         print(f"Errore nel filtro ODL Attesa Cura: {str(e)}")
         return [] 
+
+async def run_manual_nesting(db: Session, odl_ids: List[int], note: Optional[str] = None) -> NestingResultSchema:
+    """
+    Esegue il nesting manuale con gli ODL specificati
+    
+    Args:
+        db: Sessione del database
+        odl_ids: Lista degli ID degli ODL da includere nel nesting
+        note: Note opzionali per il nesting
+        
+    Returns:
+        Schema NestingResultSchema con i risultati dell'ottimizzazione
+        
+    Raises:
+        ValueError: Se gli ODL non sono validi o già assegnati
+    """
+    # Valida che la lista non sia vuota
+    if not odl_ids:
+        raise ValueError("Deve essere selezionato almeno un ODL per creare il nesting")
+    
+    # Recupera gli ODL dal database
+    odl_list = db.query(ODL).options(
+        joinedload(ODL.parte).joinedload(Parte.catalogo),
+        joinedload(ODL.tool)
+    ).filter(ODL.id.in_(odl_ids)).all()
+    
+    # Verifica che tutti gli ODL siano stati trovati
+    found_ids = {odl.id for odl in odl_list}
+    missing_ids = set(odl_ids) - found_ids
+    if missing_ids:
+        raise ValueError(f"ODL non trovati: {', '.join(map(str, missing_ids))}")
+    
+    # Verifica che tutti gli ODL siano in stato "Attesa Cura"
+    invalid_status_odl = [odl for odl in odl_list if odl.status != "Attesa Cura"]
+    if invalid_status_odl:
+        invalid_ids = [str(odl.id) for odl in invalid_status_odl]
+        raise ValueError(f"Gli ODL {', '.join(invalid_ids)} non sono in stato 'Attesa Cura'")
+    
+    # Verifica che nessun ODL sia già assegnato a un nesting attivo
+    for odl in odl_list:
+        existing_nesting = db.query(NestingResult).filter(
+            NestingResult.odl_ids.contains([odl.id]),
+            NestingResult.stato.in_(["In attesa schedulazione", "Schedulato", "In corso"])
+        ).first()
+        
+        if existing_nesting:
+            raise ValueError(f"L'ODL {odl.id} è già assegnato al nesting #{existing_nesting.id}")
+    
+    # Verifica che tutti gli ODL abbiano i dati necessari per il nesting
+    invalid_data_odl = []
+    for odl in odl_list:
+        if not (odl.parte and 
+                odl.parte.catalogo and 
+                odl.parte.catalogo.area_cm2 and 
+                odl.parte.catalogo.area_cm2 > 0 and
+                odl.parte.num_valvole_richieste and 
+                odl.parte.num_valvole_richieste > 0):
+            invalid_data_odl.append(odl)
+    
+    if invalid_data_odl:
+        invalid_ids = [str(odl.id) for odl in invalid_data_odl]
+        raise ValueError(f"Gli ODL {', '.join(invalid_ids)} non hanno dati sufficienti per il nesting (area o valvole mancanti)")
+    
+    # Recupera tutte le autoclavi disponibili
+    autoclavi = db.query(Autoclave).filter(
+        Autoclave.stato == StatoAutoclaveEnum.DISPONIBILE
+    ).all()
+    
+    if not autoclavi:
+        raise ValueError("Nessuna autoclave disponibile per il nesting")
+    
+    # Esegui l'algoritmo di nesting con gli ODL selezionati
+    result = compute_nesting(db, odl_list, autoclavi)
+    
+    # Verifica che almeno alcuni ODL siano stati pianificati
+    total_planned = sum(len(odl_ids) for odl_ids in result.assegnamenti.values())
+    if total_planned == 0:
+        raise ValueError("Nessun ODL può essere pianificato nelle autoclavi disponibili")
+    
+    # Aggiorna lo stato degli ODL nel database e salva i risultati
+    odl_pianificati = []
+    odl_non_pianificabili = []
+    autoclavi_info = []
+    
+    # Salva il risultato nel database per ogni autoclave usata
+    for autoclave_id, assigned_odl_ids in result.assegnamenti.items():
+        if not assigned_odl_ids:
+            continue
+            
+        # Trova l'autoclave
+        autoclave = db.query(Autoclave).filter(Autoclave.id == autoclave_id).first()
+        
+        # Crea un nuovo record NestingResult
+        stats = result.statistiche_autoclavi.get(autoclave_id, {})
+        nesting_record = NestingResult(
+            autoclave_id=autoclave_id,
+            odl_ids=assigned_odl_ids,
+            odl_esclusi_ids=[item["odl_id"] for item in result.odl_non_pianificabili],
+            motivi_esclusione=result.odl_non_pianificabili,
+            stato="In attesa schedulazione",
+            area_utilizzata=float(stats.get("area_utilizzata", 0.0)),
+            area_totale=float(stats.get("area_totale", 0.0)),
+            valvole_utilizzate=int(stats.get("valvole_utilizzate", 0)),
+            valvole_totali=autoclave.num_linee_vuoto,
+            note=note or "Nesting manuale creato dal responsabile"
+        )
+        
+        # Salva nel database
+        db.add(nesting_record)
+        db.flush()  # Per ottenere l'ID
+        
+        # Aggiorna lo stato degli ODL assegnati
+        for odl_id in assigned_odl_ids:
+            odl = db.query(ODL).filter(ODL.id == odl_id).first()
+            if odl:
+                odl.status = "Cura"
+                db.add(odl)
+                
+                # Aggiungi alle informazioni di ritorno
+                odl_pianificati.append(ODLNestingInfo(
+                    id=odl.id,
+                    parte_descrizione=odl.parte.descrizione_breve if odl.parte else "Sconosciuta",
+                    num_valvole=odl.parte.num_valvole_richieste if odl.parte else 0,
+                    priorita=odl.priorita,
+                    status=NestingODLStatus.PIANIFICATO
+                ))
+        
+        # Aggiungi alle informazioni dell'autoclave
+        autoclavi_info.append(AutoclaveNestingInfo(
+            id=autoclave.id,
+            nome=autoclave.nome,
+            odl_assegnati=assigned_odl_ids,
+            valvole_utilizzate=int(stats.get("valvole_utilizzate", 0)),
+            valvole_totali=autoclave.num_linee_vuoto,
+            area_utilizzata=float(stats.get("area_utilizzata", 0.0)),
+            area_totale=float(stats.get("area_totale", 0.0))
+        ))
+    
+    # Gestisci gli ODL non pianificabili
+    for item in result.odl_non_pianificabili:
+        odl_id = item["odl_id"]
+        motivo = item["motivo"]
+        
+        odl = db.query(ODL).filter(ODL.id == odl_id).first()
+        if odl:
+            odl_non_pianificabili.append(ODLNestingInfo(
+                id=odl.id,
+                parte_descrizione=odl.parte.descrizione_breve if odl.parte else "Sconosciuta",
+                num_valvole=odl.parte.num_valvole_richieste if odl.parte else 0,
+                priorita=odl.priorita,
+                status=NestingODLStatus.NON_PIANIFICABILE
+            ))
+    
+    # Salva tutte le modifiche
+    db.commit()
+    
+    # Restituisci il risultato
+    return NestingResultSchema(
+        success=True,
+        message=f"Nesting manuale completato: {len(odl_pianificati)} ODL pianificati, {len(odl_non_pianificabili)} esclusi",
+        autoclavi=autoclavi_info,
+        odl_pianificati=odl_pianificati,
+        odl_non_pianificabili=odl_non_pianificabili
+    ) 

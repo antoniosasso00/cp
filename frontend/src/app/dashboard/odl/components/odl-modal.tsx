@@ -225,16 +225,18 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
                       <SelectValue placeholder="Seleziona una parte" />
                     </SelectTrigger>
                     <SelectContent>
-                      {parti.length > 0 ? (
-                        parti.map(parte => (
-                          <SelectItem key={parte.id} value={parte.id.toString()}>
-                            {parte.part_number} - {parte.descrizione_breve}
-                          </SelectItem>
-                        ))
-                      ) : (
+                      {parti.length === 0 ? (
                         <div className="px-2 py-4 text-center text-sm">
                           Nessuna parte disponibile
                         </div>
+                      ) : (
+                        parti
+                          .filter(parte => parte?.id && parte?.part_number)
+                          .map(parte => (
+                            <SelectItem key={parte.id} value={parte.id.toString()}>
+                              {parte.part_number} - {parte.descrizione_breve}
+                            </SelectItem>
+                          ))
                       )}
                     </SelectContent>
                   </Select>
@@ -261,7 +263,7 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
               <div className="col-span-3">
                 <div className="space-y-2">
                   {selectedParte && filteredTools.length === 0 ? (
-                    <Alert variant="warning" className="mb-2">
+                    <Alert variant="destructive" className="mb-2">
                       <AlertTriangle className="h-4 w-4" />
                       <AlertDescription>
                         Nessun tool associato alla parte selezionata
@@ -278,18 +280,20 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
                       <SelectValue placeholder="Seleziona un tool" />
                     </SelectTrigger>
                     <SelectContent>
-                      {filteredTools.length > 0 ? (
-                        filteredTools.map(tool => (
-                          <SelectItem key={tool.id} value={tool.id.toString()}>
-                            {tool.part_number_tool} {tool.descrizione ? `- ${tool.descrizione}` : ''}
-                          </SelectItem>
-                        ))
-                      ) : (
+                      {filteredTools.length === 0 ? (
                         <div className="px-2 py-4 text-center text-sm">
                           {formData.parte_id && formData.parte_id > 0 
                             ? "Nessun tool disponibile per questa parte" 
                             : "Seleziona prima una parte"}
                         </div>
+                      ) : (
+                        filteredTools
+                          .filter(tool => tool?.id && tool?.part_number_tool)
+                          .map(tool => (
+                            <SelectItem key={tool.id} value={tool.id.toString()}>
+                              {tool.part_number_tool} {tool.descrizione ? `- ${tool.descrizione}` : ''}
+                            </SelectItem>
+                          ))
                       )}
                     </SelectContent>
                   </Select>

@@ -6,17 +6,24 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { NestingResponse, nestingApi, NestingPreview, NestingDraft } from '@/lib/api'
 import { formatDateIT } from '@/lib/utils'
-import { Loader2, RefreshCw, Info, Search, Filter, Download, Plus, AlertCircle } from 'lucide-react'
+import { Loader2, RefreshCw, Info, Search, Filter, Download, Plus, AlertCircle, Settings } from 'lucide-react'
 import { NestingDetails } from './components/nesting-details'
 import NestingPreviewModal from './components/nesting-preview-modal'
 import ExcludedODLManager from './components/excluded-odl-manager'
+import ManualNestingSelector from './components/manual-nesting-selector'
+import NestingAssignmentModal from './components/nesting-assignment-modal'
+import { NestingStatusBadge } from '@/components/nesting/NestingStatusBadge'
+import { NestingActions } from '@/components/nesting/NestingActions'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useUserRole } from '@/hooks/useUserRole'
 
 export default function NestingPage() {
+  const { role } = useUserRole()
   const [nestings, setNestings] = useState<NestingResponse[]>([])
   const [filteredNestings, setFilteredNestings] = useState<NestingResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -25,6 +32,8 @@ export default function NestingPage() {
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedAutoclave, setSelectedAutoclave] = useState<string>('all')
+  const [selectedStatus, setSelectedStatus] = useState<string>('all')
+  const [activeTab, setActiveTab] = useState<string>('all')
   const [sortBy, setSortBy] = useState<'created_at' | 'area_utilizzata' | 'valvole_utilizzate'>('created_at')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   
@@ -38,13 +47,22 @@ export default function NestingPage() {
   // Stati per gestione ODL esclusi
   const [excludedODLOpen, setExcludedODLOpen] = useState(false)
   
+  // Stati per nesting manuale
+  const [manualNestingOpen, setManualNestingOpen] = useState(false)
+  
+  // Stati per assegnazione nesting
+  const [assignmentModalOpen, setAssignmentModalOpen] = useState(false)
+  
   const { toast } = useToast()
 
   // Funzione per caricare i nesting dal backend
-  const fetchNestings = async () => {
+  const fetchNestings = async (statusFilter?: string) => {
     try {
       setIsLoading(true)
-      const data = await nestingApi.getAll()
+      const data = await nestingApi.getAll({ 
+        ruolo_utente: role || undefined,
+        stato_filtro: statusFilter || undefined
+      })
       setNestings(data)
       setFilteredNestings(data)
     } catch (error) {
@@ -61,7 +79,17 @@ export default function NestingPage() {
 
   useEffect(() => {
     fetchNestings()
-  }, [])
+  }, [role])
+
+  // Gestione cambio tab
+  const handleTabChange = (value: string) => {
+    setActiveTab(value)
+    if (value === 'all') {
+      fetchNestings()
+    } else {
+      fetchNestings(value)
+    }
+  }
 
   // Effetto per filtrare e ordinare i nesting
   useEffect(() => {
@@ -86,6 +114,11 @@ export default function NestingPage() {
       )
     }
 
+    // Filtro per stato (se non stiamo usando i tab)
+    if (selectedStatus !== 'all' && activeTab === 'all') {
+      filtered = filtered.filter(nesting => nesting.stato === selectedStatus)
+    }
+
     // Ordinamento
     filtered.sort((a, b) => {
       let aValue: any = a[sortBy]
@@ -104,7 +137,7 @@ export default function NestingPage() {
     })
 
     setFilteredNestings(filtered)
-  }, [nestings, searchTerm, selectedAutoclave, sortBy, sortOrder])
+  }, [nestings, searchTerm, selectedAutoclave, selectedStatus, activeTab, sortBy, sortOrder])
 
   // Genera un nuovo nesting automatico
   const handleGenerateNesting = async () => {
@@ -183,6 +216,32 @@ export default function NestingPage() {
       ? Math.round(nestings.reduce((sum, n) => sum + (n.valvole_utilizzate / n.valvole_totali) * 100, 0) / nestings.length)
       : 0,
     totalODLProcessed: nestings.reduce((sum, n) => sum + n.odl_list.length, 0)
+  }
+
+  // Callback per quando viene creato un nesting manuale
+  const handleManualNestingCreated = (result: any) => {
+    // Ricarica la lista dei nesting
+    fetchNestings()
+    
+    // Chiudi il modal
+    setManualNestingOpen(false)
+    
+    // Mostra un messaggio di successo aggiuntivo
+    toast({
+      title: 'Nesting manuale completato!',
+      description: `${result.odl_pianificati.length} ODL pianificati in ${result.autoclavi.length} autoclave`,
+    })
+  }
+
+  // Callback per quando viene completata un'assegnazione
+  const handleAssignmentComplete = () => {
+    console.log('Assegnazione nesting completata')
+    
+    // Ricarica la lista dei nesting per aggiornare gli stati
+    fetchNestings()
+    
+    // Chiudi il modal
+    setAssignmentModalOpen(false)
   }
 
   // Nuova funzione per generare preview
@@ -290,7 +349,7 @@ export default function NestingPage() {
         <div className="flex items-center gap-2">
           <Button 
             variant="outline"
-            onClick={fetchNestings}
+            onClick={() => fetchNestings()}
             disabled={isLoading}
             size="sm"
           >
@@ -323,6 +382,24 @@ export default function NestingPage() {
             >
               <AlertCircle className="h-4 w-4 mr-2" />
               ODL Esclusi
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => setManualNestingOpen(true)}
+              disabled={isLoading}
+              size="sm"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Nesting Manuale
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => setAssignmentModalOpen(true)}
+              disabled={isLoading}
+              size="sm"
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              Assegna ad Autoclave
             </Button>
           <Button 
             onClick={handleGenerateNesting} 
@@ -413,11 +490,13 @@ export default function NestingPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Tutte le autoclavi</SelectItem>
-                    {uniqueAutoclaves.map(autoclave => (
-                      <SelectItem key={autoclave.id} value={autoclave.id.toString()}>
-                        {autoclave.nome}
-                      </SelectItem>
-                    ))}
+                    {uniqueAutoclaves
+                      .filter(autoclave => autoclave?.id && autoclave?.nome)
+                      .map(autoclave => (
+                        <SelectItem key={autoclave.id} value={autoclave.id.toString()}>
+                          {autoclave.nome}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -449,6 +528,18 @@ export default function NestingPage() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Tab per stati nesting */}
+      {!isLoading && nestings.length > 0 && (
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="all">Tutti</TabsTrigger>
+            <TabsTrigger value="In sospeso">In Sospeso</TabsTrigger>
+            <TabsTrigger value="Confermato">Confermati</TabsTrigger>
+            <TabsTrigger value="Completato">Completati</TabsTrigger>
+          </TabsList>
+        </Tabs>
       )}
 
       {/* Contenuto principale */}
@@ -535,6 +626,7 @@ export default function NestingPage() {
                     <TableHead>Data Creazione</TableHead>
                     <TableHead>Autoclave</TableHead>
                     <TableHead>ODL Inclusi</TableHead>
+                    <TableHead className="text-center">Stato</TableHead>
                     <TableHead className="text-center">Area Utilizzata</TableHead>
                     <TableHead className="text-center">Valvole Utilizzate</TableHead>
                     <TableHead className="text-center w-20">Azioni</TableHead>
@@ -574,6 +666,12 @@ export default function NestingPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-center">
+                        <NestingStatusBadge 
+                          stato={nesting.stato} 
+                          confermato_da_ruolo={nesting.confermato_da_ruolo}
+                        />
+                      </TableCell>
+                      <TableCell className="text-center">
                         <div className="flex flex-col items-center">
                           <Badge 
                             variant={
@@ -604,18 +702,24 @@ export default function NestingPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-center">
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleRowClick(nesting)
-                          }}
-                          className="hover:bg-primary/10"
-                        >
-                          <Info className="h-4 w-4" />
-                          <span className="sr-only">Dettagli nesting #{nesting.id}</span>
-                        </Button>
+                        <div className="flex items-center justify-center gap-1">
+                          <NestingActions 
+                            nesting={nesting} 
+                            onUpdate={() => fetchNestings(activeTab === 'all' ? undefined : activeTab)}
+                          />
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleRowClick(nesting)
+                            }}
+                            className="hover:bg-primary/10"
+                          >
+                            <Info className="h-4 w-4" />
+                            <span className="sr-only">Dettagli nesting #{nesting.id}</span>
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -678,6 +782,27 @@ export default function NestingPage() {
           fetchNestings()
           setExcludedODLOpen(false)
         }}
+      />
+
+      {/* Modal nesting manuale */}
+      {manualNestingOpen && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-6xl max-h-[90vh] overflow-auto">
+              <ManualNestingSelector
+                onNestingCreated={handleManualNestingCreated}
+                onClose={() => setManualNestingOpen(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal assegnazione nesting */}
+      <NestingAssignmentModal
+        isOpen={assignmentModalOpen}
+        onClose={() => setAssignmentModalOpen(false)}
+        onAssignmentComplete={handleAssignmentComplete}
       />
     </div>
   )

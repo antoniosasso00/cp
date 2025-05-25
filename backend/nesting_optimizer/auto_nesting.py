@@ -1,6 +1,6 @@
 """
 Modulo per l'ottimizzazione del nesting automatico degli ODL nelle autoclavi
-utilizzando Google OR-Tools.
+utilizzando Google OR-Tools con vincoli di posizionamento 2D reali.
 """
 
 from typing import List, Dict, Tuple, Optional
@@ -10,6 +10,10 @@ from models.odl import ODL
 from models.autoclave import Autoclave
 from models.parte import Parte
 from models.catalogo import Catalogo
+import logging
+
+# Configura il logger per il nesting
+logger = logging.getLogger(__name__)
 
 class NestingResult:
     """Classe per contenere il risultato dell'ottimizzazione di nesting"""
@@ -21,12 +25,27 @@ class NestingResult:
         self.odl_non_pianificabili: List[Dict] = []
         # Statistiche sull'utilizzo delle autoclavi
         self.statistiche_autoclavi: Dict[int, Dict] = {}
+        # Ciclo di cura assegnato per ogni autoclave
+        self.cicli_cura_autoclavi: Dict[int, Dict] = {}
+        # ✅ NUOVO: Posizioni 2D dei tool per ogni autoclave
+        self.posizioni_tool: Dict[int, List[Dict]] = {}
         
-    def aggiungi_assegnamento(self, autoclave_id: int, odl_id: int):
-        """Aggiunge un assegnamento di un ODL a un'autoclave"""
+    def aggiungi_assegnamento(self, autoclave_id: int, odl_id: int, posizione: Optional[Dict] = None):
+        """Aggiunge un assegnamento di un ODL a un'autoclave con posizione opzionale"""
         if autoclave_id not in self.assegnamenti:
             self.assegnamenti[autoclave_id] = []
+            self.posizioni_tool[autoclave_id] = []
         self.assegnamenti[autoclave_id].append(odl_id)
+        
+        # Aggiungi posizione se fornita
+        if posizione:
+            self.posizioni_tool[autoclave_id].append({
+                "odl_id": odl_id,
+                "x": posizione.get("x", 0),
+                "y": posizione.get("y", 0),
+                "width": posizione.get("width", 0),
+                "height": posizione.get("height", 0)
+            })
     
     def aggiungi_non_pianificabile(self, odl_id: int, motivo: str):
         """Aggiunge un ODL alla lista di quelli non pianificabili con motivazione"""
@@ -38,10 +57,14 @@ class NestingResult:
     def imposta_statistiche_autoclave(self, autoclave_id: int, stats: Dict):
         """Imposta le statistiche di utilizzo per un'autoclave"""
         self.statistiche_autoclavi[autoclave_id] = stats
+        
+    def imposta_ciclo_cura_autoclave(self, autoclave_id: int, ciclo_info: Dict):
+        """Imposta le informazioni del ciclo di cura per un'autoclave"""
+        self.cicli_cura_autoclavi[autoclave_id] = ciclo_info
 
 def validate_odl_for_nesting(db: Session, odl: ODL) -> Tuple[bool, str, Dict]:
     """
-    Valida se un ODL può essere incluso nel nesting
+    Valida se un ODL può essere incluso nel nesting con controlli estesi
     
     Args:
         db: Sessione del database
@@ -63,13 +86,30 @@ def validate_odl_for_nesting(db: Session, odl: ODL) -> Tuple[bool, str, Dict]:
         
         catalogo = parte.catalogo
         
+        # ✅ NUOVO: Verifica che l'ODL abbia un tool associato
+        if not odl.tool:
+            return False, "ODL senza tool associato", {}
+        
+        tool = odl.tool
+        
         # Verifica che il catalogo abbia le informazioni necessarie
         if not catalogo.area_cm2 or catalogo.area_cm2 <= 0:
             return False, "Area della parte non definita o non valida", {}
         
+        # ✅ NUOVO: Verifica che il tool abbia dimensioni valide
+        if not tool.lunghezza_piano or tool.lunghezza_piano <= 0:
+            return False, "Lunghezza piano del tool non definita o non valida", {}
+        
+        if not tool.larghezza_piano or tool.larghezza_piano <= 0:
+            return False, "Larghezza piano del tool non definita o non valida", {}
+        
         # Verifica che la parte abbia il numero di valvole richieste
         if not parte.num_valvole_richieste or parte.num_valvole_richieste <= 0:
             return False, "Numero di valvole richieste non definito", {}
+        
+        # ✅ NUOVO: Verifica che la parte abbia un ciclo di cura associato
+        if not parte.ciclo_cura_id:
+            return False, "Parte senza ciclo di cura associato", {}
         
         # Verifica che l'ODL non sia già in un nesting attivo
         from models.nesting_result import NestingResult
@@ -81,19 +121,148 @@ def validate_odl_for_nesting(db: Session, odl: ODL) -> Tuple[bool, str, Dict]:
         if existing_nesting:
             return False, f"ODL già incluso nel nesting #{existing_nesting.id}", {}
         
-        # Prepara i dati dell'ODL per l'ottimizzazione
+        # ✅ MIGLIORATO: Prepara i dati dell'ODL per l'ottimizzazione con dimensioni reali
         data = {
             "area_cm2": float(catalogo.area_cm2),
             "num_valvole": int(parte.num_valvole_richieste),
             "priorita": int(odl.priorita) if odl.priorita else 1,
             "part_number": catalogo.part_number,
-            "descrizione": parte.descrizione_breve or "Sconosciuta"
+            "descrizione": parte.descrizione_breve or "Sconosciuta",
+            "ciclo_cura_id": parte.ciclo_cura_id,
+            "ciclo_cura_nome": parte.ciclo_cura.nome if parte.ciclo_cura else "Sconosciuto",
+            # ✅ NUOVO: Dimensioni reali del tool in mm
+            "tool_lunghezza_mm": float(tool.lunghezza_piano),
+            "tool_larghezza_mm": float(tool.larghezza_piano),
+            "tool_altezza_mm": float(tool.altezza) if tool.altezza else 0.0,
+            "tool_peso_kg": float(tool.peso) if tool.peso else 0.0,
+            "tool_part_number": tool.part_number_tool,
+            "tool_descrizione": tool.descrizione or "Sconosciuta"
         }
         
         return True, "", data
         
     except Exception as e:
+        logger.error(f"Errore nella validazione ODL {odl.id}: {str(e)}")
         return False, f"Errore nella validazione ODL: {str(e)}", {}
+
+def calculate_2d_positioning(odl_data: List[Dict], autoclave_width_mm: float, autoclave_height_mm: float) -> List[Dict]:
+    """
+    Calcola il posizionamento 2D reale dei tool sul piano dell'autoclave
+    usando un algoritmo di bin packing 2D semplificato
+    
+    Args:
+        odl_data: Lista dei dati degli ODL con dimensioni tool
+        autoclave_width_mm: Larghezza del piano autoclave in mm
+        autoclave_height_mm: Lunghezza del piano autoclave in mm
+        
+    Returns:
+        Lista di dizionari con posizioni calcolate per ogni ODL
+    """
+    positioned_tools = []
+    
+    # Ordina gli ODL per area decrescente (strategia First Fit Decreasing)
+    sorted_odl_data = sorted(
+        enumerate(odl_data), 
+        key=lambda x: x[1]["tool_lunghezza_mm"] * x[1]["tool_larghezza_mm"], 
+        reverse=True
+    )
+    
+    # Margine di sicurezza tra i tool (5mm)
+    MARGIN_MM = 5.0
+    
+    # Lista delle aree occupate: [(x, y, width, height), ...]
+    occupied_areas = []
+    
+    def check_overlap(x, y, width, height, occupied_areas):
+        """Verifica se una posizione si sovrappone con aree già occupate"""
+        for ox, oy, ow, oh in occupied_areas:
+            if not (x >= ox + ow + MARGIN_MM or 
+                   x + width + MARGIN_MM <= ox or 
+                   y >= oy + oh + MARGIN_MM or 
+                   y + height + MARGIN_MM <= oy):
+                return True
+        return False
+    
+    def find_position(width, height, autoclave_width, autoclave_height, occupied_areas):
+        """Trova la prima posizione disponibile per un tool"""
+        # Prova posizioni con step di 10mm per efficienza
+        step = 10.0
+        
+        for y in range(0, int(autoclave_height - height + 1), int(step)):
+            for x in range(0, int(autoclave_width - width + 1), int(step)):
+                if not check_overlap(x, y, width, height, occupied_areas):
+                    return x, y
+        return None, None
+    
+    # Posiziona ogni tool
+    for original_index, data in sorted_odl_data:
+        tool_width = data["tool_lunghezza_mm"]
+        tool_height = data["tool_larghezza_mm"]
+        
+        # Verifica se il tool entra fisicamente nell'autoclave
+        if tool_width > autoclave_width_mm or tool_height > autoclave_height_mm:
+            # Prova a ruotare il tool di 90°
+            if tool_height <= autoclave_width_mm and tool_width <= autoclave_height_mm:
+                tool_width, tool_height = tool_height, tool_width
+                logger.info(f"Tool ODL {data.get('part_number', 'N/A')} ruotato di 90° per adattarsi")
+            else:
+                logger.warning(f"Tool ODL {data.get('part_number', 'N/A')} troppo grande per l'autoclave")
+                positioned_tools.append({
+                    "original_index": original_index,
+                    "positioned": False,
+                    "reason": "Tool troppo grande per l'autoclave"
+                })
+                continue
+        
+        # Trova una posizione per il tool
+        x, y = find_position(tool_width, tool_height, autoclave_width_mm, autoclave_height_mm, occupied_areas)
+        
+        if x is not None and y is not None:
+            # Posizione trovata
+            positioned_tools.append({
+                "original_index": original_index,
+                "positioned": True,
+                "x": x,
+                "y": y,
+                "width": tool_width,
+                "height": tool_height
+            })
+            
+            # Aggiungi l'area occupata
+            occupied_areas.append((x, y, tool_width, tool_height))
+            
+            logger.debug(f"Tool ODL {data.get('part_number', 'N/A')} posizionato a ({x:.1f}, {y:.1f})")
+        else:
+            # Nessuna posizione disponibile
+            positioned_tools.append({
+                "original_index": original_index,
+                "positioned": False,
+                "reason": "Nessuna posizione disponibile sul piano"
+            })
+            logger.warning(f"Tool ODL {data.get('part_number', 'N/A')} non posizionabile - spazio insufficiente")
+    
+    return positioned_tools
+
+def group_odl_by_ciclo_cura(odl_validi: List[ODL], odl_data: List[Dict]) -> Dict[int, List[Tuple[ODL, Dict]]]:
+    """
+    Raggruppa gli ODL per ciclo di cura compatibile
+    
+    Args:
+        odl_validi: Lista degli ODL validati
+        odl_data: Lista dei dati corrispondenti agli ODL
+        
+    Returns:
+        Dizionario che mappa ciclo_cura_id -> [(odl, data), ...]
+    """
+    gruppi_cicli = {}
+    
+    for odl, data in zip(odl_validi, odl_data):
+        ciclo_id = data["ciclo_cura_id"]
+        if ciclo_id not in gruppi_cicli:
+            gruppi_cicli[ciclo_id] = []
+        gruppi_cicli[ciclo_id].append((odl, data))
+    
+    return gruppi_cicli
 
 def check_autoclave_availability(db: Session, autoclave: Autoclave) -> Tuple[bool, str]:
     """
@@ -197,88 +366,194 @@ def compute_nesting(
             result.aggiungi_non_pianificabile(odl.id, "Nessuna autoclave disponibile")
         return result
     
-    # Crea un solver per un problema di programmazione lineare intera
-    solver = pywraplp.Solver.CreateSolver('SCIP')
+    # ✅ NUOVO: Raggruppa gli ODL per ciclo di cura
+    gruppi_cicli = group_odl_by_ciclo_cura(odl_validi, odl_data)
     
-    if not solver:
-        # Fallback: assegna in ordine di priorità
-        for odl, data in zip(odl_validi, odl_data):
-            result.aggiungi_non_pianificabile(odl.id, "Solver non disponibile")
+    # Processa ogni gruppo di ciclo di cura separatamente
+    for ciclo_id, gruppo_odl_data in gruppi_cicli.items():
+        # Estrai ODL e dati per questo ciclo
+        gruppo_odl = [item[0] for item in gruppo_odl_data]
+        gruppo_data = [item[1] for item in gruppo_odl_data]
+        
+        # Ottieni informazioni sul ciclo di cura
+        ciclo_info = {
+            "id": ciclo_id,
+            "nome": gruppo_data[0]["ciclo_cura_nome"] if gruppo_data else "Sconosciuto"
+        }
+        
+        # Esegui l'ottimizzazione per questo gruppo
+        gruppo_result = _optimize_single_cycle_group(db, gruppo_odl, gruppo_data, autoclavi_valide, ciclo_info)
+        
+        # Aggiungi i risultati al risultato principale
+        for autoclave_id, odl_ids in gruppo_result.assegnamenti.items():
+            for odl_id in odl_ids:
+                result.aggiungi_assegnamento(autoclave_id, odl_id)
+            
+            # Imposta le informazioni del ciclo di cura per l'autoclave
+            result.imposta_ciclo_cura_autoclave(autoclave_id, ciclo_info)
+        
+        # Aggiungi statistiche autoclavi
+        for autoclave_id, stats in gruppo_result.statistiche_autoclavi.items():
+            result.imposta_statistiche_autoclave(autoclave_id, stats)
+        
+        # Aggiungi ODL non pianificabili
+        for item in gruppo_result.odl_non_pianificabili:
+            result.aggiungi_non_pianificabile(item["odl_id"], item["motivo"])
+    
+    return result
+
+def _optimize_single_cycle_group(
+    db: Session, 
+    odl_list: List[ODL], 
+    odl_data: List[Dict], 
+    autoclavi: List[Autoclave],
+    ciclo_info: Dict
+) -> NestingResult:
+    """
+    Ottimizza un singolo gruppo di ODL con lo stesso ciclo di cura
+    usando posizionamento 2D reale e vincoli fisici migliorati
+    
+    Args:
+        db: Sessione del database
+        odl_list: Lista degli ODL con lo stesso ciclo di cura
+        odl_data: Dati corrispondenti agli ODL
+        autoclavi: Lista delle autoclavi disponibili
+        ciclo_info: Informazioni sul ciclo di cura
+        
+    Returns:
+        Un oggetto NestingResult con i risultati dell'ottimizzazione per questo gruppo
+    """
+    # Inizializza il risultato per questo gruppo
+    result = NestingResult()
+    
+    # Se non ci sono ODL, restituisci subito
+    if not odl_list:
         return result
     
-    # Dizionario per tenere traccia delle variabili di decisione
-    # x[i][j] = 1 se l'ODL i è assegnato all'autoclave j, 0 altrimenti
-    x = {}
+    logger.info(f"🔧 Ottimizzazione gruppo ciclo {ciclo_info.get('nome', 'Sconosciuto')} con {len(odl_list)} ODL")
     
-    # Crea le variabili di decisione
-    for i, odl in enumerate(odl_validi):
-        x[i] = {}
-        for j, autoclave in enumerate(autoclavi_valide):
-            x[i][j] = solver.IntVar(0, 1, f'x_{i}_{j}')
-    
-    # Vincolo 1: ogni ODL può essere assegnato al massimo a un'autoclave
-    for i in range(len(odl_validi)):
-        solver.Add(solver.Sum([x[i][j] for j in range(len(autoclavi_valide))]) <= 1)
-    
-    # Vincolo 2: limite di area per ogni autoclave (convertita in cm²)
-    for j, autoclave in enumerate(autoclavi_valide):
-        area_totale_cm2 = (autoclave.lunghezza * autoclave.larghezza_piano) / 100  # mm² -> cm²
-        constraint_area = solver.Sum([x[i][j] * odl_data[i]["area_cm2"] for i in range(len(odl_validi))])
-        solver.Add(constraint_area <= area_totale_cm2)
-    
-    # Vincolo 3: limite di valvole per ogni autoclave
-    for j, autoclave in enumerate(autoclavi_valide):
-        constraint_valvole = solver.Sum([x[i][j] * odl_data[i]["num_valvole"] for i in range(len(odl_validi))])
-        solver.Add(constraint_valvole <= autoclave.num_linee_vuoto)
-    
-    # Funzione obiettivo: massimizzare il numero di ODL assegnati, pesati per priorità
-    objective = solver.Sum([
-        x[i][j] * odl_data[i]["priorita"] 
-        for i in range(len(odl_validi)) 
-        for j in range(len(autoclavi_valide))
-    ])
-    solver.Maximize(objective)
-    
-    # Risolvi il problema
-    status = solver.Solve()
-    
-    # Processa i risultati
-    if status == pywraplp.Solver.OPTIMAL or status == pywraplp.Solver.FEASIBLE:
-        # Itera sugli ODL
-        for i, odl in enumerate(odl_validi):
-            # Controlla se l'ODL è stato assegnato a qualche autoclave
-            assigned = False
-            for j, autoclave in enumerate(autoclavi_valide):
-                if x[i][j].solution_value() > 0.5:  # Se x[i][j] è approssimativamente 1
-                    # L'ODL i è assegnato all'autoclave j
-                    result.aggiungi_assegnamento(autoclave.id, odl.id)
-                    assigned = True
-                    break
-            
-            if not assigned:
-                # L'ODL non è stato assegnato a nessuna autoclave
-                result.aggiungi_non_pianificabile(odl.id, "Nessuna autoclave con spazio sufficiente")
+    # ✅ NUOVO APPROCCIO: Prova il posizionamento 2D reale per ogni autoclave
+    for autoclave in autoclavi:
+        logger.info(f"🏭 Tentativo posizionamento su autoclave {autoclave.nome}")
         
-        # Calcola le statistiche per ogni autoclave utilizzata
-        for j, autoclave in enumerate(autoclavi_valide):
-            area_totale_cm2 = (autoclave.lunghezza * autoclave.larghezza_piano) / 100
-            area_utilizzata_cm2 = sum(x[i][j].solution_value() * odl_data[i]["area_cm2"] for i in range(len(odl_validi)))
-            valvole_utilizzate = sum(x[i][j].solution_value() * odl_data[i]["num_valvole"] for i in range(len(odl_validi)))
-            
-            # Solo se l'autoclave è stata effettivamente utilizzata
-            if any(x[i][j].solution_value() > 0.5 for i in range(len(odl_validi))):
-                result.imposta_statistiche_autoclave(
-                    autoclave.id, 
-                    {
-                        "area_totale": area_totale_cm2,
-                        "area_utilizzata": area_utilizzata_cm2,
-                        "valvole_totali": autoclave.num_linee_vuoto,
-                        "valvole_utilizzate": int(valvole_utilizzate)
+        # Calcola il posizionamento 2D per questa autoclave
+        positioned_tools = calculate_2d_positioning(
+            odl_data, 
+            autoclave.larghezza_piano,  # Larghezza del piano
+            autoclave.lunghezza         # Lunghezza del piano
+        )
+        
+        # Separa ODL posizionabili da quelli non posizionabili
+        posizionabili = []
+        non_posizionabili = []
+        
+        for pos_info in positioned_tools:
+            original_index = pos_info["original_index"]
+            if pos_info["positioned"]:
+                posizionabili.append({
+                    "odl": odl_list[original_index],
+                    "data": odl_data[original_index],
+                    "position": {
+                        "x": pos_info["x"],
+                        "y": pos_info["y"],
+                        "width": pos_info["width"],
+                        "height": pos_info["height"]
                     }
-                )
-    else:
-        # Nessuna soluzione trovata, tutti gli ODL sono non pianificabili
-        for odl in odl_validi:
-            result.aggiungi_non_pianificabile(odl.id, "Nessuna soluzione trovata dal solver")
+                })
+            else:
+                non_posizionabili.append({
+                    "odl": odl_list[original_index],
+                    "reason": pos_info.get("reason", "Posizionamento fallito")
+                })
+        
+        # Verifica vincoli aggiuntivi per gli ODL posizionabili
+        odl_finali = []
+        valvole_totali = 0
+        area_utilizzata_cm2 = 0.0
+        
+        # ✅ NUOVO: Ordina per peso decrescente (parti pesanti nel piano inferiore)
+        posizionabili_ordinati = sorted(
+            posizionabili, 
+            key=lambda x: x["data"].get("tool_peso_kg", 0), 
+            reverse=True
+        )
+        
+        for item in posizionabili_ordinati:
+            odl = item["odl"]
+            data = item["data"]
+            position = item["position"]
+            
+            # Verifica vincolo valvole
+            if valvole_totali + data["num_valvole"] <= autoclave.num_linee_vuoto:
+                # Verifica vincolo area (controllo aggiuntivo)
+                area_tool_cm2 = (data["tool_lunghezza_mm"] * data["tool_larghezza_mm"]) / 100
+                area_totale_autoclave_cm2 = (autoclave.lunghezza * autoclave.larghezza_piano) / 100
+                
+                if area_utilizzata_cm2 + area_tool_cm2 <= area_totale_autoclave_cm2:
+                    # ✅ NUOVO: Verifica vincolo altezza se disponibile
+                    altezza_max_mm = getattr(autoclave, 'altezza_max', None)
+                    if altezza_max_mm and data.get("tool_altezza_mm", 0) > altezza_max_mm:
+                        logger.warning(f"ODL {odl.id} escluso: altezza {data.get('tool_altezza_mm', 0)}mm > max {altezza_max_mm}mm")
+                        non_posizionabili.append({
+                            "odl": odl,
+                            "reason": f"Altezza tool ({data.get('tool_altezza_mm', 0)}mm) supera il limite autoclave ({altezza_max_mm}mm)"
+                        })
+                        continue
+                    
+                    # ODL accettato
+                    odl_finali.append(item)
+                    valvole_totali += data["num_valvole"]
+                    area_utilizzata_cm2 += area_tool_cm2
+                    
+                    # Aggiungi assegnamento con posizione
+                    result.aggiungi_assegnamento(autoclave.id, odl.id, position)
+                    
+                    logger.debug(f"✅ ODL {odl.id} assegnato a posizione ({position['x']:.1f}, {position['y']:.1f})")
+                else:
+                    non_posizionabili.append({
+                        "odl": odl,
+                        "reason": "Area totale superata"
+                    })
+            else:
+                non_posizionabili.append({
+                    "odl": odl,
+                    "reason": "Numero valvole superato"
+                })
+        
+        # Se abbiamo posizionato almeno un ODL, salva le statistiche
+        if odl_finali:
+            area_totale_cm2 = (autoclave.lunghezza * autoclave.larghezza_piano) / 100
+            
+            result.imposta_statistiche_autoclave(
+                autoclave.id, 
+                {
+                    "area_totale": area_totale_cm2,
+                    "area_utilizzata": area_utilizzata_cm2,
+                    "valvole_totali": autoclave.num_linee_vuoto,
+                    "valvole_utilizzate": valvole_totali,
+                    "odl_posizionati": len(odl_finali),
+                    "efficienza_area": (area_utilizzata_cm2 / area_totale_cm2) * 100 if area_totale_cm2 > 0 else 0,
+                    "efficienza_valvole": (valvole_totali / autoclave.num_linee_vuoto) * 100 if autoclave.num_linee_vuoto > 0 else 0
+                }
+            )
+            
+            logger.info(f"✅ Autoclave {autoclave.nome}: {len(odl_finali)} ODL posizionati, "
+                       f"efficienza area: {(area_utilizzata_cm2 / area_totale_cm2) * 100:.1f}%, "
+                       f"efficienza valvole: {(valvole_totali / autoclave.num_linee_vuoto) * 100:.1f}%")
+            
+            # Se abbiamo una buona efficienza, fermiamoci qui
+            # (strategia greedy: prima autoclave che funziona bene)
+            if len(odl_finali) >= len(odl_list) * 0.8:  # 80% degli ODL posizionati
+                logger.info(f"🎯 Efficienza alta raggiunta, utilizzo autoclave {autoclave.nome}")
+                break
+    
+    # Aggiungi tutti gli ODL non assegnati come non pianificabili
+    odl_assegnati = set()
+    for autoclave_id, odl_ids in result.assegnamenti.items():
+        odl_assegnati.update(odl_ids)
+    
+    for odl in odl_list:
+        if odl.id not in odl_assegnati:
+            result.aggiungi_non_pianificabile(odl.id, "Nessuna autoclave con spazio sufficiente per posizionamento 2D")
     
     return result 

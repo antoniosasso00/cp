@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/toaster'
 import { ThemeProvider } from '@/components/theme-provider'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { ApiErrorProvider } from '@/components/ApiErrorProvider'
+import { RoleGuard } from '@/components/RoleGuard'
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -35,7 +36,9 @@ export default function RootLayout({
             <ThemeToggle />
           </div>
           <ApiErrorProvider>
-            {children}
+            <RoleGuard>
+              {children}
+            </RoleGuard>
             <Toaster />
           </ApiErrorProvider>
         </ThemeProvider>

@@ -40,6 +40,7 @@ class ODL(Base, TimestampMixin):
     
     # Relazioni inverse
     nesting_results = relationship("NestingResult", secondary="nesting_result_odl", back_populates="odl_list")
+    logs = relationship("ODLLog", back_populates="odl", cascade="all, delete-orphan")
     
     # Metadati
     created_at = Column(DateTime, default=func.now())

@@ -19,7 +19,7 @@ export default function Home() {
           
           <div className="space-y-4">
             <div className="flex flex-col space-y-2">
-              <Link href="/dashboard" className="w-full">
+              <Link href="/select-role" className="w-full">
                 <Button className="w-full text-lg py-6">
                   Accedi al Sistema
                 </Button>

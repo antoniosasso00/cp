@@ -163,22 +163,39 @@ export default function TempoFaseModal({
           <div className="grid gap-2">
             <Label htmlFor="odl">ODL</Label>
             <Select
-              value={odlId.toString()}
-              onValueChange={(value) => setOdlId(Number(value))}
+              value={odlId ? odlId.toString() : ""}
+              onValueChange={(value) => {
+                if (!value || value.trim() === "") {
+                  setOdlId("");
+                  return;
+                }
+                const numValue = Number(value);
+                if (!isNaN(numValue)) {
+                  setOdlId(numValue);
+                }
+              }}
               disabled={isEditing}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Seleziona un ODL" />
               </SelectTrigger>
               <SelectContent>
-                {odlList.map((odl) => {
-                  const info = `${odl.id} - ${odl.parte.part_number} (${odl.status})`;
-                  return (
-                    <SelectItem key={odl.id} value={odl.id.toString()}>
-                      {info}
-                    </SelectItem>
-                  );
-                })}
+                {odlList.length === 0 ? (
+                  <div className="p-2 text-sm text-muted-foreground">
+                    Nessun ODL disponibile
+                  </div>
+                ) : (
+                  odlList
+                    .filter((odl) => odl?.id && odl?.parte?.part_number)
+                    .map((odl) => {
+                      const info = `${odl.id} - ${odl.parte.part_number} (${odl.status})`;
+                      return (
+                        <SelectItem key={odl.id} value={odl.id.toString()}>
+                          {info}
+                        </SelectItem>
+                      );
+                    })
+                )}
               </SelectContent>
             </Select>
             {odlId && (

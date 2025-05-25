@@ -39,17 +39,35 @@ api.interceptors.response.use(
       data: error.response?.data
     });
     
-    // Gestione errori specifici
+    // Gestione errori specifici con messaggi più dettagliati
     if (error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK') {
-      throw new Error('Impossibile connettersi al server. Verifica che il backend sia in esecuzione.');
+      const errorMessage = 'Errore di connessione – verifica che il backend sia attivo e l\'endpoint esista';
+      console.error('🔌 Errore di connessione:', errorMessage);
+      throw new Error(errorMessage);
     }
     
     if (error.response?.status === 404) {
-      throw new Error(`Endpoint non trovato: ${error.config?.url}`);
+      const errorMessage = `Endpoint non trovato: ${error.config?.url}`;
+      console.error('🔍 Endpoint non trovato:', errorMessage);
+      throw new Error(errorMessage);
     }
     
     if (error.response?.status >= 500) {
-      throw new Error('Errore interno del server. Riprova più tardi.');
+      const errorMessage = 'Errore interno del server. Riprova più tardi.';
+      console.error('🔥 Errore server:', errorMessage);
+      throw new Error(errorMessage);
+    }
+    
+    if (error.response?.status === 422) {
+      const errorMessage = error.response.data?.detail || 'Dati non validi';
+      console.error('📝 Errore validazione:', errorMessage);
+      throw new Error(errorMessage);
+    }
+    
+    if (error.response?.status === 400) {
+      const errorMessage = error.response.data?.detail || 'Richiesta non valida';
+      console.error('❌ Richiesta non valida:', errorMessage);
+      throw new Error(errorMessage);
     }
     
     throw error;
@@ -436,6 +454,11 @@ export const autoclaveApi = {
     return response.data
   },
 
+  getAvailable: async (): Promise<Autoclave[]> => {
+    const response = await api.get<Autoclave[]>('/autoclavi?stato=DISPONIBILE')
+    return response.data
+  },
+
   getById: async (id: number): Promise<Autoclave> => {
     const response = await api.get<Autoclave>(`/autoclavi/${id}/`)
     return response.data
@@ -474,6 +497,7 @@ export interface ParteInODLResponse {
   id: number;
   part_number: string;
   descrizione_breve: string;
+  num_valvole_richieste: number;
 }
 
 export interface ToolInODLResponse {
@@ -492,30 +516,46 @@ export interface ODLResponse extends ODLBase {
 
 // API ODL
 export const odlApi = {
-  getAll: (params?: { parte_id?: number; tool_id?: number; status?: string }) => {
+  getAll: async (params?: { parte_id?: number; tool_id?: number; status?: string }): Promise<ODLResponse[]> => {
     const queryParams = new URLSearchParams();
     if (params?.parte_id) queryParams.append('parte_id', params.parte_id.toString());
     if (params?.tool_id) queryParams.append('tool_id', params.tool_id.toString());
     if (params?.status) queryParams.append('status', params.status);
     
     const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
-    return apiRequest<ODLResponse[]>(`/odl/${query}`);
+    const response = await api.get<ODLResponse[]>(`/odl/${query}`);
+    return response.data;
   },
   
-  getOne: (id: number) => 
-    apiRequest<ODLResponse>(`/odl/${id}`),
+  getOne: async (id: number): Promise<ODLResponse> => {
+    const response = await api.get<ODLResponse>(`/odl/${id}`);
+    return response.data;
+  },
   
-  create: (data: ODLCreate) => 
-    apiRequest<ODLResponse>('/odl', 'POST', data),
+  create: async (data: ODLCreate): Promise<ODLResponse> => {
+    const response = await api.post<ODLResponse>('/odl', data);
+    return response.data;
+  },
   
-  update: (id: number, data: ODLUpdate) => 
-    apiRequest<ODLResponse>(`/odl/${id}`, 'PUT', data),
+  update: async (id: number, data: ODLUpdate): Promise<ODLResponse> => {
+    const response = await api.put<ODLResponse>(`/odl/${id}`, data);
+    return response.data;
+  },
   
-  delete: (id: number) => 
-    apiRequest<void>(`/odl/${id}`, 'DELETE'),
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/odl/${id}`);
+  },
 
-  checkQueue: () => 
-    apiRequest<{
+  checkQueue: async (): Promise<{
+    message: string;
+    updated_odls: Array<{
+      odl_id: number;
+      old_status: string;
+      new_status: string;
+      motivo_blocco?: string;
+    }>;
+  }> => {
+    const response = await api.post<{
       message: string;
       updated_odls: Array<{
         odl_id: number;
@@ -523,10 +563,20 @@ export const odlApi = {
         new_status: string;
         motivo_blocco?: string;
       }>;
-    }>('/odl/check-queue', 'POST'),
+    }>('/odl/check-queue');
+    return response.data;
+  },
 
-  checkSingleStatus: (id: number) => 
-    apiRequest<{
+  checkSingleStatus: async (id: number): Promise<{
+    message: string;
+    update_info?: {
+      odl_id: number;
+      old_status: string;
+      new_status: string;
+      motivo_blocco?: string;
+    };
+  }> => {
+    const response = await api.post<{
       message: string;
       update_info?: {
         odl_id: number;
@@ -534,7 +584,14 @@ export const odlApi = {
         new_status: string;
         motivo_blocco?: string;
       };
-    }>(`/odl/${id}/check-status`, 'POST'),
+    }>(`/odl/${id}/check-status`);
+    return response.data;
+  },
+
+  getPendingNesting: async (): Promise<ODLResponse[]> => {
+    const response = await api.get<ODLResponse[]>('/odl/pending-nesting');
+    return response.data;
+  },
 };
 
 // Tipi base per TempoFase
@@ -661,6 +718,7 @@ export interface NestingResponse {
   valvole_utilizzate: number;
   valvole_totali: number;
   stato: string;
+  confermato_da_ruolo?: string;
   odl_esclusi_ids: number[];
   motivi_esclusione: Array<{
     odl_id: number;
@@ -668,6 +726,16 @@ export interface NestingResponse {
   }>;
   created_at: string;
   updated_at?: string;
+  note?: string;
+  ciclo_cura_id?: number;
+  ciclo_cura_nome?: string;
+  posizioni_tool?: Array<{
+    odl_id: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }>;
 }
 
 // Tipi per le bozze di nesting
@@ -739,32 +807,111 @@ export interface NestingPreview {
   }>;
 }
 
+// Interfacce per il nesting manuale
+export interface ManualNestingRequest {
+  odl_ids: number[];
+  note?: string;
+}
+
+export interface ManualNestingResponse {
+  success: boolean;
+  message: string;
+  autoclavi: Array<{
+    id: number;
+    nome: string;
+    odl_assegnati: number[];
+    valvole_utilizzate: number;
+    valvole_totali: number;
+    area_utilizzata: number;
+    area_totale: number;
+  }>;
+  odl_pianificati: Array<{
+    id: number;
+    parte_descrizione: string;
+    num_valvole: number;
+    priorita: number;
+    status: string;
+  }>;
+  odl_non_pianificabili: Array<{
+    id: number;
+    parte_descrizione: string;
+    num_valvole: number;
+    priorita: number;
+    status: string;
+  }>;
+}
+
+// Interfacce per l'assegnazione nesting
+export interface NestingAssignmentRequest {
+  nesting_id: number;
+  autoclave_id: number;
+  note?: string;
+}
+
 // API Nesting
 export const nestingApi = {
-  getAll: () => 
-    apiRequest<NestingResponse[]>('/nesting/'),
+  getAll: async (params?: { ruolo_utente?: string; stato_filtro?: string }): Promise<NestingResponse[]> => {
+    const queryParams = new URLSearchParams();
+    if (params?.ruolo_utente) queryParams.append('ruolo_utente', params.ruolo_utente);
+    if (params?.stato_filtro) queryParams.append('stato_filtro', params.stato_filtro);
+    
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    const response = await api.get<NestingResponse[]>(`/nesting/${query}`);
+    return response.data;
+  },
   
-  getOne: (id: number) => 
-    apiRequest<NestingResponse>(`/nesting/${id}`),
+  getOne: async (id: number): Promise<NestingResponse> => {
+    const response = await api.get<NestingResponse>(`/nesting/${id}`);
+    return response.data;
+  },
   
-  generateAuto: () => 
-    apiRequest<NestingResponse>('/nesting/auto', 'POST'),
+  generateAuto: async (): Promise<NestingResponse> => {
+    const response = await api.post<NestingResponse>('/nesting/auto');
+    return response.data;
+  },
+  
+  // Nuovo endpoint per nesting manuale
+  generateManual: async (request: ManualNestingRequest): Promise<ManualNestingResponse> => {
+    const response = await api.post<ManualNestingResponse>('/nesting/manual', request);
+    return response.data;
+  },
   
   // Nuovi endpoint per preview e bozze
-  getPreview: () => 
-    apiRequest<NestingPreview>('/nesting/preview'),
+  getPreview: async (): Promise<NestingPreview> => {
+    const response = await api.get<NestingPreview>('/nesting/preview');
+    return response.data;
+  },
   
-  saveDraft: (data: NestingDraftData) => 
-    apiRequest<{ success: boolean; message: string; draft_ids: number[] }>('/nesting/draft/save', 'POST', data),
+  saveDraft: async (data: NestingDraftData): Promise<{ success: boolean; message: string; draft_ids: number[] }> => {
+    const response = await api.post<{ success: boolean; message: string; draft_ids: number[] }>('/nesting/draft/save', data);
+    return response.data;
+  },
   
-  loadDraft: (draftId: number) => 
-    apiRequest<{ success: boolean; message: string; data: any }>(`/nesting/draft/${draftId}`),
+  loadDraft: async (draftId: number): Promise<{ success: boolean; message: string; data: any }> => {
+    const response = await api.get<{ success: boolean; message: string; data: any }>(`/nesting/draft/${draftId}`);
+    return response.data;
+  },
   
-  listDrafts: () => 
-    apiRequest<{ success: boolean; drafts: NestingDraft[]; count: number }>('/nesting/drafts'),
+  listDrafts: async (): Promise<{ success: boolean; drafts: NestingDraft[]; count: number }> => {
+    const response = await api.get<{ success: boolean; drafts: NestingDraft[]; count: number }>('/nesting/drafts');
+    return response.data;
+  },
   
-  updateStatus: (nestingId: number, stato: string, note?: string) => 
-    apiRequest<NestingResponse>(`/nesting/${nestingId}/status`, 'PUT', { stato, note }),
+  updateStatus: async (nestingId: number, stato: string, note?: string, ruolo_utente?: string): Promise<NestingResponse> => {
+    const response = await api.put<NestingResponse>(`/nesting/${nestingId}/status`, { stato, note, ruolo_utente });
+    return response.data;
+  },
+  
+  // Nuovi endpoint per l'assegnazione
+  getAvailableForAssignment: async (): Promise<NestingResponse[]> => {
+    const response = await api.get<NestingResponse[]>('/nesting/available-for-assignment');
+    return response.data;
+  },
+  
+  assignToAutoclave: async (assignment: NestingAssignmentRequest): Promise<NestingResponse> => {
+    const response = await api.post<NestingResponse>('/nesting/assign', assignment);
+    return response.data;
+  },
 };
 
 import {

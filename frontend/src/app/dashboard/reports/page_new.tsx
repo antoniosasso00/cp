@@ -406,12 +406,12 @@ export default function ReportsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="filter-type">Filtra per Tipo</Label>
-                  <Select value={filterReportType} onValueChange={(value) => setFilterReportType(value as ReportTypeEnum | '')}>
+                  <Select value={filterReportType || 'all'} onValueChange={(value) => setFilterReportType(value === 'all' ? '' : value as ReportTypeEnum)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Tutti i tipi" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Tutti i tipi</SelectItem>
+                      <SelectItem value="all">Tutti i tipi</SelectItem>
                       <SelectItem value="nesting">Nesting</SelectItem>
                       <SelectItem value="produzione">Produzione</SelectItem>
                       <SelectItem value="qualita">Qualità</SelectItem>

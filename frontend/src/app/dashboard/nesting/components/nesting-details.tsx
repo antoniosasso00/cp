@@ -76,107 +76,79 @@ export function NestingDetails({ nesting, isOpen, onClose }: NestingDetailsProps
   const marginLeft = (canvasWidth - autoclaveWidth) / 2;
   const marginTop = (canvasHeight - autoclaveHeight) / 2;
 
-  // 🔧 ALGORITMO SEMPLIFICATO E ROBUSTO PER IL POSIZIONAMENTO DEGLI ODL
+  // ✅ NUOVO: Utilizza le posizioni reali calcolate dal backend
   const calculateODLPositions = (): PositionedODL[] => {
     const positioned: PositionedODL[] = [];
     
-    const padding = 5; // Spaziatura minima tra gli ODL
-    const contentPadding = 8; // Padding dal bordo dell'autoclave
-    const availableWidth = Math.max(autoclaveWidth - (contentPadding * 2), 100);
-    const availableHeight = Math.max(autoclaveHeight - (contentPadding * 2), 100);
-    
-    // Debug: log delle dimensioni
-    console.log('🔍 Debug Layout:', {
+    // Debug: log delle informazioni disponibili
+    console.log('🔍 Debug Posizioni Backend:', {
       autoclaveWidth: autoclaveWidth.toFixed(1),
       autoclaveHeight: autoclaveHeight.toFixed(1),
-      availableWidth: availableWidth.toFixed(1),
-      availableHeight: availableHeight.toFixed(1),
       scale: scale.toFixed(3),
-      odlCount: nesting.odl_list.length
+      odlCount: nesting.odl_list.length,
+      posizioniDisponibili: nesting.posizioni_tool?.length || 0
     });
     
-    // Se l'autoclave è troppo piccola, usa un layout a griglia semplice
-    if (availableWidth < 50 || availableHeight < 50) {
-      console.log('⚠️ Autoclave troppo piccola, uso layout a griglia forzato');
+    // Se abbiamo posizioni reali dal backend, usale
+    if (nesting.posizioni_tool && nesting.posizioni_tool.length > 0) {
+      console.log('✅ Utilizzo posizioni reali dal backend');
       
-      // Layout a griglia forzato per autoclavi molto piccole
-      const cols = Math.max(2, Math.floor(Math.sqrt(nesting.odl_list.length)));
-      const rows = Math.ceil(nesting.odl_list.length / cols);
-      const cellWidth = Math.max(30, availableWidth / cols - padding);
-      const cellHeight = Math.max(20, availableHeight / rows - padding);
-      
-      nesting.odl_list.forEach((odl, index) => {
-        const col = index % cols;
-        const row = Math.floor(index / cols);
+      for (const posizione of nesting.posizioni_tool) {
+        // Trova l'ODL corrispondente
+        const odl = nesting.odl_list.find(o => o.id === posizione.odl_id);
+        if (!odl) {
+          console.warn(`⚠️ ODL ${posizione.odl_id} non trovato nella lista`);
+          continue;
+        }
+        
+        // Converti le coordinate da mm a pixel
+        const x = (posizione.x * MM_TO_PIXEL_SCALE * scale);
+        const y = (posizione.y * MM_TO_PIXEL_SCALE * scale);
+        const width = (posizione.width * MM_TO_PIXEL_SCALE * scale);
+        const height = (posizione.height * MM_TO_PIXEL_SCALE * scale);
         
         positioned.push({
           odl,
-          x: contentPadding + col * (cellWidth + padding),
-          y: contentPadding + row * (cellHeight + padding),
-          width: cellWidth,
-          height: cellHeight
+          x: Math.max(0, x),
+          y: Math.max(0, y),
+          width: Math.max(20, width),
+          height: Math.max(15, height)
         });
-      });
+        
+        console.log(`📍 ODL #${odl.id} posizionato a (${x.toFixed(1)}, ${y.toFixed(1)}) - ${width.toFixed(1)}x${height.toFixed(1)}px`);
+      }
       
-      console.log(`✅ Layout griglia: ${positioned.length}/${nesting.odl_list.length} ODL posizionati`);
+      console.log(`✅ Posizionati ${positioned.length} ODL con coordinate reali`);
       return positioned;
     }
     
-    // Layout normale per autoclavi di dimensioni adeguate
-    let currentX = contentPadding;
-    let currentY = contentPadding;
-    let rowHeight = 0;
+    // ⚠️ FALLBACK: Se non abbiamo posizioni dal backend, usa layout a griglia
+    console.log('⚠️ Nessuna posizione dal backend, uso layout a griglia di fallback');
     
-    for (const odl of nesting.odl_list) {
-      // Calcola dimensioni del tool nel canvas
-      const toolWidthMM = odl.tool.lunghezza_piano || 100; // Default se mancante
-      const toolHeightMM = odl.tool.larghezza_piano || 50; // Default se mancante
+    const padding = 8;
+    const contentPadding = 10;
+    const availableWidth = Math.max(autoclaveWidth - (contentPadding * 2), 100);
+    const availableHeight = Math.max(autoclaveHeight - (contentPadding * 2), 100);
+    
+    const cols = Math.max(2, Math.floor(Math.sqrt(nesting.odl_list.length)));
+    const rows = Math.ceil(nesting.odl_list.length / cols);
+    const cellWidth = Math.max(40, (availableWidth - (cols - 1) * padding) / cols);
+    const cellHeight = Math.max(30, (availableHeight - (rows - 1) * padding) / rows);
+    
+    nesting.odl_list.forEach((odl, index) => {
+      const col = index % cols;
+      const row = Math.floor(index / cols);
       
-      // Calcola dimensioni scalate con minimi ragionevoli
-      let toolWidth = Math.max(toolWidthMM * MM_TO_PIXEL_SCALE * scale, 25);
-      let toolHeight = Math.max(toolHeightMM * MM_TO_PIXEL_SCALE * scale, 15);
-      
-      // Limita le dimensioni massime per evitare ODL troppo grandi
-      const maxWidth = availableWidth * 0.4; // Max 40% della larghezza
-      const maxHeight = availableHeight * 0.3; // Max 30% dell'altezza
-      
-      toolWidth = Math.min(toolWidth, maxWidth);
-      toolHeight = Math.min(toolHeight, maxHeight);
-      
-      // Debug: log delle dimensioni dell'ODL
-      console.log(`📦 ODL #${odl.id}:`, {
-        originalMM: `${toolWidthMM}x${toolHeightMM}`,
-        scaledPx: `${toolWidth.toFixed(1)}x${toolHeight.toFixed(1)}`,
-        position: `${currentX.toFixed(1)},${currentY.toFixed(1)}`
+      positioned.push({
+        odl,
+        x: contentPadding + col * (cellWidth + padding),
+        y: contentPadding + row * (cellHeight + padding),
+        width: cellWidth,
+        height: cellHeight
       });
-      
-      // Controlla se l'ODL entra nella riga corrente
-      if (currentX + toolWidth > contentPadding + availableWidth && positioned.length > 0) {
-        // Va a capo
-        currentX = contentPadding;
-        currentY += rowHeight + padding;
-        rowHeight = 0;
-      }
-      
-      // Controlla se c'è spazio verticale
-      if (currentY + toolHeight <= contentPadding + availableHeight) {
-        positioned.push({
-          odl,
-          x: currentX,
-          y: currentY,
-          width: toolWidth,
-          height: toolHeight
-        });
-        
-        currentX += toolWidth + padding;
-        rowHeight = Math.max(rowHeight, toolHeight);
-      } else {
-        console.log(`❌ ODL #${odl.id} non posizionato - spazio verticale insufficiente`);
-        break; // Ferma il posizionamento se non c'è più spazio verticale
-      }
-    }
+    });
     
-    console.log(`✅ Posizionati ${positioned.length}/${nesting.odl_list.length} ODL`);
+    console.log(`✅ Layout griglia fallback: ${positioned.length}/${nesting.odl_list.length} ODL posizionati`);
     return positioned;
   };
 
@@ -277,6 +249,16 @@ export function NestingDetails({ nesting, isOpen, onClose }: NestingDetailsProps
                 <p className="font-medium">{nesting.autoclave.nome}</p>
                 <p className="text-muted-foreground">Codice: {nesting.autoclave.codice}</p>
                 <p className="text-muted-foreground">ID: {nesting.autoclave.id}</p>
+                {/* ✅ NUOVO: Visualizzazione ciclo di cura */}
+                {nesting.ciclo_cura_nome && (
+                  <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded">
+                    <p className="text-blue-800 font-medium text-xs">Ciclo di Cura</p>
+                    <p className="text-blue-700 font-semibold">{nesting.ciclo_cura_nome}</p>
+                    {nesting.ciclo_cura_id && (
+                      <p className="text-blue-600 text-xs">ID: {nesting.ciclo_cura_id}</p>
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <p className="text-muted-foreground">
@@ -439,6 +421,13 @@ export function NestingDetails({ nesting, isOpen, onClose }: NestingDetailsProps
                       backgroundSize: '5px 5px'
                     }}
                   />
+                  
+                  {/* ✅ NUOVO: Etichetta ciclo di cura nell'anteprima */}
+                  {nesting.ciclo_cura_nome && (
+                    <div className="absolute top-2 left-2 bg-blue-100 dark:bg-blue-900 border border-blue-300 dark:border-blue-700 text-blue-800 dark:text-blue-200 px-2 py-1 rounded text-xs font-medium shadow-sm">
+                      🔄 {nesting.ciclo_cura_nome}
+                    </div>
+                  )}
                   
                   {/* ODL posizionati con l'algoritmo migliorato */}
                   {positionedODLs.map((positioned, index) => {

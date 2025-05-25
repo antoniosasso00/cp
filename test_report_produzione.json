@@ -1,6 +1,0 @@
-{
-  "report_type": "produzione",
-  "range_type": "giorno",
-  "include_sections": ["odl", "tempi"],
-  "download": false
-} 

@@ -57,8 +57,8 @@ const formatDuration = (minutes: number | null): string => {
 
 // Badge varianti per i diversi tipi di fase
 const getFaseBadgeVariant = (fase: string) => {
-  const variants: Record<string, "default" | "secondary" | "destructive" | "outline" | "primary" | "success" | "warning"> = {
-    "laminazione": "primary",
+  const variants: Record<string, "default" | "secondary" | "destructive" | "outline" | "success" | "warning"> = {
+    "laminazione": "default",
     "attesa_cura": "warning",
     "cura": "destructive",
   }

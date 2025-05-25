@@ -13,6 +13,7 @@ from models.tool import Tool
 from models.tempo_fase import TempoFase
 from schemas.odl import ODLCreate, ODLRead, ODLUpdate
 from services.odl_queue_service import ODLQueueService
+from services.nesting_service import get_odl_attesa_cura_filtered
 
 # Configurazione logger
 logger = logging.getLogger(__name__)
@@ -126,6 +127,35 @@ def read_odl(
     query = query.order_by(desc(ODL.priorita))
     
     return query.offset(skip).limit(limit).all()
+
+@router.get("/pending-nesting", response_model=List[ODLRead], 
+            summary="Ottiene gli ODL in attesa di essere nidificati")
+async def get_odl_pending_nesting(db: Session = Depends(get_db)):
+    """
+    Recupera tutti gli ODL che sono pronti per essere inclusi nel nesting.
+    
+    Un ODL è considerato pronto per il nesting se:
+    - Ha stato "Attesa Cura"
+    - Non è già incluso in un nesting attivo
+    - Ha tutti i dati necessari (parte, catalogo, area, valvole)
+    
+    Returns:
+        Lista di ODL pronti per il nesting, ordinati per priorità decrescente
+    """
+    try:
+        # Utilizza la logica esistente del servizio nesting per filtrare gli ODL
+        odl_validi = await get_odl_attesa_cura_filtered(db)
+        
+        logger.info(f"Trovati {len(odl_validi)} ODL pronti per il nesting")
+        
+        return odl_validi
+        
+    except Exception as e:
+        logger.error(f"Errore durante il recupero degli ODL in attesa di nesting: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Si è verificato un errore durante il recupero degli ODL in attesa di nesting."
+        )
 
 @router.get("/{odl_id}", response_model=ODLRead, 
             summary="Ottiene un ordine di lavoro specifico")
@@ -325,4 +355,5 @@ def check_single_odl_status(odl_id: int, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante il controllo dello stato ODL."
-        ) 
+        )
+

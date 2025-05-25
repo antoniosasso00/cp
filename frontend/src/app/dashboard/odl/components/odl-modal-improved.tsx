@@ -30,7 +30,7 @@ import {
   Clock,
   Wrench
 } from 'lucide-react'
-import { useDebounce } from '@/hooks/use-debounce'
+import { useDebounce } from '@/hooks/useDebounce'
 import ParteQuickModal from './parte-quick-modal'
 
 interface ODLModalImprovedProps {
@@ -392,26 +392,43 @@ export default function ODLModalImproved({
                   <div className="space-y-2">
                     <Label htmlFor="tool">Tool</Label>
                     <Select
-                      value={formData.tool_id.toString()}
-                      onValueChange={(value) => setFormData(prev => ({ ...prev, tool_id: parseInt(value) }))}
+                      value={formData.tool_id ? formData.tool_id.toString() : ""}
+                      onValueChange={(value) => {
+                        if (!value || value.trim() === "") {
+                          setFormData(prev => ({ ...prev, tool_id: 0 }));
+                          return;
+                        }
+                        const numValue = parseInt(value);
+                        if (!isNaN(numValue)) {
+                          setFormData(prev => ({ ...prev, tool_id: numValue }));
+                        }
+                      }}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Seleziona un tool" />
                       </SelectTrigger>
                       <SelectContent>
-                        {compatibleTools.map((tool) => (
-                          <SelectItem key={tool.id} value={tool.id.toString()}>
-                            <div className="flex items-center justify-between w-full">
-                              <span>{tool.part_number_tool}</span>
-                              <Badge 
-                                variant={tool.disponibile ? "success" : "destructive"}
-                                className="ml-2"
-                              >
-                                {tool.disponibile ? "Disponibile" : "Occupato"}
-                              </Badge>
-                            </div>
-                          </SelectItem>
-                        ))}
+                        {compatibleTools.length === 0 ? (
+                          <div className="p-2 text-sm text-muted-foreground">
+                            Nessun tool disponibile
+                          </div>
+                        ) : (
+                          compatibleTools
+                            .filter((tool) => tool?.id && tool?.part_number_tool)
+                            .map((tool) => (
+                              <SelectItem key={tool.id} value={tool.id.toString()}>
+                                <div className="flex items-center justify-between w-full">
+                                  <span>{tool.part_number_tool}</span>
+                                  <Badge 
+                                    variant={tool.disponibile ? "success" : "destructive"}
+                                    className="ml-2"
+                                  >
+                                    {tool.disponibile ? "Disponibile" : "Occupato"}
+                                  </Badge>
+                                </div>
+                              </SelectItem>
+                            ))
+                        )}
                       </SelectContent>
                     </Select>
                     

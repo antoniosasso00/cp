@@ -64,13 +64,13 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
       try {
         const catalogo = await catalogoApi.getAll();
         
-        const categorie = [...new Set(catalogo
+        const categorie = Array.from(new Set(catalogo
           .map(item => item.categoria)
-          .filter(Boolean))] as string[];
+          .filter(Boolean))) as string[];
         
-        const sottoCategorie = [...new Set(catalogo
+        const sottoCategorie = Array.from(new Set(catalogo
           .map(item => item.sotto_categoria)
-          .filter(Boolean))] as string[];
+          .filter(Boolean))) as string[];
         
         setCategorieList(categorie);
         setSottoCategorieList(sottoCategorie);

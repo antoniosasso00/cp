@@ -25,6 +25,8 @@ class AutoclaveNestingInfo(BaseModel):
     valvole_totali: int
     area_utilizzata: float
     area_totale: float
+    ciclo_cura_id: Optional[int] = Field(None, description="ID del ciclo di cura assegnato")
+    ciclo_cura_nome: Optional[str] = Field(None, description="Nome del ciclo di cura assegnato")
     
 class NestingResultSchema(BaseModel):
     """Schema per il risultato dell'operazione di nesting"""
@@ -57,6 +59,8 @@ class AutoclavePreviewInfo(BaseModel):
     valvole_totali: int
     valvole_utilizzate: int
     odl_inclusi: List[ODLPreviewInfo] = []
+    ciclo_cura_id: Optional[int] = Field(None, description="ID del ciclo di cura assegnato")
+    ciclo_cura_nome: Optional[str] = Field(None, description="Nome del ciclo di cura assegnato")
     
 class NestingPreviewSchema(BaseModel):
     """Schema per l'anteprima del nesting"""
@@ -104,10 +108,14 @@ class NestingResultRead(BaseModel):
     valvole_utilizzate: int
     valvole_totali: int
     stato: str
+    confermato_da_ruolo: Optional[str] = None
     odl_esclusi_ids: List[int] = []
     motivi_esclusione: List[Dict] = []
     created_at: datetime
     updated_at: Optional[datetime] = None
+    note: Optional[str] = None
+    ciclo_cura_id: Optional[int] = None
+    ciclo_cura_nome: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -146,5 +154,19 @@ class NestingResultRead(BaseModel):
                         "status": "non_pianificabile"
                     }
                 ]
+            }
+        }
+
+# Schema per il nesting manuale
+class ManualNestingRequest(BaseModel):
+    """Schema per la richiesta di nesting manuale"""
+    odl_ids: List[int] = Field(..., description="Lista degli ID degli ODL da includere nel nesting", min_items=1)
+    note: Optional[str] = Field(None, description="Note opzionali per il nesting")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "odl_ids": [1, 2, 3],
+                "note": "Nesting manuale creato dal responsabile"
             }
         } 

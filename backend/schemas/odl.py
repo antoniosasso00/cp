@@ -33,6 +33,7 @@ class ParteInODLResponse(BaseModel):
     id: int = Field(..., description="ID univoco della parte")
     part_number: str = Field(..., description="Part Number associato dal catalogo")
     descrizione_breve: str = Field(..., description="Descrizione breve della parte")
+    num_valvole_richieste: int = Field(..., description="Numero di valvole richieste per questa parte")
 
     class Config:
         from_attributes = True
