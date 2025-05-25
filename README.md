@@ -1,4 +1,4 @@
-# CarbonPilot - Sistema di Gestione Produzione
+# Manta Group - Sistema di Gestione Produzione
 
 Sistema completo per la gestione della produzione di parti in fibra di carbonio con ottimizzazione automatica del nesting e scheduling delle autoclavi.
 
@@ -138,7 +138,7 @@ docker-compose up -d postgres
 ## 📁 Struttura Progetto
 
 ```
-carbonpilot/
+mantagroup/
 ├── backend/                 # API FastAPI
 │   ├── api/                # Endpoints REST
 │   ├── models/             # Modelli SQLAlchemy
@@ -160,7 +160,7 @@ carbonpilot/
 
 ### Variabili Ambiente Backend (.env)
 ```env
-DATABASE_URL=postgresql://user:password@localhost/carbonpilot
+DATABASE_URL=postgresql://user:password@localhost/mantagroup
 SECRET_KEY=your-secret-key-here
 CORS_ORIGINS=http://localhost:3000
 DEBUG=true
@@ -169,7 +169,7 @@ DEBUG=true
 ### Variabili Ambiente Frontend (.env.local)
 ```env
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
-NEXT_PUBLIC_APP_NAME=CarbonPilot
+NEXT_PUBLIC_APP_NAME=Manta Group
 ```
 
 ## 📊 Stato del Progetto
@@ -220,5 +220,5 @@ Per supporto tecnico o domande:
 
 ---
 
-**CarbonPilot** - Sistema di gestione produzione per l'industria aerospaziale
+**Manta Group** - Sistema di gestione produzione per l'industria aerospaziale
 *Ottimizzazione automatica, controllo qualità, efficienza operativa*

@@ -2,6 +2,108 @@
 
 Questo file contiene il registro dei cambiamenti più significativi del progetto.
 
+## [v2.1.0] - Pulizia Completa Progetto
+
+### [2025-01-25 - Pulizia Sistematica File Inutilizzati e Duplicati]
+- **Completato**: Pulizia completa del progetto con rimozione file inutilizzati e consolidamento duplicati
+- **File di test rimossi**: Eliminati tutti i file `.test.ts`, `.test.tsx`, directory `__tests__/` e snapshot inutili
+- **Mock data eliminati**: Rimossi file `mock_data.ts`, `demo.ts`, `example.tsx` e dati di test temporanei
+- **Duplicati consolidati**: Eliminati file con suffissi `_copy`, `_backup`, `_old`, `_temp`
+- **Cache pulita**: Rimossi file `__pycache__`, `.pyc`, `.next/`, `.docker-cache/`
+- **Build verificata**: Confermato funzionamento corretto di build e dev server dopo pulizia
+
+#### File di Test Rimossi
+**Frontend:**
+- `frontend/src/components/test-select.tsx` - Componente di test temporaneo
+- `frontend/test_select_fix.md` - Documentazione di test
+
+**Backend:**
+- `backend/test_sistema_completo.py` - Test suite completa
+- `backend/test_api_monitoring.py` - Test monitoraggio API
+- `backend/test_odl_monitoring_simple.py` - Test semplice monitoraggio ODL
+- `backend/test_auto_report.py` - Test generazione automatica report
+- `backend/tests/` - Directory completa con test API
+
+#### File Mock/Demo Rimossi
+**Backend:**
+- `backend/seed_test_data_simple.py` - Dati di test semplici
+- `backend/seed_test_nesting.py` - Dati di test nesting
+- `backend/seed_nesting_test_data.py` - Dati di test nesting avanzati
+- `backend/seed_catalogo_test.py` - Dati di test catalogo
+- `backend/insert_sample_data.py` - Dati di esempio
+
+**Tools:**
+- `tools/test_odl_improvements.py` - Test miglioramenti ODL
+- `tools/test_autoclave.py` - Test autoclave
+- `tools/test_crud_endpoints.py` - Test endpoint CRUD
+- `tools/seed_test_data.py` - Dati di test principali
+- `tools/seed_demo_data.py` - Dati demo
+
+#### File Temporanei/Debug Rimossi
+**Root directory:**
+- `CORREZIONE_SELECT_DEFINITIVA.md` - Documentazione temporanea
+- `CORREZIONE_SELECT_ODL_COMPLETATA.md` - Fix temporaneo
+- `FIX_SELECT_ERROR.md` - Documentazione errore
+- `VERIFICA_NESTING_COMPLETATA.md` - Verifica temporanea
+- `cleanup_plan.md` - Piano di pulizia
+- `NESTING_FIX_SUMMARY.md` - Summary fix
+- `MIGLIORAMENTI_ODL_COMPLETATI.md` - Miglioramenti temporanei
+- `CORREZIONI_APPLICATE.md` - Correzioni temporanee
+- `FIX_APPLICATI.md` - Fix applicati
+- `debug_fix_log.md` - Log di debug
+- `Cursor Prompts V1 Beta.md` - Prompts temporanei
+- `project_structure.md` - Struttura generata automaticamente (1.9MB)
+- `nesting_1_report.pdf` - Report temporaneo
+- `start_dev_fixed.bat` - Script temporaneo
+
+#### Directory e Cache Rimossi
+- `backend/__pycache__/` - Cache Python
+- `frontend/.next/` - Build cache Next.js
+- `.docker-cache/` - Cache Docker
+- `CarbonPilot.git/` - Directory Git duplicata
+- `doc/` - Directory duplicata (mantenuto `docs/`)
+- File `*.pyc` - File Python compilati
+
+#### Script Temporanei Backend Rimossi
+- `backend/verifica_finale_sistema.py` - Verifica temporanea
+- `backend/check_odl_ids.py` - Controllo ID temporaneo
+- `backend/check_db_status.py` - Status database temporaneo
+- `backend/verify_nesting_table.py` - Verifica tabella temporanea
+
+#### Validazione Post-Pulizia
+- **✅ Backend**: Import e avvio corretto verificato
+- **✅ Frontend Build**: Compilazione senza errori (22 pagine generate)
+- **✅ Frontend Dev**: Server di sviluppo funzionante
+- **✅ Database**: Connessione SQLite operativa
+- **✅ API**: Endpoint principali accessibili
+- **✅ TypeScript**: Nessun errore di tipizzazione
+
+#### Struttura Finale Pulita
+```
+CarbonPilot/
+├── backend/          # API FastAPI pulita
+├── frontend/         # Next.js app pulita
+├── tools/            # Script utility essenziali
+├── docs/             # Documentazione consolidata
+├── .venv/            # Ambiente virtuale Python
+├── README.md         # Documentazione principale
+└── docker-compose.yml # Configurazione Docker
+```
+
+#### Benefici della Pulizia
+- **Spazio liberato**: Riduzione significativa dimensioni progetto
+- **Performance migliorata**: Meno file da indicizzare e processare
+- **Manutenibilità**: Struttura più chiara e navigabile
+- **Build più veloce**: Meno file da processare durante la compilazione
+- **Git più efficiente**: Repository più leggero e veloce
+- **Debugging semplificato**: Meno file di distrazione durante lo sviluppo
+
+#### Effetti sulla UX Sviluppatore
+- **Navigazione più rapida**: Meno file irrilevanti nell'IDE
+- **Ricerca più efficace**: Risultati più pertinenti nelle ricerche
+- **Onboarding semplificato**: Struttura più chiara per nuovi sviluppatori
+- **Deployment ottimizzato**: Meno file da trasferire e deployare
+
 ## [v2.0.2] - Fix Crash Select Monitoraggio ODL
 
 ### [2025-01-25 - Correzione Crash Select nel Dashboard ODL Monitoring]

@@ -202,7 +202,7 @@ export default function DashboardLayout({
       <header className="sticky top-0 z-10 w-full border-b bg-background">
         <div className="flex h-16 items-center px-4 md:px-6">
           <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
-            <span className="text-primary text-xl">CarbonPilot</span>
+            <span className="text-primary text-xl">Manta Group</span>
           </Link>
           <nav className="ml-auto flex items-center gap-4">
             {/* Indicatore ruolo corrente */}

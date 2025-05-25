@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="CarbonPilot API",
+    title="Manta Group API",
     description="API per la gestione dei processi di produzione di parti in carbonio",
     version="0.1.0",
 )
@@ -22,7 +22,7 @@ app = FastAPI(
 # Configurazione CORS per permettere richieste dal frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In produzione, specificare l'origine esatta come ["http://carbonpilot-frontend:3000"]
+    allow_origins=["*"],  # In produzione, specificare l'origine esatta come ["http://mantagroup-frontend:3000"]
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
@@ -61,7 +61,7 @@ def log_registered_routes():
 # Inizializzazione del database
 @app.on_event("startup")
 async def startup_db_client():
-    logger.info("🚀 Avvio CarbonPilot Backend...")
+    logger.info("🚀 Avvio Manta Group Backend...")
     create_tables_if_not_exist()
     log_registered_routes()
     logger.info("✅ Database inizializzato e server pronto!")
@@ -74,7 +74,7 @@ app.include_router(router, prefix="/api")
 async def health_check():
     return {
         "status": "healthy",
-        "message": "CarbonPilot API è attiva",
+        "message": "Manta Group API è attiva",
         "version": "0.1.0"
     }
 

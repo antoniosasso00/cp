@@ -97,7 +97,7 @@ export default function DashboardAdmin() {
             Dashboard Amministratore
           </h1>
           <p className="text-muted-foreground mt-2">
-            Controllo completo del sistema CarbonPilot - Gestisci utenti, configurazioni e monitoraggio
+            Controllo completo del sistema Manta Group - Gestisci utenti, configurazioni e monitoraggio
           </p>
         </div>
         <Badge variant="destructive" className="text-sm">

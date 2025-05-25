@@ -1,4 +1,4 @@
-# Sezione ODL (Ordini di Lavoro) - CarbonPilot
+# Sezione ODL (Ordini di Lavoro) - Manta Group
 
 ## 📋 Panoramica
 

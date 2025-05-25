@@ -14,7 +14,7 @@ export default function ImpostazioniPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Impostazioni</h1>
           <p className="text-muted-foreground">
-            Configura le preferenze dell'applicazione CarbonPilot
+            Configura le preferenze dell'applicazione Manta Group
           </p>
         </div>
       </div>

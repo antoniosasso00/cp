@@ -10,8 +10,8 @@ load_dotenv()
 
 config = context.config
 
-# 🔁 Usa DATABASE_URL_SYNC per Alembic se presente, altrimenti fallback su DATABASE_URL
-url = os.getenv("DATABASE_URL_SYNC") or os.getenv("DATABASE_URL", "postgresql://postgres:postgres@db:5432/carbonpilot")
+# 🔁 Forza l'uso di SQLite per il reset del database
+url = "sqlite:///./carbonpilot.db"
 config.set_main_option('sqlalchemy.url', url)
 
 fileConfig(config.config_file_name)

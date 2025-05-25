@@ -14,7 +14,7 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'CarbonPilot - Gestione Compositi',
+  title: 'Manta Group - Gestione Compositi',
   description: 'Sistema di gestione per la produzione di parti in composito',
 }
 

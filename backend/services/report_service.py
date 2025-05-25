@@ -424,7 +424,7 @@ class ReportService:
             alignment=1  # Centrato
         )
         
-        title = f"Report CarbonPilot - {report_type.value.capitalize()}"
+        title = f"Report Manta Group - {report_type.value.capitalize()}"
         story.append(Paragraph(title, title_style))
         
         # Sottotitolo con periodo
@@ -579,7 +579,7 @@ class ReportService:
             textColor=colors.grey
         )
         
-        footer_text = f"Report generato il {datetime.now().strftime('%d/%m/%Y alle %H:%M')} - CarbonPilot v1.0.0"
+        footer_text = f"Report generato il {datetime.now().strftime('%d/%m/%Y alle %H:%M')} - Manta Group v1.0.0"
         story.append(Paragraph(footer_text, footer_style))
         
         # Genera il PDF

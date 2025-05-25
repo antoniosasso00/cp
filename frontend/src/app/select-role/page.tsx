@@ -88,11 +88,11 @@ export default function SelectRolePage() {
         <div className="text-center mb-12">
           <div className="flex justify-center mb-6">
             <div className="bg-primary/10 rounded-full p-6 w-20 h-20 flex items-center justify-center">
-              <span className="text-3xl font-bold text-primary">CP</span>
+              <span className="text-3xl font-bold text-primary">MG</span>
             </div>
           </div>
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            Benvenuto in CarbonPilot
+            Benvenuto in Manta Group
           </h1>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
             Seleziona il tuo ruolo per accedere alle funzionalità appropriate del sistema

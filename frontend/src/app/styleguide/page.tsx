@@ -82,7 +82,7 @@ export default function StyleGuidePage() {
           <div>
             <h1 className="text-3xl font-bold">Design System</h1>
             <p className="text-muted-foreground">
-              Guida ai componenti UI di CarbonPilot
+              Guida ai componenti UI di Manta Group
             </p>
           </div>
           <div className="flex items-center space-x-4">
