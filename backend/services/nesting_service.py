@@ -10,6 +10,7 @@ from models.autoclave import Autoclave, StatoAutoclaveEnum
 from models.parte import Parte
 from models.nesting_result import NestingResult
 from nesting_optimizer.auto_nesting import compute_nesting, NestingResult as OptimizationResult
+from nesting_optimizer.two_level_nesting import compute_two_level_nesting, TwoLevelNestingResult
 from schemas.nesting import NestingResultSchema, NestingPreviewSchema, AutoclavePreviewInfo, ODLPreviewInfo
 from schemas.nesting import AutoclaveNestingInfo, ODLNestingInfo, NestingODLStatus
 import random
@@ -771,4 +772,189 @@ async def run_manual_nesting(db: Session, odl_ids: List[int], note: Optional[str
         autoclavi=autoclavi_info,
         odl_pianificati=odl_pianificati,
         odl_non_pianificabili=odl_non_pianificabili
-    ) 
+    )
+
+# ✅ NUOVO: Funzione per nesting su due piani
+async def run_two_level_nesting(
+    db: Session, 
+    autoclave_id: int, 
+    odl_ids: Optional[List[int]] = None,
+    superficie_piano_2_max_cm2: Optional[float] = None,
+    note: Optional[str] = None
+) -> Dict:
+    """
+    Esegue il nesting ottimizzato su due piani per un'autoclave specifica
+    
+    Args:
+        db: Sessione del database
+        autoclave_id: ID dell'autoclave target
+        odl_ids: Lista opzionale degli ID degli ODL da includere (se None, usa tutti gli ODL in attesa)
+        superficie_piano_2_max_cm2: Superficie massima del piano 2 in cm²
+        note: Note opzionali per il nesting
+        
+    Returns:
+        Dizionario con i risultati del nesting su due piani
+        
+    Raises:
+        ValueError: Se l'autoclave non è valida o gli ODL non sono disponibili
+    """
+    # Recupera l'autoclave
+    autoclave = db.query(Autoclave).filter(
+        Autoclave.id == autoclave_id,
+        Autoclave.stato == StatoAutoclaveEnum.DISPONIBILE
+    ).first()
+    
+    if not autoclave:
+        raise ValueError(f"Autoclave {autoclave_id} non trovata o non disponibile")
+    
+    # Verifica che l'autoclave abbia i dati necessari per il nesting su due piani
+    if not autoclave.max_load_kg:
+        raise ValueError(f"Autoclave {autoclave.nome} non ha il carico massimo configurato")
+    
+    # Recupera gli ODL da processare
+    if odl_ids:
+        # ODL specificati manualmente
+        odl_list = db.query(ODL).options(
+            joinedload(ODL.parte).joinedload(Parte.catalogo),
+            joinedload(ODL.tool)
+        ).filter(ODL.id.in_(odl_ids)).all()
+        
+        # Verifica che tutti gli ODL siano stati trovati
+        found_ids = {odl.id for odl in odl_list}
+        missing_ids = set(odl_ids) - found_ids
+        if missing_ids:
+            raise ValueError(f"ODL non trovati: {', '.join(map(str, missing_ids))}")
+    else:
+        # Usa tutti gli ODL in attesa di cura
+        odl_list = await get_odl_attesa_cura_filtered(db)
+    
+    if not odl_list:
+        raise ValueError("Nessun ODL disponibile per il nesting")
+    
+    # Esegui l'algoritmo di nesting su due piani
+    result = compute_two_level_nesting(
+        db=db,
+        odl_list=odl_list,
+        autoclave=autoclave,
+        superficie_piano_2_max_cm2=superficie_piano_2_max_cm2
+    )
+    
+    # Verifica che il carico sia valido
+    if not result.carico_valido:
+        raise ValueError(f"Nesting non valido: {result.motivo_invalidita}")
+    
+    # Verifica che almeno alcuni ODL siano stati pianificati
+    total_planned = len(result.piano_1) + len(result.piano_2)
+    if total_planned == 0:
+        raise ValueError("Nessun ODL può essere pianificato nell'autoclave selezionata")
+    
+    # Prepara le posizioni combinate per entrambi i piani
+    posizioni_combinate = []
+    posizioni_combinate.extend(result.posizioni_piano_1)
+    posizioni_combinate.extend(result.posizioni_piano_2)
+    
+    # Crea un nuovo record NestingResult nel database
+    nesting_record = NestingResult(
+        autoclave_id=autoclave_id,
+        odl_ids=result.piano_1 + result.piano_2,
+        odl_esclusi_ids=[item["odl_id"] for item in result.odl_non_pianificabili],
+        motivi_esclusione=result.odl_non_pianificabili,
+        stato="In attesa schedulazione",
+        area_utilizzata=result.area_piano_1 + result.area_piano_2,
+        area_totale=autoclave.area_piano,
+        valvole_utilizzate=0,  # Da calcolare se necessario
+        valvole_totali=autoclave.num_linee_vuoto,
+        # ✅ NUOVO: Campi specifici per nesting su due piani
+        peso_totale_kg=result.peso_totale,
+        area_piano_1=result.area_piano_1,
+        area_piano_2=result.area_piano_2,
+        superficie_piano_2_max=superficie_piano_2_max_cm2,
+        posizioni_tool=posizioni_combinate,
+        note=note or f"Nesting automatico su due piani - Piano 1: {len(result.piano_1)} ODL, Piano 2: {len(result.piano_2)} ODL"
+    )
+    
+    # Salva nel database
+    db.add(nesting_record)
+    db.flush()  # Per ottenere l'ID
+    
+    # Aggiorna lo stato degli ODL pianificati
+    odl_pianificati = []
+    for odl_id in result.piano_1 + result.piano_2:
+        odl = db.query(ODL).filter(ODL.id == odl_id).first()
+        if odl:
+            odl.status = "Cura"
+            db.add(odl)
+            
+            # Determina il piano assegnato
+            piano_assegnato = 1 if odl_id in result.piano_1 else 2
+            
+            odl_pianificati.append({
+                "id": odl.id,
+                "parte_descrizione": odl.parte.descrizione_breve if odl.parte else "Sconosciuta",
+                "tool_part_number": odl.tool.part_number_tool if odl.tool else "N/A",
+                "tool_peso_kg": odl.tool.peso if odl.tool and odl.tool.peso else 0.0,
+                "piano_assegnato": piano_assegnato,
+                "priorita": odl.priorita,
+                "status": "PIANIFICATO"
+            })
+    
+    # Prepara la lista degli ODL non pianificabili
+    odl_non_pianificabili = []
+    for item in result.odl_non_pianificabili:
+        odl_id = item["odl_id"]
+        motivo = item["motivo"]
+        
+        odl = db.query(ODL).filter(ODL.id == odl_id).first()
+        if odl:
+            odl_non_pianificabili.append({
+                "id": odl.id,
+                "parte_descrizione": odl.parte.descrizione_breve if odl.parte else "Sconosciuta",
+                "tool_part_number": odl.tool.part_number_tool if odl.tool else "N/A",
+                "motivo": motivo,
+                "priorita": odl.priorita,
+                "status": "NON_PIANIFICABILE"
+            })
+    
+    # Salva tutte le modifiche
+    db.commit()
+    
+    # Restituisci il risultato dettagliato
+    return {
+        "success": True,
+        "nesting_id": nesting_record.id,
+        "message": f"Nesting su due piani completato: {len(result.piano_1)} ODL piano 1, {len(result.piano_2)} ODL piano 2, {len(result.odl_non_pianificabili)} esclusi",
+        "autoclave": {
+            "id": autoclave.id,
+            "nome": autoclave.nome,
+            "max_load_kg": autoclave.max_load_kg,
+            "area_totale_cm2": autoclave.area_piano
+        },
+        "statistiche": {
+            "peso_totale_kg": result.peso_totale,
+            "peso_piano_1_kg": result.peso_piano_1,
+            "peso_piano_2_kg": result.peso_piano_2,
+            "area_piano_1_cm2": result.area_piano_1,
+            "area_piano_2_cm2": result.area_piano_2,
+            "superficie_piano_2_max_cm2": superficie_piano_2_max_cm2,
+            "efficienza_piano_1": nesting_record.efficienza_piano_1,
+            "efficienza_piano_2": nesting_record.efficienza_piano_2,
+            "efficienza_totale": nesting_record.efficienza_totale,
+            "carico_valido": result.carico_valido
+        },
+        "piano_1": {
+            "odl_count": len(result.piano_1),
+            "odl_ids": result.piano_1,
+            "peso_kg": result.peso_piano_1,
+            "area_cm2": result.area_piano_1,
+            "posizioni": result.posizioni_piano_1
+        },
+        "piano_2": {
+            "odl_count": len(result.piano_2),
+            "odl_ids": result.piano_2,
+            "peso_kg": result.peso_piano_2,
+            "area_cm2": result.area_piano_2,
+            "posizioni": result.posizioni_piano_2
+        },
+        "odl_pianificati": odl_pianificati,
+        "odl_non_pianificabili": odl_non_pianificabili
+    } 

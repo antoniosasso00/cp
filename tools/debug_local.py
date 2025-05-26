@@ -1,246 +1,170 @@
 #!/usr/bin/env python3
 """
-Script di debug completo per CarbonPilot
-Testa tutti gli endpoint e verifica la connessione al database
+Script di debug locale per CarbonPilot
+Fornisce utilities per il debug e il testing locale dell'applicazione
 """
 
+import os
+import sys
+import logging
 import requests
 import json
-import sys
-import os
-from datetime import datetime
+from pathlib import Path
 
-# Configurazione
-BASE_URL = "http://localhost:8000"
-API_BASE_URL = f"{BASE_URL}/api/v1"
+# Setup del path
+ROOT_DIR = Path(__file__).parent.parent
+sys.path.append(str(ROOT_DIR))
 
-def print_header(title):
-    """Stampa un header formattato"""
-    print(f"\n{'='*60}")
-    print(f"🔍 {title}")
-    print(f"{'='*60}")
+# Configurazione logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-def print_success(message):
-    """Stampa un messaggio di successo"""
-    print(f"✅ {message}")
+# Configurazione URL
+BASE_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+API_PREFIX = "/api/v1"
 
-def print_error(message):
-    """Stampa un messaggio di errore"""
-    print(f"❌ {message}")
-
-def print_warning(message):
-    """Stampa un messaggio di warning"""
-    print(f"⚠️ {message}")
-
-def test_endpoint(method, endpoint, data=None, params=None):
-    """Testa un endpoint specifico"""
-    url = f"{API_BASE_URL}{endpoint}"
-    
-    try:
-        print(f"\n🌐 Testing {method} {endpoint}")
-        
-        if method.upper() == "GET":
-            response = requests.get(url, params=params, timeout=10)
-        elif method.upper() == "POST":
-            response = requests.post(url, json=data, timeout=10)
-        elif method.upper() == "PUT":
-            response = requests.put(url, json=data, timeout=10)
-        elif method.upper() == "DELETE":
-            response = requests.delete(url, timeout=10)
-        else:
-            print_error(f"Metodo HTTP non supportato: {method}")
-            return False
-        
-        print(f"   Status Code: {response.status_code}")
-        
-        if response.status_code == 200:
-            try:
-                json_data = response.json()
-                if isinstance(json_data, list):
-                    print(f"   Risposta: Lista con {len(json_data)} elementi")
-                    if len(json_data) > 0:
-                        print(f"   Primo elemento: {json.dumps(json_data[0], indent=2, default=str)[:200]}...")
-                else:
-                    print(f"   Risposta: {json.dumps(json_data, indent=2, default=str)[:300]}...")
-                print_success(f"Endpoint {endpoint} funziona correttamente")
-                return True
-            except json.JSONDecodeError:
-                print(f"   Risposta (non JSON): {response.text[:200]}...")
-                print_success(f"Endpoint {endpoint} risponde (non JSON)")
-                return True
-        elif response.status_code == 201:
-            print_success(f"Endpoint {endpoint} - Risorsa creata")
-            return True
-        elif response.status_code == 204:
-            print_success(f"Endpoint {endpoint} - Operazione completata")
-            return True
-        elif response.status_code == 404:
-            print_warning(f"Endpoint {endpoint} non trovato")
-            return False
-        elif response.status_code == 422:
-            print_error(f"Errore di validazione su {endpoint}")
-            try:
-                error_data = response.json()
-                print(f"   Dettagli errore: {json.dumps(error_data, indent=2)}")
-            except:
-                print(f"   Risposta errore: {response.text}")
-            return False
-        else:
-            print_error(f"Errore {response.status_code} su {endpoint}")
-            print(f"   Risposta: {response.text[:200]}...")
-            return False
-            
-    except requests.exceptions.ConnectionError:
-        print_error(f"Impossibile connettersi a {url}")
-        print_error("Verifica che il backend sia in esecuzione su localhost:8000")
-        return False
-    except requests.exceptions.Timeout:
-        print_error(f"Timeout su {endpoint}")
-        return False
-    except Exception as e:
-        print_error(f"Errore imprevisto su {endpoint}: {str(e)}")
-        return False
-
-def test_health_endpoints():
-    """Testa gli endpoint di health check"""
-    print_header("HEALTH CHECK")
-    
-    # Test endpoint root
-    try:
-        response = requests.get(BASE_URL, timeout=5)
-        if response.status_code == 200:
-            print_success("Server principale raggiungibile")
-            data = response.json()
-            print(f"   Status: {data.get('status')}")
-            print(f"   Message: {data.get('message')}")
-        else:
-            print_error(f"Server principale non risponde correttamente: {response.status_code}")
-    except Exception as e:
-        print_error(f"Server principale non raggiungibile: {str(e)}")
-        return False
-    
-    # Test health endpoint dettagliato
+def check_backend_health():
+    """Verifica che il backend sia raggiungibile"""
     try:
         response = requests.get(f"{BASE_URL}/health", timeout=5)
         if response.status_code == 200:
-            print_success("Health check dettagliato OK")
-            data = response.json()
-            print(f"   Database status: {data.get('database', {}).get('status')}")
-            print(f"   Database tables: {data.get('database', {}).get('tables_count')}")
-            print(f"   API routes: {data.get('api', {}).get('routes_count')}")
+            logger.info("✅ Backend raggiungibile")
+            return True
         else:
-            print_error(f"Health check dettagliato fallito: {response.status_code}")
-    except Exception as e:
-        print_error(f"Health check dettagliato non raggiungibile: {str(e)}")
-    
-    return True
+            logger.error(f"❌ Backend risponde con status {response.status_code}")
+            return False
+    except requests.exceptions.RequestException as e:
+        logger.error(f"❌ Backend non raggiungibile: {e}")
+        return False
 
-def test_all_endpoints():
-    """Testa tutti gli endpoint principali"""
-    print_header("TEST ENDPOINT API")
-    
-    endpoints_to_test = [
-        # Tools
-        ("GET", "/tools", None, None),
-        ("GET", "/tools/with-status", None, None),
-        
-        # Parts
-        ("GET", "/parti", None, None),
-        
-        # ODL
-        ("GET", "/odl", None, None),
-        
-        # Catalogo
-        ("GET", "/catalogo", None, None),
-        
-        # Autoclavi
-        ("GET", "/autoclavi", None, None),
-        
-        # Nesting
-        ("GET", "/nesting", None, None),
-        ("GET", "/nesting/drafts", None, None),
-        
-        # Schedules
-        ("GET", "/schedules", None, None),
-        
-        # Cicli Cura
-        ("GET", "/cicli-cura", None, None),
-        
-        # Reports
-        ("GET", "/reports", None, None),
-        
-        # Tempo Fasi
-        ("GET", "/tempo-fasi", None, None),
+def check_database_connection():
+    """Verifica la connessione al database"""
+    try:
+        response = requests.get(f"{BASE_URL}{API_PREFIX}/catalogo/", timeout=5)
+        if response.status_code == 200:
+            logger.info("✅ Database connesso")
+            return True
+        else:
+            logger.error(f"❌ Errore database: {response.status_code}")
+            return False
+    except requests.exceptions.RequestException as e:
+        logger.error(f"❌ Errore connessione database: {e}")
+        return False
+
+def list_all_endpoints():
+    """Lista tutti gli endpoint disponibili"""
+    endpoints = [
+        "catalogo",
+        "tools", 
+        "cicli-cura",
+        "autoclavi",
+        "parti",
+        "odl",
+        "nesting",
+        "schedule",
+        "tempo-fasi"
     ]
     
-    results = []
-    for method, endpoint, data, params in endpoints_to_test:
-        success = test_endpoint(method, endpoint, data, params)
-        results.append((endpoint, success))
-    
-    # Riepilogo
-    print_header("RIEPILOGO TEST ENDPOINT")
-    successful = sum(1 for _, success in results if success)
-    total = len(results)
-    
-    print(f"Endpoint testati: {total}")
-    print(f"Endpoint funzionanti: {successful}")
-    print(f"Endpoint con problemi: {total - successful}")
-    
-    if successful == total:
-        print_success("Tutti gli endpoint funzionano correttamente!")
-    else:
-        print_warning("Alcuni endpoint hanno problemi:")
-        for endpoint, success in results:
-            if not success:
-                print(f"   ❌ {endpoint}")
+    logger.info("📋 Verifica endpoint API:")
+    for endpoint in endpoints:
+        try:
+            response = requests.get(f"{BASE_URL}{API_PREFIX}/{endpoint}/", timeout=5)
+            count = len(response.json()) if response.status_code == 200 else 0
+            status = "✅" if response.status_code == 200 else "❌"
+            logger.info(f"{status} {endpoint}: {count} record")
+        except Exception as e:
+            logger.error(f"❌ {endpoint}: Errore - {e}")
 
-def test_database_connection():
-    """Testa la connessione al database tramite l'endpoint health"""
-    print_header("TEST CONNESSIONE DATABASE")
-    
+def debug_odl_status():
+    """Debug dello stato degli ODL"""
     try:
-        response = requests.get(f"{BASE_URL}/health", timeout=5)
+        response = requests.get(f"{BASE_URL}{API_PREFIX}/odl/", timeout=5)
         if response.status_code == 200:
-            data = response.json()
-            db_status = data.get('database', {}).get('status')
-            tables_count = data.get('database', {}).get('tables_count', 0)
+            odl_list = response.json()
+            logger.info(f"📋 ODL totali: {len(odl_list)}")
             
-            if db_status == "connected":
-                print_success(f"Database connesso con {tables_count} tabelle")
-                return True
-            else:
-                print_error(f"Database non connesso: {db_status}")
-                return False
+            # Raggruppa per status
+            status_count = {}
+            for odl in odl_list:
+                status = odl.get('status', 'N/A')
+                status_count[status] = status_count.get(status, 0) + 1
+            
+            for status, count in status_count.items():
+                logger.info(f"   {status}: {count}")
         else:
-            print_error("Impossibile verificare lo stato del database")
-            return False
+            logger.error(f"❌ Errore recupero ODL: {response.status_code}")
     except Exception as e:
-        print_error(f"Errore nel test database: {str(e)}")
-        return False
+        logger.error(f"❌ Errore debug ODL: {e}")
 
-def main():
-    """Funzione principale"""
-    print_header("DEBUG COMPLETO CARBONPILOT")
-    print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"Base URL: {BASE_URL}")
-    print(f"API Base URL: {API_BASE_URL}")
+def debug_nesting_optimization():
+    """Debug dell'ottimizzazione nesting"""
+    try:
+        # Verifica se ci sono ODL pronti per il nesting
+        response = requests.get(f"{BASE_URL}{API_PREFIX}/odl/", timeout=5)
+        if response.status_code == 200:
+            odl_list = response.json()
+            ready_odl = [odl for odl in odl_list if odl.get('status') == 'Attesa Cura']
+            logger.info(f"🧩 ODL pronti per nesting: {len(ready_odl)}")
+            
+            # Verifica autoclavi disponibili
+            response = requests.get(f"{BASE_URL}{API_PREFIX}/autoclavi/", timeout=5)
+            if response.status_code == 200:
+                autoclavi = response.json()
+                available = [a for a in autoclavi if a.get('stato') == 'DISPONIBILE']
+                logger.info(f"🏭 Autoclavi disponibili: {len(available)}")
+        else:
+            logger.error(f"❌ Errore debug nesting: {response.status_code}")
+    except Exception as e:
+        logger.error(f"❌ Errore debug nesting: {e}")
+
+def run_full_debug():
+    """Esegue un debug completo del sistema"""
+    logger.info("🔍 AVVIO DEBUG COMPLETO CARBONPILOT")
+    logger.info("=" * 50)
     
-    # Test 1: Health check
-    if not test_health_endpoints():
-        print_error("Health check fallito. Il server potrebbe non essere in esecuzione.")
-        sys.exit(1)
+    # Verifica connessioni
+    if not check_backend_health():
+        return False
     
-    # Test 2: Database
-    test_database_connection()
+    if not check_database_connection():
+        return False
     
-    # Test 3: Tutti gli endpoint
-    test_all_endpoints()
+    # Verifica endpoint
+    list_all_endpoints()
     
-    print_header("DEBUG COMPLETATO")
-    print("Se ci sono errori 422, controlla i parametri delle richieste.")
-    print("Se ci sono errori 500, controlla i log del backend.")
-    print("Se ci sono errori di connessione, verifica che il backend sia in esecuzione.")
+    # Debug specifici
+    debug_odl_status()
+    debug_nesting_optimization()
+    
+    logger.info("✅ Debug completato")
+    return True
 
 if __name__ == "__main__":
-    main() 
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Script di debug locale per CarbonPilot")
+    parser.add_argument("--full", action="store_true", help="Esegue debug completo")
+    parser.add_argument("--health", action="store_true", help="Verifica solo la salute del backend")
+    parser.add_argument("--endpoints", action="store_true", help="Lista tutti gli endpoint")
+    parser.add_argument("--odl", action="store_true", help="Debug stato ODL")
+    parser.add_argument("--nesting", action="store_true", help="Debug nesting")
+    
+    args = parser.parse_args()
+    
+    if args.full:
+        run_full_debug()
+    elif args.health:
+        check_backend_health()
+        check_database_connection()
+    elif args.endpoints:
+        list_all_endpoints()
+    elif args.odl:
+        debug_odl_status()
+    elif args.nesting:
+        debug_nesting_optimization()
+    else:
+        # Default: debug completo
+        run_full_debug() 

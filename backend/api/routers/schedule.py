@@ -20,6 +20,8 @@ from services.schedule_service import (
     create_recurring_schedules, handle_operator_action,
     get_schedules_by_date_range
 )
+from services.system_log_service import SystemLogService
+from models.system_log import UserRole
 
 # Crea un router per la gestione delle schedulazioni
 router = APIRouter(
@@ -322,7 +324,27 @@ def execute_operator_action(
         HTTPException: Se ci sono problemi nell'esecuzione dell'azione
     """
     try:
-        return handle_operator_action(db, schedule_id, action_data)
+        result = handle_operator_action(db, schedule_id, action_data)
+        
+        # Log dell'evento nel sistema
+        if action_data.action == "start":
+            SystemLogService.log_cura_start(
+                db=db,
+                schedule_entry_id=schedule_id,
+                autoclave_id=result.autoclave_id,
+                user_role=UserRole.AUTOCLAVISTA,
+                user_id="autoclavista"
+            )
+        elif action_data.action == "complete":
+            SystemLogService.log_cura_complete(
+                db=db,
+                schedule_entry_id=schedule_id,
+                autoclave_id=result.autoclave_id,
+                user_role=UserRole.AUTOCLAVISTA,
+                user_id="autoclavista"
+            )
+        
+        return result
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -31,6 +31,10 @@ class Autoclave(Base, TimestampMixin):
     temperatura_max = Column(Float, doc="Temperatura massima in gradi Celsius")
     pressione_max = Column(Float, doc="Pressione massima in bar")
     
+    # ✅ NUOVO: Carico massimo per nesting su due piani
+    max_load_kg = Column(Float, nullable=True, default=1000.0, 
+                        doc="Carico massimo supportato dall'autoclave in kg")
+    
     # Stato operativo
     stato = Column(
         PgEnum(StatoAutoclaveEnum, name="statoautoclave", create_type=True, validate_strings=True),
@@ -54,5 +58,12 @@ class Autoclave(Base, TimestampMixin):
         """Indica se l'autoclave è disponibile per l'uso"""
         return self.stato == StatoAutoclaveEnum.DISPONIBILE
     
+    @property
+    def area_piano(self) -> float:
+        """Calcola l'area del piano dell'autoclave in cm²"""
+        if self.lunghezza and self.larghezza_piano:
+            return (self.lunghezza * self.larghezza_piano) / 100  # conversione da mm² a cm²
+        return 0.0
+    
     def __repr__(self):
-        return f"<Autoclave(id={self.id}, nome='{self.nome}', stato={self.stato.value})>" 
+        return f"<Autoclave(id={self.id}, nome='{self.nome}', max_load={self.max_load_kg}kg, stato={self.stato.value})>" 

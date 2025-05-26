@@ -125,6 +125,10 @@ def update_autoclave(autoclave_id: int, autoclave: AutoclaveUpdate, db: Session 
     Aggiorna i dati di un'autoclave esistente.
     Solo i campi inclusi nella richiesta verranno aggiornati.
     """
+    from services.system_log_service import SystemLogService
+    from models.system_log import UserRole
+    import json
+    
     db_autoclave = db.query(Autoclave).filter(Autoclave.id == autoclave_id).first()
     
     if db_autoclave is None:
@@ -134,15 +138,56 @@ def update_autoclave(autoclave_id: int, autoclave: AutoclaveUpdate, db: Session 
             detail=f"Autoclave con ID {autoclave_id} non trovata"
         )
     
+    # Salva i valori precedenti per il logging
+    old_values = {
+        "nome": db_autoclave.nome,
+        "codice": db_autoclave.codice,
+        "lunghezza": db_autoclave.lunghezza,
+        "larghezza_piano": db_autoclave.larghezza_piano,
+        "num_linee_vuoto": db_autoclave.num_linee_vuoto,
+        "temperatura_max": db_autoclave.temperatura_max,
+        "pressione_max": db_autoclave.pressione_max,
+        "max_load_kg": db_autoclave.max_load_kg,
+        "stato": db_autoclave.stato.value if db_autoclave.stato else None,
+        "produttore": db_autoclave.produttore,
+        "anno_produzione": db_autoclave.anno_produzione,
+        "note": db_autoclave.note
+    }
+    
     try:
         # Aggiornamento dei campi presenti nella richiesta
         update_data = autoclave.model_dump(exclude_unset=True)
+        modified_fields = []
         
         for key, value in update_data.items():
-            setattr(db_autoclave, key, value)
+            old_value = getattr(db_autoclave, key)
+            # Gestione speciale per enum
+            if hasattr(old_value, 'value'):
+                old_value = old_value.value
+            
+            if old_value != value:
+                modified_fields.append(f"{key}: {old_value} → {value}")
+                setattr(db_autoclave, key, value)
         
         db.commit()
         db.refresh(db_autoclave)
+        
+        # Log dell'evento se ci sono state modifiche
+        if modified_fields:
+            modification_details = f"Campi modificati: {', '.join(modified_fields)}"
+            
+            SystemLogService.log_autoclave_modify(
+                db=db,
+                autoclave_id=autoclave_id,
+                modification_details=modification_details,
+                user_role=UserRole.ADMIN,  # Assumiamo che solo admin possa modificare autoclavi
+                old_value=json.dumps(old_values),
+                new_value=json.dumps(update_data),
+                user_id="admin"  # In futuro si potrà passare l'ID utente reale
+            )
+            
+            logger.info(f"Autoclave {autoclave_id} aggiornata: {modification_details}")
+        
         return db_autoclave
     except IntegrityError as e:
         db.rollback()

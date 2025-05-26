@@ -127,6 +127,10 @@ def update_ciclo_cura(ciclo_cura_id: int, ciclo_cura: CicloCuraUpdate, db: Sessi
     Aggiorna i dati di un ciclo di cura esistente.
     Solo i campi inclusi nella richiesta verranno aggiornati.
     """
+    from services.system_log_service import SystemLogService
+    from models.system_log import UserRole
+    import json
+    
     db_ciclo_cura = db.query(CicloCura).filter(CicloCura.id == ciclo_cura_id).first()
     
     if db_ciclo_cura is None:
@@ -135,6 +139,19 @@ def update_ciclo_cura(ciclo_cura_id: int, ciclo_cura: CicloCuraUpdate, db: Sessi
             status_code=status.HTTP_404_NOT_FOUND, 
             detail=f"Ciclo di cura con ID {ciclo_cura_id} non trovato"
         )
+    
+    # Salva i valori precedenti per il logging
+    old_values = {
+        "nome": db_ciclo_cura.nome,
+        "temperatura_stasi1": db_ciclo_cura.temperatura_stasi1,
+        "pressione_stasi1": db_ciclo_cura.pressione_stasi1,
+        "durata_stasi1": db_ciclo_cura.durata_stasi1,
+        "attiva_stasi2": db_ciclo_cura.attiva_stasi2,
+        "temperatura_stasi2": db_ciclo_cura.temperatura_stasi2,
+        "pressione_stasi2": db_ciclo_cura.pressione_stasi2,
+        "durata_stasi2": db_ciclo_cura.durata_stasi2,
+        "descrizione": db_ciclo_cura.descrizione
+    }
     
     # Ottieni i dati da aggiornare
     update_data = ciclo_cura.model_dump(exclude_unset=True)
@@ -169,15 +186,37 @@ def update_ciclo_cura(ciclo_cura_id: int, ciclo_cura: CicloCuraUpdate, db: Sessi
             update_data["pressione_stasi2"] = None
             update_data["durata_stasi2"] = None
     
+    # Traccia i campi modificati per il logging
+    modified_fields = []
+    
     # Aggiorna solo i campi specificati nell'update
     for key, value in update_data.items():
         if hasattr(db_ciclo_cura, key):
-            setattr(db_ciclo_cura, key, value)
+            old_value = getattr(db_ciclo_cura, key)
+            if old_value != value:
+                modified_fields.append(f"{key}: {old_value} → {value}")
+                setattr(db_ciclo_cura, key, value)
     
     try:
         db.commit()
         db.refresh(db_ciclo_cura)
-        logger.info(f"Ciclo di cura {ciclo_cura_id} aggiornato con successo")
+        
+        # Log dell'evento se ci sono state modifiche
+        if modified_fields:
+            modification_details = f"Campi modificati: {', '.join(modified_fields)}"
+            
+            SystemLogService.log_ciclo_modify(
+                db=db,
+                ciclo_id=ciclo_cura_id,
+                modification_details=modification_details,
+                user_role=UserRole.ADMIN,  # Assumiamo che solo admin possa modificare cicli
+                old_value=json.dumps(old_values),
+                new_value=json.dumps(update_data),
+                user_id="admin"  # In futuro si potrà passare l'ID utente reale
+            )
+            
+            logger.info(f"Ciclo di cura {ciclo_cura_id} aggiornato: {modification_details}")
+        
         return db_ciclo_cura
     except IntegrityError as e:
         db.rollback()

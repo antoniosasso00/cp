@@ -12,14 +12,14 @@ export default function Home() {
             </div>
           </div>
           
-          <h1 className="text-4xl font-bold text-center mb-6 text-gray-800">CarbonPilot</h1>
+          <h1 className="text-4xl font-bold text-center mb-6 text-gray-800">Manta Group</h1>
           <p className="text-lg text-center mb-10 text-gray-600">
             Sistema di gestione della produzione di parti in composito
           </p>
           
           <div className="space-y-4">
             <div className="flex flex-col space-y-2">
-              <Link href="/select-role" className="w-full">
+              <Link href="/role" className="w-full">
                 <Button className="w-full text-lg py-6">
                   Accedi al Sistema
                 </Button>
@@ -27,7 +27,7 @@ export default function Home() {
             </div>
             
             <p className="text-center text-sm text-gray-500 mt-8">
-              CarbonPilot v0.4.0 &copy; {new Date().getFullYear()} - Sistema Gestione Compositi
+              Manta Group v0.4.0 &copy; {new Date().getFullYear()} - Sistema Gestione Compositi
             </p>
           </div>
         </div>

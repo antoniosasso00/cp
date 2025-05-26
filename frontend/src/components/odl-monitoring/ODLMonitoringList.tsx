@@ -13,6 +13,7 @@ import {
   AlertCircle,
   Loader2
 } from 'lucide-react';
+import { OdlProgressWrapper } from '@/components/ui/OdlProgressWrapper';
 
 interface ODLMonitoringSummary {
   id: number;
@@ -192,39 +193,46 @@ export function ODLMonitoringList({
                 </div>
               </div>
 
-              {/* Informazioni temporali e ultimo evento */}
+              {/* Barra di progresso temporale */}
               <div className="mt-4 pt-4 border-t border-gray-200">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                  <div className="flex items-center space-x-2">
-                    <Calendar className="h-4 w-4 text-gray-400" />
-                    <div>
-                      <span className="font-medium text-gray-600">Creato:</span>
-                      <p className="text-gray-900">{formatDate(odl.created_at)}</p>
-                    </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-600">Progresso Temporale:</span>
+                    <span className="text-xs text-gray-500">
+                      Creato: {formatDate(odl.created_at)}
+                    </span>
                   </div>
                   
-                  <div className="flex items-center space-x-2">
-                    <Clock className="h-4 w-4 text-gray-400" />
-                    <div>
-                      <span className="font-medium text-gray-600">Tempo nello stato:</span>
-                      <p className="text-gray-900">{formatTempo(odl.tempo_in_stato_corrente)}</p>
-                    </div>
-                  </div>
+                  <OdlProgressWrapper 
+                    odlId={odl.id}
+                    showDetails={false}
+                    className="mb-2"
+                  />
                   
-                  {odl.ultimo_evento && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                     <div className="flex items-center space-x-2">
-                      {getEventIcon(odl.ultimo_evento)}
+                      <Clock className="h-4 w-4 text-gray-400" />
                       <div>
-                        <span className="font-medium text-gray-600">Ultimo evento:</span>
-                        <p className="text-gray-900 capitalize">{odl.ultimo_evento.replace('_', ' ')}</p>
-                        {odl.ultimo_evento_timestamp && (
-                          <p className="text-xs text-gray-500">
-                            {formatDate(odl.ultimo_evento_timestamp)}
-                          </p>
-                        )}
+                        <span className="font-medium text-gray-600">Tempo nello stato:</span>
+                        <p className="text-gray-900">{formatTempo(odl.tempo_in_stato_corrente)}</p>
                       </div>
                     </div>
-                  )}
+                    
+                    {odl.ultimo_evento && (
+                      <div className="flex items-center space-x-2">
+                        {getEventIcon(odl.ultimo_evento)}
+                        <div>
+                          <span className="font-medium text-gray-600">Ultimo evento:</span>
+                          <p className="text-gray-900 capitalize">{odl.ultimo_evento.replace('_', ' ')}</p>
+                          {odl.ultimo_evento_timestamp && (
+                            <p className="text-xs text-gray-500">
+                              {formatDate(odl.ultimo_evento_timestamp)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 

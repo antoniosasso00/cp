@@ -10,6 +10,8 @@ from api.routers.nesting import router as nesting_router
 from api.routers.schedule import router as schedule_router
 from api.routers.reports import router as reports_router
 from api.routers.odl_monitoring import router as odl_monitoring_router
+from api.routers.admin import router as admin_router
+from api.routers.system_logs import router as system_logs_router
 
 router = APIRouter()
 
@@ -24,3 +26,5 @@ router.include_router(nesting_router, prefix="/v1/nesting")
 router.include_router(schedule_router, prefix="/v1/schedules")
 router.include_router(reports_router, prefix="/v1/reports")
 router.include_router(odl_monitoring_router, prefix="/v1/odl-monitoring")
+router.include_router(admin_router, prefix="/v1")
+router.include_router(system_logs_router, prefix="/v1")

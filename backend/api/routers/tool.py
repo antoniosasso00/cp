@@ -232,6 +232,10 @@ def update_tool(tool_id: int, tool: ToolUpdate, db: Session = Depends(get_db)):
     Aggiorna i dati di uno stampo (tool) esistente.
     Solo i campi inclusi nella richiesta verranno aggiornati.
     """
+    from services.system_log_service import SystemLogService
+    from models.system_log import UserRole
+    import json
+    
     db_tool = db.query(Tool).filter(Tool.id == tool_id).first()
     
     if db_tool is None:
@@ -241,14 +245,45 @@ def update_tool(tool_id: int, tool: ToolUpdate, db: Session = Depends(get_db)):
             detail=f"Tool con ID {tool_id} non trovato"
         )
     
+    # Salva i valori precedenti per il logging
+    old_values = {
+        "part_number_tool": db_tool.part_number_tool,
+        "lunghezza": db_tool.lunghezza,
+        "larghezza": db_tool.larghezza,
+        "disponibile": db_tool.disponibile,
+        "note": db_tool.note
+    }
+    
     # Aggiornamento dei campi presenti nella richiesta
     update_data = tool.model_dump(exclude_unset=True)
+    modified_fields = []
+    
     for key, value in update_data.items():
-        setattr(db_tool, key, value)
+        old_value = getattr(db_tool, key)
+        if old_value != value:
+            modified_fields.append(f"{key}: {old_value} → {value}")
+            setattr(db_tool, key, value)
     
     try:
         db.commit()
         db.refresh(db_tool)
+        
+        # Log dell'evento se ci sono state modifiche
+        if modified_fields:
+            modification_details = f"Campi modificati: {', '.join(modified_fields)}"
+            
+            SystemLogService.log_tool_modify(
+                db=db,
+                tool_id=tool_id,
+                modification_details=modification_details,
+                user_role=UserRole.ADMIN,  # Assumiamo che solo admin possa modificare tool
+                old_value=json.dumps(old_values),
+                new_value=json.dumps(update_data),
+                user_id="admin"  # In futuro si potrà passare l'ID utente reale
+            )
+            
+            logger.info(f"Tool {tool_id} aggiornato: {modification_details}")
+        
         return db_tool
     except IntegrityError as e:
         db.rollback()

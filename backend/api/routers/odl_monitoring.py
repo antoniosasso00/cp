@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from api.database import get_db
 from schemas.odl_monitoring import (
@@ -248,59 +248,233 @@ def create_odl_log(
 
 
 @router.get("/{odl_id}/timeline", 
-            summary="Ottiene timeline eventi per un ODL")
+            summary="Ottiene timeline completa per un ODL con statistiche temporali")
 def get_odl_timeline(odl_id: int, db: Session = Depends(get_db)):
     """
-    Restituisce una timeline semplificata degli eventi principali di un ODL,
-    ottimizzata per la visualizzazione in UI.
+    Restituisce una timeline completa degli eventi di un ODL con:
+    - Dati temporali per ogni stato
+    - Statistiche di durata
+    - Log dettagliati con informazioni correlate
+    - Calcoli di efficienza
     """
     try:
+        from models.odl import ODL
+        from models.parte import Parte
+        from models.tool import Tool
+        from models.autoclave import Autoclave
+        from models.nesting_result import NestingResult
+        from datetime import datetime, timedelta
+        
+        # Recupera l'ODL con le relazioni
+        odl = db.query(ODL).options(
+            joinedload(ODL.parte),
+            joinedload(ODL.tool),
+            joinedload(ODL.logs)
+        ).filter(ODL.id == odl_id).first()
+        
+        if not odl:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"ODL con ID {odl_id} non trovato"
+            )
+        
+        # Recupera i log ordinati per timestamp
         logs = ODLLogService.ottieni_logs_odl(db=db, odl_id=odl_id)
         
-        # Crea timeline semplificata
-        timeline = []
+        # Arricchisci i log con informazioni correlate
+        logs_arricchiti = []
         for log in logs:
-            timeline_item = {
-                "timestamp": log.timestamp,
+            log_dict = {
+                "id": log.id,
                 "evento": log.evento,
-                "stato": log.stato_nuovo,
+                "stato_precedente": log.stato_precedente,
+                "stato_nuovo": log.stato_nuovo,
                 "descrizione": log.descrizione,
-                "responsabile": log.responsabile or "Sistema"
+                "responsabile": log.responsabile,
+                "timestamp": log.timestamp.isoformat(),
+                "nesting_stato": None,
+                "autoclave_nome": None,
+                "nesting_id": log.nesting_id,
+                "autoclave_id": log.autoclave_id,
+                "schedule_entry_id": log.schedule_entry_id
             }
             
-            # Aggiungi icona/colore basato sull'evento
-            if "creato" in log.evento.lower():
-                timeline_item["icon"] = "plus"
-                timeline_item["color"] = "blue"
-            elif "nesting" in log.evento.lower():
-                timeline_item["icon"] = "grid"
-                timeline_item["color"] = "purple"
-            elif "cura" in log.evento.lower():
-                timeline_item["icon"] = "flame"
-                timeline_item["color"] = "orange"
-            elif "finito" in log.stato_nuovo.lower():
-                timeline_item["icon"] = "check"
-                timeline_item["color"] = "green"
-            elif "bloccato" in log.evento.lower():
-                timeline_item["icon"] = "alert"
-                timeline_item["color"] = "red"
-            else:
-                timeline_item["icon"] = "clock"
-                timeline_item["color"] = "gray"
+            # Aggiungi informazioni correlate se disponibili
+            if log.nesting_id:
+                nesting = db.query(NestingResult).filter(NestingResult.id == log.nesting_id).first()
+                if nesting:
+                    log_dict["nesting_stato"] = nesting.stato
             
-            timeline.append(timeline_item)
+            if log.autoclave_id:
+                autoclave = db.query(Autoclave).filter(Autoclave.id == log.autoclave_id).first()
+                if autoclave:
+                    log_dict["autoclave_nome"] = autoclave.nome
+            
+            logs_arricchiti.append(log_dict)
         
-        logger.info(f"Restituita timeline con {len(timeline)} eventi per ODL {odl_id}")
-        return {
+        # Calcola le durate per stato
+        durata_per_stato = {}
+        timestamps_stati = []
+        
+        # Raggruppa i log per transizioni di stato
+        for i, log in enumerate(logs):
+            if i < len(logs) - 1:
+                next_log = logs[i + 1]
+                durata_minuti = int((next_log.timestamp - log.timestamp).total_seconds() / 60)
+                
+                if log.stato_nuovo not in durata_per_stato:
+                    durata_per_stato[log.stato_nuovo] = 0
+                durata_per_stato[log.stato_nuovo] += durata_minuti
+                
+                # Aggiungi timestamp per la barra di progresso
+                timestamps_stati.append({
+                    "stato": log.stato_nuovo,
+                    "inizio": log.timestamp.isoformat(),
+                    "fine": next_log.timestamp.isoformat(),
+                    "durata_minuti": durata_minuti
+                })
+            else:
+                # Ultimo log - stato corrente
+                if odl.status != 'Finito':
+                    durata_corrente = int((datetime.now() - log.timestamp).total_seconds() / 60)
+                    if log.stato_nuovo not in durata_per_stato:
+                        durata_per_stato[log.stato_nuovo] = 0
+                    durata_per_stato[log.stato_nuovo] += durata_corrente
+                    
+                    timestamps_stati.append({
+                        "stato": log.stato_nuovo,
+                        "inizio": log.timestamp.isoformat(),
+                        "fine": None,
+                        "durata_minuti": durata_corrente
+                    })
+        
+        # Calcola statistiche
+        durata_totale_minuti = sum(durata_per_stato.values())
+        numero_transizioni = len(logs) - 1 if len(logs) > 1 else 0
+        
+        # Calcola tempo medio per transizione
+        tempo_medio_per_transizione = {}
+        if numero_transizioni > 0:
+            for stato, durata in durata_per_stato.items():
+                tempo_medio_per_transizione[stato] = durata
+        
+        # Stima efficienza (basata su tempi standard se disponibili)
+        efficienza_stimata = None
+        if durata_totale_minuti > 0:
+            # Tempo stimato base (esempio: 8 ore per un ODL completo)
+            tempo_stimato_base = 8 * 60  # 480 minuti
+            efficienza_stimata = min(100, int((tempo_stimato_base / durata_totale_minuti) * 100))
+        
+        # Prepara la risposta completa
+        timeline_data = {
             "odl_id": odl_id,
-            "timeline": timeline
+            "parte_nome": odl.parte.descrizione_breve,
+            "tool_nome": odl.tool.part_number_tool,
+            "status_corrente": odl.status,
+            "created_at": odl.created_at.isoformat(),
+            "updated_at": odl.updated_at.isoformat(),
+            "logs": logs_arricchiti,
+            "timestamps": timestamps_stati,
+            "statistiche": {
+                "durata_totale_minuti": durata_totale_minuti,
+                "durata_per_stato": durata_per_stato,
+                "tempo_medio_per_transizione": tempo_medio_per_transizione,
+                "numero_transizioni": numero_transizioni,
+                "efficienza_stimata": efficienza_stimata
+            }
         }
         
+        logger.info(f"Restituita timeline completa per ODL {odl_id} con {len(logs_arricchiti)} eventi")
+        return timeline_data
+        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Errore durante il recupero della timeline ODL {odl_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Errore durante il recupero della timeline ODL"
+        )
+
+@router.get("/{odl_id}/progress", 
+            summary="Ottiene dati di progresso per la barra temporale di un ODL")
+def get_odl_progress(odl_id: int, db: Session = Depends(get_db)):
+    """
+    Restituisce i dati ottimizzati per la visualizzazione della barra di progresso temporale.
+    Include solo i timestamp degli stati e le durate necessarie per il rendering.
+    """
+    try:
+        from models.odl import ODL
+        from datetime import datetime
+        
+        # Recupera l'ODL
+        odl = db.query(ODL).filter(ODL.id == odl_id).first()
+        if not odl:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"ODL con ID {odl_id} non trovato"
+            )
+        
+        # Recupera i log ordinati per timestamp
+        logs = ODLLogService.ottieni_logs_odl(db=db, odl_id=odl_id)
+        
+        # Calcola i timestamp per ogni stato
+        timestamps_stati = []
+        
+        for i, log in enumerate(logs):
+            if i < len(logs) - 1:
+                next_log = logs[i + 1]
+                durata_minuti = int((next_log.timestamp - log.timestamp).total_seconds() / 60)
+                
+                timestamps_stati.append({
+                    "stato": log.stato_nuovo,
+                    "inizio": log.timestamp.isoformat(),
+                    "fine": next_log.timestamp.isoformat(),
+                    "durata_minuti": durata_minuti
+                })
+            else:
+                # Ultimo log - stato corrente
+                if odl.status != 'Finito':
+                    durata_corrente = int((datetime.now() - log.timestamp).total_seconds() / 60)
+                    timestamps_stati.append({
+                        "stato": log.stato_nuovo,
+                        "inizio": log.timestamp.isoformat(),
+                        "fine": None,
+                        "durata_minuti": durata_corrente
+                    })
+                else:
+                    # ODL finito
+                    timestamps_stati.append({
+                        "stato": log.stato_nuovo,
+                        "inizio": log.timestamp.isoformat(),
+                        "fine": log.timestamp.isoformat(),
+                        "durata_minuti": 0
+                    })
+        
+        # Calcola tempo totale stimato (se disponibile)
+        tempo_totale_stimato = None
+        if len(timestamps_stati) > 0:
+            tempo_totale_stimato = sum(t["durata_minuti"] for t in timestamps_stati)
+        
+        progress_data = {
+            "id": odl_id,
+            "status": odl.status,
+            "created_at": odl.created_at.isoformat(),
+            "updated_at": odl.updated_at.isoformat(),
+            "timestamps": timestamps_stati,
+            "tempo_totale_stimato": tempo_totale_stimato
+        }
+        
+        logger.info(f"Restituiti dati di progresso per ODL {odl_id}")
+        return progress_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Errore durante il recupero dei dati di progresso ODL {odl_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Errore durante il recupero dei dati di progresso ODL"
         )
 
 @router.post("/generate-missing-logs", 

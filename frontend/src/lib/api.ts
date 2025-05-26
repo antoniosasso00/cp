@@ -145,9 +145,14 @@ export interface Tool {
   descrizione?: string
   lunghezza_piano: number
   larghezza_piano: number
+  // ✅ NUOVO: Campi per nesting su due piani
+  peso?: number
+  materiale?: string
   disponibile: boolean
   created_at: string
   updated_at: string
+  // ✅ NUOVO: Campo calcolato per l'area
+  area?: number
 }
 
 export interface ToolWithStatus extends Tool {
@@ -165,6 +170,9 @@ export interface CreateToolDto {
   descrizione?: string
   lunghezza_piano: number
   larghezza_piano: number
+  // ✅ NUOVO: Campi per nesting su due piani
+  peso?: number
+  materiale?: string
   disponibile: boolean
 }
 
@@ -425,11 +433,15 @@ export interface Autoclave {
   stato: 'DISPONIBILE' | 'IN_USO' | 'GUASTO' | 'MANUTENZIONE' | 'SPENTA'
   temperatura_max: number
   pressione_max: number
+  // ✅ NUOVO: Carico massimo per nesting su due piani
+  max_load_kg?: number
   produttore?: string
   anno_produzione?: number
   note?: string
   created_at: string
   updated_at: string
+  // ✅ NUOVO: Campo calcolato per l'area del piano
+  area_piano?: number
 }
 
 export interface CreateAutoclaveDto {
@@ -441,6 +453,8 @@ export interface CreateAutoclaveDto {
   stato: 'DISPONIBILE' | 'IN_USO' | 'GUASTO' | 'MANUTENZIONE' | 'SPENTA'
   temperatura_max: number
   pressione_max: number
+  // ✅ NUOVO: Carico massimo per nesting su due piani
+  max_load_kg?: number
   produttore?: string
   anno_produzione?: number
   note?: string
@@ -590,6 +604,37 @@ export const odlApi = {
 
   getPendingNesting: async (): Promise<ODLResponse[]> => {
     const response = await api.get<ODLResponse[]>('/odl/pending-nesting');
+    return response.data;
+  },
+
+  // Funzioni specifiche per ruoli
+  updateStatusLaminatore: async (id: number, newStatus: "Laminazione" | "Attesa Cura"): Promise<ODLResponse> => {
+    const response = await api.patch<ODLResponse>(`/odl/${id}/laminatore-status`, null, {
+      params: { new_status: newStatus }
+    });
+    return response.data;
+  },
+
+  updateStatusAutoclavista: async (id: number, newStatus: "Cura" | "Finito"): Promise<ODLResponse> => {
+    const response = await api.patch<ODLResponse>(`/odl/${id}/autoclavista-status`, null, {
+      params: { new_status: newStatus }
+    });
+    return response.data;
+  },
+
+  // API per il monitoraggio e la timeline
+  getProgress: async (id: number) => {
+    const response = await api.get(`/odl-monitoring/monitoring/${id}/progress`);
+    return response.data;
+  },
+
+  getTimeline: async (id: number) => {
+    const response = await api.get(`/odl-monitoring/monitoring/${id}/timeline`);
+    return response.data;
+  },
+
+  getMonitoringDetail: async (id: number) => {
+    const response = await api.get(`/odl-monitoring/monitoring/${id}`);
     return response.data;
   },
 };
@@ -848,6 +893,71 @@ export interface NestingAssignmentRequest {
   note?: string;
 }
 
+// ✅ NUOVO: Interfacce per nesting su due piani
+export interface TwoLevelNestingRequest {
+  superficie_piano_2_max_cm2?: number;
+  note?: string;
+}
+
+export interface TwoLevelNestingResponse {
+  success: boolean;
+  message: string;
+  nesting_id: number;
+  autoclave: {
+    id: number;
+    nome: string;
+    codice: string;
+    max_load_kg: number;
+    lunghezza: number;
+    larghezza_piano: number;
+  };
+  piano_1: Array<{
+    odl_id: number;
+    part_number: string;
+    descrizione: string;
+    peso_kg: number;
+    area_cm2: number;
+    priorita: number;
+  }>;
+  piano_2: Array<{
+    odl_id: number;
+    part_number: string;
+    descrizione: string;
+    peso_kg: number;
+    area_cm2: number;
+    priorita: number;
+  }>;
+  odl_non_pianificabili: Array<{
+    odl_id: number;
+    part_number: string;
+    descrizione: string;
+    motivo: string;
+  }>;
+  statistiche: {
+    peso_totale_kg: number;
+    peso_piano_1_kg: number;
+    peso_piano_2_kg: number;
+    area_piano_1_cm2: number;
+    area_piano_2_cm2: number;
+    carico_valido: boolean;
+    motivo_invalidita?: string;
+  };
+  posizioni_piano_1: Array<{
+    odl_id: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }>;
+  posizioni_piano_2: Array<{
+    odl_id: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }>;
+}
+
 // API Nesting
 export const nestingApi = {
   getAll: async (params?: { ruolo_utente?: string; stato_filtro?: string }): Promise<NestingResponse[]> => {
@@ -910,6 +1020,12 @@ export const nestingApi = {
   
   assignToAutoclave: async (assignment: NestingAssignmentRequest): Promise<NestingResponse> => {
     const response = await api.post<NestingResponse>('/nesting/assign', assignment);
+    return response.data;
+  },
+  
+  // ✅ NUOVO: API per nesting su due piani
+  generateTwoLevel: async (request?: TwoLevelNestingRequest): Promise<TwoLevelNestingResponse> => {
+    const response = await api.post<TwoLevelNestingResponse>('/nesting/two-level', request || {});
     return response.data;
   },
 };
@@ -1087,5 +1203,33 @@ export const reportsApi = {
     }
     console.log('✅ Report Download Success');
     return response.blob();
+  },
+
+  // API specifiche per nesting
+  downloadNestingReport: async (nestingId: number): Promise<Blob> => {
+    const response = await fetch(`${API_BASE_URL}/nesting/${nestingId}/report`);
+    console.log(`🔗 Nesting Report Download Request: ${nestingId}`);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const error = {
+        status: response.status,
+        message: errorData.detail || `Errore API: ${response.status} ${response.statusText}`,
+        data: errorData,
+      };
+      console.error('❌ Nesting Report Download Error:', error);
+      throw error;
+    }
+    console.log('✅ Nesting Report Download Success');
+    return response.blob();
+  },
+
+  generateNestingReport: async (nestingId: number, forceRegenerate: boolean = false): Promise<any> => {
+    console.log(`🔗 Generate Nesting Report Request: ${nestingId}`);
+    return apiRequest<any>(`/nesting/${nestingId}/generate-report?force_regenerate=${forceRegenerate}`, 'POST');
+  },
+
+  checkNestingReport: async (nestingId: number): Promise<any> => {
+    console.log(`🔗 Check Nesting Report Request: ${nestingId}`);
+    return apiRequest<any>(`/nesting/${nestingId}/report`, 'GET');
   },
 }; 

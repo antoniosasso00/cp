@@ -20,6 +20,7 @@ from .nesting_result import NestingResult
 from .schedule_entry import ScheduleEntry, ScheduleEntryStatus, ScheduleEntryType
 from .tempo_produzione import TempoProduzione
 from .report import Report, ReportTypeEnum
+from .system_log import SystemLog, LogLevel, EventType, UserRole
 
 # Lista completa di tutti i modelli per le migrazioni
 __all__ = [
@@ -41,5 +42,9 @@ __all__ = [
     "ScheduleEntryType",
     "TempoProduzione",
     "Report",
-    "ReportTypeEnum"
+    "ReportTypeEnum",
+    "SystemLog",
+    "LogLevel",
+    "EventType",
+    "UserRole"
 ] 

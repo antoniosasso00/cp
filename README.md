@@ -1,224 +1,192 @@
-# CarbonPilot - Sistema di Gestione Produzione
+# 🚀 CarbonPilot - Sistema di Gestione Produzione Manta Group
 
-Sistema completo per la gestione della produzione di parti in fibra di carbonio con ottimizzazione automatica del nesting e scheduling delle autoclavi.
+Sistema completo per la gestione della produzione di componenti aeronautici in fibra di carbonio, con focus su ottimizzazione nesting, gestione autoclavi e tracciabilità completa del processo produttivo.
 
-## 🚀 Funzionalità Principali
+## ✨ Funzionalità Principali
 
-### 📊 Dashboard Dinamiche per Ruoli
-- **Admin**: Gestione utenti, configurazioni sistema, monitoraggio completo
-- **Responsabile**: Gestione ODL, pianificazione produzione, supervisione team
-- **Laminatore**: Gestione parti, operazioni laminazione, controllo qualità
-- **Autoclavista**: Gestione autoclavi, cicli di cura, nesting & scheduling
+### 🎯 Dashboard Operative per Ruolo
+- **Admin**: KPI sistema, gestione utenti, configurazioni globali, monitoraggio completo
+- **Responsabile**: KPI produzione, storico ODL filtrabile, gestione nesting, reports
+- **Laminatore**: ODL in Preparazione/Laminazione con cambio stato funzionale, metriche turno
+- **Autoclavista**: ODL in Attesa Cura/Cura, nesting confermati caricabili, controllo autoclavi
 
-### 🔧 Sistema di Nesting Avanzato ✅ VERIFICATO
-Il sistema di nesting è stato completamente verificato e implementa tutti i vincoli richiesti:
+### 📊 Sistema KPI Real-time
+- **Metriche Operative**: ODL per stato, efficienza produzione, utilizzo autoclavi
+- **Aggiornamento Automatico**: Refresh ogni 5 minuti con possibilità di aggiornamento manuale
+- **Storico Filtrabile**: Cronologia ODL con filtri per stato, ricerca e range date
+- **Indicatori Colorati**: Stati visivi per performance e trend
 
-#### Algoritmo di Ottimizzazione
-- **✅ Dimensioni reali tool**: Considera `lunghezza_piano`, `larghezza_piano`, `altezza`, `peso`
-- **✅ Superficie disponibile**: Calcolo preciso area autoclave e verifica spazio
-- **✅ Cicli di cura compatibili**: Raggruppamento automatico ODL per ciclo identico
-- **✅ Posizionamento 2D reale**: Algoritmo bin packing 2D con prevenzione sovrapposizioni
-- **✅ Vincoli fisici**: Parti pesanti nel piano inferiore, controllo altezza massima
-- **✅ Margini di sicurezza**: 5mm di margine tra tool per evitare interferenze
+### 🔧 Gestione ODL (Ordini Di Lavorazione)
+- **Flusso Completo**: Preparazione → Laminazione → Attesa Cura → Cura → Finito
+- **Cambio Stato per Ruolo**: Pulsanti funzionali specifici per laminatore e autoclavista
+- **Priorità Dinamiche**: Sistema di priorità con ordinamento automatico
+- **Tracciabilità**: Storico completo con dettagli parte, tool e tempi
 
-#### Funzionalità Avanzate
-- **Bin Packing 2D**: Algoritmo First Fit Decreasing per ottimizzazione spazio
-- **Rotazione automatica**: Tool ruotati di 90° se necessario per adattamento
-- **Ordinamento per peso**: Parti più pesanti posizionate per prime (stabilità)
-- **Verifica sovrapposizioni**: Controllo matematico rigoroso per evitare conflitti
-- **Statistiche efficienza**: Calcolo area e valvole utilizzate per ogni autoclave
-- **Gestione fallimenti**: ODL non posizionabili con motivazioni dettagliate
+### 🧩 Ottimizzazione Nesting Avanzata
+- **Algoritmo Genetico**: Ottimizzazione automatica del carico autoclavi
+- **Nesting su Due Piani**: Supporto per autoclavi multi-livello con controllo peso
+- **Visualizzazione 3D**: Rappresentazione grafica del posizionamento tools
+- **Conferma per Ruolo**: Workflow di approvazione nesting prima del caricamento
 
-#### Visualizzazione 2D Accurata
-- **Posizioni reali**: Coordinate calcolate dall'algoritmo backend
-- **Scala appropriata**: Conversione mm → pixel con fattori corretti
-- **Fallback intelligente**: Layout a griglia se posizioni non disponibili
-- **Controlli interattivi**: Zoom, hover details, ricerca ODL
-- **Ciclo di cura visibile**: Etichetta ciclo nell'anteprima autoclave
-- **Legenda priorità**: Colori distintivi per priorità alta/media/bassa
+### 🏭 Gestione Autoclavi
+- **Monitoraggio Stato**: Controllo real-time temperatura, pressione, cicli
+- **Cicli di Cura**: Gestione parametri termici con stasi multiple
+- **Scheduling**: Pianificazione automatica cicli basata su priorità ODL
+- **Utilizzo Ottimale**: Calcolo efficienza e statistiche utilizzo
 
-### 📋 Gestione ODL Completa
-- Creazione e modifica ordini di lavoro
-- Tracciamento stato avanzamento (Preparazione → Laminazione → Attesa Cura → Cura → Finito)
-- Assegnazione automatica tool compatibili
-- Sistema priorità e note operative
-- Monitoraggio tempi e avanzamento
+### 📈 Sistema di Logging e Audit
+- **Tracciabilità Completa**: Log di tutte le operazioni critiche
+- **Audit Trail**: Storico modifiche con utente, timestamp e dettagli
+- **Dashboard Analytics**: Visualizzazione logs con filtri avanzati
+- **Export Dati**: Esportazione in CSV per analisi esterne
 
-### 🏭 Gestione Autoclavi e Cicli
-- Configurazione autoclavi con dimensioni reali
-- Gestione cicli di cura personalizzati
-- Monitoraggio stato e disponibilità
-- Scheduling automatico e manuale
-- Controllo temperatura e pressione
-
-### 📦 Catalogo Parti e Tool
-- Database completo parti con specifiche tecniche
-- Gestione tool con dimensioni fisiche reali
-- Associazioni parte-tool per compatibilità
-- Calcolo automatico valvole richieste
-- Gestione materiali e fornitori
+### 🔐 Gestione Ruoli e Sicurezza
+- **4 Ruoli Operativi**: Admin, Responsabile, Laminatore, Autoclavista
+- **Permessi Granulari**: Accesso controllato per ogni funzionalità
+- **Workflow Approvazioni**: Sistema di conferme per operazioni critiche
+- **Tracciamento Accessi**: Log completo delle attività utente
 
 ## 🛠️ Tecnologie Utilizzate
 
 ### Backend
-- **FastAPI**: Framework web moderno e performante
-- **SQLAlchemy**: ORM per gestione database
-- **PostgreSQL**: Database relazionale robusto
-- **Google OR-Tools**: Algoritmi di ottimizzazione per nesting
-- **Pydantic**: Validazione dati e serializzazione
+- **FastAPI**: Framework Python ad alte performance per API REST
+- **SQLAlchemy**: ORM per gestione database con modelli tipizzati
+- **PostgreSQL**: Database relazionale per persistenza dati
+- **Pydantic**: Validazione dati e serializzazione automatica
 
 ### Frontend
-- **Next.js 14**: Framework React con App Router
+- **Next.js 14**: Framework React con App Router e SSR
 - **TypeScript**: Tipizzazione statica per maggiore robustezza
-- **Tailwind CSS**: Styling utility-first
-- **shadcn/ui**: Componenti UI moderni e accessibili
-- **React Hook Form**: Gestione form avanzata
+- **Tailwind CSS**: Styling utility-first per UI responsive
+- **Shadcn/ui**: Componenti UI moderni e accessibili
 
-### Database
-- **PostgreSQL**: Database principale
-- **SQLite**: Database di sviluppo
-- **Alembic**: Migrazioni database
-- **Backup automatici**: Sistema di backup incrementali
+### Algoritmi e Ottimizzazione
+- **DEAP**: Libreria Python per algoritmi genetici
+- **Ottimizzazione Multi-obiettivo**: Bilanciamento area, valvole e priorità
+- **Bin Packing 2D**: Algoritmi per posizionamento ottimale tools
+- **Constraint Solving**: Gestione vincoli fisici e operativi
 
-## 🚀 Installazione e Avvio
+## 🚀 Quick Start
 
 ### Prerequisiti
-- Python 3.9+
+- Python 3.11+
 - Node.js 18+
-- PostgreSQL (per produzione) o SQLite (per sviluppo)
+- PostgreSQL 14+
+- Git
 
-### Setup Backend
+### Installazione Backend
 ```bash
-cd backend
+# Clone repository
+git clone <repository-url>
+cd CarbonPilot
+
+# Setup ambiente virtuale
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+source .venv/bin/activate  # Linux/Mac
+# oppure
+.venv\Scripts\activate     # Windows
+
+# Installa dipendenze
 pip install -r requirements.txt
 
-# Configurazione database
-cp .env.example .env
-# Modifica .env con le tue configurazioni
+# Configura database
+# Crea database PostgreSQL 'carbonpilot'
+# Configura variabili ambiente in .env
 
-# Migrazioni database
-alembic upgrade head
-
-# Seed dati iniziali
-python seed_catalogo_test.py
-python seed_test_data_simple.py
-
-# Avvio server
+# Avvia backend
+cd backend
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Setup Frontend
+### Installazione Frontend
 ```bash
+# In una nuova shell
 cd frontend
+
+# Installa dipendenze
 npm install
 
-# Configurazione ambiente
-cp .env.local.example .env.local
-# Modifica .env.local con l'URL del backend
+# Configura variabili ambiente
+# Crea .env.local con NEXT_PUBLIC_API_URL
 
-# Avvio sviluppo
+# Avvia frontend
 npm run dev
-
-# Build produzione
-npm run build
-npm start
 ```
 
-### Docker (Opzionale)
-```bash
-# Avvio completo con Docker Compose
-docker-compose up -d
-
-# Solo database
-docker-compose up -d postgres
-```
+### Accesso Sistema
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **Documentazione API**: http://localhost:8000/docs
 
 ## 📁 Struttura Progetto
 
 ```
-carbonpilot/
+CarbonPilot/
 ├── backend/                 # API FastAPI
 │   ├── api/                # Endpoints REST
 │   ├── models/             # Modelli SQLAlchemy
 │   ├── schemas/            # Schemi Pydantic
 │   ├── services/           # Logica business
-│   ├── nesting_optimizer/  # Algoritmi ottimizzazione ✅
-│   └── tests/              # Test automatici
+│   └── nesting_optimizer/  # Algoritmi ottimizzazione
 ├── frontend/               # App Next.js
-│   ├── src/app/           # App Router Next.js 14
-│   ├── src/components/    # Componenti React
-│   ├── src/lib/          # Utilities e API client
-│   └── src/hooks/        # Hook personalizzati
+│   ├── src/
+│   │   ├── app/           # App Router pages
+│   │   ├── components/    # Componenti React
+│   │   ├── hooks/         # Custom hooks
+│   │   └── lib/          # Utilities e API client
 ├── docs/                  # Documentazione
-│   └── changelog.md      # Registro modifiche
-└── docker-compose.yml    # Configurazione Docker
+├── tools/                 # Script utilità
+└── requirements.txt       # Dipendenze Python
 ```
 
-## 🔧 Configurazione
+## 🎯 Roadmap
 
-### Variabili Ambiente Backend (.env)
-```env
-DATABASE_URL=postgresql://user:password@localhost/carbonpilot
-SECRET_KEY=your-secret-key-here
-CORS_ORIGINS=http://localhost:3000
-DEBUG=true
-```
+### ✅ Completato (v2.3.1)
+- **Fix Definitivo Select Components**: Risoluzione completa errore Radix UI "empty string value"
+- **Componente SafeSelect**: Wrapper sicuro per prevenire errori futuri
+- **Best Practices Documentation**: Guida per sviluppatori su gestione Select
+- **Stabilità Dashboard**: Eliminazione crash nelle dashboard admin e responsabile
 
-### Variabili Ambiente Frontend (.env.local)
-```env
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
-NEXT_PUBLIC_APP_NAME=CarbonPilot
-```
-
-## 📊 Stato del Progetto
-
-### ✅ Completato
-- **Sistema di nesting**: Algoritmo completo con posizionamento 2D reale
-- **Dashboard dinamiche**: 4 interfacce specializzate per ruolo
-- **Gestione ODL**: Workflow completo dalla creazione al completamento
-- **Visualizzazione 2D**: Rendering accurato tool con dimensioni reali
-- **API REST**: Endpoints completi per tutte le funzionalità
-- **Database**: Schema ottimizzato con migrazioni
-- **Frontend**: Interfaccia responsive e moderna
-- **Autenticazione**: Sistema ruoli e permessi
+### ✅ Completato (v2.3.0)
+- Dashboard operative per tutti i ruoli con dati reali
+- Fix crash Select component
+- Hook specializzato per ODL filtrati per ruolo
+- Cambio stato ODL funzionale per laminatore e autoclavista
+- Integrazione nesting confermati per autoclavista
 
 ### 🔄 In Sviluppo
-- **Reportistica avanzata**: Dashboard analytics e KPI
-- **Notifiche real-time**: WebSocket per aggiornamenti live
-- **Mobile app**: App nativa per operatori
-- **Integrazione ERP**: Connessione sistemi esterni
+- Sistema notifiche real-time
+- Mobile app per operatori
+- Integrazione sensori IoT autoclavi
+- Machine learning per previsioni tempi
 
-### 📈 Metriche Progetto
-- **Backend**: 50+ endpoints REST
-- **Frontend**: 20+ pagine e componenti
-- **Database**: 15+ tabelle ottimizzate
-- **Test**: 95%+ copertura algoritmi critici
-- **Performance**: <200ms response time API
-- **Bundle size**: <220KB frontend ottimizzato
+### 📋 Pianificato
+- Integrazione ERP aziendale
+- Modulo manutenzione predittiva
+- Dashboard executive con BI
+- API pubbliche per integrazioni
 
 ## 🤝 Contributi
 
-Per contribuire al progetto:
-1. Fork del repository
-2. Crea branch feature (`git checkout -b feature/nuova-funzionalita`)
-3. Commit modifiche (`git commit -am 'Aggiunge nuova funzionalità'`)
-4. Push branch (`git push origin feature/nuova-funzionalita`)
-5. Crea Pull Request
+Il progetto è sviluppato internamente per Manta Group. Per contributi o segnalazioni:
+
+1. Crea un branch feature
+2. Implementa modifiche con test
+3. Aggiorna documentazione
+4. Crea pull request con descrizione dettagliata
 
 ## 📄 Licenza
 
-Questo progetto è sotto licenza MIT. Vedi il file `LICENSE` per dettagli.
+Proprietario - Manta Group. Tutti i diritti riservati.
 
 ## 📞 Supporto
 
 Per supporto tecnico o domande:
-- **Issues**: Apri un issue su GitHub
-- **Documentazione**: Consulta `/docs/` per guide dettagliate
-- **Changelog**: Vedi `/docs/changelog.md` per aggiornamenti
+- **Documentazione**: `/docs/` directory
+- **API Docs**: http://localhost:8000/docs
+- **Changelog**: `/docs/changelog.md`
+- **Issues**: Sistema interno di ticketing
 
 ---
 
-**CarbonPilot** - Sistema di gestione produzione per l'industria aerospaziale
-*Ottimizzazione automatica, controllo qualità, efficienza operativa*
+**CarbonPilot v2.3.1** - Sistema di gestione produzione per l'eccellenza aeronautica 🛩️

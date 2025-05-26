@@ -13,9 +13,14 @@ import {
   FileText,
   Cog,
   UserCheck,
-  Server
+  Server,
+  AlertTriangle
 } from 'lucide-react'
 import Link from 'next/link'
+import { KPIBox } from './KPIBox'
+import { ODLHistoryTable } from './ODLHistoryTable'
+import { DashboardShortcuts } from './DashboardShortcuts'
+import { useDashboardKPI } from '@/hooks/useDashboardKPI'
 
 /**
  * Dashboard dedicata agli Amministratori
@@ -27,6 +32,8 @@ import Link from 'next/link'
  * - Gestione database
  */
 export default function DashboardAdmin() {
+  const { data: kpiData, loading: kpiLoading, error: kpiError, refresh: refreshKPI } = useDashboardKPI()
+
   // Sezioni principali per l'admin
   const adminSections = [
     {
@@ -79,13 +86,47 @@ export default function DashboardAdmin() {
     }
   ]
 
-  // Statistiche rapide per l'admin
-  const quickStats = [
-    { label: 'Utenti Attivi', value: '24', trend: '+2 questa settimana' },
-    { label: 'Sistema Uptime', value: '99.9%', trend: '30 giorni' },
-    { label: 'ODL Totali', value: '1,247', trend: '+15% questo mese' },
-    { label: 'Performance', value: 'Ottima', trend: 'Tutti i servizi operativi' }
-  ]
+  // KPI reali per l'admin
+  const getAdminKPIMetrics = (): Array<{
+    label: string;
+    value: string;
+    trend: string;
+    status: 'success' | 'warning' | 'info' | 'error';
+    icon: any;
+  }> => {
+    if (!kpiData) return []
+    
+    return [
+      { 
+        label: 'ODL Totali', 
+        value: kpiData.odl_totali.toString(), 
+        trend: `${kpiData.odl_finiti} completati`,
+        status: 'info',
+        icon: FileText
+      },
+      { 
+        label: 'Utilizzo Autoclavi', 
+        value: `${kpiData.utilizzo_medio_autoclavi}%`, 
+        trend: kpiData.utilizzo_medio_autoclavi > 80 ? 'Alto utilizzo' : 'Capacità disponibile',
+        status: kpiData.utilizzo_medio_autoclavi > 90 ? 'warning' : 'success',
+        icon: Activity
+      },
+      { 
+        label: 'Nesting Attivi', 
+        value: kpiData.nesting_attivi.toString(), 
+        trend: `${kpiData.nesting_totali} totali`,
+        status: 'info',
+        icon: Database
+      },
+      { 
+        label: 'Efficienza Sistema', 
+        value: `${kpiData.efficienza_produzione}%`, 
+        trend: kpiData.efficienza_produzione >= 80 ? 'Ottima performance' : 'Da ottimizzare',
+        status: kpiData.efficienza_produzione >= 80 ? 'success' : kpiData.efficienza_produzione >= 60 ? 'warning' : 'error',
+        icon: BarChart3
+      }
+    ]
+  }
 
   return (
     <div className="space-y-6">
@@ -97,7 +138,7 @@ export default function DashboardAdmin() {
             Dashboard Amministratore
           </h1>
           <p className="text-muted-foreground mt-2">
-            Controllo completo del sistema CarbonPilot - Gestisci utenti, configurazioni e monitoraggio
+            Controllo completo del sistema Manta Group - Gestisci utenti, configurazioni e monitoraggio
           </p>
         </div>
         <Badge variant="destructive" className="text-sm">
@@ -106,20 +147,47 @@ export default function DashboardAdmin() {
         </Badge>
       </div>
 
-      {/* Statistiche rapide */}
+      {/* KPI Sistema */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {quickStats.map((stat, index) => (
-          <Card key={index}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{stat.label}</CardTitle>
-              <Server className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stat.value}</div>
-              <p className="text-xs text-muted-foreground">{stat.trend}</p>
+        {kpiLoading ? (
+          // Skeleton loading per i KPI
+          Array.from({ length: 4 }).map((_, index) => (
+            <Card key={index}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <div className="animate-pulse bg-gray-200 h-4 w-20 rounded"></div>
+                <div className="animate-pulse bg-gray-200 h-4 w-4 rounded"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="animate-pulse bg-gray-200 h-8 w-16 rounded mb-2"></div>
+                <div className="animate-pulse bg-gray-200 h-3 w-24 rounded"></div>
+              </CardContent>
+            </Card>
+          ))
+        ) : kpiError ? (
+          <Card className="col-span-full">
+            <CardContent className="flex items-center justify-center py-8">
+              <div className="text-center">
+                <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+                <p className="text-sm text-red-600 mb-3">{kpiError}</p>
+                <Button variant="outline" size="sm" onClick={refreshKPI}>
+                  Riprova
+                </Button>
+              </div>
             </CardContent>
           </Card>
-        ))}
+        ) : (
+          getAdminKPIMetrics().map((metric, index) => (
+            <KPIBox
+              key={index}
+              title={metric.label}
+              value={metric.value}
+              trend={metric.trend}
+              status={metric.status}
+              icon={metric.icon}
+              loading={kpiLoading}
+            />
+          ))
+        )}
       </div>
 
       {/* Sezioni principali */}
@@ -161,41 +229,14 @@ export default function DashboardAdmin() {
       </div>
 
       {/* Azioni rapide */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Cog className="h-5 w-5" />
-            Azioni Rapide Amministratore
-          </CardTitle>
-          <CardDescription>
-            Accesso diretto alle funzioni più utilizzate
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-3">
-            <Button variant="outline" size="sm">
-              <Users className="h-4 w-4 mr-2" />
-              Nuovo Utente
-            </Button>
-            <Button variant="outline" size="sm">
-              <Database className="h-4 w-4 mr-2" />
-              Backup Sistema
-            </Button>
-            <Button variant="outline" size="sm">
-              <Activity className="h-4 w-4 mr-2" />
-              Monitor Sistema
-            </Button>
-            <Button variant="outline" size="sm">
-              <FileText className="h-4 w-4 mr-2" />
-              Export Logs
-            </Button>
-            <Button variant="outline" size="sm">
-              <Settings className="h-4 w-4 mr-2" />
-              Configurazioni
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <DashboardShortcuts userRole="admin" />
+
+      {/* Storico ODL */}
+      <ODLHistoryTable 
+        maxItems={15} 
+        showFilters={true} 
+        className="mt-6"
+      />
     </div>
   )
 } 

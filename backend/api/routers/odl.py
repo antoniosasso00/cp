@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional
+from typing import List, Optional, Literal
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -14,6 +14,8 @@ from models.tempo_fase import TempoFase
 from schemas.odl import ODLCreate, ODLRead, ODLUpdate
 from services.odl_queue_service import ODLQueueService
 from services.nesting_service import get_odl_attesa_cura_filtered
+from services.system_log_service import SystemLogService
+from models.system_log import UserRole
 
 # Configurazione logger
 logger = logging.getLogger(__name__)
@@ -355,5 +357,308 @@ def check_single_odl_status(odl_id: int, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante il controllo dello stato ODL."
+        )
+
+@router.patch("/{odl_id}/laminatore-status", 
+              response_model=ODLRead,
+              summary="Aggiorna stato ODL per Laminatore")
+def update_odl_status_laminatore(
+    odl_id: int, 
+    new_status: Literal["Laminazione", "Attesa Cura"] = Query(..., description="Nuovo stato ODL"),
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint specifico per il ruolo LAMINATORE.
+    Permette di far avanzare gli ODL solo negli stati consentiti:
+    - Preparazione → Laminazione
+    - Laminazione → Attesa Cura
+    """
+    db_odl = db.query(ODL).filter(ODL.id == odl_id).first()
+    
+    if db_odl is None:
+        logger.warning(f"Tentativo di aggiornamento di ODL inesistente: {odl_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"ODL con ID {odl_id} non trovato"
+        )
+    
+    # Controlli specifici per il laminatore
+    current_status = db_odl.status
+    
+    # Verifica transizioni consentite per il laminatore
+    allowed_transitions = {
+        "Preparazione": ["Laminazione"],
+        "Laminazione": ["Attesa Cura"]
+    }
+    
+    if current_status not in allowed_transitions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"ODL in stato '{current_status}' non può essere gestito dal laminatore"
+        )
+    
+    if new_status not in allowed_transitions[current_status]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Transizione da '{current_status}' a '{new_status}' non consentita per il laminatore"
+        )
+    
+    try:
+        # Salva lo stato precedente per verifica cambiamento
+        stato_precedente = db_odl.status
+        ora_corrente = datetime.now()
+        
+        # Aggiorna lo stato
+        db_odl.status = new_status
+        
+        logger.info(f"Laminatore - Cambio stato ODL {odl_id}: da '{stato_precedente}' a '{new_status}'")
+        
+        # Log dell'evento nel sistema
+        SystemLogService.log_odl_state_change(
+            db=db,
+            odl_id=odl_id,
+            old_state=stato_precedente,
+            new_state=new_status,
+            user_role=UserRole.LAMINATORE,
+            user_id="laminatore"  # In futuro si potrà passare l'ID utente reale
+        )
+        
+        # Chiudi la fase precedente se era in uno stato monitorato
+        if stato_precedente in STATO_A_FASE:
+            tipo_fase_precedente = STATO_A_FASE[stato_precedente]
+            fase_attiva = db.query(TempoFase).filter(
+                TempoFase.odl_id == odl_id,
+                TempoFase.fase == tipo_fase_precedente,
+                TempoFase.fine_fase == None
+            ).first()
+            
+            if fase_attiva:
+                # Calcola la durata in minuti
+                durata = int((ora_corrente - fase_attiva.inizio_fase).total_seconds() / 60)
+                
+                # Aggiorna il record esistente
+                fase_attiva.fine_fase = ora_corrente
+                fase_attiva.durata_minuti = durata 
+                fase_attiva.note = f"{fase_attiva.note or ''} - Fase completata da laminatore con cambio stato a '{new_status}'"
+                logger.info(f"Chiusa fase '{tipo_fase_precedente}' per ODL {odl_id} con durata {durata} minuti")
+        
+        # Apri una nuova fase se il nuovo stato è monitorato
+        if new_status in STATO_A_FASE:
+            tipo_fase_nuova = STATO_A_FASE[new_status]
+            
+            # Verifica se esiste già una fase attiva dello stesso tipo
+            fase_esistente = db.query(TempoFase).filter(
+                TempoFase.odl_id == odl_id,
+                TempoFase.fase == tipo_fase_nuova,
+                TempoFase.fine_fase == None
+            ).first()
+            
+            if not fase_esistente:
+                # Crea una nuova fase
+                nuova_fase = TempoFase(
+                    odl_id=odl_id,
+                    fase=tipo_fase_nuova,
+                    inizio_fase=ora_corrente,
+                    note=f"Fase {tipo_fase_nuova} iniziata da laminatore con cambio stato da '{stato_precedente}'"
+                )
+                db.add(nuova_fase)
+                logger.info(f"Aperta nuova fase '{tipo_fase_nuova}' per ODL {odl_id}")
+        
+        db.commit()
+        db.refresh(db_odl)
+        return db_odl
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Errore durante l'aggiornamento stato ODL {odl_id} da laminatore: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Si è verificato un errore durante l'aggiornamento dello stato ODL."
+        )
+
+@router.patch("/{odl_id}/autoclavista-status", 
+              response_model=ODLRead,
+              summary="Aggiorna stato ODL per Autoclavista")
+def update_odl_status_autoclavista(
+    odl_id: int, 
+    new_status: Literal["Cura", "Finito"] = Query(..., description="Nuovo stato ODL"),
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint specifico per il ruolo AUTOCLAVISTA.
+    Permette di far avanzare gli ODL solo negli stati consentiti:
+    - Attesa Cura → Cura (dopo conferma nesting)
+    - Cura → Finito (dopo completamento cura)
+    """
+    db_odl = db.query(ODL).filter(ODL.id == odl_id).first()
+    
+    if db_odl is None:
+        logger.warning(f"Tentativo di aggiornamento di ODL inesistente: {odl_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"ODL con ID {odl_id} non trovato"
+        )
+    
+    # Controlli specifici per l'autoclavista
+    current_status = db_odl.status
+    
+    # Verifica transizioni consentite per l'autoclavista
+    allowed_transitions = {
+        "Attesa Cura": ["Cura"],
+        "Cura": ["Finito"]
+    }
+    
+    if current_status not in allowed_transitions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"ODL in stato '{current_status}' non può essere gestito dall'autoclavista"
+        )
+    
+    if new_status not in allowed_transitions[current_status]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Transizione da '{current_status}' a '{new_status}' non consentita per l'autoclavista"
+        )
+    
+    try:
+        # Salva lo stato precedente per verifica cambiamento
+        stato_precedente = db_odl.status
+        ora_corrente = datetime.now()
+        
+        # Aggiorna lo stato
+        db_odl.status = new_status
+        
+        logger.info(f"Autoclavista - Cambio stato ODL {odl_id}: da '{stato_precedente}' a '{new_status}'")
+        
+        # Log dell'evento nel sistema
+        SystemLogService.log_odl_state_change(
+            db=db,
+            odl_id=odl_id,
+            old_state=stato_precedente,
+            new_state=new_status,
+            user_role=UserRole.AUTOCLAVISTA,
+            user_id="autoclavista"  # In futuro si potrà passare l'ID utente reale
+        )
+        
+        # Chiudi la fase precedente se era in uno stato monitorato
+        if stato_precedente in STATO_A_FASE:
+            tipo_fase_precedente = STATO_A_FASE[stato_precedente]
+            fase_attiva = db.query(TempoFase).filter(
+                TempoFase.odl_id == odl_id,
+                TempoFase.fase == tipo_fase_precedente,
+                TempoFase.fine_fase == None
+            ).first()
+            
+            if fase_attiva:
+                # Calcola la durata in minuti
+                durata = int((ora_corrente - fase_attiva.inizio_fase).total_seconds() / 60)
+                
+                # Aggiorna il record esistente
+                fase_attiva.fine_fase = ora_corrente
+                fase_attiva.durata_minuti = durata 
+                fase_attiva.note = f"{fase_attiva.note or ''} - Fase completata da autoclavista con cambio stato a '{new_status}'"
+                logger.info(f"Chiusa fase '{tipo_fase_precedente}' per ODL {odl_id} con durata {durata} minuti")
+        
+        # Apri una nuova fase se il nuovo stato è monitorato
+        if new_status in STATO_A_FASE:
+            tipo_fase_nuova = STATO_A_FASE[new_status]
+            
+            # Verifica se esiste già una fase attiva dello stesso tipo
+            fase_esistente = db.query(TempoFase).filter(
+                TempoFase.odl_id == odl_id,
+                TempoFase.fase == tipo_fase_nuova,
+                TempoFase.fine_fase == None
+            ).first()
+            
+            if not fase_esistente:
+                # Crea una nuova fase
+                nuova_fase = TempoFase(
+                    odl_id=odl_id,
+                    fase=tipo_fase_nuova,
+                    inizio_fase=ora_corrente,
+                    note=f"Fase {tipo_fase_nuova} iniziata da autoclavista con cambio stato da '{stato_precedente}'"
+                )
+                db.add(nuova_fase)
+                logger.info(f"Aperta nuova fase '{tipo_fase_nuova}' per ODL {odl_id}")
+        
+        # 🚀 TRIGGER AUTOMATICO GENERAZIONE REPORT
+        # Quando un ODL passa a "Finito", genera automaticamente il report per il nesting associato
+        if new_status == "Finito" and stato_precedente == "Cura":
+            try:
+                from services.auto_report_service import AutoReportService
+                from models.nesting_result import NestingResult
+                
+                # Trova il nesting che contiene questo ODL
+                nesting = db.query(NestingResult).filter(
+                    NestingResult.odl_ids.contains([odl_id])
+                ).order_by(NestingResult.created_at.desc()).first()
+                
+                if nesting and not nesting.report_id:
+                    logger.info(f"🎯 Trigger automatico: generazione report per nesting {nesting.id} (ODL {odl_id} completato)")
+                    
+                    # Controlla se tutti gli ODL del nesting sono completati
+                    odl_nesting_ids = nesting.odl_ids
+                    odl_completati = db.query(ODL).filter(
+                        ODL.id.in_(odl_nesting_ids),
+                        ODL.status == "Finito"
+                    ).count()
+                    
+                    # Se tutti gli ODL del nesting sono completati, genera il report
+                    if odl_completati == len(odl_nesting_ids):
+                        logger.info(f"✅ Tutti gli ODL del nesting {nesting.id} sono completati - generazione report automatica")
+                        
+                        # Inizializza il servizio di auto-report
+                        auto_report_service = AutoReportService(db)
+                        
+                        # Prepara le informazioni del ciclo completato
+                        cycle_info = {
+                            'schedule_id': 0,  # Fittizio per compatibilità
+                            'nesting_id': nesting.id,
+                            'autoclave_id': nesting.autoclave_id,
+                            'odl_id': odl_id,
+                            'completed_at': ora_corrente,
+                            'nesting': nesting,
+                            'schedule': None  # Sarà gestito dal servizio
+                        }
+                        
+                        # Genera il report in modo asincrono (non bloccare la risposta)
+                        import asyncio
+                        try:
+                            # Crea un nuovo loop se necessario
+                            loop = asyncio.get_event_loop()
+                        except RuntimeError:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                        
+                        # Esegui la generazione del report
+                        report = loop.run_until_complete(
+                            auto_report_service.generate_cycle_completion_report(cycle_info)
+                        )
+                        
+                        if report:
+                            logger.info(f"🎉 Report generato automaticamente: {report.filename}")
+                        else:
+                            logger.warning(f"⚠️ Errore nella generazione automatica del report per nesting {nesting.id}")
+                    else:
+                        logger.info(f"⏳ Nesting {nesting.id}: {odl_completati}/{len(odl_nesting_ids)} ODL completati - report in attesa")
+                elif nesting and nesting.report_id:
+                    logger.info(f"ℹ️ Nesting {nesting.id} ha già un report associato (ID: {nesting.report_id})")
+                else:
+                    logger.warning(f"⚠️ Nessun nesting trovato per ODL {odl_id} o nesting non valido")
+                    
+            except Exception as e:
+                # Non bloccare l'aggiornamento dell'ODL se la generazione del report fallisce
+                logger.error(f"❌ Errore durante la generazione automatica del report per ODL {odl_id}: {e}")
+        
+        db.commit()
+        db.refresh(db_odl)
+        return db_odl
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Errore durante l'aggiornamento stato ODL {odl_id} da autoclavista: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Si è verificato un errore durante l'aggiornamento dello stato ODL."
         )
 

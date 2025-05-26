@@ -24,7 +24,7 @@ export function RoleGuard({ children }: RoleGuardProps) {
     if (isLoading) return
 
     // Se siamo già nella pagina di selezione ruolo, non fare redirect
-    if (pathname === '/select-role') return
+    if (pathname === '/select-role' || pathname === '/role') return
 
     // Se siamo nella home page, non fare redirect (permette l'accesso alla landing)
     if (pathname === '/') return
@@ -47,7 +47,7 @@ export function RoleGuard({ children }: RoleGuardProps) {
 
   // Se non c'è ruolo e non siamo nelle pagine permesse, non renderizzare nulla
   // (il redirect è già in corso)
-  if (!role && pathname !== '/select-role' && pathname !== '/') {
+  if (!role && pathname !== '/select-role' && pathname !== '/role' && pathname !== '/') {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>

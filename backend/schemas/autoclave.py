@@ -25,6 +25,9 @@ class AutoclaveBase(BaseModel):
     temperatura_max: float = Field(..., gt=0, description="Temperatura massima in gradi Celsius")
     pressione_max: float = Field(..., gt=0, description="Pressione massima in bar")
     
+    # ✅ NUOVO: Carico massimo per nesting su due piani
+    max_load_kg: Optional[float] = Field(None, gt=0, description="Carico massimo supportato dall'autoclave in kg")
+    
     # Informazioni aggiuntive
     produttore: Optional[str] = Field(None, max_length=100, description="Nome del produttore dell'autoclave")
     anno_produzione: Optional[int] = Field(None, description="Anno di produzione dell'autoclave")
@@ -46,6 +49,9 @@ class AutoclaveUpdate(BaseModel):
     temperatura_max: Optional[float] = Field(None, gt=0, description="Temperatura massima in gradi Celsius")
     pressione_max: Optional[float] = Field(None, gt=0, description="Pressione massima in bar")
     
+    # ✅ NUOVO: Carico massimo per nesting su due piani
+    max_load_kg: Optional[float] = Field(None, gt=0, description="Carico massimo supportato dall'autoclave in kg")
+    
     stato: Optional[StatoAutoclaveEnum] = Field(None, description="Stato attuale dell'autoclave")
     
     produttore: Optional[str] = Field(None, max_length=100, description="Nome del produttore dell'autoclave")
@@ -58,6 +64,9 @@ class AutoclaveResponse(AutoclaveBase):
     stato: StatoAutoclaveEnum = Field(..., description="Stato attuale dell'autoclave")
     created_at: datetime = Field(..., description="Data e ora di creazione del record")
     updated_at: datetime = Field(..., description="Data e ora dell'ultimo aggiornamento")
+    
+    # ✅ NUOVO: Campo calcolato per l'area del piano
+    area_piano: Optional[float] = Field(None, description="Area del piano dell'autoclave in cm² (calcolata)")
 
     class Config:
         from_attributes = True 

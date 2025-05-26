@@ -12,6 +12,10 @@ from schemas.nesting import NestingResultSchema, NestingResultRead, NestingPrevi
 from services.nesting_service import run_automatic_nesting, get_all_nesting_results, get_nesting_preview, update_nesting_status, save_nesting_draft, load_nesting_draft, run_manual_nesting, extract_ciclo_cura_from_note
 from models.autoclave import Autoclave, StatoAutoclaveEnum
 from models.odl import ODL
+# ✅ NUOVO: Import per nesting su due piani
+from services.nesting_service import run_two_level_nesting
+from services.system_log_service import SystemLogService
+from models.system_log import UserRole
 
 # Schema per l'aggiornamento dello stato del nesting
 class NestingStatusUpdate(BaseModel):
@@ -23,6 +27,13 @@ class NestingStatusUpdate(BaseModel):
 class NestingAssignmentRequest(BaseModel):
     nesting_id: int
     autoclave_id: int
+    note: str = None
+
+# ✅ NUOVO: Schema per il nesting su due piani
+class TwoLevelNestingRequest(BaseModel):
+    autoclave_id: int
+    odl_ids: List[int] = None  # Se None, usa tutti gli ODL in attesa
+    superficie_piano_2_max_cm2: float = None  # Superficie massima del piano 2
     note: str = None
 
 def serialize_nesting_result(nesting: NestingResult) -> dict:
@@ -176,6 +187,27 @@ async def update_nesting_status_endpoint(
     try:
         # Aggiorna lo stato del nesting
         result = await update_nesting_status(db, nesting_id, status_update.stato, status_update.note, status_update.ruolo_utente)
+        
+        # Log dell'evento nel sistema
+        if status_update.stato == "Confermato":
+            user_role = UserRole.RESPONSABILE if status_update.ruolo_utente == "RESPONSABILE" else UserRole.AUTOCLAVISTA
+            SystemLogService.log_nesting_confirm(
+                db=db,
+                nesting_id=nesting_id,
+                autoclave_id=result.autoclave_id,
+                user_role=user_role,
+                user_id=status_update.ruolo_utente
+            )
+        else:
+            user_role = UserRole.RESPONSABILE if status_update.ruolo_utente == "RESPONSABILE" else UserRole.AUTOCLAVISTA
+            SystemLogService.log_nesting_modify(
+                db=db,
+                nesting_id=nesting_id,
+                modification_type=f"Stato cambiato a {status_update.stato}",
+                user_role=user_role,
+                user_id=status_update.ruolo_utente
+            )
+        
         return serialize_nesting_result(result)
     except ValueError as e:
         raise HTTPException(
@@ -701,4 +733,51 @@ async def generate_nesting_report(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Errore durante la generazione del report per nesting: {str(e)}"
+        )
+
+# ✅ NUOVO: Endpoint per nesting su due piani
+@router.post(
+    "/two-level",
+    status_code=status.HTTP_201_CREATED,
+    summary="Esegue il nesting ottimizzato su due piani",
+    description="""
+    Esegue un nesting ottimizzato su due piani per un'autoclave specifica.
+    Posiziona i pezzi più pesanti e grandi nel piano inferiore,
+    i pezzi più leggeri e piccoli nel piano superiore.
+    Rispetta il limite di carico massimo dell'autoclave.
+    """
+)
+async def two_level_nesting(
+    request: TwoLevelNestingRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint per eseguire il nesting su due piani ottimizzato per peso e dimensione.
+    
+    Args:
+        request: Parametri per il nesting su due piani
+        db: Sessione del database
+        
+    Returns:
+        Risultato dettagliato del nesting su due piani
+    """
+    try:
+        # Esegui l'algoritmo di nesting su due piani
+        result = await run_two_level_nesting(
+            db=db,
+            autoclave_id=request.autoclave_id,
+            odl_ids=request.odl_ids,
+            superficie_piano_2_max_cm2=request.superficie_piano_2_max_cm2,
+            note=request.note
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante l'esecuzione del nesting su due piani: {str(e)}"
         ) 

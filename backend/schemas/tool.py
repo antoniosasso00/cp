@@ -11,6 +11,10 @@ class ToolBase(BaseModel):
     lunghezza_piano: float = Field(..., gt=0, description="Lunghezza utile del tool")
     larghezza_piano: float = Field(..., gt=0, description="Larghezza utile del tool")
     
+    # ✅ NUOVO: Campi per nesting su due piani
+    peso: Optional[float] = Field(None, ge=0, description="Peso del tool in kg")
+    materiale: Optional[str] = Field(None, max_length=100, description="Materiale del tool (es. Alluminio, Acciaio, etc.)")
+    
     note: Optional[str] = Field(None, description="Note aggiuntive sullo stampo")
 
 # Schema per la creazione
@@ -25,6 +29,10 @@ class ToolUpdate(BaseModel):
     lunghezza_piano: Optional[float] = Field(None, gt=0, description="Lunghezza utile del tool")
     larghezza_piano: Optional[float] = Field(None, gt=0, description="Larghezza utile del tool")
     
+    # ✅ NUOVO: Campi per nesting su due piani
+    peso: Optional[float] = Field(None, ge=0, description="Peso del tool in kg")
+    materiale: Optional[str] = Field(None, max_length=100, description="Materiale del tool")
+    
     disponibile: Optional[bool] = Field(None, description="Indica se lo stampo è attualmente disponibile")
     
     note: Optional[str] = Field(None, description="Note aggiuntive sullo stampo")
@@ -35,6 +43,9 @@ class ToolResponse(ToolBase):
     disponibile: bool = Field(..., description="Indica se lo stampo è attualmente disponibile")
     created_at: datetime = Field(..., description="Data e ora di creazione del record")
     updated_at: datetime = Field(..., description="Data e ora dell'ultimo aggiornamento")
+    
+    # ✅ NUOVO: Campo calcolato per l'area
+    area: Optional[float] = Field(None, description="Area del tool in cm² (calcolata)")
 
     class Config:
         from_attributes = True 

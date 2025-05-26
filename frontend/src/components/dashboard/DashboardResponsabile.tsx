@@ -22,6 +22,11 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { odlApi, type ODLResponse } from '@/lib/api'
 import { NestingStatusCard } from './NestingStatusCard'
+import { OdlProgressWrapper } from '@/components/ui/OdlProgressWrapper'
+import { KPIBox } from './KPIBox'
+import { ODLHistoryTable } from './ODLHistoryTable'
+import { DashboardShortcuts } from './DashboardShortcuts'
+import { useDashboardKPI } from '@/hooks/useDashboardKPI'
 
 /**
  * Componente per visualizzare gli ODL in attesa di nesting
@@ -109,29 +114,41 @@ function ODLPendingNestingCard() {
               </Badge>
             </div>
             
-            <div className="space-y-2 max-h-64 overflow-y-auto">
+            <div className="space-y-3 max-h-80 overflow-y-auto">
               {odlPending.map((odl) => (
                 <div
                   key={odl.id}
-                  className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                  className="p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
                 >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium">ODL #{odl.id}</span>
-                      <Badge variant="outline" className="text-xs">
-                        P{odl.priorita}
-                      </Badge>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">ODL #{odl.id}</span>
+                        <Badge variant="outline" className="text-xs">
+                          P{odl.priorita}
+                        </Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(odl.created_at).toLocaleDateString('it-IT')}
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {odl.parte.part_number} - {odl.parte.descrizione_breve}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Tool: {odl.tool.part_number_tool}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs text-muted-foreground">
-                      {new Date(odl.created_at).toLocaleDateString('it-IT')}
+                    
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground truncate">
+                        {odl.parte.part_number} - {odl.parte.descrizione_breve}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Tool: {odl.tool.part_number_tool}
+                      </p>
+                    </div>
+                    
+                    {/* Barra di progresso compatta */}
+                    <div className="mt-2">
+                      <OdlProgressWrapper 
+                        odlId={odl.id}
+                        showDetails={false}
+                        className="text-xs"
+                      />
                     </div>
                   </div>
                 </div>
@@ -164,6 +181,7 @@ function ODLPendingNestingCard() {
  */
 export default function DashboardResponsabile() {
   const [odlPendingCount, setOdlPendingCount] = useState<number>(0)
+  const { data: kpiData, loading: kpiLoading, error: kpiError, refresh: refreshKPI } = useDashboardKPI()
 
   // Fetch del conteggio ODL in attesa di nesting per le metriche
   useEffect(() => {
@@ -231,37 +249,61 @@ export default function DashboardResponsabile() {
     }
   ]
 
-  // Metriche chiave per il responsabile
-  const keyMetrics = [
-    { 
-      label: 'ODL Attivi', 
-      value: '18', 
-      trend: '+3 oggi',
-      status: 'success',
-      icon: ClipboardList
-    },
-    { 
-      label: 'In Attesa Nesting', 
-      value: odlPendingCount.toString(), 
-      trend: odlPendingCount > 0 ? 'Pronti per nesting' : 'Tutti processati',
-      status: odlPendingCount > 5 ? 'warning' : odlPendingCount > 0 ? 'info' : 'success',
-      icon: Package
-    },
-    { 
-      label: 'Efficienza Media', 
-      value: '87%', 
-      trend: '+5% questa settimana',
-      status: 'success',
-      icon: TrendingUp
-    },
-    { 
-      label: 'Completati Oggi', 
-      value: '12', 
-      trend: 'Target: 15',
-      status: 'info',
-      icon: Target
+  // Metriche chiave reali per il responsabile
+  const getKPIMetrics = (): Array<{
+    label: string;
+    value: string;
+    trend: string;
+    status: 'success' | 'warning' | 'info' | 'error';
+    icon: any;
+  }> => {
+    if (!kpiData) return []
+    
+    // Funzione helper per determinare lo status dell'attesa nesting
+    const getAttesaNestingStatus = (count: number): 'success' | 'warning' | 'info' | 'error' => {
+      if (count > 5) return 'warning'
+      if (count > 0) return 'info'
+      return 'success'
     }
-  ]
+    
+    // Funzione helper per determinare lo status dell'efficienza
+    const getEfficienzaStatus = (efficienza: number): 'success' | 'warning' | 'info' | 'error' => {
+      if (efficienza >= 80) return 'success'
+      if (efficienza >= 60) return 'warning'
+      return 'error'
+    }
+    
+    return [
+      { 
+        label: 'ODL Totali', 
+        value: kpiData.odl_totali.toString(), 
+        trend: `${kpiData.odl_finiti} completati`,
+        status: 'info',
+        icon: ClipboardList
+      },
+      { 
+        label: 'In Attesa Nesting', 
+        value: kpiData.odl_attesa_nesting.toString(), 
+        trend: kpiData.odl_attesa_nesting > 0 ? 'Pronti per nesting' : 'Tutti processati',
+        status: getAttesaNestingStatus(kpiData.odl_attesa_nesting),
+        icon: Package
+      },
+      { 
+        label: 'Efficienza Produzione', 
+        value: `${kpiData.efficienza_produzione}%`, 
+        trend: kpiData.efficienza_produzione >= 80 ? 'Ottima performance' : 'Da migliorare',
+        status: getEfficienzaStatus(kpiData.efficienza_produzione),
+        icon: TrendingUp
+      },
+      { 
+        label: 'Completati Oggi', 
+        value: kpiData.completati_oggi.toString(), 
+        trend: 'Aggiornato in tempo reale',
+        status: 'success',
+        icon: Target
+      }
+    ]
+  }
 
   // Priorità e alert
   const alerts = [
@@ -323,21 +365,45 @@ export default function DashboardResponsabile() {
 
       {/* Metriche chiave */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {keyMetrics.map((metric, index) => {
-          const IconComponent = metric.icon
-          return (
+        {kpiLoading ? (
+          // Skeleton loading per i KPI
+          Array.from({ length: 4 }).map((_, index) => (
             <Card key={index}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{metric.label}</CardTitle>
-                <IconComponent className={`h-4 w-4 ${getStatusColor(metric.status)}`} />
+                <div className="animate-pulse bg-gray-200 h-4 w-20 rounded"></div>
+                <div className="animate-pulse bg-gray-200 h-4 w-4 rounded"></div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{metric.value}</div>
-                <p className={`text-xs ${getStatusColor(metric.status)}`}>{metric.trend}</p>
+                <div className="animate-pulse bg-gray-200 h-8 w-16 rounded mb-2"></div>
+                <div className="animate-pulse bg-gray-200 h-3 w-24 rounded"></div>
               </CardContent>
             </Card>
-          )
-        })}
+          ))
+        ) : kpiError ? (
+          <Card className="col-span-full">
+            <CardContent className="flex items-center justify-center py-8">
+              <div className="text-center">
+                <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+                <p className="text-sm text-red-600 mb-3">{kpiError}</p>
+                <Button variant="outline" size="sm" onClick={refreshKPI}>
+                  Riprova
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          getKPIMetrics().map((metric, index) => (
+            <KPIBox
+              key={index}
+              title={metric.label}
+              value={metric.value}
+              trend={metric.trend}
+              status={metric.status}
+              icon={metric.icon}
+              loading={kpiLoading}
+            />
+          ))
+        )}
       </div>
 
       {/* Layout principale */}
@@ -418,37 +484,16 @@ export default function DashboardResponsabile() {
           </Card>
 
           {/* Azioni rapide */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Target className="h-5 w-5" />
-                Azioni Rapide
-              </CardTitle>
-              <CardDescription>
-                Accesso diretto alle funzioni principali
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Button className="w-full" variant="outline" size="sm">
-                <ClipboardList className="h-4 w-4 mr-2" />
-                Nuovo ODL
-              </Button>
-              <Button className="w-full" variant="outline" size="sm">
-                <Calendar className="h-4 w-4 mr-2" />
-                Pianifica Attività
-              </Button>
-              <Button className="w-full" variant="outline" size="sm">
-                <BarChart3 className="h-4 w-4 mr-2" />
-                Report Giornaliero
-              </Button>
-              <Button className="w-full" variant="outline" size="sm">
-                <Users className="h-4 w-4 mr-2" />
-                Assegna Team
-              </Button>
-            </CardContent>
-          </Card>
+          <DashboardShortcuts userRole="responsabile" />
         </div>
       </div>
+
+      {/* Storico ODL */}
+      <ODLHistoryTable 
+        maxItems={15} 
+        showFilters={true} 
+        className="mt-6"
+      />
     </div>
   )
 } 

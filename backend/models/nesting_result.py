@@ -45,12 +45,18 @@ class NestingResult(Base):
     valvole_utilizzate = Column(Integer, default=0)
     valvole_totali = Column(Integer, default=0)
     
+    # ✅ NUOVO: Statistiche per nesting su due piani
+    peso_totale_kg = Column(Float, default=0.0, doc="Peso totale del carico in kg")
+    area_piano_1 = Column(Float, default=0.0, doc="Area utilizzata sul piano 1 in cm²")
+    area_piano_2 = Column(Float, default=0.0, doc="Area utilizzata sul piano 2 in cm²")
+    superficie_piano_2_max = Column(Float, nullable=True, doc="Superficie massima configurabile del piano 2 in cm²")
+    
     # Note aggiuntive
     note = Column(Text, nullable=True, doc="Note aggiuntive sul nesting")
     
-    # ✅ NUOVO: Posizioni 2D dei tool sul piano dell'autoclave
+    # ✅ NUOVO: Posizioni 2D dei tool sul piano dell'autoclave con assegnazione piano
     posizioni_tool = Column(JSON, default=list, 
-                           doc="Posizioni 2D dei tool: [{'odl_id': int, 'x': float, 'y': float, 'width': float, 'height': float}, ...]")
+                           doc="Posizioni 2D dei tool: [{'odl_id': int, 'piano': int, 'x': float, 'y': float, 'width': float, 'height': float}, ...]")
     
     # ✅ NUOVO: Collegamento ai report generati
     report_id = Column(Integer, ForeignKey("reports.id"), nullable=True, index=True,
@@ -61,5 +67,27 @@ class NestingResult(Base):
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     
+    @property
+    def efficienza_piano_1(self) -> float:
+        """Calcola l'efficienza di utilizzo del piano 1"""
+        if self.area_totale > 0:
+            return (self.area_piano_1 / self.area_totale) * 100
+        return 0.0
+    
+    @property
+    def efficienza_piano_2(self) -> float:
+        """Calcola l'efficienza di utilizzo del piano 2"""
+        if self.superficie_piano_2_max and self.superficie_piano_2_max > 0:
+            return (self.area_piano_2 / self.superficie_piano_2_max) * 100
+        return 0.0
+    
+    @property
+    def efficienza_totale(self) -> float:
+        """Calcola l'efficienza totale di utilizzo"""
+        area_totale_disponibile = self.area_totale + (self.superficie_piano_2_max or 0)
+        if area_totale_disponibile > 0:
+            return ((self.area_piano_1 + self.area_piano_2) / area_totale_disponibile) * 100
+        return 0.0
+    
     def __repr__(self):
-        return f"<NestingResult id={self.id} autoclave_id={self.autoclave_id} stato={self.stato} created_at={self.created_at}>" 
+        return f"<NestingResult id={self.id} autoclave_id={self.autoclave_id} peso={self.peso_totale_kg}kg stato={self.stato} created_at={self.created_at}>" 

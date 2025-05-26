@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Pagina /role - Manta Group</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-step {
+            margin: 15px 0;
+            padding: 10px;
+            border-left: 4px solid #007bff;
+            background-color: #f8f9fa;
+        }
+        .success {
+            border-left-color: #28a745;
+            background-color: #d4edda;
+        }
+        .warning {
+            border-left-color: #ffc107;
+            background-color: #fff3cd;
+        }
+        .error {
+            border-left-color: #dc3545;
+            background-color: #f8d7da;
+        }
+        code {
+            background-color: #e9ecef;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 5px;
+        }
+        .button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test Pagina Selezione Ruolo `/role`</h1>
+    
+    <div class="test-section">
+        <h2>📋 Checklist Test Funzionalità</h2>
+        
+        <div class="test-step">
+            <h3>1. Accesso alla Pagina</h3>
+            <p><strong>URL da testare:</strong> <code>http://localhost:3000/role</code></p>
+            <p><strong>Risultato atteso:</strong> Pagina carica senza errori, mostra 4 card per i ruoli</p>
+            <a href="http://localhost:3000/role" class="button" target="_blank">🔗 Apri /role</a>
+        </div>
+        
+        <div class="test-step">
+            <h3>2. Visualizzazione Ruoli</h3>
+            <p><strong>Verifica presenza:</strong></p>
+            <ul>
+                <li>✅ Card ADMIN (icona Shield, colore rosso)</li>
+                <li>✅ Card RESPONSABILE (icona Users, colore blu)</li>
+                <li>✅ Card LAMINATORE (icona Wrench, colore verde)</li>
+                <li>✅ Card AUTOCLAVISTA (icona Flame, colore arancione)</li>
+            </ul>
+        </div>
+        
+        <div class="test-step">
+            <h3>3. Test Selezione Ruolo ADMIN</h3>
+            <p><strong>Azione:</strong> Clicca su "Seleziona Ruolo" nella card ADMIN</p>
+            <p><strong>Risultato atteso:</strong></p>
+            <ul>
+                <li>Redirect automatico a <code>/dashboard</code></li>
+                <li>localStorage contiene <code>userRole: "ADMIN"</code></li>
+                <li>Sidebar mostra tutte le funzionalità</li>
+            </ul>
+        </div>
+        
+        <div class="test-step">
+            <h3>4. Test Persistenza Ruolo</h3>
+            <p><strong>Azione:</strong> Ricarica la pagina (F5)</p>
+            <p><strong>Risultato atteso:</strong> Rimani nella dashboard, ruolo ADMIN mantenuto</p>
+        </div>
+        
+        <div class="test-step">
+            <h3>5. Test Reset Ruolo</h3>
+            <p><strong>Azione:</strong> Apri DevTools → Application → Local Storage → cancella <code>userRole</code></p>
+            <p><strong>Risultato atteso:</strong> Redirect automatico a <code>/role</code></p>
+        </div>
+        
+        <div class="test-step">
+            <h3>6. Test Altri Ruoli</h3>
+            <p><strong>Azione:</strong> Testa selezione RESPONSABILE, LAMINATORE, AUTOCLAVISTA</p>
+            <p><strong>Risultato atteso:</strong> Sidebar si adatta mostrando solo funzionalità del ruolo</p>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>🔧 Strumenti di Debug</h2>
+        
+        <div class="test-step">
+            <h3>Controllo localStorage</h3>
+            <p>Apri DevTools (F12) → Application → Local Storage → <code>http://localhost:3000</code></p>
+            <p>Cerca la chiave: <code>userRole</code></p>
+            <button onclick="checkLocalStorage()" class="button">🔍 Controlla Ruolo Corrente</button>
+            <button onclick="clearRole()" class="button">🗑️ Cancella Ruolo</button>
+        </div>
+        
+        <div class="test-step">
+            <h3>Test Redirect Automatico</h3>
+            <p>Prova ad accedere direttamente a:</p>
+            <a href="http://localhost:3000/dashboard" class="button" target="_blank">📊 Dashboard</a>
+            <a href="http://localhost:3000/dashboard/odl" class="button" target="_blank">📋 ODL</a>
+            <p><em>Se non hai un ruolo, dovresti essere reindirizzato a /role</em></p>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>✅ Risultati Test</h2>
+        <div id="test-results">
+            <p>I risultati dei test appariranno qui...</p>
+        </div>
+    </div>
+    
+    <script>
+        function checkLocalStorage() {
+            const role = localStorage.getItem('userRole');
+            const results = document.getElementById('test-results');
+            
+            if (role) {
+                results.innerHTML = `
+                    <div class="test-step success">
+                        <h3>✅ Ruolo Trovato</h3>
+                        <p><strong>Ruolo corrente:</strong> <code>${role}</code></p>
+                        <p><strong>Timestamp:</strong> ${new Date().toLocaleString()}</p>
+                    </div>
+                `;
+            } else {
+                results.innerHTML = `
+                    <div class="test-step warning">
+                        <h3>⚠️ Nessun Ruolo</h3>
+                        <p>localStorage non contiene un ruolo utente</p>
+                        <p>Dovresti essere reindirizzato a /role</p>
+                    </div>
+                `;
+            }
+        }
+        
+        function clearRole() {
+            localStorage.removeItem('userRole');
+            const results = document.getElementById('test-results');
+            results.innerHTML = `
+                <div class="test-step error">
+                    <h3>🗑️ Ruolo Cancellato</h3>
+                    <p>localStorage è stato pulito</p>
+                    <p>Ricarica la pagina per testare il redirect</p>
+                </div>
+            `;
+        }
+        
+        // Auto-check al caricamento
+        window.onload = function() {
+            checkLocalStorage();
+        };
+    </script>
+</body>
+</html> 

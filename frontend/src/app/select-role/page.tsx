@@ -92,7 +92,7 @@ export default function SelectRolePage() {
             </div>
           </div>
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            Benvenuto in CarbonPilot
+            Benvenuto in Manta Group
           </h1>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
             Seleziona il tuo ruolo per accedere alle funzionalità appropriate del sistema

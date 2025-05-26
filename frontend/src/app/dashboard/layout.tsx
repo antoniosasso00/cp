@@ -19,11 +19,13 @@ import {
   TrendingUp,
   Cog,
   UserCog,
-  Activity
+  Activity,
+  Timer
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useUserRole, type UserRole } from '@/hooks/useUserRole'
 import { Button } from '@/components/ui/button'
+import { UserMenu } from '@/components/ui/user-menu'
 
 interface SidebarNavItem {
   title: string;
@@ -40,107 +42,138 @@ interface SidebarSection {
 
 /**
  * Configurazione della sidebar con controllo dei ruoli
- * Se roles non è specificato, l'item/sezione è visibile a tutti
+ * Configurazione specifica per ogni ruolo:
+ * - ADMIN: vede tutto
+ * - RESPONSABILE: vede solo ODL, monitoraggio, schedule
+ * - LAMINATORE: vede solo produzione, tool
+ * - AUTOCLAVISTA: vede nesting, autoclavi, reports
  */
 const sidebarSections: SidebarSection[] = [
   {
-    title: "Produzione",
+    title: "Dashboard",
     items: [
       {
         title: "Dashboard",
         href: "/dashboard",
         icon: <Home className="h-4 w-4" />
         // Visibile a tutti i ruoli
-      },
-      {
-        title: "Catalogo",
-        href: "/dashboard/catalog",
-        icon: <Package className="h-4 w-4" />,
-        roles: ['ADMIN', 'RESPONSABILE', 'LAMINATORE']
-      },
-      {
-        title: "Parti",
-        href: "/dashboard/parts",
-        icon: <Wrench className="h-4 w-4" />,
-        roles: ['ADMIN', 'RESPONSABILE', 'LAMINATORE']
-      },
+      }
+    ]
+  },
+  {
+    title: "Gestione ODL",
+    items: [
       {
         title: "ODL",
-        href: "/dashboard/odl",
+        href: "/dashboard/shared/odl",
         icon: <ClipboardList className="h-4 w-4" />,
-        roles: ['ADMIN', 'RESPONSABILE', 'LAMINATORE']
+        roles: ['ADMIN', 'RESPONSABILE']
+      },
+      {
+        title: "Monitoraggio ODL",
+        href: "/dashboard/responsabile/odl-monitoring",
+        icon: <Activity className="h-4 w-4" />,
+        roles: ['ADMIN', 'RESPONSABILE']
+      }
+    ],
+    roles: ['ADMIN', 'RESPONSABILE']
+  },
+  {
+    title: "Produzione",
+    items: [
+      {
+        title: "Produzione",
+        href: "/dashboard/laminatore/produzione",
+        icon: <Factory className="h-4 w-4" />,
+        roles: ['ADMIN', 'LAMINATORE']
       },
       {
         title: "Tools/Stampi",
-        href: "/dashboard/tools",
+        href: "/dashboard/laminatore/tools",
         icon: <Cog className="h-4 w-4" />,
-        roles: ['ADMIN', 'RESPONSABILE', 'LAMINATORE']
-      },
-      {
-        title: "Produzione",
-        href: "/dashboard/produzione",
-        icon: <Factory className="h-4 w-4" />,
-        roles: ['ADMIN', 'RESPONSABILE', 'LAMINATORE']
+        roles: ['ADMIN', 'LAMINATORE']
       }
-    ]
+    ],
+    roles: ['ADMIN', 'LAMINATORE']
   },
   {
     title: "Autoclave",
     items: [
       {
+        title: "Produzione",
+        href: "/dashboard/autoclavista/produzione",
+        icon: <Activity className="h-4 w-4" />,
+        roles: ['ADMIN', 'AUTOCLAVISTA']
+      },
+      {
         title: "Nesting",
-        href: "/dashboard/nesting",
+        href: "/dashboard/autoclavista/nesting",
         icon: <LayoutGrid className="h-4 w-4" />,
-        roles: ['ADMIN', 'RESPONSABILE', 'AUTOCLAVISTA']
+        roles: ['ADMIN', 'AUTOCLAVISTA']
       },
       {
         title: "Autoclavi",
-        href: "/dashboard/autoclavi",
+        href: "/dashboard/autoclavista/autoclavi",
         icon: <Flame className="h-4 w-4" />,
-        roles: ['ADMIN', 'RESPONSABILE', 'AUTOCLAVISTA']
-      },
-      {
-        title: "Cicli Cura",
-        href: "/dashboard/cicli-cura",
-        icon: <Clock className="h-4 w-4" />,
-        roles: ['ADMIN', 'RESPONSABILE', 'AUTOCLAVISTA']
-      },
-      {
-        title: "Scheduling",
-        href: "/dashboard/schedule",
-        icon: <Calendar className="h-4 w-4" />,
-        roles: ['ADMIN', 'RESPONSABILE', 'AUTOCLAVISTA']
-      }
-    ]
-  },
-  {
-    title: "Controllo",
-    items: [
-      {
-        title: "Monitoraggio ODL",
-        href: "/dashboard/odl/monitoring",
-        icon: <Activity className="h-4 w-4" />,
-        roles: ['ADMIN', 'RESPONSABILE']
+        roles: ['ADMIN', 'AUTOCLAVISTA']
       },
       {
         title: "Reports",
-        href: "/dashboard/reports",
+        href: "/dashboard/responsabile/reports",
         icon: <FileText className="h-4 w-4" />,
+        roles: ['ADMIN', 'AUTOCLAVISTA']
+      }
+    ],
+    roles: ['ADMIN', 'AUTOCLAVISTA']
+  },
+  {
+    title: "Pianificazione",
+    items: [
+      {
+        title: "Schedule",
+        href: "/dashboard/autoclavista/schedule",
+        icon: <Calendar className="h-4 w-4" />,
         roles: ['ADMIN', 'RESPONSABILE']
+      }
+    ],
+    roles: ['ADMIN', 'RESPONSABILE']
+  },
+  {
+    title: "Amministrazione",
+    items: [
+      {
+        title: "Catalogo",
+        href: "/dashboard/shared/catalog",
+        icon: <Package className="h-4 w-4" />,
+        roles: ['ADMIN']
+      },
+      {
+        title: "Parti",
+        href: "/dashboard/laminatore/parts",
+        icon: <Wrench className="h-4 w-4" />,
+        roles: ['ADMIN']
+      },
+      {
+        title: "Cicli Cura",
+        href: "/dashboard/autoclavista/cicli-cura",
+        icon: <Clock className="h-4 w-4" />,
+        roles: ['ADMIN']
       },
       {
         title: "Statistiche",
-        href: "/dashboard/catalog/statistiche",
+        href: "/dashboard/responsabile/statistiche",
         icon: <BarChart3 className="h-4 w-4" />,
-        roles: ['ADMIN', 'RESPONSABILE']
+        roles: ['ADMIN']
       },
       {
-        title: "Impostazioni",
-        href: "/dashboard/impostazioni",
-        icon: <Settings className="h-4 w-4" />,
+        title: "Tempi & Performance",
+        href: "/dashboard/laminatore/tempi",
+        icon: <Timer className="h-4 w-4" />,
         roles: ['ADMIN']
-      }
-    ]
+      },
+
+    ],
+    roles: ['ADMIN']
   }
 ]
 
@@ -186,13 +219,7 @@ export default function DashboardLayout({
       });
   };
 
-  /**
-   * Gestisce il cambio ruolo (solo in sviluppo)
-   */
-  const handleRoleChange = () => {
-    clearRole();
-    window.location.href = '/select-role';
-  };
+
 
   const filteredSections = filterSectionsByRole(sidebarSections);
 
@@ -202,7 +229,7 @@ export default function DashboardLayout({
       <header className="sticky top-0 z-10 w-full border-b bg-background">
         <div className="flex h-16 items-center px-4 md:px-6">
           <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
-            <span className="text-primary text-xl">CarbonPilot</span>
+            <span className="text-primary text-xl">Manta Group</span>
           </Link>
           <nav className="ml-auto flex items-center gap-4">
             {/* Indicatore ruolo corrente */}
@@ -215,29 +242,8 @@ export default function DashboardLayout({
               </div>
             )}
             
-            {/* Pulsante cambio ruolo (solo in sviluppo) */}
-            {process.env.NODE_ENV !== 'production' && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRoleChange}
-                className="text-xs"
-              >
-                Cambia Ruolo
-              </Button>
-            )}
-            
-            <div className="relative inline-block text-left">
-              <div>
-                <button
-                  type="button"
-                  className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 w-10"
-                >
-                  <span className="sr-only">Opzioni utente</span>
-                  <span className="h-4 w-4">👤</span>
-                </button>
-              </div>
-            </div>
+            {/* Menu utente con dropdown */}
+            <UserMenu />
           </nav>
         </div>
         <div className="flex h-10 items-center px-4 text-sm text-muted-foreground md:px-6">
