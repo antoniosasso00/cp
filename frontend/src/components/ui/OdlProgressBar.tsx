@@ -3,7 +3,7 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Clock, AlertTriangle } from 'lucide-react';
+import { Clock, AlertTriangle, Info } from 'lucide-react';
 
 // Tipi per i dati temporali degli stati
 export interface ODLStateTimestamp {
@@ -76,9 +76,29 @@ export function OdlProgressBar({
   onTimelineClick 
 }: OdlProgressBarProps) {
   
+  // Validazione e sanitizzazione dei dati in ingresso
+  const sanitizeOdlData = (data: ODLProgressData): ODLProgressData => {
+    return {
+      ...data,
+      timestamps: Array.isArray(data.timestamps) ? data.timestamps : [],
+      status: data.status || 'Preparazione',
+      created_at: data.created_at || new Date().toISOString(),
+      updated_at: data.updated_at || new Date().toISOString()
+    };
+  };
+
+  const sanitizedOdl = sanitizeOdlData(odl);
+
   // Calcola la durata totale effettiva
   const calcolaDurataTotale = (): number => {
-    return odl.timestamps.reduce((total, timestamp) => {
+    if (!sanitizedOdl.timestamps || sanitizedOdl.timestamps.length === 0) {
+      // Fallback: calcola durata dall'inizio dell'ODL
+      const now = new Date();
+      const created = new Date(sanitizedOdl.created_at);
+      return Math.floor((now.getTime() - created.getTime()) / (1000 * 60));
+    }
+    
+    return sanitizedOdl.timestamps.reduce((total, timestamp) => {
       return total + (timestamp.durata_minuti || 0);
     }, 0);
   };
@@ -93,34 +113,100 @@ export function OdlProgressBar({
     return min > 0 ? `${ore}h ${min}m` : `${ore}h`;
   };
 
+  // Genera segmenti di fallback basati sullo stato corrente
+  const generaSegmentiFallback = () => {
+    const statiOrdinati = Object.keys(STATI_CONFIG).sort((a, b) => 
+      STATI_CONFIG[a as keyof typeof STATI_CONFIG].order - STATI_CONFIG[b as keyof typeof STATI_CONFIG].order
+    );
+    
+    const indiceCorrente = statiOrdinati.indexOf(sanitizedOdl.status);
+    const durataTotale = calcolaDurataTotale();
+    
+    if (indiceCorrente === -1) {
+      // Stato non riconosciuto, mostra solo lo stato corrente
+      return [{
+        stato: sanitizedOdl.status,
+        inizio: sanitizedOdl.created_at,
+        fine: undefined,
+        durata_minuti: durataTotale,
+        percentuale: 100,
+        isEstimated: true
+      }];
+    }
+    
+    // Crea segmenti per tutti gli stati fino a quello corrente
+    const segmenti = [];
+    const durataPerStato = Math.floor(durataTotale / (indiceCorrente + 1));
+    
+    for (let i = 0; i <= indiceCorrente; i++) {
+      const stato = statiOrdinati[i];
+      const isCorrente = i === indiceCorrente;
+      const durata = isCorrente ? durataTotale - (durataPerStato * i) : durataPerStato;
+      
+      segmenti.push({
+        stato,
+        inizio: sanitizedOdl.created_at,
+        fine: isCorrente ? undefined : sanitizedOdl.updated_at,
+        durata_minuti: durata,
+        percentuale: (durata / durataTotale) * 100,
+        isEstimated: true
+      });
+    }
+    
+    return segmenti;
+  };
+
   // Calcola la percentuale di ogni segmento
   const calcolaPercentuali = () => {
+    // Se non ci sono timestamps, usa i segmenti di fallback
+    if (!sanitizedOdl.timestamps || sanitizedOdl.timestamps.length === 0) {
+      return generaSegmentiFallback();
+    }
+    
     const durataTotale = calcolaDurataTotale();
-    if (durataTotale === 0) return [];
+    if (durataTotale === 0) return generaSegmentiFallback();
 
-    return odl.timestamps.map(timestamp => ({
+    return sanitizedOdl.timestamps.map(timestamp => ({
       ...timestamp,
-      percentuale: ((timestamp.durata_minuti || 0) / durataTotale) * 100
+      percentuale: ((timestamp.durata_minuti || 0) / durataTotale) * 100,
+      isEstimated: false
     }));
   };
 
   // Determina se un ODL è in ritardo (più di 24h nello stato corrente)
   const isInRitardo = (): boolean => {
     const now = new Date();
-    const lastUpdate = new Date(odl.updated_at);
+    const lastUpdate = new Date(sanitizedOdl.updated_at);
     const diffHours = (now.getTime() - lastUpdate.getTime()) / (1000 * 60 * 60);
-    return diffHours > 24 && odl.status !== 'Finito';
+    return diffHours > 24 && sanitizedOdl.status !== 'Finito';
+  };
+
+  // Calcola il tempo stimato vs reale per evidenziare ritardi
+  const calcolaScostamentoTempo = (): { scostamento: number; percentuale: number } => {
+    const durataTotale = calcolaDurataTotale();
+    const tempoStimato = sanitizedOdl.tempo_totale_stimato || 480; // Default 8 ore
+    const scostamento = durataTotale - tempoStimato;
+    const percentuale = tempoStimato > 0 ? (scostamento / tempoStimato) * 100 : 0;
+    return { scostamento, percentuale };
   };
 
   // Ottieni il timestamp corrente
   const getCurrentTimestamp = () => {
-    return odl.timestamps.find(t => t.stato === odl.status);
+    if (!sanitizedOdl.timestamps || sanitizedOdl.timestamps.length === 0) return null;
+    return sanitizedOdl.timestamps.find(t => t.stato === sanitizedOdl.status);
+  };
+
+  // Determina se stiamo usando dati stimati
+  const isUsingEstimatedData = (): boolean => {
+    return !sanitizedOdl.timestamps || sanitizedOdl.timestamps.length === 0;
   };
 
   const segmenti = calcolaPercentuali();
   const durataTotale = calcolaDurataTotale();
   const currentTimestamp = getCurrentTimestamp();
   const inRitardo = isInRitardo();
+  const scostamento = calcolaScostamentoTempo();
+  const usingEstimatedData = isUsingEstimatedData();
 
   return (
     <TooltipProvider>
@@ -130,13 +216,13 @@ export function OdlProgressBar({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="text-xs">
-                ODL #{odl.id}
+                ODL #{sanitizedOdl.id}
               </Badge>
               <Badge 
-                variant={odl.status === 'Finito' ? 'default' : 'secondary'}
-                className={`text-xs ${STATI_CONFIG[odl.status as keyof typeof STATI_CONFIG]?.textColor || ''}`}
+                variant={sanitizedOdl.status === 'Finito' ? 'default' : 'secondary'}
+                className={`text-xs ${STATI_CONFIG[sanitizedOdl.status as keyof typeof STATI_CONFIG]?.textColor || ''}`}
               >
-                {STATI_CONFIG[odl.status as keyof typeof STATI_CONFIG]?.icon} {odl.status}
+                {STATI_CONFIG[sanitizedOdl.status as keyof typeof STATI_CONFIG]?.icon} {sanitizedOdl.status}
               </Badge>
               {inRitardo && (
                 <Badge variant="destructive" className="text-xs">
@@ -144,11 +230,22 @@ export function OdlProgressBar({
                   In Ritardo
                 </Badge>
               )}
+              {usingEstimatedData && (
+                <Badge variant="outline" className="text-xs text-blue-600">
+                  <Info className="h-3 w-3 mr-1" />
+                  Stimato
+                </Badge>
+              )}
             </div>
             
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Clock className="h-3 w-3" />
               <span>Totale: {formatDurata(durataTotale)}</span>
+              {sanitizedOdl.tempo_totale_stimato && (
+                <span className={`text-xs ${scostamento.percentuale > 20 ? 'text-red-600' : scostamento.percentuale > 10 ? 'text-orange-600' : 'text-green-600'}`}>
+                  (Stima: {formatDurata(sanitizedOdl.tempo_totale_stimato)})
+                </span>
+              )}
               {onTimelineClick && (
                 <button
                   onClick={onTimelineClick}
@@ -167,7 +264,7 @@ export function OdlProgressBar({
             {segmenti.length > 0 ? (
               segmenti.map((segmento, index) => {
                 const config = STATI_CONFIG[segmento.stato as keyof typeof STATI_CONFIG];
-                const isCurrentState = segmento.stato === odl.status;
+                const isCurrentState = segmento.stato === sanitizedOdl.status;
                 
                 return (
                   <Tooltip key={index}>
@@ -178,6 +275,7 @@ export function OdlProgressBar({
                           transition-all duration-300 hover:opacity-80
                           ${isCurrentState ? 'ring-2 ring-blue-500 ring-opacity-50' : ''}
                           ${segmento.percentuale < 5 ? 'min-w-[4px]' : ''}
+                          ${segmento.isEstimated ? 'opacity-75 border-2 border-dashed border-white' : ''}
                         `}
                         style={{ width: `${Math.max(segmento.percentuale, 2)}%` }}
                       />
@@ -186,11 +284,12 @@ export function OdlProgressBar({
                       <div className="text-center">
                         <div className="font-medium">
                           {config?.icon} {segmento.stato}
+                          {segmento.isEstimated && <span className="text-blue-400 ml-1">(stimato)</span>}
                         </div>
                         <div className="text-xs text-muted-foreground">
                           Durata: {formatDurata(segmento.durata_minuti || 0)}
                         </div>
-                        {segmento.inizio && (
+                        {segmento.inizio && !segmento.isEstimated && (
                           <div className="text-xs text-muted-foreground">
                             Inizio: {new Date(segmento.inizio).toLocaleDateString('it-IT', {
                               day: '2-digit',
@@ -200,7 +299,7 @@ export function OdlProgressBar({
                             })}
                           </div>
                         )}
-                        {segmento.fine && (
+                        {segmento.fine && !segmento.isEstimated && (
                           <div className="text-xs text-muted-foreground">
                             Fine: {new Date(segmento.fine).toLocaleDateString('it-IT', {
                               day: '2-digit',
@@ -210,21 +309,26 @@ export function OdlProgressBar({
                             })}
                           </div>
                         )}
+                        {segmento.isEstimated && (
+                          <div className="text-xs text-blue-400">
+                            Dati stimati - Timeline non disponibile
+                          </div>
+                        )}
                       </div>
                     </TooltipContent>
                   </Tooltip>
                 );
               })
             ) : (
-              // Barra vuota se non ci sono dati
+              // Barra vuota se non ci sono dati (caso estremo)
               <div className="w-full bg-gray-300 flex items-center justify-center">
-                <span className="text-xs text-gray-600">Dati temporali non disponibili</span>
+                <span className="text-xs text-gray-600">Stato sconosciuto</span>
               </div>
             )}
           </div>
 
           {/* Indicatore stato corrente */}
-          {currentTimestamp && !currentTimestamp.fine && (
+          {(currentTimestamp && !currentTimestamp.fine) || usingEstimatedData && (
             <div className="absolute -top-1 -bottom-1 right-0 w-1 bg-blue-600 rounded-full animate-pulse" />
           )}
         </div>
@@ -235,7 +339,7 @@ export function OdlProgressBar({
             {Object.entries(STATI_CONFIG).map(([stato, config]) => {
               const segmento = segmenti.find(s => s.stato === stato);
               const isActive = segmento !== undefined;
-              const isCurrent = stato === odl.status;
+              const isCurrent = stato === sanitizedOdl.status;
               
               return (
                 <div 
@@ -247,7 +351,7 @@ export function OdlProgressBar({
                   `}
                 >
                   <div 
-                    className={`w-3 h-3 rounded-sm ${config.color}`}
+                    className={`w-3 h-3 rounded-sm ${config.color} ${segmento?.isEstimated ? 'opacity-75 border border-dashed border-gray-400' : ''}`}
                   />
                   <span className={`text-xs ${isActive ? 'font-medium' : ''}`}>
                     {config.icon} {stato}
@@ -255,6 +359,7 @@ export function OdlProgressBar({
                   {segmento && (
                     <span className="text-xs text-muted-foreground ml-auto">
                       {formatDurata(segmento.durata_minuti || 0)}
+                      {segmento.isEstimated && <span className="text-blue-400">*</span>}
                     </span>
                   )}
                 </div>
@@ -264,7 +369,17 @@ export function OdlProgressBar({
         )}
 
         {/* Informazioni aggiuntive per dati incompleti */}
-        {durataTotale === 0 && (
+        {usingEstimatedData && (
+          <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 p-2 rounded">
+            <Info className="h-4 w-4" />
+            <span>
+              Dati temporali stimati - La timeline dettagliata sarà disponibile dopo il primo cambio di stato
+              {durataTotale > 0 && ` (tempo dall'inizio: ${formatDurata(durataTotale)})`}
+            </span>
+          </div>
+        )}
+
+        {durataTotale === 0 && !usingEstimatedData && (
           <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 p-2 rounded">
             <AlertTriangle className="h-4 w-4" />
             <span>Dati temporali incompleti - Alcuni timestamp potrebbero mancare</span>
@@ -273,4 +388,20 @@ export function OdlProgressBar({
       </div>
     </TooltipProvider>
   );
-} 
+}
+
+// Funzione di utilità per creare dati di test
+export const createTestODLData = (overrides: Partial<ODLProgressData> = {}): ODLProgressData => {
+  const now = new Date();
+  const created = new Date(now.getTime() - 2 * 60 * 60 * 1000); // 2 ore fa
+  
+  return {
+    id: 1,
+    status: 'Laminazione',
+    created_at: created.toISOString(),
+    updated_at: now.toISOString(),
+    timestamps: [],
+    tempo_totale_stimato: 480,
+    ...overrides
+  };
+}; 

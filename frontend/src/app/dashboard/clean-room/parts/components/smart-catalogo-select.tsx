@@ -11,6 +11,7 @@ interface SmartCatalogoSelectProps {
   catalogo: CatalogoResponse[]
   selectedPartNumber: string
   onSelect: (partNumber: string) => void
+  onItemSelect?: (item: CatalogoResponse) => void
   isLoading?: boolean
   error?: string
   disabled?: boolean
@@ -36,6 +37,7 @@ export default function SmartCatalogoSelect({
   catalogo, 
   selectedPartNumber, 
   onSelect, 
+  onItemSelect,
   isLoading = false,
   error,
   disabled = false
@@ -61,6 +63,9 @@ export default function SmartCatalogoSelect({
 
   const handleSelect = (item: CatalogoResponse) => {
     onSelect(item.part_number)
+    if (onItemSelect) {
+      onItemSelect(item)
+    }
     setSearchTerm('')
     setIsOpen(false)
   }

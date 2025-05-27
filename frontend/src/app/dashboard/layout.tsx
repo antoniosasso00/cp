@@ -156,16 +156,10 @@ const sidebarSections: SidebarSection[] = [
     title: "Amministrazione",
     items: [
       {
-        title: "Statistiche",
-        href: "/dashboard/management/statistiche",
+        title: "Dashboard Monitoraggio",
+        href: "/dashboard/monitoraggio",
         icon: <BarChart3 className="h-4 w-4" />,
         roles: ['ADMIN', 'Management']
-      },
-      {
-        title: "Tempi & Performance",
-        href: "/dashboard/clean-room/tempi",
-        icon: <Timer className="h-4 w-4" />,
-        roles: ['ADMIN']
       }
     ],
     roles: ['ADMIN', 'Management']

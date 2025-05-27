@@ -66,10 +66,10 @@ export function DashboardShortcuts({ userRole, className = "" }: DashboardShortc
       available: true
     },
     {
-      title: 'Statistiche',
-      description: 'Visualizza statistiche produzione',
+      title: 'Dashboard Monitoraggio',
+      description: 'Analisi complete e statistiche',
       icon: FileText,
-      href: '/dashboard/management/statistiche',
+      href: '/dashboard/monitoraggio',
       color: 'bg-indigo-500 hover:bg-indigo-600',
       available: true
     },

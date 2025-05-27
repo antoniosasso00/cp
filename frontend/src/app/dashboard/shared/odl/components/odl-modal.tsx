@@ -256,6 +256,23 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
               </div>
             </div>
 
+            {/* ✅ Campo descrizione della parte selezionata */}
+            {selectedParte && (
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right text-muted-foreground">
+                  Descrizione
+                </Label>
+                <div className="col-span-3 space-y-1">
+                  <div className="px-3 py-2 bg-muted rounded-md text-sm">
+                    {selectedParte.descrizione_breve}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Descrizione della parte selezionata dal catalogo
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="tool_id" className="text-right">
                 Tool

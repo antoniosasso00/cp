@@ -1,15 +1,28 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useToast } from '@/components/ui/use-toast'
-import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { catalogoApi, tempoFasiApi, CatalogoResponse } from '@/lib/api'
 import { Loader2, AlertCircle } from 'lucide-react'
+import { tempoFasiApi, CatalogoResponse } from '@/lib/api'
 import { formatDuration } from '@/lib/utils'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
+
+interface FiltriGlobali {
+  periodo: string;
+  partNumber: string;
+  statoODL: string;
+  dataInizio?: Date;
+  dataFine?: Date;
+}
+
+interface StatisticheCatalogoProps {
+  filtri: FiltriGlobali;
+  catalogo: CatalogoResponse[];
+  onError: (message: string) => void;
+}
 
 // Definizione di tipi per le statistiche
 interface StatisticheFasi {
@@ -26,42 +39,13 @@ interface StatistichePartNumber {
   totale_odl: number;
 }
 
-export default function StatisticheCatalogo() {
-  const [catalogo, setCatalogo] = useState<CatalogoResponse[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+export default function StatisticheCatalogo({ filtri, catalogo, onError }: StatisticheCatalogoProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedPartNumber, setSelectedPartNumber] = useState<string>('')
-  const [rangeTempo, setRangeTempo] = useState<string>('30')
   const [statistiche, setStatistiche] = useState<StatistichePartNumber | null>(null)
   const [loadingStats, setLoadingStats] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const { toast } = useToast()
 
-  // Carica il catalogo al caricamento della pagina
-  useEffect(() => {
-    const fetchCatalogo = async () => {
-      try {
-        setIsLoading(true)
-        setError(null)
-        const data = await catalogoApi.getAll()
-        setCatalogo(data.filter(item => item.attivo)) // Solo parti attive
-      } catch (err) {
-        console.error('Errore nel caricamento del catalogo:', err)
-        setError('Impossibile caricare il catalogo. Riprova più tardi.')
-        toast({
-          variant: 'destructive',
-          title: 'Errore',
-          description: 'Impossibile caricare il catalogo. Riprova più tardi.',
-        })
-      } finally {
-        setIsLoading(false)
-      }
-    }
-    
-    fetchCatalogo()
-  }, [toast])
-
-  // Carica le statistiche quando cambia il part number selezionato o il range temporale
+  // Carica le statistiche quando cambia il part number selezionato o i filtri
   useEffect(() => {
     let isMounted = true;
 
@@ -73,10 +57,9 @@ export default function StatisticheCatalogo() {
       
       try {
         setLoadingStats(true)
-        setError(null)
         
         // Chiamata all'API per recuperare le statistiche
-        const giorni = parseInt(rangeTempo)
+        const giorni = parseInt(filtri.periodo)
         const result = await tempoFasiApi.getStatisticheByPartNumber(selectedPartNumber, giorni)
         
         if (isMounted) {
@@ -85,12 +68,7 @@ export default function StatisticheCatalogo() {
       } catch (err) {
         console.error('Errore nel caricamento delle statistiche:', err)
         if (isMounted) {
-          setError('Impossibile caricare le statistiche. Riprova più tardi.')
-          toast({
-            variant: 'destructive',
-            title: 'Errore',
-            description: 'Impossibile caricare le statistiche. Riprova più tardi.',
-          })
+          onError('Impossibile caricare le statistiche del catalogo. Riprova più tardi.')
         }
       } finally {
         if (isMounted) {
@@ -106,7 +84,14 @@ export default function StatisticheCatalogo() {
     return () => {
       isMounted = false;
     };
-  }, [selectedPartNumber, rangeTempo, toast])
+  }, [selectedPartNumber, filtri.periodo, onError])
+
+  // Applica il filtro part number dai filtri globali
+  useEffect(() => {
+    if (filtri.partNumber && filtri.partNumber !== 'all' && filtri.partNumber !== selectedPartNumber) {
+      setSelectedPartNumber(filtri.partNumber)
+    }
+  }, [filtri.partNumber, selectedPartNumber])
 
   // Filtra il catalogo in base alla ricerca
   const filteredCatalogo = catalogo.filter(item => {
@@ -170,6 +155,40 @@ export default function StatisticheCatalogo() {
     return fasiAttive;
   }
 
+  // Calcola lo scostamento medio rispetto ai tempi standard
+  const calcolaScostamentoMedio = (): number => {
+    if (!statistiche || !statistiche.previsioni) return 0;
+    
+    // Tempi standard di riferimento (in minuti)
+    const tempiStandard = {
+      'laminazione': 120,    // 2 ore
+      'attesa_cura': 60,     // 1 ora
+      'cura': 300            // 5 ore
+    };
+    
+    let scostamentoTotale = 0;
+    let fasiConDati = 0;
+    
+    try {
+      Object.entries(statistiche.previsioni).forEach(([fase, dati]) => {
+        if (dati && typeof dati === 'object' && 'media_minuti' in dati) {
+          const mediaReale = dati.media_minuti || 0;
+          const tempoStandard = tempiStandard[fase as keyof typeof tempiStandard] || 0;
+          
+          if (mediaReale > 0 && tempoStandard > 0) {
+            const scostamento = ((mediaReale - tempoStandard) / tempoStandard) * 100;
+            scostamentoTotale += Math.abs(scostamento);
+            fasiConDati++;
+          }
+        }
+      });
+    } catch (err) {
+      console.error('Errore nel calcolo dello scostamento medio:', err);
+    }
+    
+    return fasiConDati > 0 ? scostamentoTotale / fasiConDati : 0;
+  }
+
   // Verifica se ci sono ODL completati
   const hasDatiValidi = (): boolean => {
     if (!statistiche) return false;
@@ -185,26 +204,11 @@ export default function StatisticheCatalogo() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Statistiche Catalogo</h1>
-        <p className="text-muted-foreground">
-          Analisi dei tempi di produzione per part number
-        </p>
-      </div>
-
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Errore</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
       <div className="grid gap-6 md:grid-cols-4">
         <div className="md:col-span-1 space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Filtra</CardTitle>
+              <CardTitle className="text-lg">Seleziona Part Number</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -217,33 +221,10 @@ export default function StatisticheCatalogo() {
                 />
               </div>
               
-              <div className="space-y-2">
-                <Label htmlFor="range">Range Temporale</Label>
-                <Select
-                  value={rangeTempo}
-                  onValueChange={setRangeTempo}
-                  disabled={!selectedPartNumber}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleziona range" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="7">Ultimi 7 giorni</SelectItem>
-                    <SelectItem value="30">Ultimi 30 giorni</SelectItem>
-                    <SelectItem value="90">Ultimi 90 giorni</SelectItem>
-                    <SelectItem value="365">Ultimo anno</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
               <div className="pt-4">
                 <h3 className="text-sm font-medium mb-2">Part Numbers</h3>
-                <div className="max-h-[300px] overflow-y-auto space-y-1">
-                  {isLoading ? (
-                    <div className="flex justify-center p-4">
-                      <Loader2 className="h-6 w-6 animate-spin" />
-                    </div>
-                  ) : filteredCatalogo.length === 0 ? (
+                <div className="max-h-[400px] overflow-y-auto space-y-1">
+                  {filteredCatalogo.length === 0 ? (
                     <div className="text-sm text-muted-foreground p-2">
                       Nessun part number trovato
                     </div>
@@ -294,15 +275,15 @@ export default function StatisticheCatalogo() {
               ) : !hasDatiValidi() ? (
                 <Alert>
                   <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Dati insufficienti</AlertTitle>
+                  <AlertTitle>Nessun dato disponibile</AlertTitle>
                   <AlertDescription>
-                    Non ci sono ODL completati per il part number selezionato.
+                    Non ci sono ODL completati per il part number selezionato nel periodo specificato.
                     Le statistiche saranno disponibili quando verranno completati degli ordini di lavoro.
                   </AlertDescription>
                 </Alert>
               ) : (
                 <div className="space-y-6">
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="p-4 bg-muted rounded-lg text-center">
                       <div className="text-2xl font-bold">
                         {statistiche?.totale_odl || 0}
@@ -317,7 +298,7 @@ export default function StatisticheCatalogo() {
                         {formatDuration(calcolaTotaleMedie())}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        Tempo Totale Medio
+                        Tempo Medio Completamento
                       </div>
                     </div>
                     
@@ -329,6 +310,15 @@ export default function StatisticheCatalogo() {
                         Fasi Registrate
                       </div>
                     </div>
+
+                    <div className="p-4 bg-muted rounded-lg text-center">
+                      <div className={`text-2xl font-bold ${calcolaScostamentoMedio() > 20 ? 'text-red-600' : calcolaScostamentoMedio() > 10 ? 'text-orange-600' : 'text-green-600'}`}>
+                        {calcolaScostamentoMedio().toFixed(1)}%
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        Scostamento Medio
+                      </div>
+                    </div>
                   </div>
                   
                   <div className="space-y-4">
@@ -337,14 +327,39 @@ export default function StatisticheCatalogo() {
                     {statistiche && statistiche.previsioni && Object.entries(statistiche.previsioni).map(([fase, dati]) => {
                       if (!dati) return null;
                       
+                      // Calcola scostamento per questa fase
+                      const tempiStandard = {
+                        'laminazione': 120,    // 2 ore
+                        'attesa_cura': 60,     // 1 ora
+                        'cura': 300            // 5 ore
+                      };
+                      
+                      const mediaReale = dati.media_minuti || 0;
+                      const tempoStandard = tempiStandard[fase as keyof typeof tempiStandard] || 0;
+                      const scostamento = tempoStandard > 0 ? ((mediaReale - tempoStandard) / tempoStandard) * 100 : 0;
+                      
                       return (
                         <div key={fase} className="p-4 border rounded-lg">
                           <div className="flex justify-between items-center">
                             <h4 className="font-medium">{translateFase(fase)}</h4>
-                            <div className="text-xl font-bold">{formatDuration(dati.media_minuti || 0)}</div>
+                            <div className="text-right">
+                              <div className="text-xl font-bold">{formatDuration(dati.media_minuti || 0)}</div>
+                              {tempoStandard > 0 && (
+                                <div className={`text-sm ${Math.abs(scostamento) > 20 ? 'text-red-600' : Math.abs(scostamento) > 10 ? 'text-orange-600' : 'text-green-600'}`}>
+                                  {scostamento > 0 ? '+' : ''}{scostamento.toFixed(1)}% vs standard
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <div className="text-sm text-muted-foreground mt-1">
-                            Basato su {dati.numero_osservazioni || 0} osservazioni
+                          <div className="flex justify-between items-center mt-2">
+                            <div className="text-sm text-muted-foreground">
+                              Basato su {dati.numero_osservazioni || 0} osservazioni
+                            </div>
+                            {tempoStandard > 0 && (
+                              <div className="text-sm text-muted-foreground">
+                                Standard: {formatDuration(tempoStandard)}
+                              </div>
+                            )}
                           </div>
                         </div>
                       );

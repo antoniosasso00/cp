@@ -110,6 +110,41 @@ class SystemLogService:
         )
     
     @staticmethod
+    def log_odl_operation(
+        db: Session,
+        operation_type: str,
+        user_role: UserRole,
+        details: Optional[dict] = None,
+        result: str = "SUCCESS",
+        user_id: Optional[str] = None,
+        ip_address: Optional[str] = None
+    ) -> SystemLog:
+        """Registra operazioni generiche sugli ODL (creazione, modifica, eliminazione)"""
+        action = f"Operazione ODL: {operation_type}"
+        
+        # Converti i dettagli in JSON se forniti
+        details_json = json.dumps(details) if details else None
+        
+        # Determina il livello di log in base al risultato
+        level = LogLevel.INFO if result == "SUCCESS" else LogLevel.ERROR
+        
+        # Estrai l'ID dell'ODL dai dettagli se disponibile
+        entity_id = details.get("odl_id") if details else None
+        
+        return SystemLogService.log_event(
+            db=db,
+            event_type=EventType.ODL_STATE_CHANGE,  # Usiamo ODL_STATE_CHANGE per operazioni generiche ODL
+            user_role=user_role,
+            action=action,
+            level=level,
+            user_id=user_id,
+            entity_type="odl",
+            entity_id=entity_id,
+            details=details_json,
+            ip_address=ip_address
+        )
+    
+    @staticmethod
     def log_nesting_confirm(
         db: Session,
         nesting_id: int,

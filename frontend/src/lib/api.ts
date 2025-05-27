@@ -560,8 +560,9 @@ export const odlApi = {
     return response.data;
   },
   
-  delete: async (id: number): Promise<void> => {
-    await api.delete(`/odl/${id}`);
+  delete: async (id: number, confirm: boolean = false): Promise<void> => {
+    const queryParam = confirm ? '?confirm=true' : '';
+    await api.delete(`/odl/${id}${queryParam}`);
   },
 
   checkQueue: async (): Promise<{

@@ -131,11 +131,11 @@ export default function CatalogoPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Link 
-                          href="/dashboard/management/statistiche" 
+                          href="/dashboard/monitoraggio" 
             className={buttonVariants({ variant: "outline" })}
           >
             <BarChart3 className="mr-2 h-4 w-4" />
-            Statistiche
+            Dashboard Monitoraggio
           </Link>
           <Button onClick={handleCreateClick}>Nuovo Part Number</Button>
         </div>

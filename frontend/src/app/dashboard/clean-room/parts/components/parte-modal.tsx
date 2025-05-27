@@ -440,6 +440,12 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
                 catalogo={catalogo}
                 selectedPartNumber={formData.part_number}
                 onSelect={(partNumber) => handleChange('part_number', partNumber)}
+                onItemSelect={(item) => {
+                  // ✅ Precompila la descrizione quando si seleziona un item dal catalogo
+                  if (item.descrizione && !formData.descrizione_breve) {
+                    handleChange('descrizione_breve', item.descrizione)
+                  }
+                }}
                 isLoading={isLoadingOptions}
                 error={errors.part_number}
                 disabled={false}
@@ -450,16 +456,21 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
               <Label htmlFor="descrizione_breve" className="text-right">
                 Descrizione
               </Label>
-              <Input
-                id="descrizione_breve"
-                value={formData.descrizione_breve}
-                onChange={e => handleChange('descrizione_breve', e.target.value)}
-                onFocus={() => handleFocus('descrizione_breve')}
-                className="col-span-3"
-              />
-              {errors.descrizione_breve && (
-                <p className="col-span-4 text-right text-sm text-destructive">{errors.descrizione_breve}</p>
-              )}
+              <div className="col-span-3 space-y-1">
+                <Input
+                  id="descrizione_breve"
+                  value={formData.descrizione_breve}
+                  onChange={e => handleChange('descrizione_breve', e.target.value)}
+                  onFocus={() => handleFocus('descrizione_breve')}
+                  placeholder="Descrizione della parte"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Campo precompilato dal catalogo, puoi modificarlo
+                </p>
+                {errors.descrizione_breve && (
+                  <p className="text-sm text-destructive">{errors.descrizione_breve}</p>
+                )}
+              </div>
             </div>
 
                       <div className="grid grid-cols-4 items-center gap-4">

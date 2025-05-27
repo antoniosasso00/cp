@@ -15,6 +15,7 @@ from schemas.odl_alerts import ODLAlertsResponse
 from services.odl_monitoring_service import ODLMonitoringService
 from services.odl_log_service import ODLLogService
 from services.odl_alerts_service import ODLAlertsService
+from services.state_tracking_service import StateTrackingService
 
 # Configurazione logger
 logger = logging.getLogger(__name__)
@@ -278,79 +279,70 @@ def get_odl_timeline(odl_id: int, db: Session = Depends(get_db)):
                 detail=f"ODL con ID {odl_id} non trovato"
             )
         
-        # Recupera i log ordinati per timestamp
-        logs = ODLLogService.ottieni_logs_odl(db=db, odl_id=odl_id)
+        # ✅ CORREZIONE: Usa StateTrackingService per i cambi di stato
+        timeline_stati = StateTrackingService.ottieni_timeline_stati(db=db, odl_id=odl_id)
         
-        # Arricchisci i log con informazioni correlate
+        # Arricchisci i dati della timeline
         logs_arricchiti = []
-        for log in logs:
+        for evento in timeline_stati:
             log_dict = {
-                "id": log.id,
-                "evento": log.evento,
-                "stato_precedente": log.stato_precedente,
-                "stato_nuovo": log.stato_nuovo,
-                "descrizione": log.descrizione,
-                "responsabile": log.responsabile,
-                "timestamp": log.timestamp.isoformat(),
+                "id": evento["id"],
+                "evento": f"Cambio stato: {evento['stato_precedente']} → {evento['stato_nuovo']}",
+                "stato_precedente": evento["stato_precedente"],
+                "stato_nuovo": evento["stato_nuovo"],
+                "descrizione": evento.get("note", ""),
+                "responsabile": evento.get("responsabile", "sistema"),
+                "timestamp": evento["timestamp"].isoformat(),
                 "nesting_stato": None,
                 "autoclave_nome": None,
-                "nesting_id": log.nesting_id,
-                "autoclave_id": log.autoclave_id,
-                "schedule_entry_id": log.schedule_entry_id
+                "nesting_id": None,
+                "autoclave_id": None,
+                "schedule_entry_id": None
             }
-            
-            # Aggiungi informazioni correlate se disponibili
-            if log.nesting_id:
-                nesting = db.query(NestingResult).filter(NestingResult.id == log.nesting_id).first()
-                if nesting:
-                    log_dict["nesting_stato"] = nesting.stato
-            
-            if log.autoclave_id:
-                autoclave = db.query(Autoclave).filter(Autoclave.id == log.autoclave_id).first()
-                if autoclave:
-                    log_dict["autoclave_nome"] = autoclave.nome
-            
             logs_arricchiti.append(log_dict)
         
         # Calcola le durate per stato
         durata_per_stato = {}
         timestamps_stati = []
         
-        # Raggruppa i log per transizioni di stato
-        for i, log in enumerate(logs):
-            if i < len(logs) - 1:
-                next_log = logs[i + 1]
-                durata_minuti = int((next_log.timestamp - log.timestamp).total_seconds() / 60)
+        # Raggruppa gli eventi per transizioni di stato
+        for i, evento in enumerate(timeline_stati):
+            if i < len(timeline_stati) - 1:
+                prossimo_evento = timeline_stati[i + 1]
+                durata_delta = prossimo_evento["timestamp"] - evento["timestamp"]
+                durata_minuti = int(durata_delta.total_seconds() / 60)
                 
-                if log.stato_nuovo not in durata_per_stato:
-                    durata_per_stato[log.stato_nuovo] = 0
-                durata_per_stato[log.stato_nuovo] += durata_minuti
+                stato = evento["stato_nuovo"]
+                if stato not in durata_per_stato:
+                    durata_per_stato[stato] = 0
+                durata_per_stato[stato] += durata_minuti
                 
                 # Aggiungi timestamp per la barra di progresso
                 timestamps_stati.append({
-                    "stato": log.stato_nuovo,
-                    "inizio": log.timestamp.isoformat(),
-                    "fine": next_log.timestamp.isoformat(),
+                    "stato": stato,
+                    "inizio": evento["timestamp"].isoformat(),
+                    "fine": prossimo_evento["timestamp"].isoformat(),
                     "durata_minuti": durata_minuti
                 })
             else:
-                # Ultimo log - stato corrente
+                # Ultimo evento - stato corrente
                 if odl.status != 'Finito':
-                    durata_corrente = int((datetime.now() - log.timestamp).total_seconds() / 60)
-                    if log.stato_nuovo not in durata_per_stato:
-                        durata_per_stato[log.stato_nuovo] = 0
-                    durata_per_stato[log.stato_nuovo] += durata_corrente
+                    durata_corrente = int((datetime.now() - evento["timestamp"]).total_seconds() / 60)
+                    stato = evento["stato_nuovo"]
+                    if stato not in durata_per_stato:
+                        durata_per_stato[stato] = 0
+                    durata_per_stato[stato] += durata_corrente
                     
                     timestamps_stati.append({
-                        "stato": log.stato_nuovo,
-                        "inizio": log.timestamp.isoformat(),
+                        "stato": stato,
+                        "inizio": evento["timestamp"].isoformat(),
                         "fine": None,
                         "durata_minuti": durata_corrente
                     })
         
         # Calcola statistiche
         durata_totale_minuti = sum(durata_per_stato.values())
-        numero_transizioni = len(logs) - 1 if len(logs) > 1 else 0
+        numero_transizioni = len(timeline_stati) - 1 if len(timeline_stati) > 1 else 0
         
         # Calcola tempo medio per transizione
         tempo_medio_per_transizione = {}
@@ -402,6 +394,9 @@ def get_odl_progress(odl_id: int, db: Session = Depends(get_db)):
     """
     Restituisce i dati ottimizzati per la visualizzazione della barra di progresso temporale.
     Include solo i timestamp degli stati e le durate necessarie per il rendering.
+    
+    Se non ci sono log disponibili, restituisce comunque i dati base dell'ODL
+    per permettere la visualizzazione stimata nel frontend.
     """
     try:
         from models.odl import ODL
@@ -415,57 +410,73 @@ def get_odl_progress(odl_id: int, db: Session = Depends(get_db)):
                 detail=f"ODL con ID {odl_id} non trovato"
             )
         
-        # Recupera i log ordinati per timestamp
-        logs = ODLLogService.ottieni_logs_odl(db=db, odl_id=odl_id)
+        # ✅ CORREZIONE: Usa StateTrackingService invece di ODLLogService
+        # per recuperare i cambi di stato con timestamp precisi
+        
+        # Recupera la timeline degli stati
+        timeline_stati = StateTrackingService.ottieni_timeline_stati(db=db, odl_id=odl_id)
         
         # Calcola i timestamp per ogni stato
         timestamps_stati = []
         
-        for i, log in enumerate(logs):
-            if i < len(logs) - 1:
-                next_log = logs[i + 1]
-                durata_minuti = int((next_log.timestamp - log.timestamp).total_seconds() / 60)
-                
-                timestamps_stati.append({
-                    "stato": log.stato_nuovo,
-                    "inizio": log.timestamp.isoformat(),
-                    "fine": next_log.timestamp.isoformat(),
-                    "durata_minuti": durata_minuti
-                })
-            else:
-                # Ultimo log - stato corrente
-                if odl.status != 'Finito':
-                    durata_corrente = int((datetime.now() - log.timestamp).total_seconds() / 60)
+        # Se ci sono cambi di stato, elaborali
+        if timeline_stati and len(timeline_stati) > 0:
+            for i, evento in enumerate(timeline_stati):
+                if i < len(timeline_stati) - 1:
+                    # Non è l'ultimo evento, calcola durata fino al prossimo
+                    prossimo_evento = timeline_stati[i + 1]
+                    durata_delta = prossimo_evento["timestamp"] - evento["timestamp"]
+                    durata_minuti = int(durata_delta.total_seconds() / 60)
+                    
                     timestamps_stati.append({
-                        "stato": log.stato_nuovo,
-                        "inizio": log.timestamp.isoformat(),
-                        "fine": None,
-                        "durata_minuti": durata_corrente
+                        "stato": evento["stato_nuovo"],
+                        "inizio": evento["timestamp"].isoformat(),
+                        "fine": prossimo_evento["timestamp"].isoformat(),
+                        "durata_minuti": durata_minuti
                     })
                 else:
-                    # ODL finito
-                    timestamps_stati.append({
-                        "stato": log.stato_nuovo,
-                        "inizio": log.timestamp.isoformat(),
-                        "fine": log.timestamp.isoformat(),
-                        "durata_minuti": 0
-                    })
+                    # Ultimo evento - stato corrente
+                    if odl.status != 'Finito':
+                        durata_corrente = int((datetime.now() - evento["timestamp"]).total_seconds() / 60)
+                        timestamps_stati.append({
+                            "stato": evento["stato_nuovo"],
+                            "inizio": evento["timestamp"].isoformat(),
+                            "fine": None,
+                            "durata_minuti": durata_corrente
+                        })
+                    else:
+                        # ODL finito
+                        timestamps_stati.append({
+                            "stato": evento["stato_nuovo"],
+                            "inizio": evento["timestamp"].isoformat(),
+                            "fine": evento["timestamp"].isoformat(),
+                            "durata_minuti": 0
+                        })
         
-        # Calcola tempo totale stimato (se disponibile)
+        # Calcola tempo totale stimato
         tempo_totale_stimato = None
         if len(timestamps_stati) > 0:
             tempo_totale_stimato = sum(t["durata_minuti"] for t in timestamps_stati)
+        else:
+            # Fallback: calcola durata dall'inizio dell'ODL
+            durata_dall_inizio = int((datetime.now() - odl.created_at).total_seconds() / 60)
+            tempo_totale_stimato = durata_dall_inizio
         
         progress_data = {
             "id": odl_id,
             "status": odl.status,
             "created_at": odl.created_at.isoformat(),
             "updated_at": odl.updated_at.isoformat(),
-            "timestamps": timestamps_stati,
-            "tempo_totale_stimato": tempo_totale_stimato
+            "timestamps": timestamps_stati,  # Può essere vuoto, il frontend gestirà il fallback
+            "tempo_totale_stimato": tempo_totale_stimato,
+            "has_timeline_data": len(timestamps_stati) > 0  # Flag per indicare se ci sono dati reali
         }
         
-        logger.info(f"Restituiti dati di progresso per ODL {odl_id}")
+        if len(timestamps_stati) > 0:
+            logger.info(f"Restituiti dati di progresso per ODL {odl_id} con {len(timestamps_stati)} timestamps")
+        else:
+            logger.info(f"Restituiti dati di progresso per ODL {odl_id} senza timeline (fallback mode)")
+        
         return progress_data
         
     except HTTPException:
@@ -500,4 +511,57 @@ def generate_missing_logs(db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Errore durante la generazione dei log mancanti"
+        )
+
+@router.post("/initialize-state-tracking", 
+             summary="Inizializza il tracking degli stati per ODL esistenti")
+def initialize_state_tracking(db: Session = Depends(get_db)):
+    """
+    Inizializza il sistema di tracking degli stati per ODL esistenti.
+    
+    Crea i record StateLog iniziali per tutti gli ODL che non hanno ancora
+    un tracking degli stati attivo.
+    """
+    try:
+        from models.odl import ODL
+        from models.state_log import StateLog
+        
+        # Trova tutti gli ODL che non hanno state logs
+        odl_senza_tracking = db.query(ODL).filter(
+            ~ODL.id.in_(
+                db.query(StateLog.odl_id).distinct()
+            )
+        ).all()
+        
+        logs_creati = 0
+        
+        for odl in odl_senza_tracking:
+            # Crea il log di stato iniziale
+            state_log = StateTrackingService.registra_cambio_stato(
+                db=db,
+                odl_id=odl.id,
+                stato_precedente=None,  # Primo stato
+                stato_nuovo=odl.status,
+                responsabile="sistema",
+                ruolo_responsabile="ADMIN",
+                note=f"Inizializzazione tracking stati per ODL esistente (creato: {odl.created_at})"
+            )
+            logs_creati += 1
+        
+        # Commit delle modifiche
+        db.commit()
+        
+        logger.info(f"✅ Inizializzato tracking stati per {logs_creati} ODL")
+        return {
+            "message": f"Inizializzato tracking stati per {logs_creati} ODL esistenti",
+            "logs_creati": logs_creati,
+            "odl_processati": [odl.id for odl in odl_senza_tracking]
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Errore durante l'inizializzazione del tracking stati: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Errore durante l'inizializzazione del tracking stati"
         )

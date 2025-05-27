@@ -54,10 +54,10 @@ export default function RolePage() {
         {/* Header semplice */}
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-primary rounded-lg flex items-center justify-center mx-auto mb-4">
-            <span className="text-2xl font-bold text-white">CP</span>
+            <span className="text-2xl font-bold text-white">MG</span>
           </div>
           <h1 className="text-2xl font-semibold text-gray-900 mb-2">
-            CarbonPilot
+            Manta Group
           </h1>
           <p className="text-gray-600">
             Seleziona il tuo ruolo

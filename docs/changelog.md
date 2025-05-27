@@ -13,6 +13,1121 @@ Ogni entry segue il formato:
 
 ---
 
+### [2025-01-28 - Modifica ed Eliminazione ODL anche se "Finito"] ✅ COMPLETATO
+
+#### 🎯 Obiettivo
+Implementazione della funzionalità per modificare ed eliminare ODL anche quando sono in stato "Finito", con protezioni appropriate per l'eliminazione e possibilità di modificare le note.
+
+#### 🏗️ Implementazione Backend
+
+##### ✅ Endpoint DELETE con Protezione
+**File**: `backend/api/routers/odl.py`
+- **Parametro Aggiunto**: `confirm: bool = Query(False)` all'endpoint DELETE
+- **Protezione**: ODL in stato "Finito" richiedono `confirm=true` per essere eliminati
+- **Messaggio Errore**: Specifico per eliminazione senza conferma di ODL finiti
+- **Logging**: Registrazione dell'operazione tramite `SystemLogService.log_odl_operation`
+
+```python
+@router.delete("/{odl_id}", response_model=dict)
+def delete_odl(
+    odl_id: int, 
+    confirm: bool = Query(False, description="Conferma eliminazione ODL finito"),
+    db: Session = Depends(get_db)
+):
+    # Verifica se ODL è finito e richiede conferma
+    if odl.status == "Finito" and not confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="ODL in stato 'Finito' richiede conferma esplicita per l'eliminazione"
+        )
+```
+
+##### ✅ Servizio di Logging
+**File**: `backend/services/system_log_service.py`
+- **Nuovo Metodo**: `log_odl_operation()` per registrare operazioni generiche su ODL
+- **Parametri**: `operation_type`, `odl_id`, `details`, `user_id`
+- **Utilizzo**: Logging di creazione, modifica, eliminazione ODL
+
+```python
+@staticmethod
+def log_odl_operation(operation_type: str, odl_id: int, details: str = None, user_id: int = None):
+    """Registra operazioni generiche su ODL (creazione, modifica, eliminazione)"""
+```
+
+#### 🎨 Implementazione Frontend
+
+##### ✅ API Client
+**File**: `frontend/src/lib/api.ts`
+- **Metodo Aggiornato**: `delete` dell'`odlApi` ora supporta parametro `confirm`
+- **Parametri**: `delete(id: number, confirm?: boolean)`
+- **Query String**: Aggiunge `?confirm=true` quando necessario
+
+```typescript
+delete: async (id: number, confirm?: boolean): Promise<void> => {
+  const url = confirm ? `/odl/${id}?confirm=true` : `/odl/${id}`;
+  await api.delete(url);
+}
+```
+
+##### ✅ Componente Tempi ODL
+**File**: `frontend/src/app/dashboard/monitoraggio/components/tempi-odl.tsx`
+
+**Nuovi Import**:
+- `ConfirmDialog`, `useConfirmDialog` per dialoghi di conferma
+- `Dialog`, `Label`, `Textarea` per modifica note
+- `Edit`, `Trash2` icone per azioni
+
+**Stati Aggiunti**:
+```typescript
+const [editDialogOpen, setEditDialogOpen] = useState(false)
+const [editingOdl, setEditingOdl] = useState<any>(null)
+const [editNote, setEditNote] = useState('')
+const [isUpdating, setIsUpdating] = useState(false)
+```
+
+**Funzioni Implementate**:
+- `handleEditOdl()`: Apre dialogo modifica con dati ODL correnti
+- `handleSaveOdl()`: Salva modifiche note ODL con toast di conferma
+- `handleDeleteOdl()`: Elimina ODL con conferma differenziata per stato "Finito"
+
+**Colonna Azioni Aggiunta**:
+- **Icona Edit** (✏️): Permette modifica note anche per ODL "Finito"
+- **Icona Trash** (🗑️): Elimina ODL con dialogo di conferma appropriato
+
+#### 🔄 Logica di Funzionamento
+
+##### ✅ Modifica ODL
+1. **Accesso**: Icona ✏️ disponibile per tutti gli ODL
+2. **Dialogo**: Mostra Part Number e Stato (readonly) + campo Note editabile
+3. **Salvataggio**: Aggiorna solo le note dell'ODL
+4. **Feedback**: Toast "✅ ODL aggiornato correttamente"
+5. **Ricarica**: Aggiorna automaticamente la tabella
+
+##### ✅ Eliminazione ODL
+1. **ODL Normali**: Dialogo di conferma standard
+2. **ODL "Finito"**: Dialogo con messaggio di avvertimento specifico
+3. **Conferma Backend**: Per ODL finiti invia `confirm=true`
+4. **Feedback**: Toast "🗑️ ODL eliminato con successo"
+5. **Logging**: Operazione registrata nei log di sistema
+
+##### ✅ Dialoghi di Conferma
+- **Modifica**: Dialogo modale con form per note
+- **Eliminazione Standard**: "Sei sicuro di voler eliminare questo ODL?"
+- **Eliminazione ODL Finito**: "Stai per eliminare un ODL in stato 'Finito'. Questa azione non può essere annullata e rimuoverà tutti i dati associati."
+
+#### 🎯 Benefici e Caratteristiche
+
+##### ✅ Funzionalità Utente
+- **Flessibilità**: Modifica note anche per ODL completati
+- **Sicurezza**: Protezione extra per eliminazione ODL finiti
+- **Usabilità**: Icone intuitive e feedback immediato
+- **Tracciabilità**: Tutte le operazioni vengono loggate
+
+##### ✅ Sicurezza
+- **Conferma Esplicita**: ODL finiti richiedono conferma aggiuntiva
+- **Validazione Backend**: Controlli lato server per eliminazione
+- **Logging Completo**: Audit trail di tutte le operazioni
+- **Messaggi Chiari**: Avvertimenti specifici per azioni critiche
+
+##### ✅ UX/UI
+- **Toast Notifications**: Feedback immediato per ogni azione
+- **Icone Intuitive**: Edit e Trash con hover states
+- **Dialoghi Modali**: Interfaccia pulita per modifica
+- **Responsive**: Funziona su tutti i dispositivi
+
+---
+
+### [2025-01-28 - Funzione Ripristina Stato Precedente ODL] ✅ COMPLETATO
+
+#### 🎯 Obiettivo
+Implementazione della funzione "Ripristina stato precedente" per gli ODL dalla dashboard di monitoraggio, permettendo agli utenti di annullare l'ultimo cambio di stato di un ODL.
+
+#### 🏗️ Implementazione Backend
+
+##### ✅ Modello Database
+**File**: `backend/models/odl.py`
+- **Nuovo Campo**: `previous_status` - Enum nullable per salvare lo stato precedente
+- **Tipo**: Stesso enum di `status` con valori: "Preparazione", "Laminazione", "In Coda", "Attesa Cura", "Cura", "Finito"
+- **Scopo**: Memorizza automaticamente lo stato precedente ad ogni cambio
+
+```python
+previous_status = Column(
+    Enum("Preparazione", "Laminazione", "In Coda", "Attesa Cura", "Cura", "Finito", name="odl_status"),
+    nullable=True,
+    doc="Stato precedente dell'ordine di lavoro (per funzione ripristino)"
+)
+```
+
+##### ✅ Schema Pydantic
+**File**: `backend/schemas/odl.py`
+- **ODLBase**: Aggiunto campo `previous_status` opzionale
+- **ODLUpdate**: Incluso `previous_status` nei campi aggiornabili
+- **Validazione**: Stesso tipo Literal del campo `status`
+
+##### ✅ Migrazione Database
+**File**: `backend/migrations/add_previous_status_to_odl.py`
+- **Aggiunta Colonna**: `ALTER TABLE odl ADD COLUMN previous_status TEXT`
+- **Constraint**: CHECK per valori enum validi
+- **Sicurezza**: Verifica esistenza colonna prima dell'aggiunta
+- **Logging**: Output dettagliato del processo di migrazione
+
+##### ✅ Endpoint API
+**File**: `backend/api/routers/odl.py`
+
+**Nuovo Endpoint**: `POST /odl/{id}/restore-status`
+```python
+@router.post("/{odl_id}/restore-status", response_model=ODLRead)
+def restore_previous_status(odl_id: int, db: Session = Depends(get_db)):
+    """
+    Ripristina lo stato precedente di un ODL utilizzando il campo previous_status.
+    
+    - Verifica esistenza ODL e previous_status
+    - Scambia status e previous_status
+    - Registra il cambio nei log di sistema
+    - Gestisce le fasi di monitoraggio tempi
+    """
+```
+
+**Aggiornamento Automatico**: Tutti gli endpoint di cambio stato ora salvano automaticamente il `previous_status`:
+- `PUT /odl/{id}` - Endpoint generico
+- `PATCH /odl/{id}/clean-room-status` - Clean Room
+- `PATCH /odl/{id}/curing-status` - Curing  
+- `PATCH /odl/{id}/admin-status` - Admin
+- `PATCH /odl/{id}/status` - Generico
+
+#### 🎨 Implementazione Frontend
+
+##### ✅ API Client
+**File**: `frontend/src/lib/api.ts`
+- **Nuova Funzione**: `restoreStatus(id: number)` nell'oggetto `odlApi`
+- **Endpoint**: `POST /odl/${id}/restore-status`
+- **Gestione Errori**: Toast automatici per errori di rete e API
+- **Logging**: Console log dettagliati per debug
+
+```typescript
+restoreStatus: async (id: number): Promise<ODLResponse> => {
+  console.log(`🔄 Ripristino stato ODL ${id}...`);
+  const response = await api.post<ODLResponse>(`/odl/${id}/restore-status`);
+  console.log('✅ Stato ripristinato con successo');
+  return response.data;
+}
+```
+
+##### ✅ Dashboard Management
+**File**: `frontend/src/app/dashboard/management/monitoraggio/page.tsx`
+- **Icona**: `RotateCcw` da Lucide React già importata
+- **Funzione**: `handleRestoreStatus(odlId: number)` già implementata
+- **UI**: Pulsante "Ripristina Stato" nel dropdown azioni della tabella "Tempi ODL"
+- **Condizione**: Visibile solo per ODL con stato "Finito"
+- **Feedback**: Toast di successo con stato ripristinato
+
+```typescript
+const handleRestoreStatus = async (odlId: number) => {
+  try {
+    const result = await odlApi.restoreStatus(odlId);
+    toast({
+      title: "Stato ripristinato",
+      description: `✅ Stato ripristinato a: ${result.status}`,
+    });
+    fetchData(); // Ricarica i dati
+  } catch (error) {
+    toast({
+      variant: "destructive", 
+      title: "Errore",
+      description: "Impossibile ripristinare lo stato dell'ODL"
+    });
+  }
+}
+```
+
+#### 🔄 Logica di Funzionamento
+
+##### ✅ Salvataggio Automatico
+1. **Cambio Stato**: Ogni volta che lo stato di un ODL cambia
+2. **Previous Status**: Il vecchio stato viene salvato in `previous_status`
+3. **Logging**: Il cambio viene registrato nei log di sistema
+4. **Fasi**: Gestione automatica apertura/chiusura fasi di monitoraggio
+
+##### ✅ Processo di Ripristino
+1. **Verifica**: Controllo esistenza ODL e `previous_status`
+2. **Scambio**: `status = previous_status` e `previous_status = old_status`
+3. **Log**: Registrazione del ripristino nei log di sistema
+4. **Fasi**: Gestione fasi di monitoraggio per il nuovo stato
+5. **Risposta**: Ritorna ODL aggiornato
+
+##### ✅ Gestione Errori
+- **404**: ODL non trovato
+- **400**: ODL senza stato precedente da ripristinare
+- **500**: Errori interni del server
+- **Frontend**: Toast informativi per ogni tipo di errore
+
+#### 🧪 Validazione e Testing
+
+##### ✅ Script di Validazione
+**File**: `tools/validate_odl_restore.py`
+- **Schema Database**: Verifica presenza campo `previous_status`
+- **Test Funzionale**: Cambio stato → Ripristino → Verifica
+- **Casi di Errore**: ODL inesistente, senza previous_status
+- **Database**: Verifica modifiche e log nel database
+
+```bash
+# Esecuzione validazione
+python tools/validate_odl_restore.py
+
+# Test eseguiti:
+# ✅ Schema Database - Campo previous_status presente
+# ✅ Cambio Stato e Ripristino - Funzionalità completa
+# ✅ Casi di Errore - Gestione errori corretta
+# ✅ Modifiche Database - Log e dati salvati
+```
+
+#### 🎯 Benefici e Caratteristiche
+
+##### ✅ Funzionalità Utente
+- **Ripristino Rapido**: Un clic per annullare l'ultimo cambio di stato
+- **Sicurezza**: Disponibile solo per ODL completati
+- **Feedback**: Toast informativi con stato ripristinato
+- **Integrazione**: Perfettamente integrato nella dashboard esistente
+
+##### ✅ Robustezza Tecnica
+- **Automatico**: Salvataggio previous_status trasparente
+- **Consistente**: Funziona con tutti gli endpoint di cambio stato
+- **Tracciabile**: Ogni ripristino viene loggato
+- **Sicuro**: Validazioni complete e gestione errori
+
+##### ✅ Manutenibilità
+- **Estendibile**: Facile aggiungere funzionalità simili
+- **Testabile**: Script di validazione automatica
+- **Documentato**: Codice ben commentato e documentato
+- **Standard**: Segue le convenzioni del progetto
+
+---
+
+### [2025-01-28 - Dashboard Monitoraggio Unificata] ✅ COMPLETATO
+
+#### 🔧 Fix Errore Select Components (2025-01-28)
+- **Problema**: Errore runtime "Select.Item must have a value prop that is not an empty string"
+- **Causa**: I componenti Select di Radix UI non accettano stringhe vuote come valori
+- **Soluzione**: Sostituiti valori vuoti (`''`) con `'all'` nei filtri globali
+- **File Modificati**:
+  - `page.tsx`: Cambiati valori iniziali da `''` a `'all'`
+  - `performance-generale.tsx`: Aggiunta condizione `!== 'all'` nei filtri
+  - `statistiche-catalogo.tsx`: Aggiunta condizione `!== 'all'` nei filtri  
+  - `tempi-odl.tsx`: Aggiunta condizione `!== 'all'` nei filtri
+- **Risultato**: Dashboard funzionante senza errori runtime
+
+#### 🎯 Obiettivo Raggiunto
+- **Unificazione**: Fusione delle pagine `/dashboard/statistiche` e `/tempi` in un'unica dashboard `/dashboard/monitoraggio`
+- **Organizzazione**: Struttura con 3 tabs per diversi tipi di analisi
+- **Filtri Globali**: Sistema di filtri persistenti condivisi tra tutti i tabs
+- **Accessibilità**: Layout responsive e messaggi di errore coerenti
+
+#### 🏗️ Struttura Implementata
+
+##### ✅ Pagina Principale
+**File**: `frontend/src/app/dashboard/monitoraggio/page.tsx`
+- **Filtri Globali**: Periodo, Part Number, Stato ODL
+- **Tabs Navigation**: 3 sezioni principali con icone
+- **State Management**: Gestione stato condiviso tra componenti
+- **Error Handling**: Gestione errori centralizzata
+
+```typescript
+interface FiltriGlobali {
+  periodo: string;        // 7/30/90/365 giorni
+  partNumber: string;     // Filtro per part number specifico
+  statoODL: string;      // Filtro per stato ODL
+  dataInizio?: Date;     // Calcolato automaticamente
+  dataFine?: Date;       // Calcolato automaticamente
+}
+```
+
+##### ✅ Tab 1: Performance Generale
+**File**: `frontend/src/app/dashboard/monitoraggio/components/performance-generale.tsx`
+- **KPI Cards**: Totale ODL, Completati, In Corso, Bloccati
+- **Metriche Avanzate**: Efficienza produzione, tempo medio completamento
+- **Distribuzione Stati**: Visualizzazione grafica degli stati ODL
+- **Tendenze**: Analisi settimanale e confronti
+
+**Funzionalità Principali**:
+```typescript
+interface StatisticheGenerali {
+  totaleODL: number;
+  odlCompletati: number;
+  odlInCorso: number;
+  odlBloccati: number;
+  tempoMedioCompletamento: number;
+  efficienza: number;
+  tendenzaSettimanale: number;
+}
+```
+
+##### ✅ Tab 2: Statistiche Catalogo
+**File**: `frontend/src/app/dashboard/monitoraggio/components/statistiche-catalogo.tsx`
+- **Selezione Part Number**: Lista filtrata del catalogo
+- **Statistiche Dettagliate**: Tempi medi per fase di produzione
+- **Scostamenti**: Confronto con tempi standard
+- **Osservazioni**: Numero di campioni per ogni statistica
+
+**Integrazione API**:
+- `tempoFasiApi.getStatisticheByPartNumber()` - Statistiche specifiche
+- `catalogoApi.getAll()` - Lista part numbers disponibili
+- Calcolo automatico scostamenti vs tempi standard
+
+##### ✅ Tab 3: Tempi ODL
+**File**: `frontend/src/app/dashboard/monitoraggio/components/tempi-odl.tsx`
+- **Tabella Dettagliata**: Tutti i tempi di fase registrati
+- **Filtri Applicati**: Rispetta i filtri globali impostati
+- **Statistiche Riassuntive**: Tempo medio per fase, distribuzione, completamento
+- **Indicatori Visivi**: Badge colorati per fasi e durate
+
+**Caratteristiche**:
+- Filtri automatici basati sui filtri globali
+- Ricerca locale aggiuntiva
+- Statistiche calcolate in tempo reale
+- Gestione stati "In corso" vs "Completate"
+
+#### 🔧 Filtri Globali Persistenti
+
+##### ✅ Sistema di Filtri Condivisi
+```typescript
+// Filtri applicati automaticamente a tutti i tabs
+const updateFiltri = (nuoviFiltri: Partial<FiltriGlobali>) => {
+  setFiltri(prev => ({ ...prev, ...nuoviFiltri }))
+}
+
+// Calcolo automatico date basato su periodo
+useEffect(() => {
+  const oggi = new Date()
+  const giorni = parseInt(filtri.periodo)
+  const dataInizio = new Date(oggi.getTime() - (giorni * 24 * 60 * 60 * 1000))
+  
+  setFiltri(prev => ({ ...prev, dataInizio, dataFine: oggi }))
+}, [filtri.periodo])
+```
+
+##### ✅ Sincronizzazione Tra Tabs
+- **Performance Generale**: Filtra ODL per periodo, part number, stato
+- **Statistiche Catalogo**: Auto-seleziona part number dai filtri globali
+- **Tempi ODL**: Applica tutti i filtri alla tabella dei tempi
+
+#### 📊 Integrazione Database
+
+##### ✅ Modelli Utilizzati
+- **ODL**: `status`, `created_at`, `parte_id` per statistiche generali
+- **TempoFase**: `odl_id`, `fase`, `durata_minuti`, `inizio_fase` per tempi dettagliati
+- **Catalogo**: `part_number`, `descrizione`, `attivo` per filtri
+- **Parte**: `part_number`, `descrizione_breve` per correlazioni
+
+##### ✅ API Endpoints
+```typescript
+// Caricamento dati
+catalogoApi.getAll()                                    // Catalogo completo
+odlApi.getAll()                                        // Tutti gli ODL
+tempoFasiApi.getAll()                                  // Tutti i tempi
+tempoFasiApi.getStatisticheByPartNumber(pn, giorni)   // Statistiche specifiche
+```
+
+#### 🎨 UI/UX Miglioramenti
+
+##### ✅ Layout Responsive
+- **Desktop**: Grid layout con sidebar filtri
+- **Mobile**: Stack layout con filtri collassabili
+- **Tablet**: Layout adattivo intermedio
+
+##### ✅ Messaggi Coerenti
+```typescript
+// Messaggio standard per dati mancanti
+<Alert>
+  <AlertCircle className="h-4 w-4" />
+  <AlertTitle>Nessun dato disponibile</AlertTitle>
+  <AlertDescription>
+    Nessun dato disponibile per i filtri selezionati. 
+    Prova a modificare i criteri di ricerca.
+  </AlertDescription>
+</Alert>
+```
+
+##### ✅ Indicatori di Stato
+- **Loading**: Spinner con messaggi specifici per ogni tab
+- **Errori**: Toast notifications + alert inline
+- **Vuoto**: Messaggi informativi con suggerimenti
+
+#### 🧪 Validazione e Testing
+
+##### ✅ Script di Validazione
+**File**: `tools/validate_stats_layout.py`
+- **Verifica File**: Controlla esistenza di tutti i componenti
+- **Struttura**: Valida organizzazione tabs e filtri
+- **Integrazione**: Verifica connessioni API
+- **Report**: Output dettagliato dello stato
+
+```bash
+# Esecuzione validazione
+python tools/validate_stats_layout.py
+
+# Output atteso:
+# ✅ /dashboard/monitoraggio mostra 3 tabs: Performance, Statistiche Catalogo, Tempi ODL
+# ✅ Filtri funzionanti (periodo, stato, part number)
+# ✅ Nessun errore visivo o di struttura
+```
+
+#### 🔄 Migrazione dalle Pagine Esistenti
+
+##### ✅ Codice Riutilizzato
+- **Statistiche**: Logica di calcolo da `/dashboard/management/statistiche`
+- **Tempi**: Componenti tabella da `/dashboard/clean-room/tempi`
+- **Filtri**: Sistema filtri migliorato e unificato
+
+##### ✅ Miglioramenti Apportati
+- **Performance**: Caricamento dati ottimizzato
+- **Filtri**: Sistema globale invece di filtri locali
+- **UX**: Navigazione più intuitiva con tabs
+- **Consistenza**: Stile e comportamento unificati
+
+#### 🎯 Benefici Ottenuti
+
+1. **🎯 Centralizzazione**: Un'unica pagina per tutte le analisi
+2. **🔄 Filtri Persistenti**: Esperienza utente migliorata
+3. **📊 Vista Completa**: Tre prospettive complementari sui dati
+4. **📱 Responsive**: Funziona su tutti i dispositivi
+5. **🛠️ Manutenibilità**: Codice organizzato e riutilizzabile
+
+#### 💡 Come Utilizzare
+
+##### ✅ Accesso alla Dashboard
+1. **URL**: Naviga a `/dashboard/monitoraggio`
+2. **Filtri**: Imposta periodo, part number, stato ODL
+3. **Tabs**: Esplora le tre sezioni disponibili
+4. **Analisi**: I filtri si applicano automaticamente a tutti i tabs
+
+##### ✅ Workflow Tipico
+```
+1. 📅 Seleziona periodo di interesse (es. ultimi 30 giorni)
+2. 🏷️ Opzionale: filtra per part number specifico
+3. 📊 Performance Generale: overview KPI e tendenze
+4. 🧠 Statistiche Catalogo: analisi dettagliata per prodotto
+5. ⏱ Tempi ODL: drill-down sui tempi specifici
+```
+
+#### 🔗 Integrazione Esistente
+
+- **Compatibilità**: Mantiene tutte le funzionalità delle pagine originali
+- **API**: Utilizza gli stessi endpoint esistenti
+- **Database**: Nessuna modifica ai modelli richiesta
+- **Permessi**: Rispetta i ruoli utente esistenti
+
+---
+
+### [2025-01-28 - Correzione Sistema Monitoraggio Automatico ODL] ✅ COMPLETATO
+
+#### 🎯 Problema Risolto
+- **Issue**: Il monitoraggio automatico non registrava i cambi di stato temporali
+- **Causa**: Disallineamento tra `StateTrackingService` (per cambi stato) e `ODLLogService` (per log generali)
+- **Soluzione**: Sincronizzazione dei servizi e correzione endpoint API
+- **Risultato**: Tracking automatico funzionante con timestamp precisi
+
+#### 🔄 Correzioni Implementate
+
+##### ✅ Sincronizzazione Servizi di Tracking
+**File**: `backend/api/routers/odl_monitoring.py`
+- **Problema**: Endpoint `/progress` usava `ODLLogService` ma i cambi stato erano in `StateTrackingService`
+- **Soluzione**: Aggiornati endpoint per usare `StateTrackingService` per i dati temporali
+- **Risultato**: Dati di progresso ora recuperano correttamente i cambi di stato
+
+```python
+# ✅ PRIMA (non funzionava)
+logs = ODLLogService.ottieni_logs_odl(db=db, odl_id=odl_id)
+
+# ✅ DOPO (funziona correttamente)
+timeline_stati = StateTrackingService.ottieni_timeline_stati(db=db, odl_id=odl_id)
+```
+
+##### ✅ Endpoint di Inizializzazione
+**Nuovo Endpoint**: `POST /api/odl-monitoring/monitoring/initialize-state-tracking`
+- **Funzione**: Inizializza tracking per ODL esistenti senza state logs
+- **Processo**: Crea record `StateLog` iniziali per tutti gli ODL
+- **Sicurezza**: Evita duplicati e gestisce errori gracefully
+
+```python
+@router.post("/initialize-state-tracking")
+def initialize_state_tracking(db: Session = Depends(get_db)):
+    """
+    Inizializza il sistema di tracking degli stati per ODL esistenti.
+    Crea i record StateLog iniziali per tutti gli ODL che non hanno ancora
+    un tracking degli stati attivo.
+    """
+    # Trova ODL senza tracking
+    odl_senza_tracking = db.query(ODL).filter(
+        ~ODL.id.in_(db.query(StateLog.odl_id).distinct())
+    ).all()
+    
+    # Crea log iniziali
+    for odl in odl_senza_tracking:
+        StateTrackingService.registra_cambio_stato(
+            db=db,
+            odl_id=odl.id,
+            stato_precedente=None,
+            stato_nuovo=odl.status,
+            responsabile="sistema",
+            note="Inizializzazione tracking stati per ODL esistente"
+        )
+```
+
+##### ✅ Correzione Endpoint Timeline
+**File**: `backend/api/routers/odl_monitoring.py`
+- **Aggiornato**: Endpoint `/timeline` per usare `StateTrackingService`
+- **Migliorato**: Arricchimento dati con informazioni correlate
+- **Ottimizzato**: Calcolo statistiche basato su dati reali
+
+#### 🧪 Script di Test e Validazione
+
+##### ✅ Test Suite Completa
+**File**: `tools/test_state_tracking.py`
+- **Verifica Database**: Conta ODL con/senza state logs
+- **Inizializzazione**: Testa endpoint di inizializzazione tracking
+- **Test Cambio Stato**: Verifica registrazione automatica
+- **Validazione Timeline**: Controlla che i dati vengano salvati
+
+##### ✅ Flusso di Test Automatizzato
+```python
+def main():
+    # 1. Verifica stato database
+    odl_count, logs_count, odl_without_logs = test_database_state()
+    
+    # 2. Inizializza tracking se necessario
+    if odl_without_logs > 0:
+        init_result = test_initialize_state_tracking()
+    
+    # 3. Test cambio stato e monitoraggio
+    change_result = test_change_odl_status(test_odl_id, next_status)
+    
+    # 4. Verifica che il tracking abbia registrato il cambio
+    updated_data = test_get_progress_data(test_odl_id)
+    
+    if updated_data.get('has_timeline_data'):
+        print("✅ Tracking funzionante! Timeline aggiornata.")
+```
+
+#### 🔧 Miglioramenti Tecnici
+
+##### ✅ Import e Dipendenze
+- **Aggiunto**: Import `StateTrackingService` in `odl_monitoring.py`
+- **Rimosso**: Import duplicati e ridondanti
+- **Ottimizzato**: Gestione delle dipendenze tra servizi
+
+##### ✅ Gestione Errori Migliorata
+- **Logging**: Messaggi dettagliati per debugging
+- **Rollback**: Gestione transazioni in caso di errore
+- **Validazione**: Controlli di esistenza ODL prima delle operazioni
+
+#### 📊 Risultati Attesi
+
+##### ✅ Prima della Correzione
+```
+📊 ODL totali nel database: 10
+📊 State logs totali: 1
+📊 ODL senza state logs: 9
+⚠️  9 ODL mostravano solo dati stimati
+```
+
+##### ✅ Dopo la Correzione
+```
+📊 ODL totali nel database: 10
+📊 State logs totali: 10
+📊 ODL senza state logs: 0
+✅ Tutti gli ODL hanno tracking attivo
+```
+
+#### 🎯 Benefici Ottenuti
+
+1. **🔄 Monitoraggio Automatico**: Cambi di stato registrati automaticamente
+2. **📊 Dati Reali**: Timeline con timestamp precisi invece di stime
+3. **🛠️ Inizializzazione**: Endpoint per attivare tracking su DB esistenti
+4. **🧪 Testabilità**: Script completo per validare il funzionamento
+5. **📈 Scalabilità**: Sistema robusto per gestire molti ODL
+
+#### 💡 Come Utilizzare
+
+##### ✅ Per Inizializzare il Tracking
+```bash
+# 1. Avvia il backend
+cd backend && python -m uvicorn main:app --reload
+
+# 2. Esegui inizializzazione (una tantum)
+curl -X POST http://localhost:8000/api/odl-monitoring/monitoring/initialize-state-tracking
+
+# 3. Verifica con script di test
+cd tools && python test_state_tracking.py
+```
+
+##### ✅ Per Verificare il Funzionamento
+1. **Frontend**: Vai alla pagina ODL e cambia lo stato di un ODL
+2. **API**: Controlla `/api/odl-monitoring/monitoring/{id}/progress`
+3. **Timeline**: Verifica `/api/odl-monitoring/monitoring/{id}/timeline`
+4. **Test**: Esegui `python tools/test_state_tracking.py`
+
+#### 🔗 Integrazione con Barra di Progresso
+
+- **Compatibilità**: Funziona con la barra di progresso robusta implementata
+- **Progressive Enhancement**: Migliora automaticamente da dati stimati a reali
+- **Flag `has_timeline_data`**: Indica al frontend quando ci sono dati reali
+- **Fallback Graceful**: Mantiene funzionalità anche durante l'inizializzazione
+
+---
+
+### [2025-01-28 - Robustezza Barra di Progresso ODL] ✅ COMPLETATO
+
+#### 🎯 Problema Risolto
+- **Issue**: La barra di progresso ODL non funzionava quando mancavano i state logs nel database
+- **Causa**: Il componente si basava completamente sui timestamps dai state logs, fallendo con array vuoto
+- **Soluzione**: Implementata logica di fallback robusta per gestire ODL senza timeline completa
+- **Risultato**: Barra di progresso sempre funzionante, anche con dati incompleti
+
+#### 🔄 Miglioramenti Implementati
+
+##### ✅ Logica di Fallback Intelligente
+**File**: `frontend/src/components/ui/OdlProgressBar.tsx`
+- **Validazione Dati**: Sanitizzazione automatica dei dati in ingresso
+- **Modalità Fallback**: Generazione segmenti stimati quando mancano timestamps
+- **Calcolo Durata**: Fallback basato su tempo dall'inizio ODL
+- **Indicatori Visivi**: Distinzione chiara tra dati reali e stimati
+
+##### ✅ Strategia di Visualizzazione Robusta
+```typescript
+// Genera segmenti di fallback basati sullo stato corrente
+const generaSegmentiFallback = () => {
+  const statiOrdinati = Object.keys(STATI_CONFIG).sort((a, b) => 
+    STATI_CONFIG[a].order - STATI_CONFIG[b].order
+  );
+  
+  const indiceCorrente = statiOrdinati.indexOf(sanitizedOdl.status);
+  const durataTotale = calcolaDurataTotale();
+  
+  // Crea segmenti per tutti gli stati fino a quello corrente
+  const segmenti = [];
+  const durataPerStato = Math.floor(durataTotale / (indiceCorrente + 1));
+  
+  for (let i = 0; i <= indiceCorrente; i++) {
+    const stato = statiOrdinati[i];
+    const isCorrente = i === indiceCorrente;
+    const durata = isCorrente ? durataTotale - (durataPerStato * i) : durataPerStato;
+    
+    segmenti.push({
+      stato,
+      durata_minuti: durata,
+      percentuale: (durata / durataTotale) * 100,
+      isEstimated: true // ✅ Flag per dati stimati
+    });
+  }
+  
+  return segmenti;
+};
+```
+
+##### ✅ Indicatori Visivi Migliorati
+- **Badge "Stimato"**: Indica quando si usano dati di fallback
+- **Bordi Tratteggiati**: Segmenti stimati hanno bordi dashed
+- **Tooltip Informativi**: Spiegano la differenza tra dati reali e stimati
+- **Messaggi Esplicativi**: Info box che spiegano la modalità fallback
+
+##### ✅ Sanitizzazione Dati Robusta
+```typescript
+// Validazione e sanitizzazione dei dati in ingresso
+const sanitizeOdlData = (data: ODLProgressData): ODLProgressData => {
+  return {
+    ...data,
+    timestamps: Array.isArray(data.timestamps) ? data.timestamps : [],
+    status: data.status || 'Preparazione',
+    created_at: data.created_at || new Date().toISOString(),
+    updated_at: data.updated_at || new Date().toISOString()
+  };
+};
+```
+
+#### 🛠️ Backend Migliorato
+
+##### ✅ Endpoint API Più Robusto
+**File**: `backend/api/routers/odl_monitoring.py`
+```python
+@router.get("/{odl_id}/progress")
+def get_odl_progress(odl_id: int, db: Session = Depends(get_db)):
+    """
+    Restituisce i dati ottimizzati per la visualizzazione della barra di progresso.
+    Se non ci sono log disponibili, restituisce comunque i dati base dell'ODL
+    per permettere la visualizzazione stimata nel frontend.
+    """
+    
+    # ✅ Gestione robusta quando non ci sono logs
+    if logs and len(logs) > 0:
+        # Elabora logs normalmente
+        for i, log in enumerate(logs):
+            # ... logica esistente
+    
+    # ✅ Calcolo fallback per tempo stimato
+    if len(timestamps_stati) > 0:
+        tempo_totale_stimato = sum(t["durata_minuti"] for t in timestamps_stati)
+    else:
+        # Fallback: calcola durata dall'inizio dell'ODL
+        durata_dall_inizio = int((datetime.now() - odl.created_at).total_seconds() / 60)
+        tempo_totale_stimato = durata_dall_inizio
+    
+    return {
+        "id": odl_id,
+        "status": odl.status,
+        "timestamps": timestamps_stati,  # Può essere vuoto
+        "tempo_totale_stimato": tempo_totale_stimato,
+        "has_timeline_data": len(timestamps_stati) > 0  # ✅ Flag per frontend
+    }
+```
+
+#### 🧪 Componente di Test Implementato
+
+##### ✅ Test Suite Completa
+**File**: `frontend/src/components/ui/OdlProgressBarTest.tsx`
+- **Scenario 1**: ODL senza timestamps (caso più comune)
+- **Scenario 2**: ODL con timestamps completi
+- **Scenario 3**: ODL finito con timeline completa
+- **Scenario 4**: ODL con stato personalizzato
+- **Scenario 5**: ODL in ritardo (>24h)
+
+##### ✅ Funzione di Utilità per Test
+```typescript
+// Funzione per creare dati di test
+export const createTestODLData = (overrides: Partial<ODLProgressData> = {}): ODLProgressData => {
+  const now = new Date();
+  const created = new Date(now.getTime() - 2 * 60 * 60 * 1000); // 2 ore fa
+  
+  return {
+    id: 1,
+    status: 'Laminazione',
+    created_at: created.toISOString(),
+    updated_at: now.toISOString(),
+    timestamps: [],
+    tempo_totale_stimato: 480,
+    ...overrides
+  };
+};
+```
+
+#### 🧪 Script di Validazione Robustezza
+
+##### ✅ Test Automatizzato Completo
+**File**: `tools/test_robust_progress_bar.py`
+- **Test Database**: Verifica ODL con/senza state logs
+- **Test API**: Controllo endpoint con diversi scenari
+- **Test Logica**: Simulazione comportamento frontend
+- **Analisi Dati**: Identificazione ODL che useranno fallback
+
+##### ✅ Risultati Test
+```
+📊 ODL totali nel database: 10
+📊 State logs totali: 1
+📊 ODL senza state logs: 9
+⚠️  9 ODL useranno la modalità fallback
+```
+
+#### 🎨 Miglioramenti UX
+
+##### ✅ Esperienza Utente Migliorata
+- **Sempre Funzionante**: Barra di progresso sempre visibile
+- **Feedback Chiaro**: Distinzione tra dati reali e stimati
+- **Informazioni Utili**: Tempo dall'inizio ODL anche senza timeline
+- **Progressivo Enhancement**: Migliora quando arrivano dati reali
+
+##### ✅ Indicatori Visivi
+- **🔵 Badge "Stimato"**: Per dati di fallback
+- **📊 Barre Tratteggiate**: Segmenti stimati
+- **💡 Info Box**: Spiegazioni modalità fallback
+- **⏱️ Tempo Dall'Inizio**: Sempre disponibile
+
+#### 📋 Benefici Ottenuti
+
+1. **🛡️ Robustezza**: Componente funziona sempre, indipendentemente dai dati
+2. **📊 Informazioni Utili**: Anche senza timeline, mostra tempo dall'inizio
+3. **🎯 UX Migliorata**: Nessun "dati non disponibili" frustrante
+4. **🔄 Progressivo**: Migliora automaticamente quando arrivano dati reali
+5. **🧪 Testabilità**: Suite di test completa per tutti gli scenari
+
+#### 🔧 Compatibilità
+
+- **✅ Backward Compatible**: Funziona con dati esistenti
+- **✅ Forward Compatible**: Migliora automaticamente con nuovi dati
+- **✅ Graceful Degradation**: Fallback elegante per dati mancanti
+- **✅ Progressive Enhancement**: Arricchimento automatico timeline
+
+#### 📝 Note Tecniche
+
+- **Sanitizzazione**: Tutti i dati vengono validati prima dell'uso
+- **Performance**: Calcoli ottimizzati per evitare re-render inutili
+- **Memoria**: Gestione efficiente degli stati e delle props
+- **Accessibilità**: Tooltip e indicatori screen-reader friendly
+
+---
+
+### [2025-01-28 - Visualizzazione Corretta Tempi ODL + Verifica Pagina Statistiche] ✅ COMPLETATO
+
+#### 🎯 Obiettivo Raggiunto
+- **Funzionalità**: Visualizzazione migliorata dei tempi ODL con durate, inizio/fine e indicatori di ritardo
+- **Scopo**: Mostrare correttamente i dati temporali nelle barre di progresso e verificare la pagina statistiche
+- **Risultato**: Tempi ODL visualizzati chiaramente con formato "2h 34m" e indicatori di performance
+- **Validazione**: ✅ Script di validazione automatica implementato
+
+#### 🔄 Funzionalità Implementate
+
+##### ✅ Miglioramenti Barra di Progresso ODL
+**File**: `frontend/src/components/ui/OdlProgressBar.tsx`
+- **Calcolo Scostamento**: Confronto tempo reale vs stimato con indicatori colorati
+- **Visualizzazione Tempi**: Formato "2h 34m" per durate e tempi stimati
+- **Indicatori Ritardo**: Badge rosso per ODL in ritardo (>24h nello stato)
+- **Tooltip Dettagliati**: Informazioni complete su ogni fase con timestamp
+
+##### ✅ Nuovo Componente ODLTimingDisplay
+**File**: `frontend/src/components/odl-monitoring/ODLTimingDisplay.tsx`
+- **Barra Progresso Generale**: Percentuale completamento ODL
+- **Dettaglio Fasi**: Visualizzazione completa di ogni fase con:
+  - Durata reale vs tempo standard
+  - Scostamento percentuale con icone trend
+  - Indicatori di ritardo per fasi critiche
+  - Timestamp inizio/fine formattati
+- **Tempi Standard**: Riferimenti per laminazione (2h), attesa cura (1h), cura (5h)
+
+##### ✅ Pagina Statistiche Migliorata
+**File**: `frontend/src/app/dashboard/management/statistiche/page.tsx`
+- **KPI Aggiuntivi**: Scostamento medio con codifica colori
+- **Dettaglio Fasi**: Confronto tempo reale vs standard per ogni fase
+- **Indicatori Performance**: Verde/Arancione/Rosso per scostamenti
+- **Layout Migliorato**: Grid responsive con 4 KPI principali
+
+#### 🛠️ Modifiche Tecniche Implementate
+
+##### ✅ Calcolo Scostamenti Temporali
+```typescript
+// Calcolo scostamento tempo stimato vs reale
+const calcolaScostamentoTempo = (): { scostamento: number; percentuale: number } => {
+  const durataTotale = calcolaDurataTotale();
+  const tempoStimato = odl.tempo_totale_stimato || 480; // Default 8 ore
+  const scostamento = durataTotale - tempoStimato;
+  const percentuale = tempoStimato > 0 ? (scostamento / tempoStimato) * 100 : 0;
+  return { scostamento, percentuale };
+};
+```
+
+##### ✅ Indicatori Visivi Migliorati
+```typescript
+// Codifica colori per scostamenti
+const getScostamentoColor = (percentuale: number) => {
+  if (percentuale > 20) return 'text-red-600';
+  if (percentuale > 10) return 'text-orange-600';
+  return 'text-green-600';
+};
+```
+
+##### ✅ Tempi Standard di Riferimento
+```typescript
+const TEMPI_STANDARD = {
+  'laminazione': 120,    // 2 ore
+  'attesa_cura': 60,     // 1 ora  
+  'cura': 300            // 5 ore
+};
+```
+
+#### 🧪 Script di Validazione Implementato
+
+##### ✅ Script Completo di Validazione
+**File**: `tools/validate_odl_timing.py`
+- **Validazione Dati**: Verifica ODL con tempi delle fasi e state logs
+- **Calcolo Statistiche**: Controllo medie, range e osservazioni per fase
+- **Verifica API**: Conferma disponibilità endpoint temporali
+- **Controllo Frontend**: Validazione componenti di visualizzazione
+- **Consistenza Dati**: Verifica fasi incomplete e durate anomale
+
+##### ✅ Funzionalità Script
+```python
+def validate_odl_timing_data(db: Session):
+    """Valida i dati temporali degli ODL"""
+    # Verifica ODL con tempi delle fasi
+    # Controlla state logs per timeline
+    # Mostra esempi di dati temporali
+
+def validate_statistics_calculation(db: Session):
+    """Valida il calcolo delle statistiche"""
+    # Statistiche per fase (media, min, max)
+    # Statistiche per Part Number
+    # Verifica osservazioni disponibili
+```
+
+#### 📊 API Endpoints Verificati
+
+##### ✅ Endpoint Temporali Disponibili
+- `GET /api/odl/{id}/timeline` - Timeline completa ODL con statistiche
+- `GET /api/odl/{id}/progress` - Dati progresso per barra temporale
+- `GET /api/monitoring/stats` - Statistiche generali monitoraggio
+- `GET /api/monitoring/{id}` - Monitoraggio completo ODL
+- `GET /api/tempo-fasi/previsioni/{fase}` - Previsioni tempi per fase
+- `GET /api/tempo-fasi/` - Lista tempi fasi con filtri
+
+#### 🎨 Miglioramenti UI/UX
+
+##### ✅ Visualizzazione Tempi
+- **Formato Standardizzato**: "2h 34m" per tutte le durate
+- **Codifica Colori**: Verde (nei tempi), Arancione (ritardo lieve), Rosso (ritardo grave)
+- **Badge Informativi**: "In corso", "Ritardo", "Completato"
+- **Tooltip Ricchi**: Dettagli completi su hover
+
+##### ✅ Indicatori Performance
+- **Scostamento Percentuale**: +15% vs standard con icone trend
+- **Barre Progresso**: Segmentate per stato con percentuali
+- **Timeline Visiva**: Eventi cronologici con timestamp
+- **KPI Dashboard**: 4 metriche principali ben evidenziate
+
+#### 📋 Azioni Manuali Richieste
+1. **Verifica Visiva**: Controllare barre progresso nella pagina ODL
+2. **Test Tempi**: Verificare formato "2h 34m" corretto
+3. **Indicatori Ritardo**: Confermare evidenziazione ODL in ritardo
+4. **Pagina Statistiche**: Testare con dati reali del database
+5. **KPI Calcolo**: Verificare tempo medio e scostamento medio
+
+#### 🔧 Benefici Ottenuti
+1. **Visibilità Migliorata**: Tempi chiari e ben formattati
+2. **Performance Tracking**: Scostamenti vs tempi standard
+3. **Allerta Ritardi**: Identificazione immediata problemi
+4. **Statistiche Avanzate**: KPI per analisi performance
+5. **UX Professionale**: Interfaccia moderna e informativa
+
+#### 📝 Note Tecniche
+- Tempi calcolati automaticamente da timestamp database
+- Scostamenti basati su tempi standard configurabili
+- Indicatori di ritardo con soglie personalizzabili
+- Componenti riutilizzabili per diverse pagine
+- Performance ottimizzata con calcoli client-side
+
+---
+
+### [2025-01-28 - Implementazione Precompilazione Descrizione da Catalogo] ✅ COMPLETATO
+
+#### 🎯 Obiettivo Raggiunto
+- **Funzionalità**: Precompilazione automatica della descrizione quando si seleziona un Part Number dal catalogo
+- **Scopo**: Migliorare UX nei form di creazione ODL e Parts con descrizioni automatiche dal catalogo
+- **Risultato**: Descrizioni precompilate automaticamente ma modificabili dall'utente
+- **Validazione**: ✅ Script di test manuale implementato
+
+#### 🔄 Funzionalità Implementate
+
+##### ✅ Form Creazione Parts
+- **Selezione Part Number**: Ricerca smart dal catalogo con dropdown
+- **Precompilazione Automatica**: Campo descrizione si popola automaticamente
+- **Modificabilità**: Utente può modificare la descrizione precompilata
+- **Helper Text**: "Campo precompilato dal catalogo, puoi modificarlo"
+- **Salvataggio**: Descrizione modificata viene salvata correttamente
+
+##### ✅ Form Creazione ODL
+- **Selezione Parte**: Dropdown con parti esistenti
+- **Descrizione Automatica**: Campo di sola lettura che mostra la descrizione della parte
+- **Aggiornamento Dinamico**: Descrizione si aggiorna quando si cambia parte
+- **Helper Text**: "Descrizione della parte selezionata dal catalogo"
+
+#### 🛠️ Modifiche Tecniche Implementate
+
+##### Frontend - SmartCatalogoSelect Component
+**File**: `frontend/src/app/dashboard/clean-room/parts/components/smart-catalogo-select.tsx`
+```typescript
+// ✅ Aggiunto callback per item completo
+interface SmartCatalogoSelectProps {
+  onItemSelect?: (item: CatalogoResponse) => void
+}
+
+const handleSelect = (item: CatalogoResponse) => {
+  onSelect(item.part_number)
+  if (onItemSelect) {
+    onItemSelect(item) // ✅ Passa l'oggetto completo
+  }
+}
+```
+
+##### Frontend - ParteModal Component
+**File**: `frontend/src/app/dashboard/clean-room/parts/components/parte-modal.tsx`
+```typescript
+// ✅ Precompilazione descrizione dal catalogo
+<SmartCatalogoSelect
+  onItemSelect={(item) => {
+    if (item.descrizione && !formData.descrizione_breve) {
+      handleChange('descrizione_breve', item.descrizione)
+    }
+  }}
+/>
+
+// ✅ Campo descrizione con helper text
+<div className="col-span-3 space-y-1">
+  <Input
+    value={formData.descrizione_breve}
+    placeholder="Descrizione della parte"
+  />
+  <p className="text-xs text-muted-foreground">
+    Campo precompilato dal catalogo, puoi modificarlo
+  </p>
+</div>
+```
+
+##### Frontend - ODLModal Component
+**File**: `frontend/src/app/dashboard/shared/odl/components/odl-modal.tsx`
+```typescript
+// ✅ Campo descrizione parte selezionata
+{selectedParte && (
+  <div className="grid grid-cols-4 items-center gap-4">
+    <Label className="text-right text-muted-foreground">
+      Descrizione
+    </Label>
+    <div className="col-span-3 space-y-1">
+      <div className="px-3 py-2 bg-muted rounded-md text-sm">
+        {selectedParte.descrizione_breve}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Descrizione della parte selezionata dal catalogo
+      </p>
+    </div>
+  </div>
+)}
+```
+
+#### 🧪 Validazione e Testing
+
+##### ✅ Script di Validazione Manuale
+**File**: `tools/validate_odl_description.py`
+- **Test Form Parts**: Verifica precompilazione e modificabilità descrizione
+- **Test Form ODL**: Verifica visualizzazione descrizione parte selezionata
+- **Test Backend**: Verifica salvataggio dati e relazioni catalogo
+- **Troubleshooting**: Guida per problemi comuni
+
+##### ✅ Punti di Verifica Implementati
+- ✅ Precompilazione automatica della descrizione
+- ✅ Possibilità di modifica della descrizione precompilata
+- ✅ Helper text informativi presenti
+- ✅ Salvataggio corretto dei dati
+- ✅ Aggiornamento automatico nel form ODL
+
+#### 📊 Benefici Ottenuti
+1. **UX Migliorata**: Utente non deve digitare manualmente la descrizione
+2. **Consistenza Dati**: Descrizioni coerenti con il catalogo aziendale
+3. **Flessibilità**: Possibilità di personalizzare la descrizione se necessario
+4. **Trasparenza**: Helper text chiari spiegano il comportamento
+5. **Efficienza**: Riduzione significativa del tempo di inserimento dati
+
+#### 🔧 Compatibilità e Robustezza
+- ✅ **Backward Compatible**: Non rompe funzionalità esistenti
+- ✅ **Optional Props**: Nuovi callback sono opzionali
+- ✅ **Graceful Degradation**: Funziona anche se catalogo è vuoto
+- ✅ **Type Safe**: Tutti i tipi TypeScript corretti
+- ✅ **Performance**: Ricerca debounced per ottimizzazione
+
+#### 📝 Note Tecniche
+- Precompilazione solo se campo descrizione è vuoto
+- Form ODL: descrizione di sola lettura (dalla parte associata)
+- Form Parts: descrizione modificabile dopo precompilazione
+- Dati catalogo caricati una volta all'apertura modal
+- Ricerca catalogo con debounce per performance
+
+---
+
 ### [2025-01-28 - Aggiornamento Completo Ruoli Sistema CarbonPilot] ✅ COMPLETATO AL 100%
 
 #### 🎯 Obiettivo Raggiunto

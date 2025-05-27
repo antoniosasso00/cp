@@ -35,7 +35,7 @@ export default function TestLinksPage() {
       links: [
         { title: "Reports", href: "/dashboard/management/reports", description: "Reports e analytics" },
         { title: "ODL Monitoring", href: "/dashboard/management/odl-monitoring", description: "Monitoraggio ODL tempo reale" },
-        { title: "Statistiche", href: "/dashboard/management/statistiche", description: "Statistiche catalogo" }
+        { title: "Dashboard Monitoraggio", href: "/dashboard/monitoraggio", description: "Dashboard unificata con statistiche e tempi" }
       ]
     },
     {

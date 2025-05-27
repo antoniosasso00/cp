@@ -223,6 +223,8 @@ def update_odl(odl_id: int, odl: ODLUpdate, db: Session = Depends(get_db)):
         ora_corrente = datetime.now()
         
         if "status" in update_data and stato_precedente != stato_nuovo:
+            # ✅ NUOVO: Salva lo stato precedente per la funzione ripristino
+            db_odl.previous_status = stato_precedente
             logger.info(f"Cambio stato ODL {odl_id}: da '{stato_precedente}' a '{stato_nuovo}'")
             
             # ✅ NUOVO: Registra il cambio di stato con timestamp preciso
@@ -297,9 +299,15 @@ def update_odl(odl_id: int, odl: ODLUpdate, db: Session = Depends(get_db)):
 
 @router.delete("/{odl_id}", status_code=status.HTTP_204_NO_CONTENT, 
                summary="Elimina un ordine di lavoro")
-def delete_odl(odl_id: int, db: Session = Depends(get_db)):
+def delete_odl(
+    odl_id: int, 
+    confirm: bool = Query(False, description="Conferma eliminazione (obbligatorio per ODL finiti)"),
+    db: Session = Depends(get_db)
+):
     """
     Elimina un ordine di lavoro tramite il suo ID.
+    
+    Per ODL in stato "Finito", è richiesta la conferma esplicita tramite il parametro 'confirm=true'.
     """
     db_odl = db.query(ODL).filter(ODL.id == odl_id).first()
     
@@ -310,9 +318,36 @@ def delete_odl(odl_id: int, db: Session = Depends(get_db)):
             detail=f"ODL con ID {odl_id} non trovato"
         )
     
+    # ✅ NUOVO: Protezione per ODL finiti - richiede conferma esplicita
+    if db_odl.status == "Finito" and not confirm:
+        logger.warning(f"Tentativo di eliminazione ODL finito {odl_id} senza conferma")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Per eliminare un ODL in stato 'Finito' è richiesta la conferma esplicita. Aggiungi il parametro 'confirm=true' alla richiesta."
+        )
+    
     try:
+        # Log dell'operazione per audit
+        SystemLogService.log_odl_operation(
+            db=db,
+            operation_type="ODL_DELETE",
+            user_role=UserRole.ADMIN,  # Default admin per eliminazione
+            details={
+                "odl_id": odl_id,
+                "status": db_odl.status,
+                "parte_id": db_odl.parte_id,
+                "tool_id": db_odl.tool_id,
+                "confirmed": confirm
+            },
+            result="SUCCESS",
+            user_id="sistema"
+        )
+        
         db.delete(db_odl)
         db.commit()
+        
+        logger.info(f"✅ ODL {odl_id} (stato: {db_odl.status}) eliminato con successo")
+        
     except Exception as e:
         db.rollback()
         logger.error(f"Errore durante l'eliminazione dell'ODL {odl_id}: {str(e)}")
@@ -422,6 +457,8 @@ def update_odl_status_clean_room(
         
         # Aggiorna lo stato
         db_odl.status = new_status
+        # ✅ NUOVO: Salva lo stato precedente per la funzione ripristino
+        db_odl.previous_status = stato_precedente
         
         logger.info(f"Clean Room - Cambio stato ODL {odl_id}: da '{stato_precedente}' a '{new_status}'")
         
@@ -550,6 +587,8 @@ def update_odl_status_curing(
         
         # Aggiorna lo stato
         db_odl.status = new_status
+        # ✅ NUOVO: Salva lo stato precedente per la funzione ripristino
+        db_odl.previous_status = stato_precedente
         
         logger.info(f"Curing - Cambio stato ODL {odl_id}: da '{stato_precedente}' a '{new_status}'")
         
@@ -725,6 +764,8 @@ def update_odl_status_admin(
         
         # Aggiorna lo stato (admin può fare qualsiasi transizione)
         db_odl.status = new_status
+        # ✅ NUOVO: Salva lo stato precedente per la funzione ripristino
+        db_odl.previous_status = stato_precedente
         
         logger.info(f"Admin - Cambio stato ODL {odl_id}: da '{stato_precedente}' a '{new_status}'")
         
@@ -880,6 +921,8 @@ def update_odl_status_generic(
         
         # Aggiorna lo stato
         db_odl.status = new_status
+        # ✅ NUOVO: Salva lo stato precedente per la funzione ripristino
+        db_odl.previous_status = stato_precedente
         
         logger.info(f"Generico - Cambio stato ODL {odl_id}: da '{stato_precedente}' a '{new_status}'")
         
@@ -959,6 +1002,139 @@ def update_odl_status_generic(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante l'aggiornamento dello stato ODL."
+        )
+
+@router.post("/{odl_id}/restore-status", 
+             response_model=ODLRead,
+             summary="Ripristina lo stato precedente di un ODL")
+def restore_previous_status(odl_id: int, db: Session = Depends(get_db)):
+    """
+    Ripristina lo stato precedente di un ODL utilizzando il campo previous_status.
+    
+    Questa funzione:
+    - Verifica che l'ODL esista
+    - Controlla che ci sia uno stato precedente salvato
+    - Ripristina lo stato precedente
+    - Aggiorna il previous_status con lo stato corrente
+    - Registra il cambio nei log
+    
+    Args:
+        odl_id: ID dell'ODL da ripristinare
+        db: Sessione del database
+        
+    Returns:
+        ODL aggiornato con lo stato ripristinato
+        
+    Raises:
+        404: Se l'ODL non viene trovato
+        400: Se non c'è uno stato precedente da ripristinare
+        500: Per errori del server
+    """
+    # Trova l'ODL
+    db_odl = db.query(ODL).filter(ODL.id == odl_id).first()
+    
+    if db_odl is None:
+        logger.warning(f"Tentativo di ripristino di ODL inesistente: {odl_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"ODL con ID {odl_id} non trovato"
+        )
+    
+    # Verifica che ci sia uno stato precedente
+    if not db_odl.previous_status:
+        logger.warning(f"Tentativo di ripristino ODL {odl_id} senza stato precedente")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"ODL {odl_id} non ha uno stato precedente da ripristinare"
+        )
+    
+    try:
+        # Salva gli stati per il log
+        stato_corrente = db_odl.status
+        stato_da_ripristinare = db_odl.previous_status
+        ora_corrente = datetime.now()
+        
+        # Effettua il ripristino
+        db_odl.status = stato_da_ripristinare
+        db_odl.previous_status = stato_corrente  # Il vecchio stato corrente diventa il nuovo previous
+        
+        logger.info(f"🔄 Ripristino stato ODL {odl_id}: da '{stato_corrente}' a '{stato_da_ripristinare}'")
+        
+        # ✅ Registra il ripristino nei log
+        StateTrackingService.registra_cambio_stato(
+            db=db,
+            odl_id=odl_id,
+            stato_precedente=stato_corrente,
+            stato_nuovo=stato_da_ripristinare,
+            responsabile="sistema",
+            ruolo_responsabile="ADMIN",
+            note=f"Ripristino stato precedente da '{stato_corrente}' a '{stato_da_ripristinare}'"
+        )
+        
+        # Log dell'evento nel sistema
+        SystemLogService.log_odl_state_change(
+            db=db,
+            odl_id=odl_id,
+            old_state=stato_corrente,
+            new_state=stato_da_ripristinare,
+            user_role=UserRole.ADMIN,
+            user_id="restore_function"
+        )
+        
+        # Gestione delle fasi di monitoraggio
+        # Chiudi la fase corrente se era in uno stato monitorato
+        if stato_corrente in STATO_A_FASE:
+            tipo_fase_corrente = STATO_A_FASE[stato_corrente]
+            fase_attiva = db.query(TempoFase).filter(
+                TempoFase.odl_id == odl_id,
+                TempoFase.fase == tipo_fase_corrente,
+                TempoFase.fine_fase == None
+            ).first()
+            
+            if fase_attiva:
+                # Calcola la durata in minuti
+                durata = int((ora_corrente - fase_attiva.inizio_fase).total_seconds() / 60)
+                
+                # Aggiorna il record esistente
+                fase_attiva.fine_fase = ora_corrente
+                fase_attiva.durata_minuti = durata 
+                fase_attiva.note = f"{fase_attiva.note or ''} - Fase chiusa per ripristino stato a '{stato_da_ripristinare}'"
+                logger.info(f"Chiusa fase '{tipo_fase_corrente}' per ODL {odl_id} con durata {durata} minuti (ripristino)")
+        
+        # Apri una nuova fase se lo stato ripristinato è monitorato
+        if stato_da_ripristinare in STATO_A_FASE:
+            tipo_fase_ripristinata = STATO_A_FASE[stato_da_ripristinare]
+            
+            # Verifica se esiste già una fase attiva dello stesso tipo
+            fase_esistente = db.query(TempoFase).filter(
+                TempoFase.odl_id == odl_id,
+                TempoFase.fase == tipo_fase_ripristinata,
+                TempoFase.fine_fase == None
+            ).first()
+            
+            if not fase_esistente:
+                # Crea una nuova fase
+                nuova_fase = TempoFase(
+                    odl_id=odl_id,
+                    fase=tipo_fase_ripristinata,
+                    inizio_fase=ora_corrente,
+                    note=f"Fase {tipo_fase_ripristinata} riaperta per ripristino stato da '{stato_corrente}'"
+                )
+                db.add(nuova_fase)
+                logger.info(f"Riaperta fase '{tipo_fase_ripristinata}' per ODL {odl_id} (ripristino)")
+        
+        db.commit()
+        db.refresh(db_odl)
+        
+        logger.info(f"✅ Ripristino completato per ODL {odl_id}: stato '{stato_da_ripristinare}' ripristinato")
+        return db_odl
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Errore durante il ripristino stato ODL {odl_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Si è verificato un errore durante il ripristino dello stato ODL."
         )
 
 @router.get("/{odl_id}/timeline", 
