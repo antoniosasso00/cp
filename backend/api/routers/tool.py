@@ -163,6 +163,8 @@ def read_tools_with_status(
                 "descrizione": tool.descrizione,
                 "lunghezza_piano": tool.lunghezza_piano,
                 "larghezza_piano": tool.larghezza_piano,
+                "peso": tool.peso,
+                "materiale": tool.materiale,
                 "disponibile": tool.disponibile,
                 "note": tool.note,
                 "created_at": tool.created_at.isoformat() if tool.created_at else None,
@@ -193,137 +195,6 @@ def read_tools_with_status(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante il recupero dei tools con stato."
-        )
-
-@router.get("/{tool_id}", response_model=ToolResponse, 
-            summary="Ottiene uno stampo (tool) specifico")
-def read_tool(tool_id: int, db: Session = Depends(get_db)):
-    """
-    Recupera uno stampo (tool) specifico tramite il suo ID.
-    """
-    db_tool = db.query(Tool).filter(Tool.id == tool_id).first()
-    if db_tool is None:
-        logger.warning(f"Tentativo di accesso a tool inesistente: {tool_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail=f"Tool con ID {tool_id} non trovato"
-        )
-    return db_tool
-
-@router.get("/by-part-number/{part_number_tool}", response_model=ToolResponse, 
-            summary="Ottiene uno stampo (tool) tramite il part number")
-def read_tool_by_part_number(part_number_tool: str, db: Session = Depends(get_db)):
-    """
-    Recupera uno stampo (tool) specifico tramite il suo part number univoco.
-    """
-    db_tool = db.query(Tool).filter(Tool.part_number_tool == part_number_tool).first()
-    if db_tool is None:
-        logger.warning(f"Tentativo di accesso a tool con part number inesistente: {part_number_tool}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail=f"Tool con part number '{part_number_tool}' non trovato"
-        )
-    return db_tool
-
-@router.put("/{tool_id}", response_model=ToolResponse, 
-            summary="Aggiorna uno stampo (tool)")
-def update_tool(tool_id: int, tool: ToolUpdate, db: Session = Depends(get_db)):
-    """
-    Aggiorna i dati di uno stampo (tool) esistente.
-    Solo i campi inclusi nella richiesta verranno aggiornati.
-    """
-    from services.system_log_service import SystemLogService
-    from models.system_log import UserRole
-    import json
-    
-    db_tool = db.query(Tool).filter(Tool.id == tool_id).first()
-    
-    if db_tool is None:
-        logger.warning(f"Tentativo di aggiornamento di tool inesistente: {tool_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail=f"Tool con ID {tool_id} non trovato"
-        )
-    
-    # Salva i valori precedenti per il logging
-    old_values = {
-        "part_number_tool": db_tool.part_number_tool,
-        "lunghezza": db_tool.lunghezza,
-        "larghezza": db_tool.larghezza,
-        "disponibile": db_tool.disponibile,
-        "note": db_tool.note
-    }
-    
-    # Aggiornamento dei campi presenti nella richiesta
-    update_data = tool.model_dump(exclude_unset=True)
-    modified_fields = []
-    
-    for key, value in update_data.items():
-        old_value = getattr(db_tool, key)
-        if old_value != value:
-            modified_fields.append(f"{key}: {old_value} → {value}")
-            setattr(db_tool, key, value)
-    
-    try:
-        db.commit()
-        db.refresh(db_tool)
-        
-        # Log dell'evento se ci sono state modifiche
-        if modified_fields:
-            modification_details = f"Campi modificati: {', '.join(modified_fields)}"
-            
-            SystemLogService.log_tool_modify(
-                db=db,
-                tool_id=tool_id,
-                modification_details=modification_details,
-                user_role=UserRole.ADMIN,  # Assumiamo che solo admin possa modificare tool
-                old_value=json.dumps(old_values),
-                new_value=json.dumps(update_data),
-                user_id="admin"  # In futuro si potrà passare l'ID utente reale
-            )
-            
-            logger.info(f"Tool {tool_id} aggiornato: {modification_details}")
-        
-        return db_tool
-    except IntegrityError as e:
-        db.rollback()
-        logger.error(f"Errore durante l'aggiornamento del tool {tool_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Il part number specificato è già utilizzato da un altro tool."
-        )
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Errore durante l'aggiornamento del tool {tool_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Si è verificato un errore durante l'aggiornamento del tool."
-        )
-
-@router.delete("/{tool_id}", status_code=status.HTTP_204_NO_CONTENT, 
-               summary="Elimina uno stampo (tool)")
-def delete_tool(tool_id: int, db: Session = Depends(get_db)):
-    """
-    Elimina uno stampo (tool) tramite il suo ID.
-    """
-    db_tool = db.query(Tool).filter(Tool.id == tool_id).first()
-    
-    if db_tool is None:
-        logger.warning(f"Tentativo di cancellazione di tool inesistente: {tool_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail=f"Tool con ID {tool_id} non trovato"
-        )
-    
-    try:
-        db.delete(db_tool)
-        db.commit()
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Errore durante l'eliminazione del tool {tool_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Si è verificato un errore durante l'eliminazione del tool."
         )
 
 @router.put("/update-status-from-odl", 
@@ -442,4 +313,140 @@ def update_tools_status_from_odl(db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante l'aggiornamento dello stato dei Tool."
-        ) 
+        )
+
+@router.get("/{tool_id}", response_model=ToolResponse, 
+            summary="Ottiene uno stampo (tool) specifico")
+def read_tool(tool_id: int, db: Session = Depends(get_db)):
+    """
+    Recupera uno stampo (tool) specifico tramite il suo ID.
+    """
+    db_tool = db.query(Tool).filter(Tool.id == tool_id).first()
+    if db_tool is None:
+        logger.warning(f"Tentativo di accesso a tool inesistente: {tool_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"Tool con ID {tool_id} non trovato"
+        )
+    return db_tool
+
+@router.get("/by-part-number/{part_number_tool}", response_model=ToolResponse, 
+            summary="Ottiene uno stampo (tool) tramite il part number")
+def read_tool_by_part_number(part_number_tool: str, db: Session = Depends(get_db)):
+    """
+    Recupera uno stampo (tool) specifico tramite il suo part number univoco.
+    """
+    db_tool = db.query(Tool).filter(Tool.part_number_tool == part_number_tool).first()
+    if db_tool is None:
+        logger.warning(f"Tentativo di accesso a tool con part number inesistente: {part_number_tool}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"Tool con part number '{part_number_tool}' non trovato"
+        )
+    return db_tool
+
+@router.put("/{tool_id}", response_model=ToolResponse, 
+            summary="Aggiorna uno stampo (tool)")
+def update_tool(tool_id: int, tool: ToolUpdate, db: Session = Depends(get_db)):
+    """
+    Aggiorna i dati di uno stampo (tool) esistente.
+    Solo i campi inclusi nella richiesta verranno aggiornati.
+    """
+    from services.system_log_service import SystemLogService
+    from models.system_log import UserRole
+    import json
+    
+    db_tool = db.query(Tool).filter(Tool.id == tool_id).first()
+    
+    if db_tool is None:
+        logger.warning(f"Tentativo di aggiornamento di tool inesistente: {tool_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"Tool con ID {tool_id} non trovato"
+        )
+    
+    # Salva i valori precedenti per il logging
+    old_values = {
+        "part_number_tool": db_tool.part_number_tool,
+        "descrizione": db_tool.descrizione,
+        "lunghezza_piano": db_tool.lunghezza_piano,
+        "larghezza_piano": db_tool.larghezza_piano,
+        "peso": db_tool.peso,
+        "materiale": db_tool.materiale,
+        "disponibile": db_tool.disponibile,
+        "note": db_tool.note
+    }
+    
+    # Aggiornamento dei campi presenti nella richiesta
+    update_data = tool.model_dump(exclude_unset=True)
+    modified_fields = []
+    
+    for key, value in update_data.items():
+        old_value = getattr(db_tool, key)
+        if old_value != value:
+            modified_fields.append(f"{key}: {old_value} → {value}")
+            setattr(db_tool, key, value)
+    
+    try:
+        db.commit()
+        db.refresh(db_tool)
+        
+        # Log dell'evento se ci sono state modifiche
+        if modified_fields:
+            modification_details = f"Campi modificati: {', '.join(modified_fields)}"
+            
+            SystemLogService.log_tool_modify(
+                db=db,
+                tool_id=tool_id,
+                modification_details=modification_details,
+                user_role=UserRole.ADMIN,  # Assumiamo che solo admin possa modificare tool
+                old_value=json.dumps(old_values),
+                new_value=json.dumps(update_data),
+                user_id="admin"  # In futuro si potrà passare l'ID utente reale
+            )
+            
+            logger.info(f"Tool {tool_id} aggiornato: {modification_details}")
+        
+        return db_tool
+    except IntegrityError as e:
+        db.rollback()
+        logger.error(f"Errore durante l'aggiornamento del tool {tool_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Il part number specificato è già utilizzato da un altro tool."
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Errore durante l'aggiornamento del tool {tool_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Si è verificato un errore durante l'aggiornamento del tool."
+        )
+
+@router.delete("/{tool_id}", status_code=status.HTTP_204_NO_CONTENT, 
+               summary="Elimina uno stampo (tool)")
+def delete_tool(tool_id: int, db: Session = Depends(get_db)):
+    """
+    Elimina uno stampo (tool) tramite il suo ID.
+    """
+    db_tool = db.query(Tool).filter(Tool.id == tool_id).first()
+    
+    if db_tool is None:
+        logger.warning(f"Tentativo di cancellazione di tool inesistente: {tool_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"Tool con ID {tool_id} non trovato"
+        )
+    
+    try:
+        db.delete(db_tool)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Errore durante l'eliminazione del tool {tool_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Si è verificato un errore durante l'eliminazione del tool."
+        )
+
+ 

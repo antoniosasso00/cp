@@ -34,7 +34,7 @@ export interface ODLLogEntry {
   stato_precedente?: string;
   stato_nuovo: string;
   descrizione?: string;
-  responsabile?: string;
+  responsabile?: string; // Campo legacy mantenuto per compatibilità dati esistenti
   timestamp: string;
   nesting_stato?: string;
   autoclave_nome?: string;

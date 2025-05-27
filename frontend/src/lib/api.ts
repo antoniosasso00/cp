@@ -342,6 +342,10 @@ export const catalogoApi = {
   
   delete: (partNumber: string) => 
     apiRequest<void>(`/catalogo/${partNumber}`, 'DELETE'),
+  
+  // ✅ FIX 3: Aggiorna part_number con propagazione globale
+  updatePartNumberWithPropagation: (partNumber: string, newPartNumber: string) => 
+    apiRequest<CatalogoResponse>(`/catalogo/${partNumber}/update-with-propagation`, 'PUT', { new_part_number: newPartNumber }),
 };
 
 // API Parti
@@ -608,18 +612,37 @@ export const odlApi = {
   },
 
   // Funzioni specifiche per ruoli
-  updateStatusLaminatore: async (id: number, newStatus: "Laminazione" | "Attesa Cura"): Promise<ODLResponse> => {
-    const response = await api.patch<ODLResponse>(`/odl/${id}/laminatore-status`, null, {
-      params: { new_status: newStatus }
-    });
+  updateStatusCleanRoom: async (id: number, newStatus: "Laminazione" | "Attesa Cura"): Promise<ODLResponse> => {
+    const response = await api.patch<ODLResponse>(`/odl/${id}/clean-room-status?new_status=${newStatus}`);
     return response.data;
   },
 
-  updateStatusAutoclavista: async (id: number, newStatus: "Cura" | "Finito"): Promise<ODLResponse> => {
-    const response = await api.patch<ODLResponse>(`/odl/${id}/autoclavista-status`, null, {
-      params: { new_status: newStatus }
-    });
+  updateStatusCuring: async (id: number, newStatus: "Cura" | "Finito"): Promise<ODLResponse> => {
+    const response = await api.patch<ODLResponse>(`/odl/${id}/curing-status?new_status=${newStatus}`);
     return response.data;
+  },
+
+  // Funzioni legacy rimosse - utilizzare updateStatusCleanRoom e updateStatusCuring
+
+  // Funzione per admin (qualsiasi transizione)
+  updateStatusAdmin: async (id: number, newStatus: "Preparazione" | "Laminazione" | "In Coda" | "Attesa Cura" | "Cura" | "Finito"): Promise<ODLResponse> => {
+    const response = await api.patch<ODLResponse>(`/odl/${id}/admin-status?new_status=${newStatus}`);
+    return response.data;
+  },
+
+  // Funzione generica (accetta JSON nel body) - Supporta conversione automatica formato stato
+  updateStatus: async (id: number, status: string): Promise<ODLResponse> => {
+    try {
+      console.log(`🔄 Aggiornamento stato ODL ${id}: ${status}`);
+      const response = await api.patch<ODLResponse>(`/odl/${id}/status`, {
+        new_status: status
+      });
+      console.log(`✅ Stato ODL ${id} aggiornato con successo a: ${response.data.status}`);
+      return response.data;
+    } catch (error) {
+      console.error(`❌ Errore aggiornamento stato ODL ${id}:`, error);
+      throw error;
+    }
   },
 
   // API per il monitoraggio e la timeline
@@ -774,12 +797,17 @@ export interface NestingResponse {
   note?: string;
   ciclo_cura_id?: number;
   ciclo_cura_nome?: string;
+  // ✅ NUOVO: Campi per nesting a due piani
+  area_piano_1?: number;
+  area_piano_2?: number;
+  peso_totale_kg?: number;
   posizioni_tool?: Array<{
     odl_id: number;
     x: number;
     y: number;
     width: number;
     height: number;
+    piano?: 1 | 2; // ✅ NUOVO: Campo per indicare il piano (1 o 2)
   }>;
 }
 
@@ -886,6 +914,45 @@ export interface ManualNestingResponse {
   }>;
 }
 
+// ✅ SEZIONE 2: Tipo unificato per le risposte di nesting
+export interface UnifiedNestingResponse {
+  success: boolean;
+  message: string;
+  // Proprietà comuni a entrambi i tipi
+  id?: number; // Solo per nesting automatico
+  autoclave?: {
+    id: number;
+    nome: string;
+    codice: string;
+    num_linee_vuoto: number;
+    lunghezza: number;
+    larghezza_piano: number;
+  }; // Solo per nesting automatico
+  autoclavi?: Array<{
+    id: number;
+    nome: string;
+    odl_assegnati?: number[];
+    valvole_utilizzate: number;
+    valvole_totali: number;
+    area_utilizzata: number;
+    area_totale: number;
+  }>; // Solo per nesting manuale
+  odl_pianificati?: Array<{
+    id: number;
+    parte_descrizione: string;
+    num_valvole: number;
+    priorita: number;
+    status: string;
+  }>; // Solo per nesting manuale
+  odl_non_pianificabili?: Array<{
+    id: number;
+    parte_descrizione: string;
+    num_valvole: number;
+    priorita: number;
+    status: string;
+  }>; // Solo per nesting manuale
+}
+
 // Interfacce per l'assegnazione nesting
 export interface NestingAssignmentRequest {
   nesting_id: number;
@@ -958,16 +1025,81 @@ export interface TwoLevelNestingResponse {
   }>;
 }
 
+// ✅ NUOVO: Tipo per la risposta dell'automazione nesting multiplo
+export interface AutoMultipleNestingResponse {
+  success: boolean;
+  message: string;
+  nesting_creati: Array<{
+    id: number;
+    autoclave_id: number;
+    autoclave_nome: string;
+    odl_count: number;
+    odl_ids: number[];
+    ciclo_cura_nome: string;
+    ciclo_cura_id?: number;
+    area_utilizzata: number;
+    area_totale: number;
+    valvole_utilizzate: number;
+    valvole_totali: number;
+    peso_kg: number;
+    use_secondary_plane: boolean;
+    stato: string;
+  }>;
+  odl_pianificati: Array<{
+    id: number;
+    parte_descrizione: string;
+    tool_part_number: string;
+    priorita: number;
+    nesting_id: number;
+    autoclave_nome: string;
+    ciclo_cura: string;
+    status: string;
+  }>;
+  odl_non_pianificabili: Array<{
+    id: number;
+    parte_descrizione: string;
+    tool_part_number: string;
+    priorita: number;
+    motivo: string;
+    status: string;
+  }>;
+  autoclavi_utilizzate: Array<{
+    id: number;
+    nome: string;
+    codice: string;
+    stato_precedente: string;
+    stato_attuale: string;
+    nesting_id: number;
+    odl_assegnati: number;
+  }>;
+  statistiche: {
+    odl_totali: number;
+    odl_pianificati: number;
+    odl_non_pianificabili: number;
+    autoclavi_disponibili: number;
+    autoclavi_utilizzate: number;
+    nesting_creati: number;
+    cicli_compatibili: number;
+  };
+}
+
 // API Nesting
 export const nestingApi = {
   getAll: async (params?: { ruolo_utente?: string; stato_filtro?: string }): Promise<NestingResponse[]> => {
-    const queryParams = new URLSearchParams();
-    if (params?.ruolo_utente) queryParams.append('ruolo_utente', params.ruolo_utente);
-    if (params?.stato_filtro) queryParams.append('stato_filtro', params.stato_filtro);
-    
-    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
-    const response = await api.get<NestingResponse[]>(`/nesting/${query}`);
-    return response.data;
+    try {
+      console.log('🔍 Caricamento lista nesting...', params);
+      const queryParams = new URLSearchParams();
+      if (params?.ruolo_utente) queryParams.append('ruolo_utente', params.ruolo_utente);
+      if (params?.stato_filtro) queryParams.append('stato_filtro', params.stato_filtro);
+      
+      const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+      const response = await api.get<NestingResponse[]>(`/nesting/${query}`);
+      console.log(`✅ Caricati ${response.data.length} nesting`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Errore nel caricamento dei nesting:', error);
+      throw new Error('Errore nel caricamento dei nesting. Verifica la connessione al server.');
+    }
   },
   
   getOne: async (id: number): Promise<NestingResponse> => {
@@ -987,8 +1119,36 @@ export const nestingApi = {
   },
   
   // Nuovi endpoint per preview e bozze
-  getPreview: async (): Promise<NestingPreview> => {
-    const response = await api.get<NestingPreview>('/nesting/preview');
+  getPreview: async (parameters?: {
+    distanza_perimetrale_cm?: number;
+    spaziatura_tra_tool_cm?: number;
+    rotazione_tool_abilitata?: boolean;
+    priorita_ottimizzazione?: string;
+  }): Promise<NestingPreview> => {
+    let url = '/nesting/preview';
+    
+    if (parameters) {
+      const queryParams = new URLSearchParams();
+      if (parameters.distanza_perimetrale_cm !== undefined) {
+        queryParams.append('distanza_perimetrale_cm', parameters.distanza_perimetrale_cm.toString());
+      }
+      if (parameters.spaziatura_tra_tool_cm !== undefined) {
+        queryParams.append('spaziatura_tra_tool_cm', parameters.spaziatura_tra_tool_cm.toString());
+      }
+      if (parameters.rotazione_tool_abilitata !== undefined) {
+        queryParams.append('rotazione_tool_abilitata', parameters.rotazione_tool_abilitata.toString());
+      }
+      if (parameters.priorita_ottimizzazione !== undefined) {
+        queryParams.append('priorita_ottimizzazione', parameters.priorita_ottimizzazione);
+      }
+      
+      const query = queryParams.toString();
+      if (query) {
+        url += `?${query}`;
+      }
+    }
+    
+    const response = await api.get<NestingPreview>(url);
     return response.data;
   },
   
@@ -1026,6 +1186,30 @@ export const nestingApi = {
   // ✅ NUOVO: API per nesting su due piani
   generateTwoLevel: async (request?: TwoLevelNestingRequest): Promise<TwoLevelNestingResponse> => {
     const response = await api.post<TwoLevelNestingResponse>('/nesting/two-level', request || {});
+    return response.data;
+  },
+
+  // ✅ NUOVO: API per automazione nesting multiplo (Prompt 14.3B.2)
+  generateAutoMultiple: async (): Promise<AutoMultipleNestingResponse> => {
+    console.log('🤖 Avvio automazione nesting per autoclavi multiple...');
+    const response = await api.post<AutoMultipleNestingResponse>('/nesting/auto-multiple');
+    console.log('✅ Automazione nesting completata:', response.data);
+    return response.data;
+  },
+
+  // ✅ NUOVO: API per confermare nesting in sospeso (Prompt 15.1)
+  confirmPending: async (nestingId: number): Promise<NestingResponse> => {
+    console.log(`🔄 Conferma nesting in sospeso #${nestingId}...`);
+    const response = await api.post<NestingResponse>(`/nesting/${nestingId}/confirm`);
+    console.log('✅ Nesting confermato con successo');
+    return response.data;
+  },
+
+  // ✅ NUOVO: API per eliminare nesting in sospeso (Prompt 15.1)
+  deletePending: async (nestingId: number): Promise<{ message: string }> => {
+    console.log(`🗑️ Eliminazione nesting in sospeso #${nestingId}...`);
+    const response = await api.delete<{ message: string }>(`/nesting/${nestingId}`);
+    console.log('✅ Nesting eliminato con successo');
     return response.data;
   },
 };
@@ -1232,4 +1416,31 @@ export const reportsApi = {
     console.log(`🔗 Check Nesting Report Request: ${nestingId}`);
     return apiRequest<any>(`/nesting/${nestingId}/report`, 'GET');
   },
-}; 
+};
+
+// 🆕 Funzione di utilità per aggiornamento stato ODL con gestione errori migliorata
+export async function updateOdlStatus(id: number, newStatus: string): Promise<ODLResponse> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/odl/${id}/status`, {
+      method: "PATCH",
+      headers: { 
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      body: JSON.stringify({ new_status: newStatus }),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.detail || `Errore HTTP ${response.status}`;
+      throw new Error(errorMessage);
+    }
+    
+    const data = await response.json();
+    console.log(`✅ Stato ODL ${id} aggiornato: ${data.status}`);
+    return data;
+  } catch (error) {
+    console.error(`❌ Errore aggiornamento stato ODL ${id}:`, error);
+    throw error;
+  }
+} 

@@ -32,7 +32,7 @@ async def get_system_logs(
     """
     Ottiene i log di sistema con filtri opzionali
     
-    Accessibile solo ad admin e responsabile
+    Accessibile solo ad admin e management
     """
     try:
         filters = SystemLogFilter(
@@ -61,7 +61,7 @@ async def get_log_statistics(
     """
     Ottiene statistiche sui log di sistema
     
-    Accessibile solo ad admin e responsabile
+    Accessibile solo ad admin e management
     """
     try:
         stats = SystemLogService.get_log_stats(db, days)
@@ -78,7 +78,7 @@ async def get_recent_errors(
     """
     Ottiene gli errori più recenti
     
-    Accessibile solo ad admin e responsabile
+    Accessibile solo ad admin e management
     """
     try:
         filters = SystemLogFilter(
@@ -117,7 +117,7 @@ async def get_logs_by_entity(
     """
     Ottiene i log relativi a una specifica entità (ODL, tool, autoclave, etc.)
     
-    Accessibile solo ad admin e responsabile
+    Accessibile solo ad admin e management
     """
     try:
         filters = SystemLogFilter(
@@ -144,7 +144,7 @@ async def export_logs_csv(
     """
     Esporta i log in formato CSV
     
-    Accessibile solo ad admin e responsabile
+    Accessibile solo ad admin e management
     """
     try:
         from fastapi.responses import StreamingResponse

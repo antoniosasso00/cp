@@ -29,9 +29,9 @@ class EventType(enum.Enum):
 class UserRole(enum.Enum):
     """Ruoli utente"""
     ADMIN = "admin"
-    RESPONSABILE = "responsabile"
-    AUTOCLAVISTA = "autoclavista"
-    LAMINATORE = "laminatore"
+    MANAGEMENT = "management"
+    CLEAN_ROOM = "clean_room"
+    CURING = "curing"
     SISTEMA = "sistema"
 
 class SystemLog(Base):

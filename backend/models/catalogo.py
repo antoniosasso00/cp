@@ -19,23 +19,35 @@ class Catalogo(Base, TimestampMixin):
     note = Column(Text, nullable=True,
                  doc="Note aggiuntive sul part number")
     
-    # Dimensioni fisiche del pezzo (aggiunte per il calcolo dell'area)
-    lunghezza = Column(Float, nullable=True, 
-                      doc="Lunghezza del pezzo in mm")
-    larghezza = Column(Float, nullable=True, 
-                      doc="Larghezza del pezzo in mm")
-    altezza = Column(Float, nullable=True, 
-                    doc="Altezza del pezzo in mm")
-    
     # Relazione con le parti
     parti = relationship("Parte", back_populates="catalogo")
     
     @property
     def area_cm2(self) -> float:
-        """Calcola l'area occupata dal pezzo in cm²"""
-        if self.lunghezza and self.larghezza:
-            # Conversione da mm² a cm²
-            return (self.lunghezza * self.larghezza) / 100
+        """
+        Calcola l'area occupata dal pezzo in cm² basandosi sui tools associati.
+        Le dimensioni vengono prese dal primo tool disponibile associato a questo part_number.
+        """
+        # Trova il primo tool associato a questo part_number
+        for parte in self.parti:
+            for tool in parte.tools:
+                if tool.lunghezza_piano and tool.larghezza_piano:
+                    # Conversione da mm² a cm²
+                    return (tool.lunghezza_piano * tool.larghezza_piano) / 100
+        
+        # Se non ci sono tools associati, cerca direttamente per part_number_tool
+        from sqlalchemy.orm import Session
+        from .tool import Tool
+        from .db import SessionLocal
+        
+        db = SessionLocal()
+        try:
+            tool = db.query(Tool).filter(Tool.part_number_tool == self.part_number).first()
+            if tool and tool.lunghezza_piano and tool.larghezza_piano:
+                return (tool.lunghezza_piano * tool.larghezza_piano) / 100
+        finally:
+            db.close()
+        
         return 0.0
     
     def __repr__(self):

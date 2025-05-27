@@ -75,16 +75,30 @@ export function OdlProgressWrapper({
     return (
       <div className={`flex items-center gap-2 p-4 bg-red-50 border border-red-200 rounded-lg ${className}`}>
         <AlertCircle className="h-4 w-4 text-red-600" />
-        <span className="text-sm text-red-700">{error}</span>
+        <div className="flex-1">
+          <span className="text-sm text-red-700 font-medium">Errore nel caricamento dei dati di progresso</span>
+          <p className="text-xs text-red-600 mt-1">{error}</p>
+          <button 
+            onClick={loadProgressData}
+            className="text-xs text-red-600 underline hover:text-red-800 mt-1"
+          >
+            Riprova
+          </button>
+        </div>
       </div>
     );
   }
 
   if (!progressData) {
     return (
-      <div className={`flex items-center gap-2 p-4 bg-gray-50 border border-gray-200 rounded-lg ${className}`}>
-        <AlertCircle className="h-4 w-4 text-gray-600" />
-        <span className="text-sm text-gray-700">Nessun dato di progresso disponibile</span>
+      <div className={`flex items-center gap-2 p-4 bg-amber-50 border border-amber-200 rounded-lg ${className}`}>
+        <AlertCircle className="h-4 w-4 text-amber-600" />
+        <div className="flex-1">
+          <span className="text-sm text-amber-700 font-medium">Dati di progresso non disponibili</span>
+          <p className="text-xs text-amber-600 mt-1">
+            I dati temporali per questo ODL non sono ancora stati registrati o sono incompleti.
+          </p>
+        </div>
       </div>
     );
   }

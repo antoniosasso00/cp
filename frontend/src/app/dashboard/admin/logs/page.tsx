@@ -53,9 +53,9 @@ const EVENT_TYPE_LABELS = {
 
 const ROLE_LABELS = {
   'admin': 'Amministratore',
-  'responsabile': 'Responsabile',
-  'autoclavista': 'Autoclavista',
-  'laminatore': 'Laminatore',
+      'management': 'Management',
+    'curing': 'Curing',
+    'clean_room': 'Clean Room',
   'sistema': 'Sistema'
 }
 

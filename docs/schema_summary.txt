@@ -1,0 +1,411 @@
+RIASSUNTO SCHEMA DATABASE - CarbonPilot
+============================================================
+
+Trovati 14 modelli:
+   • Autoclave
+   • Catalogo
+   • CicloCura
+   • NestingResult
+   • ODL
+   • ODLLog
+   • Parte
+   • Report
+   • ScheduleEntry
+   • StateLog
+   • SystemLog
+   • TempoFase
+   • TempoProduzione
+   • Tool
+
+============================================================
+
+📄 Modello: Autoclave
+   Tabella: autoclavi
+   📋 Campi:
+      • id: Integer | PK | INDEX | NOT NULL
+      • anno_produzione: Integer
+        📝 Anno di produzione dell'autoclave
+      • codice: String(50) | UNIQUE | INDEX
+        📝 Codice univoco dell'autoclave
+      • created_at: DateTime | NOT NULL | DEFAULT=<function datetime.utcnow at 0x0000014B6649EDE0>
+      • larghezza_piano: Float
+        📝 Larghezza utile del piano di carico
+      • lunghezza: Float
+        📝 Lunghezza interna in mm
+      • max_load_kg: Float | DEFAULT=1000.0
+        📝 Carico massimo supportato dall'autoclave in kg
+      • nome: String(100) | UNIQUE | INDEX
+        📝 Nome identificativo dell'autoclave
+      • note: String
+        📝 Note aggiuntive sull'autoclave
+      • num_linee_vuoto: Integer
+        📝 Numero di linee vuoto disponibili
+      • pressione_max: Float
+        📝 Pressione massima in bar
+      • produttore: String(100)
+        📝 Nome del produttore dell'autoclave
+      • stato: String(12) | NOT NULL | DEFAULT=StatoAutoclaveEnum.DISPONIBILE
+        📝 Stato attuale dell'autoclave
+      • temperatura_max: Float
+        📝 Temperatura massima in gradi Celsius
+      • updated_at: DateTime | NOT NULL | DEFAULT=<function datetime.utcnow at 0x0000014B6649F060>
+      • use_secondary_plane: Boolean | NOT NULL | DEFAULT=False
+        📝 Indica se l'autoclave può utilizzare un piano secondario per aumentare la capacità
+   🔗 Relazioni:
+      • nesting_results: one-to-many -> NestingResult (bidirectional)
+
+📄 Modello: Catalogo
+   Tabella: cataloghi
+   📋 Campi:
+      • part_number: String(50) | PK | INDEX | NOT NULL
+        📝 Codice Part Number univoco
+      • altezza: Float
+        📝 Altezza del pezzo in mm
+      • attivo: Boolean | NOT NULL | DEFAULT=True
+        📝 Indica se il part number è ancora attivo nel catalogo
+      • categoria: String(100)
+        📝 Categoria del prodotto
+      • created_at: DateTime | NOT NULL | DEFAULT=<function datetime.utcnow at 0x0000014B664784A0>
+      • descrizione: String | NOT NULL
+        📝 Descrizione dettagliata del part number
+      • larghezza: Float
+        📝 Larghezza del pezzo in mm
+      • lunghezza: Float
+        📝 Lunghezza del pezzo in mm
+      • note: String
+        📝 Note aggiuntive sul part number
+      • sotto_categoria: String(100)
+        📝 Sotto-categoria del prodotto
+      • updated_at: DateTime | NOT NULL | DEFAULT=<function datetime.utcnow at 0x0000014B66478680>
+   🔗 Relazioni:
+      • parti: one-to-many -> Parte (bidirectional)
+
+📄 Modello: CicloCura
+   Tabella: cicli_cura
+   📋 Campi:
+      • id: Integer | PK | INDEX | NOT NULL
+      • attiva_stasi2: Boolean | NOT NULL | DEFAULT=False
+        📝 Indica se è presente la seconda stasi
+      • created_at: DateTime | NOT NULL | DEFAULT=<function datetime.utcnow at 0x0000014B66479A80>
+      • descrizione: String
+        📝 Descrizione dettagliata del ciclo di cura
+      • durata_stasi1: Integer | NOT NULL
+        📝 Durata della prima stasi in minuti
+      • durata_stasi2: Integer
+        📝 Durata della seconda stasi in minuti
+      • nome: String(100) | UNIQUE | NOT NULL
+        📝 Nome identificativo del ciclo di cura
+      • pressione_stasi1: Float | NOT NULL
+        📝 Pressione della prima stasi in bar
+      • pressione_stasi2: Float
+        📝 Pressione della seconda stasi in bar
+      • temperatura_stasi1: Float | NOT NULL
+        📝 Temperatura della prima stasi in gradi Celsius
+      • temperatura_stasi2: Float
+        📝 Temperatura della seconda stasi in gradi Celsius
+      • updated_at: DateTime | NOT NULL | DEFAULT=<function datetime.utcnow at 0x0000014B66479C60>
+   🔗 Relazioni:
+      • parti: one-to-many -> Parte (bidirectional)
+
+📄 Modello: NestingResult
+   Tabella: nesting_results
+   📋 Campi:
+      • id: Integer | PK | INDEX | NOT NULL
+      • autoclave_id: Integer | INDEX | FK -> autoclavi.id
+      • report_id: Integer | INDEX | FK -> reports.id
+        📝 ID del report PDF generato per questo nesting
+      • area_piano_1: Float | DEFAULT=0.0
+        📝 Area utilizzata sul piano 1 in cm²
+      • area_piano_2: Float | DEFAULT=0.0
+        📝 Area utilizzata sul piano 2 in cm²
+      • area_totale: Float | DEFAULT=0.0
+      • area_utilizzata: Float | DEFAULT=0.0
+      • confermato_da_ruolo: String(50)
+        📝 Ruolo dell'utente che ha confermato il nesting
+      • created_at: DateTime | DEFAULT=now()
+      • motivi_esclusione: JSON | DEFAULT=<function list at 0x0000014B664FF600>
+        📝 Lista dei motivi per cui gli ODL sono stati esclusi
+      • note: String
+        📝 Note aggiuntive sul nesting
+      • odl_esclusi_ids: JSON | DEFAULT=<function list at 0x0000014B664FF560>
+        📝 Lista degli ID degli ODL esclusi dal nesting
+      • odl_ids: JSON | DEFAULT=<function list at 0x0000014B664FF4C0>
+      • peso_totale_kg: Float | DEFAULT=0.0
+        📝 Peso totale del carico in kg
+      • posizioni_tool: JSON | DEFAULT=<function list at 0x0000014B664FF880>
+        📝 Posizioni 2D dei tool: [{'odl_id': int, 'piano': int, 'x': float, 'y': float, 'width': float, 'height': float}, ...]
+      • stato: String(50) | NOT NULL | DEFAULT=In sospeso
+        📝 Stato corrente del nesting
+      • superficie_piano_2_max: Float
+        📝 Superficie massima configurabile del piano 2 in cm²
+      • updated_at: DateTime | DEFAULT=now()
+      • valvole_totali: Integer | DEFAULT=0
+      • valvole_utilizzate: Integer | DEFAULT=0
+   🔗 Relazioni:
+      • autoclave: one-to-one -> Autoclave (bidirectional)
+      • odl_list: one-to-many -> ODL (bidirectional)
+      • report: one-to-one -> Report (bidirectional)
+
+📄 Modello: ODL
+   Tabella: odl
+   📋 Campi:
+      • id: Integer | PK | INDEX | NOT NULL
+      • parte_id: Integer | INDEX | NOT NULL | FK -> parti.id
+        📝 ID della parte associata all'ordine di lavoro
+      • tool_id: Integer | INDEX | NOT NULL | FK -> tools.id
+        📝 ID del tool utilizzato per l'ordine di lavoro
+      • created_at: DateTime | DEFAULT=now()
+      • motivo_blocco: String
+        📝 Motivo per cui l'ODL è bloccato (es. tool occupati)
+      • note: String
+        📝 Note aggiuntive sull'ordine di lavoro
+      • priorita: Integer | NOT NULL | DEFAULT=1
+        📝 Priorità dell'ordine di lavoro (numero più alto = priorità maggiore)
+      • status: String(12) | NOT NULL | DEFAULT=Preparazione
+        📝 Stato corrente dell'ordine di lavoro
+      • updated_at: DateTime | DEFAULT=now()
+   🔗 Relazioni:
+      • logs: one-to-many -> ODLLog (bidirectional)
+      • nesting_results: one-to-many -> NestingResult (bidirectional)
+      • parte: one-to-one -> Parte (bidirectional)
+      • schedule_entries: one-to-many -> ScheduleEntry (bidirectional)
+      • state_logs: one-to-many -> StateLog (bidirectional)
+      • tempo_fasi: one-to-many -> TempoFase (bidirectional)
+      • tool: one-to-one -> Tool (bidirectional)
+
+📄 Modello: ODLLog
+   Tabella: odl_logs
+   📋 Campi:
+      • id: Integer | PK | INDEX | NOT NULL
+      • autoclave_id: Integer | INDEX | FK -> autoclavi.id
+        📝 ID dell'autoclave utilizzata (se applicabile)
+      • nesting_id: Integer | INDEX | FK -> nesting_results.id
+        📝 ID del nesting associato (se applicabile)
+      • odl_id: Integer | INDEX | NOT NULL | FK -> odl.id
+        📝 ID dell'ODL associato al log
+      • schedule_entry_id: Integer | INDEX | FK -> schedule_entries.id
+        📝 ID della schedulazione associata (se applicabile)
+      • descrizione: String
+        📝 Descrizione dettagliata dell'evento
+      • evento: String(100) | NOT NULL
+        📝 Tipo di evento (creato, assegnato, caricato, curato, completato, etc.)
+      • responsabile: String(100)
+        📝 Utente o sistema responsabile dell'evento
+      • stato_nuovo: String(50) | NOT NULL
+        📝 Nuovo stato dell'ODL
+      • stato_precedente: String(50)
+        📝 Stato precedente dell'ODL
+      • timestamp: DateTime | NOT NULL | DEFAULT=now()
+        📝 Timestamp dell'evento
+   🔗 Relazioni:
+      • autoclave: one-to-one -> Autoclave (bidirectional)
+      • nesting: one-to-one -> NestingResult (bidirectional)
+      • odl: one-to-one -> ODL (bidirectional)
+      • schedule_entry: one-to-one -> ScheduleEntry (bidirectional)
+
+📄 Modello: Parte
+   Tabella: parti
+   📋 Campi:
+      • id: Integer | PK | INDEX | NOT NULL
+      • ciclo_cura_id: Integer | FK -> cicli_cura.id
+        📝 ID del ciclo di cura associato
+      • part_number: String(50) | INDEX | NOT NULL | FK -> cataloghi.part_number
+        📝 Part Number associato dal catalogo
+      • created_at: DateTime | NOT NULL | DEFAULT=<function datetime.utcnow at 0x0000014B6649D800>
+      • descrizione_breve: String(255) | NOT NULL
+        📝 Descrizione breve della parte
+      • note_produzione: String
+        📝 Note specifiche per la produzione
+      • num_valvole_richieste: Integer | NOT NULL | DEFAULT=1
+        📝 Numero di valvole richieste per la cura
+      • updated_at: DateTime | NOT NULL | DEFAULT=<function datetime.utcnow at 0x0000014B6649D9E0>
+   🔗 Relazioni:
+      • catalogo: one-to-one -> Catalogo (bidirectional)
+      • ciclo_cura: one-to-one -> CicloCura (bidirectional)
+      • odl: one-to-many -> ODL (bidirectional)
+      • tools: one-to-many -> Tool (bidirectional)
+
+📄 Modello: Report
+   Tabella: reports
+   📋 Campi:
+      • id: Integer | PK | INDEX | NOT NULL
+      • created_at: DateTime | NOT NULL | DEFAULT=<function datetime.utcnow at 0x0000014B66565EE0>
+      • file_path: String(500) | NOT NULL
+      • file_size_bytes: Integer
+      • filename: String(255) | UNIQUE | INDEX | NOT NULL
+      • generated_for_user_id: Integer | INDEX
+      • include_sections: String(255)
+      • period_end: DateTime
+      • period_start: DateTime
+      • report_type: String(10) | INDEX | NOT NULL
+      • updated_at: DateTime | NOT NULL | DEFAULT=<function datetime.utcnow at 0x0000014B665660C0>
+   🔗 Relazioni:
+      • nesting_results: one-to-many -> NestingResult (bidirectional)
+
+📄 Modello: ScheduleEntry
+   Tabella: schedule_entries
+   📋 Campi:
+      • id: Integer | PK | INDEX | NOT NULL
+      • autoclave_id: Integer | INDEX | NOT NULL | FK -> autoclavi.id
+        📝 ID dell'autoclave per cui è schedulato l'ODL
+      • odl_id: Integer | INDEX | FK -> odl.id
+        📝 ID dell'ODL schedulato (opzionale per schedulazioni per categoria)
+      • parent_schedule_id: Integer | FK -> schedule_entries.id
+        📝 ID della schedulazione padre (per schedulazioni generate da ricorrenza)
+      • categoria: String(100) | INDEX
+        📝 Categoria per schedulazioni per categoria
+      • created_at: DateTime | DEFAULT=now()
+      • created_by: String(100)
+        📝 Utente che ha creato la schedulazione
+      • end_datetime: DateTime
+        📝 Data e ora di fine della schedulazione (calcolata automaticamente se disponibili dati storici)
+      • estimated_duration_minutes: Integer
+        📝 Durata stimata in minuti (da dati storici)
+      • is_recurring: Boolean | NOT NULL | DEFAULT=False
+        📝 Indica se è una schedulazione ricorrente
+      • note: String
+        📝 Note aggiuntive sulla schedulazione
+      • pieces_per_month: Integer
+        📝 Numero di pezzi da produrre al mese (per schedulazioni ricorrenti)
+      • priority_override: Boolean | NOT NULL | DEFAULT=False
+        📝 Indica se la priorità è stata sovrascritta manualmente
+      • recurring_frequency: String(50)
+        📝 Frequenza ricorrenza (monthly, weekly, etc.)
+      • schedule_type: String(50) | NOT NULL | DEFAULT=odl_specifico
+        📝 Tipo di schedulazione
+      • sotto_categoria: String(100) | INDEX
+        📝 Sotto-categoria per schedulazioni per sotto-categoria
+      • start_datetime: DateTime | NOT NULL
+        📝 Data e ora di inizio della schedulazione
+      • status: String(20) | NOT NULL | DEFAULT=scheduled
+        📝 Stato corrente della schedulazione
+      • updated_at: DateTime | DEFAULT=now()
+   🔗 Relazioni:
+      • autoclave: one-to-one -> Autoclave (bidirectional)
+      • odl: one-to-one -> ODL (bidirectional)
+
+📄 Modello: StateLog
+   Tabella: state_logs
+   📋 Campi:
+      • id: Integer | PK | INDEX | NOT NULL
+      • odl_id: Integer | INDEX | NOT NULL | FK -> odl.id
+        📝 ID dell'ODL associato al cambio di stato
+      • note: String(500)
+        📝 Note aggiuntive sul cambio di stato
+      • responsabile: String(100)
+        📝 Utente o sistema responsabile del cambio
+      • ruolo_responsabile: String(50)
+        📝 Ruolo dell'utente responsabile (LAMINATORE, AUTOCLAVISTA, ADMIN)
+      • stato_nuovo: String(50) | NOT NULL
+        📝 Nuovo stato dell'ODL
+      • stato_precedente: String(50)
+        📝 Stato precedente dell'ODL
+      • timestamp: DateTime | NOT NULL | DEFAULT=now()
+        📝 Timestamp preciso del cambio di stato
+   🔗 Relazioni:
+      • odl: one-to-one -> ODL (bidirectional)
+
+📄 Modello: SystemLog
+   Tabella: system_logs
+   📋 Campi:
+      • id: Integer | PK | INDEX | NOT NULL
+      • action: String(200) | NOT NULL
+        📝 Descrizione breve dell'azione
+      • details: String
+        📝 Dettagli completi dell'evento in formato JSON o testo
+      • entity_id: Integer | INDEX
+        📝 ID dell'entità coinvolta
+      • entity_type: String(50)
+        📝 Tipo di entità coinvolta (odl, tool, autoclave, etc.)
+      • event_type: String(16) | INDEX | NOT NULL
+        📝 Tipo di evento
+      • ip_address: String(45)
+        📝 Indirizzo IP dell'utente
+      • level: String(8) | NOT NULL | DEFAULT=LogLevel.INFO
+        📝 Livello di importanza del log
+      • new_value: String
+        📝 Nuovo valore (per modifiche)
+      • old_value: String
+        📝 Valore precedente (per modifiche)
+      • timestamp: DateTime | INDEX | NOT NULL | DEFAULT=now()
+        📝 Timestamp dell'evento
+      • user_id: String(100)
+        📝 Identificativo dell'utente
+      • user_role: String(12) | INDEX | NOT NULL
+        📝 Ruolo dell'utente
+
+📄 Modello: TempoFase
+   Tabella: tempo_fasi
+   📋 Campi:
+      • id: Integer | PK | INDEX | NOT NULL
+      • odl_id: Integer | INDEX | NOT NULL | FK -> odl.id
+        📝 ID dell'ordine di lavoro associato
+      • created_at: DateTime | NOT NULL | DEFAULT=<function datetime.utcnow at 0x0000014B664FDEE0>
+      • durata_minuti: Integer
+        📝 Durata della fase in minuti (calcolata da inizio e fine)
+      • fase: String(11) | NOT NULL
+        📝 Tipo di fase di produzione monitorata
+      • fine_fase: DateTime
+        📝 Timestamp di fine della fase (null se ancora in corso)
+      • inizio_fase: DateTime | NOT NULL | DEFAULT=now()
+        📝 Timestamp di inizio della fase
+      • note: String
+        📝 Note aggiuntive sulla fase
+      • updated_at: DateTime | NOT NULL | DEFAULT=<function datetime.utcnow at 0x0000014B664FE160>
+   🔗 Relazioni:
+      • odl: one-to-one -> ODL (bidirectional)
+
+📄 Modello: TempoProduzione
+   Tabella: tempi_produzione
+   📋 Campi:
+      • id: Integer | PK | INDEX | NOT NULL
+      • categoria: String(100) | INDEX
+        📝 Categoria del prodotto
+      • created_at: DateTime | DEFAULT=now()
+      • note: String
+        📝 Note aggiuntive sui tempi di produzione
+      • numero_osservazioni: Integer | NOT NULL | DEFAULT=1
+        📝 Numero di osservazioni utilizzate per calcolare la media
+      • part_number: String(100) | INDEX
+        📝 Part number specifico (se disponibile)
+      • sotto_categoria: String(100) | INDEX
+        📝 Sotto-categoria del prodotto
+      • tempo_massimo_minuti: Float
+        📝 Tempo massimo registrato in minuti
+      • tempo_medio_minuti: Float | NOT NULL
+        📝 Tempo medio di produzione in minuti
+      • tempo_minimo_minuti: Float
+        📝 Tempo minimo registrato in minuti
+      • ultima_osservazione: DateTime | NOT NULL
+        📝 Data dell'ultima osservazione registrata
+      • updated_at: DateTime | DEFAULT=now()
+
+📄 Modello: Tool
+   Tabella: tools
+   📋 Campi:
+      • id: Integer | PK | INDEX | NOT NULL
+      • created_at: DateTime | NOT NULL | DEFAULT=<function datetime.utcnow at 0x0000014B6649C0E0>
+      • descrizione: String
+        📝 Descrizione dettagliata dello stampo
+      • disponibile: Boolean | NOT NULL | DEFAULT=True
+        📝 Indica se lo stampo è attualmente disponibile
+      • larghezza_piano: Float | NOT NULL
+        📝 Larghezza utile del tool
+      • lunghezza_piano: Float | NOT NULL
+        📝 Lunghezza utile del tool
+      • materiale: String(100)
+        📝 Materiale del tool (es. Alluminio, Acciaio, etc.)
+      • note: String
+        📝 Note aggiuntive sullo stampo
+      • part_number_tool: String(50) | UNIQUE | NOT NULL
+        📝 Part Number Tool identificativo univoco dello stampo
+      • peso: Float | DEFAULT=0.0
+        📝 Peso del tool in kg
+      • updated_at: DateTime | NOT NULL | DEFAULT=<function datetime.utcnow at 0x0000014B6649C2C0>
+   🔗 Relazioni:
+      • odl: one-to-many -> ODL (bidirectional)
+      • parti: one-to-many -> Parte (bidirectional)
+
+============================================================
+Riassunto completato!
+Totale modelli analizzati: 14

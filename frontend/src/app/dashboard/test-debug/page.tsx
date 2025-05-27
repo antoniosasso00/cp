@@ -26,22 +26,22 @@ export default function TestDebugPage() {
         description: `Caricati ${odlList.length} ODL`,
       })
 
-      // Test 2: Test filtri per laminatore
-      const odlLaminatore = odlList.filter(odl => 
+      // Test 2: Test filtri per Clean Room
+      const odlCleanRoom = odlList.filter(odl => 
         odl.status === "Preparazione" || odl.status === "Laminazione"
       )
       toast({
-        title: '✅ Test ODL - Filtro Laminatore',
-        description: `Trovati ${odlLaminatore.length} ODL per laminatore`,
+        title: '✅ Test ODL - Filtro Clean Room',
+        description: `Trovati ${odlCleanRoom.length} ODL per Clean Room`,
       })
 
-      // Test 3: Test filtri per autoclavista
-      const odlAutoclavista = odlList.filter(odl => 
+      // Test 3: Test filtri per Curing
+      const odlCuring = odlList.filter(odl => 
         odl.status === "Attesa Cura" || odl.status === "Cura"
       )
       toast({
-        title: '✅ Test ODL - Filtro Autoclavista',
-        description: `Trovati ${odlAutoclavista.length} ODL per autoclavista`,
+        title: '✅ Test ODL - Filtro Curing',
+        description: `Trovati ${odlCuring.length} ODL per Curing`,
       })
 
       // Test 4: Test ODL pending nesting
@@ -198,8 +198,8 @@ export default function TestDebugPage() {
                   <h4 className="font-medium mb-2">Test inclusi:</h4>
                   <ul className="space-y-1 text-muted-foreground">
                     <li>• Caricamento lista ODL</li>
-                    <li>• Filtri per ruolo Laminatore</li>
-                    <li>• Filtri per ruolo Autoclavista</li>
+                    <li>• Filtri per ruolo Clean Room</li>
+                    <li>• Filtri per ruolo Curing</li>
                     <li>• ODL pronti per nesting</li>
                   </ul>
                 </div>

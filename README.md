@@ -1,6 +1,6 @@
-# 🚀 CarbonPilot - Sistema di Gestione Produzione Manta Group
+# 🚀 CarbonPilot - Sistema di Gestione Produzione Autoclavi
 
-Sistema completo per la gestione della produzione di componenti aeronautici in fibra di carbonio, con focus su ottimizzazione nesting, gestione autoclavi e tracciabilità completa del processo produttivo.
+Sistema completo per la gestione della produzione con autoclavi, ottimizzazione del nesting e monitoraggio in tempo reale.
 
 ## ✨ Funzionalità Principali
 
@@ -16,29 +16,37 @@ Sistema completo per la gestione della produzione di componenti aeronautici in f
 - **Storico Filtrabile**: Cronologia ODL con filtri per stato, ricerca e range date
 - **Indicatori Colorati**: Stati visivi per performance e trend
 
-### 🔧 Gestione ODL (Ordini Di Lavorazione)
-- **Flusso Completo**: Preparazione → Laminazione → Attesa Cura → Cura → Finito
-- **Cambio Stato per Ruolo**: Pulsanti funzionali specifici per laminatore e autoclavista
-- **Priorità Dinamiche**: Sistema di priorità con ordinamento automatico
-- **Tracciabilità**: Storico completo con dettagli parte, tool e tempi
+### 🔧 **NUOVO: Parametri di Nesting Regolabili** ⭐
+- **Controlli in tempo reale**: Modifica distanza perimetrale, spaziatura tool, rotazione automatica
+- **Preview dinamica**: Visualizzazione immediata dei risultati senza salvare
+- **Ottimizzazione personalizzata**: Priorità configurabile (peso/area/equilibrato)
+- **Interfaccia intuitiva**: Pannello dedicato con slider, toggle e dropdown
 
-### 🧩 Ottimizzazione Nesting Avanzata
-- **Algoritmo Genetico**: Ottimizzazione automatica del carico autoclavi
-- **Nesting su Due Piani**: Supporto per autoclavi multi-livello con controllo peso
-- **Visualizzazione 3D**: Rappresentazione grafica del posizionamento tools
-- **Conferma per Ruolo**: Workflow di approvazione nesting prima del caricamento
+### 🎯 Sistema di Nesting Avanzato
+- Ottimizzazione automatica del posizionamento ODL nelle autoclavi
+- Nesting su due piani con gestione peso e area
+- Preview interattiva con drag & drop
+- Generazione automatica multipla per tutte le autoclavi disponibili
+
+### 📊 Gestione Produzione
+- Monitoraggio ODL in tempo reale
+- Tracking fasi produttive (Laminazione → Attesa Cura → Cura → Finito)
+- Statistiche e metriche di performance
+- Sistema di priorità e gestione code
 
 ### 🏭 Gestione Autoclavi
-- **Monitoraggio Stato**: Controllo real-time temperatura, pressione, cicli
-- **Cicli di Cura**: Gestione parametri termici con stasi multiple
-- **Scheduling**: Pianificazione automatica cicli basata su priorità ODL
-- **Utilizzo Ottimale**: Calcolo efficienza e statistiche utilizzo
+- Monitoraggio stato autoclavi (Disponibile/In Uso/Guasto/Manutenzione)
+- Configurazione cicli di cura personalizzati
+- Assegnazione automatica e manuale
+- Controllo carico massimo e capacità
 
-### 📈 Sistema di Logging e Audit
-- **Tracciabilità Completa**: Log di tutte le operazioni critiche
-- **Audit Trail**: Storico modifiche con utente, timestamp e dettagli
-- **Dashboard Analytics**: Visualizzazione logs con filtri avanzati
-- **Export Dati**: Esportazione in CSV per analisi esterne
+### 📈 Sistema di Logging e Audit ✅ COMPLETATO
+- **Tracciabilità Completa**: Log di tutte le operazioni critiche con timestamp precisi
+- **Timeline ODL**: Cronologia completa di ogni ODL dalla creazione al completamento
+- **Statistiche Temporali**: Durata in ogni stato, tempo totale produzione, efficienza
+- **Monitoraggio Real-time**: Endpoint per progresso e timeline con dati live
+- **Generazione Log Automatica**: Sistema per inizializzare log ODL esistenti
+- **API Monitoring**: Endpoint completi per stats, timeline e progresso ODL
 
 ### 🔐 Gestione Ruoli e Sicurezza
 - **4 Ruoli Operativi**: Admin, Responsabile, Laminatore, Autoclavista
@@ -69,124 +77,159 @@ Sistema completo per la gestione della produzione di componenti aeronautici in f
 ## 🚀 Quick Start
 
 ### Prerequisiti
-- Python 3.11+
+- Python 3.8+
 - Node.js 18+
-- PostgreSQL 14+
-- Git
+- npm o yarn
 
-### Installazione Backend
+### Installazione
+
+1. **Clone del repository**
 ```bash
-# Clone repository
-git clone <repository-url>
-cd CarbonPilot
-
-# Setup ambiente virtuale
-python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# oppure
-.venv\Scripts\activate     # Windows
-
-# Installa dipendenze
-pip install -r requirements.txt
-
-# Configura database
-# Crea database PostgreSQL 'carbonpilot'
-# Configura variabili ambiente in .env
-
-# Avvia backend
-cd backend
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+git clone https://github.com/your-repo/carbonpilot.git
+cd carbonpilot
 ```
 
-### Installazione Frontend
+2. **Setup Backend**
 ```bash
-# In una nuova shell
+cd backend
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+3. **Setup Frontend**
+```bash
 cd frontend
-
-# Installa dipendenze
 npm install
+```
 
-# Configura variabili ambiente
-# Crea .env.local con NEXT_PUBLIC_API_URL
+### Avvio Applicazione
 
-# Avvia frontend
+1. **Avvia Backend**
+```bash
+cd backend
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+2. **Avvia Frontend**
+```bash
+cd frontend
 npm run dev
 ```
 
-### Accesso Sistema
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **Documentazione API**: http://localhost:8000/docs
+3. **Accedi all'applicazione**
+- Frontend: http://localhost:3000
+- API Docs: http://localhost:8000/docs
+
+## 🎮 Come Utilizzare i Parametri di Nesting
+
+### 1. Accesso alla Funzionalità
+1. Vai su **Dashboard → Autoclavista → Nesting**
+2. Clicca su **"Anteprima Nesting"**
+3. Il pannello **⚙️ Parametri Nesting** appare sopra la preview
+
+### 2. Controlli Disponibili
+- **Distanza Perimetrale** (0-10 cm): Spazio dal bordo dell'autoclave
+- **Spaziatura Tool** (0-5 cm): Spazio minimo tra i componenti
+- **Rotazione Automatica**: Abilita/disabilita rotazione tool per ottimizzare spazio
+- **Priorità Ottimizzazione**: PESO/AREA/EQUILIBRATO
+
+### 3. Utilizzo
+1. Modifica i parametri con i controlli intuitivi
+2. Clicca **"Applica Modifiche"** per rigenerare la preview
+3. Visualizza immediatamente i risultati
+4. Usa **"Reset Default"** per tornare ai valori predefiniti
+5. Salva o approva quando soddisfatto
 
 ## 📁 Struttura Progetto
 
 ```
-CarbonPilot/
+carbonpilot/
 ├── backend/                 # API FastAPI
-│   ├── api/                # Endpoints REST
+│   ├── api/                # Router e endpoint
 │   ├── models/             # Modelli SQLAlchemy
 │   ├── schemas/            # Schemi Pydantic
 │   ├── services/           # Logica business
-│   └── nesting_optimizer/  # Algoritmi ottimizzazione
-├── frontend/               # App Next.js
+│   ├── nesting_optimizer/  # Algoritmi ottimizzazione
+│   └── tests/              # Test backend
+├── frontend/               # App React/Next.js
 │   ├── src/
-│   │   ├── app/           # App Router pages
-│   │   ├── components/    # Componenti React
-│   │   ├── hooks/         # Custom hooks
-│   │   └── lib/          # Utilities e API client
-├── docs/                  # Documentazione
-├── tools/                 # Script utilità
-└── requirements.txt       # Dipendenze Python
+│   │   ├── app/           # Pages e layout
+│   │   ├── components/    # Componenti riutilizzabili
+│   │   ├── lib/          # Utilities e API client
+│   │   └── utils/        # Helper functions
+│   └── public/           # Asset statici
+├── docs/                 # Documentazione
+│   ├── changelog.md      # Log delle modifiche
+│   └── *.md             # Guide specifiche
+└── README.md            # Questo file
 ```
 
-## 🎯 Roadmap
+## 🔧 Configurazione
 
-### ✅ Completato (v2.3.1)
-- **Fix Definitivo Select Components**: Risoluzione completa errore Radix UI "empty string value"
-- **Componente SafeSelect**: Wrapper sicuro per prevenire errori futuri
-- **Best Practices Documentation**: Guida per sviluppatori su gestione Select
-- **Stabilità Dashboard**: Eliminazione crash nelle dashboard admin e responsabile
+### Variabili d'Ambiente
 
-### ✅ Completato (v2.3.0)
-- Dashboard operative per tutti i ruoli con dati reali
-- Fix crash Select component
-- Hook specializzato per ODL filtrati per ruolo
-- Cambio stato ODL funzionale per laminatore e autoclavista
-- Integrazione nesting confermati per autoclavista
+**Backend (.env)**
+```env
+DATABASE_URL=sqlite:///./carbonpilot.db
+SECRET_KEY=your-secret-key
+DEBUG=True
+```
 
-### 🔄 In Sviluppo
-- Sistema notifiche real-time
-- Mobile app per operatori
-- Integrazione sensori IoT autoclavi
-- Machine learning per previsioni tempi
+**Frontend (.env.local)**
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+```
 
-### 📋 Pianificato
-- Integrazione ERP aziendale
-- Modulo manutenzione predittiva
-- Dashboard executive con BI
-- API pubbliche per integrazioni
+## 📚 Documentazione
 
-## 🤝 Contributi
+- [Parametri Nesting Regolabili](docs/nesting-parametri-regolabili.md) - Guida completa alla nuova funzionalità
+- [Changelog](docs/changelog.md) - Cronologia delle modifiche
+- [API Documentation](http://localhost:8000/docs) - Swagger UI (quando il backend è attivo)
 
-Il progetto è sviluppato internamente per Manta Group. Per contributi o segnalazioni:
+## 🧪 Testing
 
-1. Crea un branch feature
-2. Implementa modifiche con test
-3. Aggiorna documentazione
-4. Crea pull request con descrizione dettagliata
+### Backend
+```bash
+cd backend
+pytest
+```
+
+### Frontend
+```bash
+cd frontend
+npm test
+npm run build  # Test build produzione
+```
+
+### Test Endpoint Parametri
+```bash
+# Test senza parametri
+curl "http://localhost:8000/api/v1/nesting/preview"
+
+# Test con parametri personalizzati
+curl "http://localhost:8000/api/v1/nesting/preview?distanza_perimetrale_cm=2.0&spaziatura_tra_tool_cm=1.0&rotazione_tool_abilitata=true&priorita_ottimizzazione=PESO"
+```
+
+## 🤝 Contribuire
+
+1. Fork del progetto
+2. Crea un branch per la feature (`git checkout -b feature/AmazingFeature`)
+3. Commit delle modifiche (`git commit -m 'Add some AmazingFeature'`)
+4. Push al branch (`git push origin feature/AmazingFeature`)
+5. Apri una Pull Request
 
 ## 📄 Licenza
 
-Proprietario - Manta Group. Tutti i diritti riservati.
+Questo progetto è sotto licenza MIT. Vedi il file `LICENSE` per i dettagli.
 
-## 📞 Supporto
+## 🆘 Supporto
 
-Per supporto tecnico o domande:
-- **Documentazione**: `/docs/` directory
-- **API Docs**: http://localhost:8000/docs
-- **Changelog**: `/docs/changelog.md`
-- **Issues**: Sistema interno di ticketing
+Per problemi o domande:
+- Apri un issue su GitHub
+- Consulta la documentazione in `docs/`
+- Controlla il changelog per modifiche recenti
 
 ---
 
-**CarbonPilot v2.3.1** - Sistema di gestione produzione per l'eccellenza aeronautica 🛩️
+**Sviluppato con ❤️ per l'ottimizzazione della produzione industriale**

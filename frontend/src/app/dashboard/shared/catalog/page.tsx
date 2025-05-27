@@ -26,6 +26,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { buttonVariants } from '@/components/ui/button'
 import Link from 'next/link'
 
@@ -130,7 +131,7 @@ export default function CatalogoPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Link 
-            href="/dashboard/catalog/statistiche" 
+                          href="/dashboard/management/statistiche" 
             className={buttonVariants({ variant: "outline" })}
           >
             <BarChart3 className="mr-2 h-4 w-4" />
@@ -158,43 +159,54 @@ export default function CatalogoPage() {
         
         {/* Filtri */}
         <div className="flex flex-wrap gap-2">
-          <select 
-            className="px-3 py-2 rounded-md border text-sm min-w-[150px]"
-            value={filter.categoria || ''}
-            onChange={e => setFilter({...filter, categoria: e.target.value || undefined})}
+          <Select 
+            value={filter.categoria || 'all'}
+            onValueChange={(value) => setFilter({...filter, categoria: value === 'all' ? undefined : value})}
           >
-            <option value="">Tutte le categorie</option>
-            {uniqueCategories.map(cat => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
+            <SelectTrigger className="min-w-[150px]">
+              <SelectValue placeholder="Tutte le categorie" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tutte le categorie</SelectItem>
+              {uniqueCategories.map(cat => (
+                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           
-          <select 
-            className="px-3 py-2 rounded-md border text-sm min-w-[150px]"
-            value={filter.sotto_categoria || ''}
-            onChange={e => setFilter({...filter, sotto_categoria: e.target.value || undefined})}
+          <Select 
+            value={filter.sotto_categoria || 'all'}
+            onValueChange={(value) => setFilter({...filter, sotto_categoria: value === 'all' ? undefined : value})}
           >
-            <option value="">Tutte le sotto-categorie</option>
-            {uniqueSottoCategories.map(sottoCat => (
-              <option key={sottoCat} value={sottoCat}>{sottoCat}</option>
-            ))}
-          </select>
+            <SelectTrigger className="min-w-[150px]">
+              <SelectValue placeholder="Tutte le sotto-categorie" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tutte le sotto-categorie</SelectItem>
+              {uniqueSottoCategories.map(sottoCat => (
+                <SelectItem key={sottoCat} value={sottoCat}>{sottoCat}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           
-          <select 
-            className="px-3 py-2 rounded-md border text-sm min-w-[120px]"
-            value={filter.attivo === undefined ? '' : filter.attivo ? 'true' : 'false'}
-            onChange={e => {
-              const value = e.target.value
+          <Select 
+            value={filter.attivo === undefined ? 'all' : filter.attivo ? 'true' : 'false'}
+            onValueChange={(value) => {
               setFilter({
                 ...filter, 
-                attivo: value === '' ? undefined : value === 'true'
+                attivo: value === 'all' ? undefined : value === 'true'
               })
             }}
           >
-            <option value="">Tutti gli stati</option>
-            <option value="true">Attivi</option>
-            <option value="false">Non attivi</option>
-          </select>
+            <SelectTrigger className="min-w-[120px]">
+              <SelectValue placeholder="Tutti gli stati" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tutti gli stati</SelectItem>
+              <SelectItem value="true">Attivi</SelectItem>
+              <SelectItem value="false">Non attivi</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

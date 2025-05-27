@@ -31,9 +31,9 @@ def upgrade() -> None:
     )
     event_type_enum.create(op.get_bind())
     
-    # Crea enum per user role
+    # Crea enum per user role - AGGIORNATO CON NUOVI RUOLI
     user_role_enum = postgresql.ENUM(
-        'admin', 'responsabile', 'autoclavista', 'laminatore', 'sistema', name='userrole'
+        'admin', 'management', 'clean_room', 'curing', 'sistema', name='userrole'
     )
     user_role_enum.create(op.get_bind())
     
@@ -75,8 +75,8 @@ def downgrade() -> None:
     # Rimuovi tabella
     op.drop_table('system_logs')
     
-    # Rimuovi enum types
-    user_role_enum = postgresql.ENUM('admin', 'responsabile', 'autoclavista', 'laminatore', 'sistema', name='userrole')
+    # Rimuovi enum types - AGGIORNATO CON NUOVI RUOLI
+    user_role_enum = postgresql.ENUM('admin', 'management', 'clean_room', 'curing', 'sistema', name='userrole')
     user_role_enum.drop(op.get_bind())
     
     event_type_enum = postgresql.ENUM(

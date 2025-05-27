@@ -155,7 +155,7 @@ export default function ODLPage() {
           </p>
         </div>
         <div className="flex gap-3">
-          <Link href="/dashboard/odl/monitoraggio">
+                        <Link href="/dashboard/management/odl-monitoring">
             <Button variant="outline" className="flex items-center gap-2">
               <Activity className="h-4 w-4" />
               Monitoraggio ODL

@@ -7,7 +7,7 @@ from typing import List, Dict, Tuple, Optional
 from ortools.linear_solver import pywraplp
 from sqlalchemy.orm import Session, joinedload
 from models.odl import ODL
-from models.autoclave import Autoclave
+from models.autoclave import Autoclave, StatoAutoclaveEnum
 from models.parte import Parte
 from models.catalogo import Catalogo
 import logging
@@ -133,7 +133,6 @@ def validate_odl_for_nesting(db: Session, odl: ODL) -> Tuple[bool, str, Dict]:
             # ✅ NUOVO: Dimensioni reali del tool in mm
             "tool_lunghezza_mm": float(tool.lunghezza_piano),
             "tool_larghezza_mm": float(tool.larghezza_piano),
-            "tool_altezza_mm": float(tool.altezza) if tool.altezza else 0.0,
             "tool_peso_kg": float(tool.peso) if tool.peso else 0.0,
             "tool_part_number": tool.part_number_tool,
             "tool_descrizione": tool.descrizione or "Sconosciuta"
@@ -145,7 +144,12 @@ def validate_odl_for_nesting(db: Session, odl: ODL) -> Tuple[bool, str, Dict]:
         logger.error(f"Errore nella validazione ODL {odl.id}: {str(e)}")
         return False, f"Errore nella validazione ODL: {str(e)}", {}
 
-def calculate_2d_positioning(odl_data: List[Dict], autoclave_width_mm: float, autoclave_height_mm: float) -> List[Dict]:
+def calculate_2d_positioning(
+    odl_data: List[Dict], 
+    autoclave_width_mm: float, 
+    autoclave_height_mm: float,
+    parametri: Optional['NestingParameters'] = None
+) -> List[Dict]:
     """
     Calcola il posizionamento 2D reale dei tool sul piano dell'autoclave
     usando un algoritmo di bin packing 2D semplificato
@@ -167,8 +171,17 @@ def calculate_2d_positioning(odl_data: List[Dict], autoclave_width_mm: float, au
         reverse=True
     )
     
-    # Margine di sicurezza tra i tool (5mm)
-    MARGIN_MM = 5.0
+    # ✅ NUOVO: Usa parametri personalizzati o valori di default
+    if parametri:
+        # Converti da cm a mm
+        margin_mm = parametri.spaziatura_tra_tool_cm * 10.0
+        perimeter_margin_mm = parametri.distanza_perimetrale_cm * 10.0
+        rotation_enabled = parametri.rotazione_tool_abilitata
+    else:
+        # Valori di default
+        margin_mm = 5.0  # 0.5 cm
+        perimeter_margin_mm = 10.0  # 1.0 cm
+        rotation_enabled = True
     
     # Lista delle aree occupate: [(x, y, width, height), ...]
     occupied_areas = []
@@ -176,10 +189,10 @@ def calculate_2d_positioning(odl_data: List[Dict], autoclave_width_mm: float, au
     def check_overlap(x, y, width, height, occupied_areas):
         """Verifica se una posizione si sovrappone con aree già occupate"""
         for ox, oy, ow, oh in occupied_areas:
-            if not (x >= ox + ow + MARGIN_MM or 
-                   x + width + MARGIN_MM <= ox or 
-                   y >= oy + oh + MARGIN_MM or 
-                   y + height + MARGIN_MM <= oy):
+            if not (x >= ox + ow + margin_mm or 
+                   x + width + margin_mm <= ox or 
+                   y >= oy + oh + margin_mm or 
+                   y + height + margin_mm <= oy):
                 return True
         return False
     
@@ -188,8 +201,12 @@ def calculate_2d_positioning(odl_data: List[Dict], autoclave_width_mm: float, au
         # Prova posizioni con step di 10mm per efficienza
         step = 10.0
         
-        for y in range(0, int(autoclave_height - height + 1), int(step)):
-            for x in range(0, int(autoclave_width - width + 1), int(step)):
+        # ✅ NUOVO: Considera il margine perimetrale
+        effective_width = autoclave_width - 2 * perimeter_margin_mm
+        effective_height = autoclave_height - 2 * perimeter_margin_mm
+        
+        for y in range(int(perimeter_margin_mm), int(effective_height - height + perimeter_margin_mm + 1), int(step)):
+            for x in range(int(perimeter_margin_mm), int(effective_width - width + perimeter_margin_mm + 1), int(step)):
                 if not check_overlap(x, y, width, height, occupied_areas):
                     return x, y
         return None, None
@@ -199,45 +216,47 @@ def calculate_2d_positioning(odl_data: List[Dict], autoclave_width_mm: float, au
         tool_width = data["tool_lunghezza_mm"]
         tool_height = data["tool_larghezza_mm"]
         
-        # Verifica se il tool entra fisicamente nell'autoclave
-        if tool_width > autoclave_width_mm or tool_height > autoclave_height_mm:
-            # Prova a ruotare il tool di 90°
-            if tool_height <= autoclave_width_mm and tool_width <= autoclave_height_mm:
-                tool_width, tool_height = tool_height, tool_width
-                logger.info(f"Tool ODL {data.get('part_number', 'N/A')} ruotato di 90° per adattarsi")
-            else:
-                logger.warning(f"Tool ODL {data.get('part_number', 'N/A')} troppo grande per l'autoclave")
+        # ✅ NUOVO: Prova rotazione se abilitata
+        positions_to_try = [(tool_width, tool_height, False)]  # (width, height, rotated)
+        if rotation_enabled and tool_width != tool_height:
+            positions_to_try.append((tool_height, tool_width, True))  # Ruotato di 90°
+        
+        # ✅ NUOVO: Prova tutte le orientazioni possibili
+        positioned = False
+        for width, height, rotated in positions_to_try:
+            # Verifica se il tool entra fisicamente nell'autoclave
+            if width > autoclave_width_mm or height > autoclave_height_mm:
+                continue  # Prova la prossima orientazione
+            
+            # Trova una posizione per il tool
+            x, y = find_position(width, height, autoclave_width_mm, autoclave_height_mm, occupied_areas)
+            
+            if x is not None and y is not None:
+                # Posizione trovata
                 positioned_tools.append({
                     "original_index": original_index,
-                    "positioned": False,
-                    "reason": "Tool troppo grande per l'autoclave"
+                    "positioned": True,
+                    "x": x,
+                    "y": y,
+                    "width": width,
+                    "height": height,
+                    "rotated": rotated
                 })
-                continue
+                
+                # Aggiungi l'area occupata
+                occupied_areas.append((x, y, width, height))
+                
+                rotation_msg = " (ruotato 90°)" if rotated else ""
+                logger.debug(f"Tool ODL {data.get('part_number', 'N/A')} posizionato a ({x:.1f}, {y:.1f}){rotation_msg}")
+                positioned = True
+                break
         
-        # Trova una posizione per il tool
-        x, y = find_position(tool_width, tool_height, autoclave_width_mm, autoclave_height_mm, occupied_areas)
-        
-        if x is not None and y is not None:
-            # Posizione trovata
-            positioned_tools.append({
-                "original_index": original_index,
-                "positioned": True,
-                "x": x,
-                "y": y,
-                "width": tool_width,
-                "height": tool_height
-            })
-            
-            # Aggiungi l'area occupata
-            occupied_areas.append((x, y, tool_width, tool_height))
-            
-            logger.debug(f"Tool ODL {data.get('part_number', 'N/A')} posizionato a ({x:.1f}, {y:.1f})")
-        else:
-            # Nessuna posizione disponibile
+        if not positioned:
+            # Nessuna posizione disponibile in nessuna orientazione
             positioned_tools.append({
                 "original_index": original_index,
                 "positioned": False,
-                "reason": "Nessuna posizione disponibile sul piano"
+                "reason": "Nessuna posizione disponibile sul piano (provate tutte le orientazioni)"
             })
             logger.warning(f"Tool ODL {data.get('part_number', 'N/A')} non posizionabile - spazio insufficiente")
     
@@ -309,7 +328,8 @@ def check_autoclave_availability(db: Session, autoclave: Autoclave) -> Tuple[boo
 def compute_nesting(
     db: Session, 
     odl_list: List[ODL], 
-    autoclavi: List[Autoclave]
+    autoclavi: List[Autoclave],
+    parametri: Optional['NestingParameters'] = None
 ) -> NestingResult:
     """
     Calcola il miglior posizionamento degli ODL nelle autoclavi disponibili.
@@ -490,15 +510,7 @@ def _optimize_single_cycle_group(
                 area_totale_autoclave_cm2 = (autoclave.lunghezza * autoclave.larghezza_piano) / 100
                 
                 if area_utilizzata_cm2 + area_tool_cm2 <= area_totale_autoclave_cm2:
-                    # ✅ NUOVO: Verifica vincolo altezza se disponibile
-                    altezza_max_mm = getattr(autoclave, 'altezza_max', None)
-                    if altezza_max_mm and data.get("tool_altezza_mm", 0) > altezza_max_mm:
-                        logger.warning(f"ODL {odl.id} escluso: altezza {data.get('tool_altezza_mm', 0)}mm > max {altezza_max_mm}mm")
-                        non_posizionabili.append({
-                            "odl": odl,
-                            "reason": f"Altezza tool ({data.get('tool_altezza_mm', 0)}mm) supera il limite autoclave ({altezza_max_mm}mm)"
-                        })
-                        continue
+                    # Vincolo altezza rimosso - non disponibile nel modello Tool
                     
                     # ODL accettato
                     odl_finali.append(item)

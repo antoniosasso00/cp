@@ -124,16 +124,8 @@ export default function AvanzaODLPage() {
         return
       }
       
-      // Aggiorna lo stato dell'ODL
-      const updatedOdl = await odlApi.update(Number(odlId), { 
-        status: prossimoStato 
-      })
-      
-      // Mostra notifica di successo
-      toast({
-        title: 'Stato aggiornato',
-        description: `ODL avanzato con successo a "${prossimoStato}"`,
-      })
+      // Aggiorna lo stato dell'ODL usando la nuova funzione generica
+      const updatedOdl = await odlApi.updateStatus(Number(odlId), prossimoStato)
       
       // Aggiorna stato locale
       setOdl(updatedOdl)
@@ -148,15 +140,17 @@ export default function AvanzaODLPage() {
         // Non bloccare il flusso per questo errore
       }
       
-      // Forza il refresh della pagina per aggiornare tutte le liste ODL
-      setTimeout(() => {
-        window.location.reload()
-      }, 1500)
+      // Mostra notifica di successo dettagliata
+      toast({
+        title: '✅ Stato aggiornato con successo',
+        description: `ODL ${odl.parte.part_number} avanzato da "${odl.status}" a "${prossimoStato}". I dati sono stati aggiornati automaticamente.`,
+        duration: 4000,
+      })
       
       // Se lo stato è "Finito", redireziona alla pagina di dettaglio dopo 3 secondi
       if (updatedOdl.status === "Finito") {
         setTimeout(() => {
-          router.push(`/dashboard/odl/${odlId}`)
+          router.push(`/dashboard/shared/odl/${odlId}`)
         }, 3000)
       }
     } catch (error) {
@@ -201,14 +195,14 @@ export default function AvanzaODLPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <Button variant="outline" size="sm" asChild>
-          <Link href={`/dashboard/odl/${odlId}`}>
+          <Link href={`/dashboard/shared/odl/${odlId}`}>
             <ChevronLeft className="h-4 w-4 mr-1" />
             Torna ai dettagli ODL
           </Link>
         </Button>
         
         <Button variant="outline" size="sm" asChild>
-          <Link href="/dashboard/odl">
+          <Link href="/dashboard/shared/odl">
             <ChevronLeft className="h-4 w-4 mr-1" />
             Torna alla lista ODL
           </Link>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { z } from 'zod'
+import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ui/use-toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -64,6 +65,7 @@ export default function ParteQuickModal({
   const [tools, setTools] = useState<Tool[]>([])
   const [isLoadingTools, setIsLoadingTools] = useState(false)
   
+  const router = useRouter()
   const { toast } = useToast()
 
   // Carica i tool disponibili
@@ -176,6 +178,10 @@ export default function ParteQuickModal({
         title: 'Parte creata',
         description: `Parte ${newParte.part_number} creata con successo.`,
       })
+      
+      // ✅ FIX 1: Refresh automatico dopo creazione
+      router.refresh()
+      
       onParteCreated(newParte)
       onClose()
     } catch (error) {

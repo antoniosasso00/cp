@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional, Literal
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from sqlalchemy.orm import Session, joinedload, joinedload
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import desc
 from datetime import datetime
@@ -15,6 +15,7 @@ from schemas.odl import ODLCreate, ODLRead, ODLUpdate
 from services.odl_queue_service import ODLQueueService
 from services.nesting_service import get_odl_attesa_cura_filtered
 from services.system_log_service import SystemLogService
+from services.state_tracking_service import StateTrackingService
 from models.system_log import UserRole
 
 # Configurazione logger
@@ -224,6 +225,17 @@ def update_odl(odl_id: int, odl: ODLUpdate, db: Session = Depends(get_db)):
         if "status" in update_data and stato_precedente != stato_nuovo:
             logger.info(f"Cambio stato ODL {odl_id}: da '{stato_precedente}' a '{stato_nuovo}'")
             
+            # ✅ NUOVO: Registra il cambio di stato con timestamp preciso
+            StateTrackingService.registra_cambio_stato(
+                db=db,
+                odl_id=odl_id,
+                stato_precedente=stato_precedente,
+                stato_nuovo=stato_nuovo,
+                responsabile="sistema",
+                ruolo_responsabile="ADMIN",
+                note="Aggiornamento generico via API"
+            )
+            
             # Chiudi la fase precedente se era in uno stato monitorato
             if stato_precedente in STATO_A_FASE:
                 tipo_fase_precedente = STATO_A_FASE[stato_precedente]
@@ -359,16 +371,16 @@ def check_single_odl_status(odl_id: int, db: Session = Depends(get_db)):
             detail="Si è verificato un errore durante il controllo dello stato ODL."
         )
 
-@router.patch("/{odl_id}/laminatore-status", 
+@router.patch("/{odl_id}/clean-room-status", 
               response_model=ODLRead,
-              summary="Aggiorna stato ODL per Laminatore")
-def update_odl_status_laminatore(
+              summary="Aggiorna stato ODL per Clean Room")
+def update_odl_status_clean_room(
     odl_id: int, 
     new_status: Literal["Laminazione", "Attesa Cura"] = Query(..., description="Nuovo stato ODL"),
     db: Session = Depends(get_db)
 ):
     """
-    Endpoint specifico per il ruolo LAMINATORE.
+    Endpoint specifico per il ruolo CLEAN ROOM.
     Permette di far avanzare gli ODL solo negli stati consentiti:
     - Preparazione → Laminazione
     - Laminazione → Attesa Cura
@@ -382,10 +394,10 @@ def update_odl_status_laminatore(
             detail=f"ODL con ID {odl_id} non trovato"
         )
     
-    # Controlli specifici per il laminatore
+    # Controlli specifici per il Clean Room
     current_status = db_odl.status
     
-    # Verifica transizioni consentite per il laminatore
+    # Verifica transizioni consentite per il Clean Room
     allowed_transitions = {
         "Preparazione": ["Laminazione"],
         "Laminazione": ["Attesa Cura"]
@@ -394,13 +406,13 @@ def update_odl_status_laminatore(
     if current_status not in allowed_transitions:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"ODL in stato '{current_status}' non può essere gestito dal laminatore"
+            detail=f"ODL in stato '{current_status}' non può essere gestito dal Clean Room"
         )
     
     if new_status not in allowed_transitions[current_status]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Transizione da '{current_status}' a '{new_status}' non consentita per il laminatore"
+            detail=f"Transizione da '{current_status}' a '{new_status}' non consentita per il Clean Room"
         )
     
     try:
@@ -411,7 +423,18 @@ def update_odl_status_laminatore(
         # Aggiorna lo stato
         db_odl.status = new_status
         
-        logger.info(f"Laminatore - Cambio stato ODL {odl_id}: da '{stato_precedente}' a '{new_status}'")
+        logger.info(f"Clean Room - Cambio stato ODL {odl_id}: da '{stato_precedente}' a '{new_status}'")
+        
+        # ✅ NUOVO: Registra il cambio di stato con timestamp preciso
+        StateTrackingService.registra_cambio_stato(
+            db=db,
+            odl_id=odl_id,
+            stato_precedente=stato_precedente,
+            stato_nuovo=new_status,
+            responsabile="clean_room",
+            ruolo_responsabile="clean_room",
+            note="Cambio stato da interfaccia Clean Room"
+        )
         
         # Log dell'evento nel sistema
         SystemLogService.log_odl_state_change(
@@ -419,8 +442,8 @@ def update_odl_status_laminatore(
             odl_id=odl_id,
             old_state=stato_precedente,
             new_state=new_status,
-            user_role=UserRole.LAMINATORE,
-            user_id="laminatore"  # In futuro si potrà passare l'ID utente reale
+            user_role=UserRole.CLEAN_ROOM,
+            user_id="clean_room"  # In futuro si potrà passare l'ID utente reale
         )
         
         # Chiudi la fase precedente se era in uno stato monitorato
@@ -439,7 +462,7 @@ def update_odl_status_laminatore(
                 # Aggiorna il record esistente
                 fase_attiva.fine_fase = ora_corrente
                 fase_attiva.durata_minuti = durata 
-                fase_attiva.note = f"{fase_attiva.note or ''} - Fase completata da laminatore con cambio stato a '{new_status}'"
+                fase_attiva.note = f"{fase_attiva.note or ''} - Fase completata da Clean Room con cambio stato a '{new_status}'"
                 logger.info(f"Chiusa fase '{tipo_fase_precedente}' per ODL {odl_id} con durata {durata} minuti")
         
         # Apri una nuova fase se il nuovo stato è monitorato
@@ -459,7 +482,7 @@ def update_odl_status_laminatore(
                     odl_id=odl_id,
                     fase=tipo_fase_nuova,
                     inizio_fase=ora_corrente,
-                    note=f"Fase {tipo_fase_nuova} iniziata da laminatore con cambio stato da '{stato_precedente}'"
+                    note=f"Fase {tipo_fase_nuova} iniziata da Clean Room con cambio stato da '{stato_precedente}'"
                 )
                 db.add(nuova_fase)
                 logger.info(f"Aperta nuova fase '{tipo_fase_nuova}' per ODL {odl_id}")
@@ -470,22 +493,22 @@ def update_odl_status_laminatore(
         
     except Exception as e:
         db.rollback()
-        logger.error(f"Errore durante l'aggiornamento stato ODL {odl_id} da laminatore: {str(e)}")
+        logger.error(f"Errore durante l'aggiornamento stato ODL {odl_id} da Clean Room: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante l'aggiornamento dello stato ODL."
         )
 
-@router.patch("/{odl_id}/autoclavista-status", 
+@router.patch("/{odl_id}/curing-status", 
               response_model=ODLRead,
-              summary="Aggiorna stato ODL per Autoclavista")
-def update_odl_status_autoclavista(
+              summary="Aggiorna stato ODL per Curing")
+def update_odl_status_curing(
     odl_id: int, 
     new_status: Literal["Cura", "Finito"] = Query(..., description="Nuovo stato ODL"),
     db: Session = Depends(get_db)
 ):
     """
-    Endpoint specifico per il ruolo AUTOCLAVISTA.
+    Endpoint specifico per il ruolo CURING.
     Permette di far avanzare gli ODL solo negli stati consentiti:
     - Attesa Cura → Cura (dopo conferma nesting)
     - Cura → Finito (dopo completamento cura)
@@ -499,10 +522,10 @@ def update_odl_status_autoclavista(
             detail=f"ODL con ID {odl_id} non trovato"
         )
     
-    # Controlli specifici per l'autoclavista
+    # Controlli specifici per il Curing
     current_status = db_odl.status
     
-    # Verifica transizioni consentite per l'autoclavista
+    # Verifica transizioni consentite per il Curing
     allowed_transitions = {
         "Attesa Cura": ["Cura"],
         "Cura": ["Finito"]
@@ -511,13 +534,13 @@ def update_odl_status_autoclavista(
     if current_status not in allowed_transitions:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"ODL in stato '{current_status}' non può essere gestito dall'autoclavista"
+            detail=f"ODL in stato '{current_status}' non può essere gestito dal Curing"
         )
     
     if new_status not in allowed_transitions[current_status]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Transizione da '{current_status}' a '{new_status}' non consentita per l'autoclavista"
+            detail=f"Transizione da '{current_status}' a '{new_status}' non consentita per il Curing"
         )
     
     try:
@@ -528,7 +551,18 @@ def update_odl_status_autoclavista(
         # Aggiorna lo stato
         db_odl.status = new_status
         
-        logger.info(f"Autoclavista - Cambio stato ODL {odl_id}: da '{stato_precedente}' a '{new_status}'")
+        logger.info(f"Curing - Cambio stato ODL {odl_id}: da '{stato_precedente}' a '{new_status}'")
+        
+        # ✅ NUOVO: Registra il cambio di stato con timestamp preciso
+        StateTrackingService.registra_cambio_stato(
+            db=db,
+            odl_id=odl_id,
+            stato_precedente=stato_precedente,
+            stato_nuovo=new_status,
+            responsabile="curing",
+            ruolo_responsabile="curing",
+            note="Cambio stato da interfaccia Curing"
+        )
         
         # Log dell'evento nel sistema
         SystemLogService.log_odl_state_change(
@@ -536,8 +570,8 @@ def update_odl_status_autoclavista(
             odl_id=odl_id,
             old_state=stato_precedente,
             new_state=new_status,
-            user_role=UserRole.AUTOCLAVISTA,
-            user_id="autoclavista"  # In futuro si potrà passare l'ID utente reale
+            user_role=UserRole.CURING,
+            user_id="curing"  # In futuro si potrà passare l'ID utente reale
         )
         
         # Chiudi la fase precedente se era in uno stato monitorato
@@ -556,7 +590,7 @@ def update_odl_status_autoclavista(
                 # Aggiorna il record esistente
                 fase_attiva.fine_fase = ora_corrente
                 fase_attiva.durata_minuti = durata 
-                fase_attiva.note = f"{fase_attiva.note or ''} - Fase completata da autoclavista con cambio stato a '{new_status}'"
+                fase_attiva.note = f"{fase_attiva.note or ''} - Fase completata da Curing con cambio stato a '{new_status}'"
                 logger.info(f"Chiusa fase '{tipo_fase_precedente}' per ODL {odl_id} con durata {durata} minuti")
         
         # Apri una nuova fase se il nuovo stato è monitorato
@@ -576,7 +610,7 @@ def update_odl_status_autoclavista(
                     odl_id=odl_id,
                     fase=tipo_fase_nuova,
                     inizio_fase=ora_corrente,
-                    note=f"Fase {tipo_fase_nuova} iniziata da autoclavista con cambio stato da '{stato_precedente}'"
+                    note=f"Fase {tipo_fase_nuova} iniziata da Curing con cambio stato da '{stato_precedente}'"
                 )
                 db.add(nuova_fase)
                 logger.info(f"Aperta nuova fase '{tipo_fase_nuova}' per ODL {odl_id}")
@@ -656,9 +690,423 @@ def update_odl_status_autoclavista(
         
     except Exception as e:
         db.rollback()
-        logger.error(f"Errore durante l'aggiornamento stato ODL {odl_id} da autoclavista: {str(e)}")
+        logger.error(f"Errore durante l'aggiornamento stato ODL {odl_id} da Curing: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante l'aggiornamento dello stato ODL."
+        )
+
+@router.patch("/{odl_id}/admin-status", 
+              response_model=ODLRead,
+              summary="Aggiorna stato ODL per Admin (qualsiasi transizione)")
+def update_odl_status_admin(
+    odl_id: int, 
+    new_status: Literal["Preparazione", "Laminazione", "In Coda", "Attesa Cura", "Cura", "Finito"] = Query(..., description="Nuovo stato ODL"),
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint specifico per il ruolo ADMIN.
+    Permette di cambiare lo stato dell'ODL a qualsiasi valore valido,
+    senza restrizioni sulle transizioni.
+    """
+    db_odl = db.query(ODL).filter(ODL.id == odl_id).first()
+    
+    if db_odl is None:
+        logger.warning(f"Tentativo di aggiornamento di ODL inesistente: {odl_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"ODL con ID {odl_id} non trovato"
+        )
+    
+    try:
+        # Salva lo stato precedente per verifica cambiamento
+        stato_precedente = db_odl.status
+        ora_corrente = datetime.now()
+        
+        # Aggiorna lo stato (admin può fare qualsiasi transizione)
+        db_odl.status = new_status
+        
+        logger.info(f"Admin - Cambio stato ODL {odl_id}: da '{stato_precedente}' a '{new_status}'")
+        
+        # ✅ NUOVO: Registra il cambio di stato con timestamp preciso
+        StateTrackingService.registra_cambio_stato(
+            db=db,
+            odl_id=odl_id,
+            stato_precedente=stato_precedente,
+            stato_nuovo=new_status,
+            responsabile="admin",
+            ruolo_responsabile="ADMIN",
+            note="Cambio stato da interfaccia admin"
+        )
+        
+        # Log dell'evento nel sistema
+        SystemLogService.log_odl_state_change(
+            db=db,
+            odl_id=odl_id,
+            old_state=stato_precedente,
+            new_state=new_status,
+            user_role=UserRole.ADMIN,
+            user_id="admin"  # In futuro si potrà passare l'ID utente reale
+        )
+        
+        # Chiudi la fase precedente se era in uno stato monitorato
+        if stato_precedente in STATO_A_FASE:
+            tipo_fase_precedente = STATO_A_FASE[stato_precedente]
+            fase_attiva = db.query(TempoFase).filter(
+                TempoFase.odl_id == odl_id,
+                TempoFase.fase == tipo_fase_precedente,
+                TempoFase.fine_fase == None
+            ).first()
+            
+            if fase_attiva:
+                # Calcola la durata in minuti
+                durata = int((ora_corrente - fase_attiva.inizio_fase).total_seconds() / 60)
+                
+                # Aggiorna il record esistente
+                fase_attiva.fine_fase = ora_corrente
+                fase_attiva.durata_minuti = durata 
+                fase_attiva.note = f"{fase_attiva.note or ''} - Fase completata da admin con cambio stato a '{new_status}'"
+                logger.info(f"Chiusa fase '{tipo_fase_precedente}' per ODL {odl_id} con durata {durata} minuti")
+        
+        # Apri una nuova fase se il nuovo stato è monitorato
+        if new_status in STATO_A_FASE:
+            tipo_fase_nuova = STATO_A_FASE[new_status]
+            
+            # Verifica se esiste già una fase attiva dello stesso tipo
+            fase_esistente = db.query(TempoFase).filter(
+                TempoFase.odl_id == odl_id,
+                TempoFase.fase == tipo_fase_nuova,
+                TempoFase.fine_fase == None
+            ).first()
+            
+            if not fase_esistente:
+                # Crea una nuova fase
+                nuova_fase = TempoFase(
+                    odl_id=odl_id,
+                    fase=tipo_fase_nuova,
+                    inizio_fase=ora_corrente,
+                    note=f"Fase {tipo_fase_nuova} iniziata da admin con cambio stato da '{stato_precedente}'"
+                )
+                db.add(nuova_fase)
+                logger.info(f"Aperta nuova fase '{tipo_fase_nuova}' per ODL {odl_id}")
+        
+        db.commit()
+        db.refresh(db_odl)
+        return db_odl
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Errore durante l'aggiornamento stato ODL {odl_id} da admin: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Si è verificato un errore durante l'aggiornamento dello stato ODL."
+        )
+
+@router.patch("/{odl_id}/status", 
+              response_model=ODLRead,
+              summary="Aggiorna stato ODL (endpoint generico)")
+def update_odl_status_generic(
+    odl_id: int, 
+    request: dict = Body(..., example={"new_status": "Attesa Cura"}),
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint generico per l'aggiornamento dello stato ODL.
+    Accetta un JSON con il campo 'new_status'.
+    
+    Supporta conversione automatica da stringhe maiuscole/minuscole.
+    
+    Esempio di richiesta:
+    {
+        "new_status": "LAMINAZIONE"  // Viene convertito automaticamente in "Laminazione"
+    }
+    """
+    # Estrai il nuovo stato dalla richiesta
+    new_status = request.get("new_status")
+    
+    if not new_status:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Campo 'new_status' richiesto nel body della richiesta"
+        )
+    
+    # Normalizza il formato dello stato (converte da maiuscolo/minuscolo a formato corretto)
+    status_mapping = {
+        "PREPARAZIONE": "Preparazione",
+        "preparazione": "Preparazione",
+        "LAMINAZIONE": "Laminazione", 
+        "laminazione": "Laminazione",
+        "IN CODA": "In Coda",
+        "in coda": "In Coda",
+        "IN_CODA": "In Coda",
+        "in_coda": "In Coda",
+        "ATTESA CURA": "Attesa Cura",
+        "attesa cura": "Attesa Cura",
+        "ATTESA_CURA": "Attesa Cura",
+        "attesa_cura": "Attesa Cura",
+        "CURA": "Cura",
+        "cura": "Cura",
+        "FINITO": "Finito",
+        "finito": "Finito"
+    }
+    
+    # Prova prima la conversione diretta, poi la mappatura
+    normalized_status = status_mapping.get(new_status, new_status)
+    
+    # Valida che il nuovo stato sia valido
+    valid_statuses = ["Preparazione", "Laminazione", "In Coda", "Attesa Cura", "Cura", "Finito"]
+    if normalized_status not in valid_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Stato '{new_status}' non valido. Stati validi: {', '.join(valid_statuses)}"
+        )
+    
+    # Usa lo stato normalizzato
+    new_status = normalized_status
+    
+    db_odl = db.query(ODL).filter(ODL.id == odl_id).first()
+    
+    if db_odl is None:
+        logger.warning(f"Tentativo di aggiornamento di ODL inesistente: {odl_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"ODL con ID {odl_id} non trovato"
+        )
+    
+    try:
+        # Salva lo stato precedente per verifica cambiamento
+        stato_precedente = db_odl.status
+        ora_corrente = datetime.now()
+        
+        # Aggiorna lo stato
+        db_odl.status = new_status
+        
+        logger.info(f"Generico - Cambio stato ODL {odl_id}: da '{stato_precedente}' a '{new_status}'")
+        
+        # ✅ NUOVO: Registra il cambio di stato con timestamp preciso
+        StateTrackingService.registra_cambio_stato(
+            db=db,
+            odl_id=odl_id,
+            stato_precedente=stato_precedente,
+            stato_nuovo=new_status,
+            responsabile="generic",
+            ruolo_responsabile="ADMIN",
+            note="Cambio stato da endpoint generico"
+        )
+        
+        # Log dell'evento nel sistema
+        SystemLogService.log_odl_state_change(
+            db=db,
+            odl_id=odl_id,
+            old_state=stato_precedente,
+            new_state=new_status,
+            user_role=UserRole.ADMIN,  # Default admin per endpoint generico
+            user_id="generic"
+        )
+        
+        # Chiudi la fase precedente se era in uno stato monitorato
+        if stato_precedente in STATO_A_FASE:
+            tipo_fase_precedente = STATO_A_FASE[stato_precedente]
+            fase_attiva = db.query(TempoFase).filter(
+                TempoFase.odl_id == odl_id,
+                TempoFase.fase == tipo_fase_precedente,
+                TempoFase.fine_fase == None
+            ).first()
+            
+            if fase_attiva:
+                # Calcola la durata in minuti
+                durata = int((ora_corrente - fase_attiva.inizio_fase).total_seconds() / 60)
+                
+                # Aggiorna il record esistente
+                fase_attiva.fine_fase = ora_corrente
+                fase_attiva.durata_minuti = durata 
+                fase_attiva.note = f"{fase_attiva.note or ''} - Fase completata con cambio stato generico a '{new_status}'"
+                logger.info(f"Chiusa fase '{tipo_fase_precedente}' per ODL {odl_id} con durata {durata} minuti")
+        
+        # Apri una nuova fase se il nuovo stato è monitorato
+        if new_status in STATO_A_FASE:
+            tipo_fase_nuova = STATO_A_FASE[new_status]
+            
+            # Verifica se esiste già una fase attiva dello stesso tipo
+            fase_esistente = db.query(TempoFase).filter(
+                TempoFase.odl_id == odl_id,
+                TempoFase.fase == tipo_fase_nuova,
+                TempoFase.fine_fase == None
+            ).first()
+            
+            if not fase_esistente:
+                # Crea una nuova fase
+                nuova_fase = TempoFase(
+                    odl_id=odl_id,
+                    fase=tipo_fase_nuova,
+                    inizio_fase=ora_corrente,
+                    note=f"Fase {tipo_fase_nuova} iniziata con cambio stato generico da '{stato_precedente}'"
+                )
+                db.add(nuova_fase)
+                logger.info(f"Aperta nuova fase '{tipo_fase_nuova}' per ODL {odl_id}")
+        
+        db.commit()
+        db.refresh(db_odl)
+        
+        # Log di successo con informazioni dettagliate
+        logger.info(f"✅ Stato ODL {odl_id} aggiornato con successo: '{stato_precedente}' → '{new_status}'")
+        
+        return db_odl
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Errore durante l'aggiornamento stato ODL {odl_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Si è verificato un errore durante l'aggiornamento dello stato ODL."
+        )
+
+@router.get("/{odl_id}/timeline", 
+            summary="Ottiene la timeline completa dei cambi di stato di un ODL")
+def get_odl_state_timeline(odl_id: int, db: Session = Depends(get_db)):
+    """
+    Ottiene la timeline completa dei cambi di stato per un ODL specifico.
+    
+    Restituisce:
+    - Tutti i cambi di stato con timestamp precisi
+    - Durata di permanenza in ogni stato
+    - Responsabile di ogni cambio
+    - Statistiche temporali complete
+    """
+    # Verifica che l'ODL esista
+    db_odl = db.query(ODL).filter(ODL.id == odl_id).first()
+    if not db_odl:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"ODL con ID {odl_id} non trovato"
+        )
+    
+    try:
+        # Ottieni la timeline completa
+        timeline = StateTrackingService.ottieni_timeline_stati(db, odl_id)
+        
+        # Ottieni statistiche per ogni stato
+        statistiche = StateTrackingService.ottieni_statistiche_stati(db, odl_id)
+        
+        # Calcola tempo nello stato corrente
+        tempo_stato_corrente = StateTrackingService.calcola_tempo_in_stato_corrente(db, odl_id)
+        
+        # Calcola tempo totale di produzione (se completato)
+        tempo_totale = StateTrackingService.calcola_tempo_totale_produzione(db, odl_id)
+        
+        return {
+            "odl_id": odl_id,
+            "stato_corrente": db_odl.status,
+            "timeline": timeline,
+            "statistiche_per_stato": statistiche,
+            "tempo_in_stato_corrente_minuti": tempo_stato_corrente,
+            "tempo_totale_produzione_minuti": tempo_totale,
+            "completato": db_odl.status == "Finito"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Errore durante il recupero timeline ODL {odl_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Si è verificato un errore durante il recupero della timeline."
+        )
+
+@router.get("/{odl_id}/validation", 
+            summary="Valida i dati di un ODL per il nesting")
+def validate_odl_for_nesting(odl_id: int, db: Session = Depends(get_db)):
+    """
+    Valida che un ODL abbia tutti i dati necessari per essere incluso nel nesting.
+    
+    Controlla:
+    - Tool assegnato
+    - Superficie definita
+    - Peso definito
+    - Numero valvole definito
+    - Ciclo di cura assegnato
+    - Stato appropriato (Attesa Cura)
+    """
+    # Verifica che l'ODL esista
+    db_odl = db.query(ODL).options(
+        joinedload(ODL.parte).joinedload(Parte.catalogo),
+        joinedload(ODL.tool)
+    ).filter(ODL.id == odl_id).first()
+    
+    if not db_odl:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"ODL con ID {odl_id} non trovato"
+        )
+    
+    try:
+        # Lista degli errori di validazione
+        errori = []
+        warnings = []
+        
+        # Verifica stato
+        if db_odl.status != "Attesa Cura":
+            errori.append(f"Stato non valido: '{db_odl.status}' (richiesto: 'Attesa Cura')")
+        
+        # Verifica tool assegnato
+        if not db_odl.tool:
+            errori.append("Tool non assegnato")
+        else:
+            if not db_odl.tool.disponibile:
+                warnings.append("Tool attualmente non disponibile")
+        
+        # Verifica parte e catalogo
+        if not db_odl.parte:
+            errori.append("Parte non definita")
+        elif not db_odl.parte.catalogo:
+            errori.append("Catalogo parte non definito")
+        else:
+            # Verifica superficie
+            if not db_odl.parte.catalogo.area_cm2 or db_odl.parte.catalogo.area_cm2 <= 0:
+                errori.append("Superficie non definita o zero")
+            
+            # Verifica peso
+            if not hasattr(db_odl.parte.catalogo, 'peso_kg') or not db_odl.parte.catalogo.peso_kg:
+                warnings.append("Peso non definito (verrà usato valore di default)")
+        
+        # Verifica valvole
+        if not db_odl.parte or not db_odl.parte.num_valvole_richieste or db_odl.parte.num_valvole_richieste <= 0:
+            errori.append("Numero valvole non definito")
+        
+        # Verifica ciclo di cura
+        if not db_odl.parte or not hasattr(db_odl.parte, 'ciclo_cura') or not db_odl.parte.ciclo_cura:
+            errori.append("Ciclo di cura non assegnato")
+        
+        # Verifica se già in un nesting attivo
+        from models.nesting_result import NestingResult
+        existing_nesting = db.query(NestingResult).filter(
+            NestingResult.odl_ids.contains([odl_id]),
+            NestingResult.stato.in_(["In attesa schedulazione", "Schedulato", "In corso"])
+        ).first()
+        
+        if existing_nesting:
+            errori.append(f"Già assegnato al nesting #{existing_nesting.id}")
+        
+        # Determina se l'ODL è valido per il nesting
+        valido = len(errori) == 0
+        
+        return {
+            "odl_id": odl_id,
+            "valido_per_nesting": valido,
+            "errori": errori,
+            "warnings": warnings,
+            "dati_odl": {
+                "stato": db_odl.status,
+                "tool_assegnato": db_odl.tool.part_number_tool if db_odl.tool else None,
+                "superficie_cm2": db_odl.parte.catalogo.area_cm2 if db_odl.parte and db_odl.parte.catalogo else None,
+                "peso_kg": getattr(db_odl.parte.catalogo, 'peso_kg', None) if db_odl.parte and db_odl.parte.catalogo else None,
+                "num_valvole": db_odl.parte.num_valvole_richieste if db_odl.parte else None,
+                "ciclo_cura": db_odl.parte.ciclo_cura.nome if db_odl.parte and hasattr(db_odl.parte, 'ciclo_cura') and db_odl.parte.ciclo_cura else None
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Errore durante la validazione ODL {odl_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Si è verificato un errore durante la validazione dell'ODL."
         )
 

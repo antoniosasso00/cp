@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 
 // Definizione dei ruoli disponibili
-export type UserRole = 'ADMIN' | 'RESPONSABILE' | 'LAMINATORE' | 'AUTOCLAVISTA'
+export type UserRole = 'ADMIN' | 'Management' | 'Clean Room' | 'Curing'
 
 // Chiave per localStorage
 const STORAGE_KEY = 'userRole'
@@ -25,7 +25,7 @@ export function useUserRole() {
   useEffect(() => {
     try {
       const savedRole = localStorage.getItem(STORAGE_KEY) as UserRole | null
-      if (savedRole && ['ADMIN', 'RESPONSABILE', 'LAMINATORE', 'AUTOCLAVISTA'].includes(savedRole)) {
+      if (savedRole && ['ADMIN', 'Management', 'Clean Room', 'Curing'].includes(savedRole)) {
         setRoleState(savedRole)
       }
     } catch (error) {

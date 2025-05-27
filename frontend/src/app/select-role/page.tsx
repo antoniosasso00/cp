@@ -28,8 +28,8 @@ const roles = [
     ]
   },
   {
-    id: 'RESPONSABILE' as UserRole,
-    title: 'Responsabile',
+    id: 'Management' as UserRole,
+    title: 'Management',
     description: 'Supervisione della produzione e gestione operativa',
     icon: Users,
     color: 'bg-blue-500 hover:bg-blue-600',
@@ -41,8 +41,8 @@ const roles = [
     ]
   },
   {
-    id: 'LAMINATORE' as UserRole,
-    title: 'Laminatore',
+    id: 'Clean Room' as UserRole,
+    title: 'Clean Room',
     description: 'Operazioni di laminazione e gestione parti',
     icon: Wrench,
     color: 'bg-green-500 hover:bg-green-600',
@@ -54,8 +54,8 @@ const roles = [
     ]
   },
   {
-    id: 'AUTOCLAVISTA' as UserRole,
-    title: 'Autoclavista',
+    id: 'Curing' as UserRole,
+    title: 'Curing',
     description: 'Gestione autoclavi e cicli di cura',
     icon: Flame,
     color: 'bg-orange-500 hover:bg-orange-600',

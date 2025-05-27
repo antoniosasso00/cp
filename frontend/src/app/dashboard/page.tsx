@@ -13,17 +13,17 @@ const DashboardAdmin = dynamic(() => import('@/components/dashboard/DashboardAdm
   ssr: false
 })
 
-const DashboardResponsabile = dynamic(() => import('@/components/dashboard/DashboardResponsabile'), {
+const DashboardManagement = dynamic(() => import('@/components/dashboard/DashboardManagement'), {
   loading: () => <DashboardLoading />,
   ssr: false
 })
 
-const DashboardLaminatore = dynamic(() => import('@/components/dashboard/DashboardLaminatore'), {
+const DashboardCleanRoom = dynamic(() => import('@/components/dashboard/DashboardCleanRoom'), {
   loading: () => <DashboardLoading />,
   ssr: false
 })
 
-const DashboardAutoclavista = dynamic(() => import('@/components/dashboard/DashboardAutoclavista'), {
+const DashboardCuring = dynamic(() => import('@/components/dashboard/DashboardCuring'), {
   loading: () => <DashboardLoading />,
   ssr: false
 })
@@ -80,14 +80,14 @@ export default function DashboardPage() {
     case 'ADMIN':
       return <DashboardAdmin />
     
-    case 'RESPONSABILE':
-      return <DashboardResponsabile />
+    case 'Management':
+      return <DashboardManagement />
     
-    case 'LAMINATORE':
-      return <DashboardLaminatore />
+    case 'Clean Room':
+      return <DashboardCleanRoom />
     
-    case 'AUTOCLAVISTA':
-      return <DashboardAutoclavista />
+    case 'Curing':
+      return <DashboardCuring />
     
     default:
       // Ruolo non riconosciuto, reindirizza alla selezione ruolo

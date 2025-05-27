@@ -88,13 +88,20 @@ async def export_database(db: Session = Depends(get_db)):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"carbonpilot_backup_{timestamp}.json"
         
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as temp_file:
-            json.dump(export_data, temp_file, indent=2, ensure_ascii=False)
-            temp_path = temp_file.name
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json', encoding='utf-8') as temp_file:
+                json.dump(export_data, temp_file, indent=2, ensure_ascii=False)
+                temp_path = temp_file.name
+        except Exception as file_error:
+            logger.error(f"Errore nella creazione del file temporaneo: {file_error}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Errore nella creazione del file di backup: {str(file_error)}"
+            )
         
         logger.info(f"Backup creato con successo: {filename}")
         
-        # Log dell'evento di backup
+        # Log dell'evento di backup (opzionale - non blocca l'operazione)
         try:
             from services.system_log_service import SystemLogService
             from models.system_log import UserRole
@@ -106,8 +113,10 @@ async def export_database(db: Session = Depends(get_db)):
                 user_role=UserRole.ADMIN,
                 user_id="admin"  # In futuro si potrà passare l'ID utente reale
             )
+            logger.info(f"Evento di backup loggato con successo")
         except Exception as log_error:
-            logger.warning(f"Errore nel logging del backup: {log_error}")
+            logger.warning(f"Errore nel logging del backup (non critico): {log_error}")
+            # Non interrompiamo l'operazione per errori di logging
         
         return FileResponse(
             path=temp_path,

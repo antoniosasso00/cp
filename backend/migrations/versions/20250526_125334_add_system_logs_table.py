@@ -23,7 +23,7 @@ def upgrade() -> None:
     sa.Column('timestamp', sa.DateTime(), nullable=False),
     sa.Column('level', sa.Enum('INFO', 'WARNING', 'ERROR', 'CRITICAL', name='loglevel'), nullable=False),
     sa.Column('event_type', sa.Enum('ODL_STATE_CHANGE', 'NESTING_CONFIRM', 'NESTING_MODIFY', 'CURA_START', 'CURA_COMPLETE', 'TOOL_MODIFY', 'AUTOCLAVE_MODIFY', 'CICLO_MODIFY', 'BACKUP_CREATE', 'BACKUP_RESTORE', 'USER_LOGIN', 'USER_LOGOUT', 'SYSTEM_ERROR', name='eventtype'), nullable=False),
-    sa.Column('user_role', sa.Enum('ADMIN', 'RESPONSABILE', 'AUTOCLAVISTA', 'LAMINATORE', 'SISTEMA', name='userrole'), nullable=False),
+    sa.Column('user_role', sa.Enum('ADMIN', 'MANAGEMENT', 'CLEAN_ROOM', 'CURING', 'SISTEMA', name='userrole'), nullable=False),
     sa.Column('user_id', sa.String(length=100), nullable=True),
     sa.Column('action', sa.String(length=200), nullable=False),
     sa.Column('entity_type', sa.String(length=50), nullable=True),

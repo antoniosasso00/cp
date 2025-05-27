@@ -27,7 +27,8 @@ import {
   XCircle, 
   Package, 
   Edit,
-  Loader2
+  Loader2,
+  Trash2
 } from 'lucide-react'
 
 interface NestingActionsProps {
@@ -41,75 +42,69 @@ export function NestingActions({ nesting, onUpdate }: NestingActionsProps) {
   
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [selectedAction, setSelectedAction] = useState<{
-    type: 'confirm' | 'complete' | 'cancel'
+    type: 'confirm' | 'complete' | 'cancel' | 'confirm_pending' | 'delete_pending'
     title: string
     description: string
-    newState: string
+    newState?: string
   } | null>(null)
   const [note, setNote] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
-  // Determina le azioni disponibili in base al ruolo e allo stato
+  // Determina le azioni disponibili in base al ruolo e allo stato del nesting
   const getAvailableActions = () => {
-    const actions = []
-
-    if (role === 'AUTOCLAVISTA') {
-      // L'autoclavista può solo confermare o annullare nesting in sospeso
+    if (role === 'Curing') {
+      // L'operatore Curing può solo confermare o eliminare nesting in sospeso
       if (nesting.stato === 'In sospeso') {
-        actions.push({
-          type: 'confirm' as const,
-          title: 'Conferma Carico',
-          description: 'Conferma che il carico è stato inserito nell\'autoclave',
-          newState: 'Confermato',
-          icon: CheckCircle,
-          color: 'text-blue-600'
-        })
-        actions.push({
-          type: 'cancel' as const,
-          title: 'Annulla Nesting',
-          description: 'Annulla questo nesting e riporta gli ODL in attesa',
-          newState: 'Annullato',
-          icon: XCircle,
-          color: 'text-red-600'
-        })
+        return [
+          {
+            type: 'confirm_pending' as const,
+            title: 'Conferma Nesting',
+            description: 'Conferma il nesting e avvia il processo di cura',
+            icon: CheckCircle,
+            color: 'text-green-600'
+          },
+          {
+            type: 'delete_pending' as const,
+            title: 'Elimina',
+            description: 'Elimina il nesting e rilascia gli ODL',
+            icon: Trash2,
+            color: 'text-red-600'
+          }
+        ]
       }
-    } else if (role === 'RESPONSABILE') {
-      // Il responsabile può modificare qualsiasi nesting non completato
-      if (nesting.stato === 'In sospeso') {
-        actions.push({
-          type: 'confirm' as const,
-          title: 'Conferma Nesting',
-          description: 'Conferma questo nesting per la produzione',
-          newState: 'Confermato',
-          icon: CheckCircle,
-          color: 'text-blue-600'
-        })
-      }
-      
-      if (nesting.stato === 'Confermato') {
-        actions.push({
-          type: 'complete' as const,
-          title: 'Completa Nesting',
-          description: 'Segna questo nesting come completato',
-          newState: 'Completato',
-          icon: Package,
-          color: 'text-green-600'
-        })
-      }
-      
-      if (nesting.stato !== 'Completato') {
-        actions.push({
-          type: 'cancel' as const,
-          title: 'Annulla Nesting',
-          description: 'Annulla questo nesting e riporta gli ODL in attesa',
-          newState: 'Annullato',
-          icon: XCircle,
-          color: 'text-red-600'
-        })
+      return []
+    } else if (role === 'Management') {
+      // Il management può modificare qualsiasi nesting non completato
+      if (nesting.stato === 'In sospeso' || nesting.stato === 'SOSPESO') {
+        return [
+          {
+            type: 'confirm' as const,
+            title: 'Conferma Nesting',
+            description: 'Conferma questo nesting per la produzione',
+            newState: 'Confermato',
+            icon: CheckCircle,
+            color: 'text-blue-600'
+          },
+          {
+            type: 'complete' as const,
+            title: 'Completa Nesting',
+            description: 'Segna questo nesting come completato',
+            newState: 'Completato',
+            icon: Package,
+            color: 'text-green-600'
+          },
+          {
+            type: 'cancel' as const,
+            title: 'Annulla Nesting',
+            description: 'Annulla questo nesting e riporta gli ODL in attesa',
+            newState: 'Annullato',
+            icon: XCircle,
+            color: 'text-red-600'
+          }
+        ]
       }
     }
-
-    return actions
+    return []
   }
 
   const availableActions = getAvailableActions()
@@ -119,7 +114,7 @@ export function NestingActions({ nesting, onUpdate }: NestingActionsProps) {
       type: action.type,
       title: action.title,
       description: action.description,
-      newState: action.newState
+      newState: 'newState' in action ? action.newState : undefined
     })
     setNote('')
     setIsDialogOpen(true)
@@ -130,28 +125,43 @@ export function NestingActions({ nesting, onUpdate }: NestingActionsProps) {
 
     setIsLoading(true)
     try {
-      await nestingApi.updateStatus(
-        nesting.id, 
-        selectedAction.newState, 
-        note || undefined,
-        role || undefined
-      )
-
-      toast({
-        title: 'Azione completata',
-        description: `Nesting #${nesting.id} aggiornato a "${selectedAction.newState}"`,
-      })
+      // Gestione delle nuove azioni specifiche per nesting in sospeso
+      if (selectedAction.type === 'confirm_pending') {
+        await nestingApi.confirmPending(nesting.id)
+        toast({
+          title: 'Nesting Confermato',
+          description: `Nesting #${nesting.id} confermato con successo. Il processo di cura è iniziato.`,
+        })
+      } else if (selectedAction.type === 'delete_pending') {
+        await nestingApi.deletePending(nesting.id)
+        toast({
+          title: 'Nesting Eliminato',
+          description: `Nesting #${nesting.id} eliminato con successo. Gli ODL sono tornati in attesa di cura.`,
+        })
+      } else if (selectedAction.newState) {
+        // Gestione delle azioni tradizionali
+        await nestingApi.updateStatus(
+          nesting.id, 
+          selectedAction.newState, 
+          note || undefined,
+          role || undefined
+        )
+        toast({
+          title: 'Azione completata',
+          description: `Nesting #${nesting.id} aggiornato a "${selectedAction.newState}"`,
+        })
+      }
 
       onUpdate()
       setIsDialogOpen(false)
       setSelectedAction(null)
       setNote('')
     } catch (error) {
-      console.error('Errore nell\'aggiornamento del nesting:', error)
+      console.error('Errore nell\'operazione sul nesting:', error)
       toast({
         variant: 'destructive',
         title: 'Errore',
-        description: 'Impossibile aggiornare il nesting. Riprova più tardi.',
+        description: 'Impossibile completare l\'operazione. Riprova più tardi.',
       })
     } finally {
       setIsLoading(false)

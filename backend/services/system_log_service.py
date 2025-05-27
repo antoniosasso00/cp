@@ -166,6 +166,37 @@ class SystemLogService:
         )
     
     @staticmethod
+    def log_nesting_operation(
+        db: Session,
+        operation_type: str,
+        user_role: UserRole,
+        details: Optional[dict] = None,
+        result: str = "SUCCESS",
+        user_id: Optional[str] = None,
+        ip_address: Optional[str] = None
+    ) -> SystemLog:
+        """Registra operazioni generiche sui nesting"""
+        action = f"Operazione nesting: {operation_type}"
+        
+        # Converti i dettagli in JSON se forniti
+        details_json = json.dumps(details) if details else None
+        
+        # Determina il livello di log in base al risultato
+        level = LogLevel.INFO if result == "SUCCESS" else LogLevel.ERROR
+        
+        return SystemLogService.log_event(
+            db=db,
+            event_type=EventType.NESTING_MODIFY,  # Usiamo NESTING_MODIFY per operazioni generiche
+            user_role=user_role,
+            action=action,
+            level=level,
+            user_id=user_id,
+            entity_type="nesting",
+            details=details_json,
+            ip_address=ip_address
+        )
+    
+    @staticmethod
     def log_cura_start(
         db: Session,
         schedule_entry_id: int,

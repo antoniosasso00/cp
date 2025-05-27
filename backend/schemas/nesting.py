@@ -8,6 +8,47 @@ class NestingODLStatus(str, Enum):
     PIANIFICATO = "pianificato"
     NON_PIANIFICABILE = "non_pianificabile"
     
+# ✅ NUOVO: Enum per la priorità di ottimizzazione
+class PrioritaOttimizzazione(str, Enum):
+    """Enum per la priorità di ottimizzazione del nesting"""
+    PESO = "peso"
+    AREA = "area"
+    EQUILIBRATO = "equilibrato"
+
+# ✅ NUOVO: Schema per i parametri di nesting regolabili
+class NestingParameters(BaseModel):
+    """Schema per i parametri regolabili del nesting"""
+    distanza_perimetrale_cm: float = Field(
+        default=1.0, 
+        ge=0.0, 
+        le=10.0,
+        description="Distanza minima dal perimetro dell'autoclave in cm"
+    )
+    spaziatura_tra_tool_cm: float = Field(
+        default=0.5, 
+        ge=0.0, 
+        le=5.0,
+        description="Spaziatura minima tra i tool in cm"
+    )
+    rotazione_tool_abilitata: bool = Field(
+        default=True,
+        description="Abilita la rotazione automatica dei tool per ottimizzare lo spazio"
+    )
+    priorita_ottimizzazione: PrioritaOttimizzazione = Field(
+        default=PrioritaOttimizzazione.EQUILIBRATO,
+        description="Priorità di ottimizzazione: peso, area o equilibrato"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "distanza_perimetrale_cm": 1.0,
+                "spaziatura_tra_tool_cm": 0.5,
+                "rotazione_tool_abilitata": True,
+                "priorita_ottimizzazione": "equilibrato"
+            }
+        }
+
 class ODLNestingInfo(BaseModel):
     """Schema per l'informazione di un ODL nel nesting"""
     id: int
@@ -70,6 +111,11 @@ class NestingPreviewSchema(BaseModel):
     odl_esclusi: List[Dict[str, Any]] = Field(
         default=[], 
         description="Lista degli ODL esclusi con motivazioni"
+    )
+    # ✅ NUOVO: Parametri utilizzati per generare questa preview
+    parametri_utilizzati: Optional[NestingParameters] = Field(
+        None,
+        description="Parametri di nesting utilizzati per generare questa preview"
     )
     
 # Schema per la risposta del database
@@ -167,6 +213,6 @@ class ManualNestingRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "odl_ids": [1, 2, 3],
-                "note": "Nesting manuale creato dal responsabile"
+                "note": "Nesting manuale creato dal management"
             }
         } 

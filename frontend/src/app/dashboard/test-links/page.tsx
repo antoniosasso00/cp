@@ -29,35 +29,35 @@ export default function TestLinksPage() {
       ]
     },
     {
-      category: "RESPONSABILE", 
+      category: "MANAGEMENT", 
       icon: Users,
       color: "bg-blue-500",
       links: [
-        { title: "Reports", href: "/dashboard/responsabile/reports", description: "Reports e analytics" },
-        { title: "ODL Monitoring", href: "/dashboard/responsabile/odl-monitoring", description: "Monitoraggio ODL tempo reale" },
-        { title: "Statistiche", href: "/dashboard/responsabile/statistiche", description: "Statistiche catalogo" }
+        { title: "Reports", href: "/dashboard/management/reports", description: "Reports e analytics" },
+        { title: "ODL Monitoring", href: "/dashboard/management/odl-monitoring", description: "Monitoraggio ODL tempo reale" },
+        { title: "Statistiche", href: "/dashboard/management/statistiche", description: "Statistiche catalogo" }
       ]
     },
     {
-      category: "LAMINATORE",
+      category: "CLEAN ROOM",
       icon: Wrench, 
       color: "bg-green-500",
       links: [
-        { title: "Parts", href: "/dashboard/laminatore/parts", description: "Gestione parti" },
-        { title: "Tools", href: "/dashboard/laminatore/tools", description: "Tools e stampi" },
-        { title: "Produzione", href: "/dashboard/laminatore/produzione", description: "Operazioni produzione" },
-        { title: "Tempi", href: "/dashboard/laminatore/tempi", description: "Tempi e performance" }
+        { title: "Parts", href: "/dashboard/clean-room/parts", description: "Gestione parti" },
+        { title: "Tools", href: "/dashboard/clean-room/tools", description: "Tools e stampi" },
+        { title: "Produzione", href: "/dashboard/clean-room/produzione", description: "Operazioni produzione" },
+        { title: "Tempi", href: "/dashboard/clean-room/tempi", description: "Tempi e performance" }
       ]
     },
     {
-      category: "AUTOCLAVISTA",
+      category: "CURING",
       icon: Flame,
       color: "bg-orange-500", 
       links: [
-        { title: "Nesting", href: "/dashboard/autoclavista/nesting", description: "Gestione nesting" },
-        { title: "Autoclavi", href: "/dashboard/autoclavista/autoclavi", description: "Controllo autoclavi" },
-        { title: "Cicli Cura", href: "/dashboard/autoclavista/cicli-cura", description: "Cicli di cura" },
-        { title: "Schedule", href: "/dashboard/autoclavista/schedule", description: "Scheduling produzione" }
+        { title: "Nesting", href: "/dashboard/curing/nesting", description: "Gestione nesting" },
+        { title: "Autoclavi", href: "/dashboard/curing/autoclavi", description: "Controllo autoclavi" },
+        { title: "Cicli Cura", href: "/dashboard/curing/cicli-cura", description: "Cicli di cura" },
+        { title: "Schedule", href: "/dashboard/curing/schedule", description: "Scheduling produzione" }
       ]
     },
     {

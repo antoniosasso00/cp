@@ -15,6 +15,7 @@ from .ciclo_cura import CicloCura
 from .associations import parte_tool_association
 from .odl import ODL
 from .odl_log import ODLLog
+from .state_log import StateLog
 from .tempo_fase import TempoFase
 from .nesting_result import NestingResult
 from .schedule_entry import ScheduleEntry, ScheduleEntryStatus, ScheduleEntryType
@@ -35,6 +36,7 @@ __all__ = [
     "parte_tool_association",
     "ODL",
     "ODLLog",
+    "StateLog",
     "TempoFase",
     "NestingResult",
     "ScheduleEntry",

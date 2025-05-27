@@ -175,10 +175,8 @@ export default function MonitoraggioODLPage() {
         }
       }
       
-      // 2. Aggiorna lo stato dell'ODL
-      await odlApi.update(odlToAdvance.id, {
-        status: nextStatus
-      })
+      // 2. Aggiorna lo stato dell'ODL usando la nuova funzione generica
+              await odlApi.updateStatus(odlToAdvance.id, nextStatus)
       
       // 3. Crea una nuova fase se il nuovo stato è monitorato
       if (nextStatus in STATO_A_FASE) {
@@ -233,7 +231,7 @@ export default function MonitoraggioODLPage() {
       <div className="flex justify-between items-center">
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <Link href="/dashboard/odl">
+            <Link href="/dashboard/shared/odl">
               <Button variant="ghost" size="sm" className="flex items-center gap-2">
                 <ChevronLeft className="h-4 w-4" />
                 Torna agli ODL

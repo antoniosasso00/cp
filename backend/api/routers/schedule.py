@@ -332,16 +332,16 @@ def execute_operator_action(
                 db=db,
                 schedule_entry_id=schedule_id,
                 autoclave_id=result.autoclave_id,
-                user_role=UserRole.AUTOCLAVISTA,
-                user_id="autoclavista"
+                user_role=UserRole.CURING,
+                user_id="curing"
             )
         elif action_data.action == "complete":
             SystemLogService.log_cura_complete(
                 db=db,
                 schedule_entry_id=schedule_id,
                 autoclave_id=result.autoclave_id,
-                user_role=UserRole.AUTOCLAVISTA,
-                user_id="autoclavista"
+                user_role=UserRole.CURING,
+                user_id="curing"
             )
         
         return result

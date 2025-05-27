@@ -26,13 +26,13 @@ interface ShortcutItem {
 }
 
 interface DashboardShortcutsProps {
-  userRole: 'admin' | 'responsabile'
+  userRole: 'admin' | 'management'
   className?: string
 }
 
 export function DashboardShortcuts({ userRole, className = "" }: DashboardShortcutsProps) {
-  // Scorciatoie per il responsabile
-  const responsabileShortcuts: ShortcutItem[] = [
+  // Scorciatoie per il management
+  const managementShortcuts: ShortcutItem[] = [
     {
       title: 'Nuovo ODL',
       description: 'Crea un nuovo ordine di lavorazione',
@@ -53,7 +53,7 @@ export function DashboardShortcuts({ userRole, className = "" }: DashboardShortc
       title: 'Nesting Attivi',
       description: 'Visualizza i nesting in corso',
       icon: Package,
-      href: '/dashboard/autoclavista/nesting',
+      href: '/dashboard/curing/nesting',
       color: 'bg-purple-500 hover:bg-purple-600',
       available: true
     },
@@ -61,7 +61,7 @@ export function DashboardShortcuts({ userRole, className = "" }: DashboardShortc
       title: 'Reports',
       description: 'Genera report di produzione',
       icon: BarChart3,
-      href: '/dashboard/responsabile/reports',
+      href: '/dashboard/management/reports',
       color: 'bg-orange-500 hover:bg-orange-600',
       available: true
     },
@@ -69,7 +69,7 @@ export function DashboardShortcuts({ userRole, className = "" }: DashboardShortc
       title: 'Statistiche',
       description: 'Visualizza statistiche produzione',
       icon: FileText,
-      href: '/dashboard/responsabile/statistiche',
+      href: '/dashboard/management/statistiche',
       color: 'bg-indigo-500 hover:bg-indigo-600',
       available: true
     },
@@ -121,7 +121,7 @@ export function DashboardShortcuts({ userRole, className = "" }: DashboardShortc
       title: 'Nesting Attivi',
       description: 'Visualizza i nesting in corso',
       icon: Package,
-      href: '/dashboard/autoclavista/nesting',
+      href: '/dashboard/curing/nesting',
       color: 'bg-purple-500 hover:bg-purple-600',
       available: true
     },
@@ -135,7 +135,7 @@ export function DashboardShortcuts({ userRole, className = "" }: DashboardShortc
     }
   ]
 
-  const shortcuts = userRole === 'admin' ? adminShortcuts : responsabileShortcuts
+  const shortcuts = userRole === 'admin' ? adminShortcuts : managementShortcuts
 
   return (
     <Card className={className}>

@@ -76,14 +76,14 @@ export function NestingStatusCard() {
 
   // Determina il messaggio e le azioni in base al ruolo
   const getRoleSpecificContent = () => {
-    if (role === 'AUTOCLAVISTA') {
+    if (role === 'Curing') {
       return {
         title: 'Nesting da Confermare',
         description: 'Nesting in attesa della tua conferma di carico',
         primaryAction: stats.inSospeso > 0 ? 'Conferma Carichi' : 'Nessun carico in attesa',
         showInSospeso: true
       }
-    } else if (role === 'RESPONSABILE') {
+    } else if (role === 'Management') {
       return {
         title: 'Gestione Nesting',
         description: 'Panoramica completa di tutti i nesting',
@@ -101,6 +101,33 @@ export function NestingStatusCard() {
   }
 
   const roleContent = getRoleSpecificContent()
+
+  // Determina le azioni disponibili in base al ruolo
+  const getAvailableActions = () => {
+    if (role === 'Curing') {
+      return [
+        {
+          label: 'Gestisci Nesting',
+          href: '/dashboard/curing/nesting',
+          description: 'Conferma e gestisci i nesting in sospeso'
+        }
+      ]
+    } else if (role === 'Management') {
+      return [
+        {
+          label: 'Crea Nesting',
+          href: '/dashboard/curing/nesting',
+          description: 'Crea nuovi nesting automatici o manuali'
+        },
+        {
+          label: 'Nesting Manuale',
+          href: '/dashboard/curing/nesting?tab=manual',
+          description: 'Crea nesting personalizzati'
+        }
+      ]
+    }
+    return []
+  }
 
   return (
     <Card>
@@ -251,15 +278,15 @@ export function NestingStatusCard() {
 
             {/* Azioni */}
             <div className="pt-3 border-t space-y-2">
-              <Link href="/dashboard/nesting">
+              <Link href="/dashboard/curing/nesting">
                 <Button className="w-full" variant="outline">
                   <Eye className="h-4 w-4 mr-2" />
                   {roleContent.primaryAction}
                 </Button>
               </Link>
               
-              {role === 'RESPONSABILE' && (
-                <Link href="/dashboard/nesting?tab=manual">
+              {role === 'Management' && (
+                <Link href="/dashboard/curing/nesting?tab=manual">
                   <Button className="w-full" variant="secondary" size="sm">
                     <Plus className="h-4 w-4 mr-2" />
                     Crea Nesting Manuale

@@ -1,11 +1,12 @@
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from api.database import get_db
 from models.catalogo import Catalogo
+from models.parte import Parte
 from schemas.catalogo import CatalogoCreate, CatalogoResponse, CatalogoUpdate
 
 # Configurazione logger
@@ -164,4 +165,73 @@ def delete_catalogo(part_number: str, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante l'eliminazione del catalogo."
+        )
+
+@router.put("/{part_number}/update-with-propagation", response_model=CatalogoResponse, 
+            summary="Aggiorna part number con propagazione globale")
+def update_part_number_with_propagation(
+    part_number: str, 
+    request_data: dict = Body(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Aggiorna il part_number di un elemento del catalogo e propaga la modifica
+    a tutte le entità collegate (Parti, ODL, etc.).
+    
+    ⚠️ ATTENZIONE: Questa operazione modifica tutti i riferimenti al part_number
+    in tutto il sistema. Usare con cautela.
+    """
+    # ✅ FIX: Estrai new_part_number dal body
+    new_part_number = request_data.get("new_part_number")
+    if not new_part_number:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Campo 'new_part_number' richiesto nel body"
+        )
+    
+    # Verifica che l'elemento esista
+    db_catalogo = db.query(Catalogo).filter(Catalogo.part_number == part_number).first()
+    if db_catalogo is None:
+        logger.warning(f"Tentativo di aggiornamento di part number inesistente: {part_number}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"Catalogo con part number '{part_number}' non trovato"
+        )
+    
+    # Verifica che il nuovo part_number non esista già
+    existing_new = db.query(Catalogo).filter(Catalogo.part_number == new_part_number).first()
+    if existing_new:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Part number '{new_part_number}' già esistente"
+        )
+    
+    try:
+        # Inizia una transazione per garantire consistenza
+        # 1. Aggiorna il catalogo
+        db_catalogo.part_number = new_part_number
+        
+        # 2. Aggiorna tutte le parti che usano questo part_number
+        parti_da_aggiornare = db.query(Parte).filter(Parte.part_number == part_number).all()
+        for parte in parti_da_aggiornare:
+            parte.part_number = new_part_number
+            logger.info(f"Aggiornato part_number per parte ID {parte.id}: {part_number} -> {new_part_number}")
+        
+        # 3. Se ci sono altre entità che referenziano il part_number, aggiungerle qui
+        # Ad esempio: ODL, Reports, etc.
+        
+        db.commit()
+        db.refresh(db_catalogo)
+        
+        logger.info(f"Part number aggiornato con successo: {part_number} -> {new_part_number}")
+        logger.info(f"Aggiornate {len(parti_da_aggiornare)} parti collegate")
+        
+        return db_catalogo
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Errore durante l'aggiornamento del part number {part_number}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Si è verificato un errore durante l'aggiornamento del part number."
         ) 

@@ -9,6 +9,8 @@ import {
 import { Autoclave, ODLResponse, CatalogoResponse } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import { useTheme } from 'next-themes';
 
 interface ScheduleFormProps {
@@ -221,109 +223,157 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Tipo di Schedulazione */}
           <div>
-            <label className="block text-sm font-medium mb-2">
+            <Label className="block text-sm font-medium mb-2">
               Tipo di Schedulazione
-            </label>
-            <select
+            </Label>
+            <Select
               value={formData.schedule_type}
-              onChange={(e) => handleFieldChange('schedule_type', e.target.value as ScheduleEntryType)}
-              className="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+              onValueChange={(value) => handleFieldChange('schedule_type', value as ScheduleEntryType)}
               required
             >
-              <option value={ScheduleEntryType.ODL_SPECIFICO}>ODL Specifico</option>
-              <option value={ScheduleEntryType.CATEGORIA}>Categoria</option>
-              <option value={ScheduleEntryType.SOTTO_CATEGORIA}>Sotto-categoria</option>
-            </select>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Seleziona tipo di schedulazione" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ScheduleEntryType.ODL_SPECIFICO}>ODL Specifico</SelectItem>
+                <SelectItem value={ScheduleEntryType.CATEGORIA}>Categoria</SelectItem>
+                <SelectItem value={ScheduleEntryType.SOTTO_CATEGORIA}>Sotto-categoria</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Selezione ODL (solo per tipo ODL_SPECIFICO) */}
           {formData.schedule_type === ScheduleEntryType.ODL_SPECIFICO && (
             <div>
-              <label className="block text-sm font-medium mb-2">
+              <Label className="block text-sm font-medium mb-2">
                 ODL
-              </label>
-              <select
-                value={formData.odl_id || ''}
-                onChange={(e) => handleFieldChange('odl_id', Number(e.target.value))}
-                className="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+              </Label>
+              <Select
+                value={formData.odl_id?.toString() || ''}
+                onValueChange={(value) => handleFieldChange('odl_id', value ? Number(value) : undefined)}
                 required
               >
-                <option value="">Seleziona un ODL</option>
-                {odlList
-                  .filter(odl => odl.status === 'Attesa Cura')
-                  .map(odl => (
-                    <option key={odl.id} value={odl.id}>
-                      ODL #{odl.id} - {odl.parte.descrizione_breve} (Priorità: {odl.priorita})
-                    </option>
-                  ))}
-              </select>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Seleziona un ODL" />
+                </SelectTrigger>
+                <SelectContent>
+                  {odlList
+                    .filter(odl => odl.status === 'Attesa Cura' && odl.id && odl.parte)
+                    .length > 0 ? (
+                    odlList
+                      .filter(odl => odl.status === 'Attesa Cura' && odl.id && odl.parte)
+                      .map(odl => (
+                        <SelectItem key={odl.id} value={odl.id.toString()}>
+                          ODL #{odl.id} - {odl.parte.descrizione_breve} (Priorità: {odl.priorita})
+                        </SelectItem>
+                      ))
+                  ) : (
+                    <SelectItem value="no-odl" disabled>
+                      Nessun ODL disponibile in Attesa Cura
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
           )}
 
           {/* Selezione Categoria (solo per tipo CATEGORIA) */}
           {formData.schedule_type === ScheduleEntryType.CATEGORIA && (
             <div>
-              <label className="block text-sm font-medium mb-2">
+              <Label className="block text-sm font-medium mb-2">
                 Categoria
-              </label>
-              <select
+              </Label>
+              <Select
                 value={formData.categoria || ''}
-                onChange={(e) => handleFieldChange('categoria', e.target.value)}
-                className="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                onValueChange={(value) => handleFieldChange('categoria', value)}
                 required
               >
-                <option value="">Seleziona una categoria</option>
-                {categorieList.map(categoria => (
-                  <option key={categoria} value={categoria}>
-                    {categoria}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Seleziona una categoria" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categorieList && categorieList.length > 0 ? (
+                    categorieList
+                      .filter(categoria => categoria && categoria.trim())
+                      .map(categoria => (
+                        <SelectItem key={categoria} value={categoria}>
+                          {categoria}
+                        </SelectItem>
+                      ))
+                  ) : (
+                    <SelectItem value="no-categoria" disabled>
+                      Nessuna categoria disponibile
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
           )}
 
           {/* Selezione Sotto-categoria (solo per tipo SOTTO_CATEGORIA) */}
           {formData.schedule_type === ScheduleEntryType.SOTTO_CATEGORIA && (
             <div>
-              <label className="block text-sm font-medium mb-2">
+              <Label className="block text-sm font-medium mb-2">
                 Sotto-categoria
-              </label>
-              <select
+              </Label>
+              <Select
                 value={formData.sotto_categoria || ''}
-                onChange={(e) => handleFieldChange('sotto_categoria', e.target.value)}
-                className="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                onValueChange={(value) => handleFieldChange('sotto_categoria', value)}
                 required
               >
-                <option value="">Seleziona una sotto-categoria</option>
-                {sottoCategorieList.map(sottoCategoria => (
-                  <option key={sottoCategoria} value={sottoCategoria}>
-                    {sottoCategoria}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Seleziona una sotto-categoria" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sottoCategorieList && sottoCategorieList.length > 0 ? (
+                    sottoCategorieList
+                      .filter(sottoCategoria => sottoCategoria && sottoCategoria.trim())
+                      .map(sottoCategoria => (
+                        <SelectItem key={sottoCategoria} value={sottoCategoria}>
+                          {sottoCategoria}
+                        </SelectItem>
+                      ))
+                  ) : (
+                    <SelectItem value="no-sottocategoria" disabled>
+                      Nessuna sotto-categoria disponibile
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
           )}
 
           {/* Selezione Autoclave */}
           <div>
-            <label className="block text-sm font-medium mb-2">
+            <Label className="block text-sm font-medium mb-2">
               Autoclave
-            </label>
-            <select
-              value={formData.autoclave_id}
-              onChange={(e) => handleFieldChange('autoclave_id', Number(e.target.value))}
-              className="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+            </Label>
+            <Select
+              value={formData.autoclave_id?.toString() || ''}
+              onValueChange={(value) => handleFieldChange('autoclave_id', value ? Number(value) : 0)}
               required
             >
-              <option value="">Seleziona un'autoclave</option>
-              {autoclavi
-                .filter(autoclave => autoclave.stato === 'DISPONIBILE')
-                .map(autoclave => (
-                  <option key={autoclave.id} value={autoclave.id}>
-                    {autoclave.nome} ({autoclave.codice})
-                  </option>
-                ))}
-            </select>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Seleziona un'autoclave" />
+              </SelectTrigger>
+              <SelectContent>
+                {autoclavi
+                  .filter(autoclave => autoclave.stato === 'DISPONIBILE' && autoclave.id && autoclave.nome)
+                  .length > 0 ? (
+                  autoclavi
+                    .filter(autoclave => autoclave.stato === 'DISPONIBILE' && autoclave.id && autoclave.nome)
+                    .map(autoclave => (
+                      <SelectItem key={autoclave.id} value={autoclave.id.toString()}>
+                        {autoclave.nome} ({autoclave.codice})
+                      </SelectItem>
+                    ))
+                ) : (
+                  <SelectItem value="no-autoclave" disabled>
+                    Nessuna autoclave disponibile
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Data e Ora di Inizio */}

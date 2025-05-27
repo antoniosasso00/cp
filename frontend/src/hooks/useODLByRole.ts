@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { odlApi, type ODLResponse } from '@/lib/api'
+import { odlApi, updateOdlStatus, type ODLResponse } from '@/lib/api'
 
 interface UseODLByRoleOptions {
-  role: 'LAMINATORE' | 'AUTOCLAVISTA'
+  role: 'Clean Room' | 'Curing'
   autoRefresh?: boolean
   refreshInterval?: number
 }
@@ -20,8 +20,8 @@ interface UseODLByRoleReturn {
 /**
  * Hook per ottenere ODL filtrati per ruolo specifico
  * 
- * LAMINATORE: ODL in stato "Preparazione" e "Laminazione"
- * AUTOCLAVISTA: ODL in stato "Attesa Cura" e "Cura"
+ * Clean Room: ODL in stato "Preparazione" e "Laminazione"
+ * Curing: ODL in stato "Attesa Cura" e "Cura"
  */
 export function useODLByRole({ 
   role, 
@@ -35,9 +35,9 @@ export function useODLByRole({
   // Definisce gli stati ODL per ogni ruolo
   const getStatusFilterForRole = (userRole: string): string[] => {
     switch (userRole) {
-      case 'LAMINATORE':
+      case 'Clean Room':
         return ['Preparazione', 'Laminazione']
-      case 'AUTOCLAVISTA':
+      case 'Curing':
         return ['Attesa Cura', 'Cura']
       default:
         return []
@@ -78,27 +78,19 @@ export function useODLByRole({
     }
   }
 
-  // Funzione per aggiornare lo stato di un ODL usando i metodi specifici per ruolo
+  // Funzione per aggiornare lo stato di un ODL usando la funzione di utilità migliorata
   const updateODLStatus = async (odlId: number, newStatus: string) => {
     try {
-      let updatedODL: ODLResponse
-
-      // Usa i metodi specifici per ruolo dall'API
-      if (role === 'LAMINATORE') {
-        if (newStatus === 'Laminazione' || newStatus === 'Attesa Cura') {
-          updatedODL = await odlApi.updateStatusLaminatore(odlId, newStatus as "Laminazione" | "Attesa Cura")
-        } else {
-          throw new Error(`Stato ${newStatus} non valido per il ruolo LAMINATORE`)
-        }
-      } else if (role === 'AUTOCLAVISTA') {
-        if (newStatus === 'Cura' || newStatus === 'Finito') {
-          updatedODL = await odlApi.updateStatusAutoclavista(odlId, newStatus as "Cura" | "Finito")
-        } else {
-          throw new Error(`Stato ${newStatus} non valido per il ruolo AUTOCLAVISTA`)
-        }
-      } else {
-        throw new Error(`Ruolo ${role} non supportato`)
+      // Validazione per ruolo specifico
+      const allowedStatuses = getStatusFilterForRole(role)
+      const nextStatuses = getNextStatusesForRole(role, newStatus)
+      
+      if (!nextStatuses.includes(newStatus)) {
+        throw new Error(`Stato ${newStatus} non valido per il ruolo ${role}`)
       }
+
+      // Usa la funzione di utilità migliorata
+      const updatedODL = await updateOdlStatus(odlId, newStatus)
       
       // Aggiorna la lista locale
       setOdlList(prevList => 
@@ -116,6 +108,18 @@ export function useODLByRole({
     } catch (err) {
       console.error('Errore nell\'aggiornamento dello stato ODL:', err)
       throw new Error('Errore nell\'aggiornamento dello stato')
+    }
+  }
+
+  // Funzione helper per ottenere gli stati successivi validi per ruolo
+  const getNextStatusesForRole = (userRole: string, currentStatus: string): string[] => {
+    switch (userRole) {
+      case 'Clean Room':
+        return ['Laminazione', 'Attesa Cura']
+      case 'Curing':
+        return ['Cura', 'Finito']
+      default:
+        return []
     }
   }
 

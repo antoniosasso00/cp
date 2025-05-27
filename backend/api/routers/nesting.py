@@ -2,20 +2,27 @@
 Router per le operazioni di nesting automatico degli ODL nelle autoclavi.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
-from typing import List
+from sqlalchemy import func
+from typing import List, Optional
 from pydantic import BaseModel
 from models.db import get_db
 from models.nesting_result import NestingResult
-from schemas.nesting import NestingResultSchema, NestingResultRead, NestingPreviewSchema, ManualNestingRequest
-from services.nesting_service import run_automatic_nesting, get_all_nesting_results, get_nesting_preview, update_nesting_status, save_nesting_draft, load_nesting_draft, run_manual_nesting, extract_ciclo_cura_from_note
+from schemas.nesting import NestingResultSchema, NestingResultRead, NestingPreviewSchema, ManualNestingRequest, NestingParameters
+from services.nesting_service import run_automatic_nesting, get_all_nesting_results, get_nesting_preview, update_nesting_status, save_nesting_draft, load_nesting_draft, run_manual_nesting, extract_ciclo_cura_from_note, select_odl_and_autoclave_automatically
 from models.autoclave import Autoclave, StatoAutoclaveEnum
 from models.odl import ODL
 # ✅ NUOVO: Import per nesting su due piani
 from services.nesting_service import run_two_level_nesting
 from services.system_log_service import SystemLogService
 from models.system_log import UserRole
+import logging
+# ✅ NUOVO: Import per automazione nesting multiplo
+from services.nesting_service import generate_multi_nesting
+
+# Configurazione logger
+logger = logging.getLogger(__name__)
 
 # Schema per l'aggiornamento dello stato del nesting
 class NestingStatusUpdate(BaseModel):
@@ -40,57 +47,87 @@ def serialize_nesting_result(nesting: NestingResult) -> dict:
     """
     Serializza un risultato di nesting includendo le informazioni sui cicli di cura
     """
-    # Estrai le informazioni del ciclo di cura dalle note
-    ciclo_cura_id, ciclo_cura_nome = extract_ciclo_cura_from_note(nesting.note)
-    
-    # Serializza il risultato base
-    result = {
-        "id": nesting.id,
-        "autoclave": {
-            "id": nesting.autoclave.id,
-            "nome": nesting.autoclave.nome,
-            "codice": nesting.autoclave.codice,
-            "num_linee_vuoto": nesting.autoclave.num_linee_vuoto,
-            "lunghezza": nesting.autoclave.lunghezza,
-            "larghezza_piano": nesting.autoclave.larghezza_piano,
-        },
-        "odl_list": [
-            {
-                "id": odl.id,
-                "parte": {
-                    "id": odl.parte.id,
-                    "part_number": odl.parte.part_number,
-                    "descrizione_breve": odl.parte.descrizione_breve,
-                    "num_valvole_richieste": odl.parte.num_valvole_richieste,
-                },
-                "tool": {
-                    "id": odl.tool.id,
-                    "part_number_tool": odl.tool.part_number_tool,
-                    "descrizione": odl.tool.descrizione,
-                    "lunghezza_piano": odl.tool.lunghezza_piano,
-                    "larghezza_piano": odl.tool.larghezza_piano,
-                },
-                "priorita": odl.priorita,
-            }
-            for odl in nesting.odl_list
-        ],
-        "area_utilizzata": nesting.area_utilizzata,
-        "area_totale": nesting.area_totale,
-        "valvole_utilizzate": nesting.valvole_utilizzate,
-        "valvole_totali": nesting.valvole_totali,
-        "stato": nesting.stato,
-        "confermato_da_ruolo": nesting.confermato_da_ruolo,
-        "odl_esclusi_ids": nesting.odl_esclusi_ids or [],
-        "motivi_esclusione": nesting.motivi_esclusione or [],
-        "created_at": nesting.created_at.isoformat(),
-        "updated_at": nesting.updated_at.isoformat() if nesting.updated_at else None,
-        "note": nesting.note,
-        "ciclo_cura_id": ciclo_cura_id,
-        "ciclo_cura_nome": ciclo_cura_nome,
-        "posizioni_tool": nesting.posizioni_tool or [],  # ✅ NUOVO: Posizioni 2D dei tool
-    }
-    
-    return result
+    try:
+        # Estrai le informazioni del ciclo di cura dalle note
+        ciclo_cura_id, ciclo_cura_nome = extract_ciclo_cura_from_note(nesting.note)
+        
+        # Serializza il risultato base
+        result = {
+            "id": nesting.id,
+            "autoclave": {
+                "id": nesting.autoclave.id,
+                "nome": nesting.autoclave.nome,
+                "codice": nesting.autoclave.codice,
+                "num_linee_vuoto": nesting.autoclave.num_linee_vuoto,
+                "lunghezza": nesting.autoclave.lunghezza,
+                "larghezza_piano": nesting.autoclave.larghezza_piano,
+            },
+            "odl_list": [
+                {
+                    "id": odl.id,
+                    "parte": {
+                        "id": odl.parte.id,
+                        "part_number": odl.parte.part_number,
+                        "descrizione_breve": odl.parte.descrizione_breve,
+                        "num_valvole_richieste": odl.parte.num_valvole_richieste,
+                    },
+                    "tool": {
+                        "id": odl.tool.id,
+                        "part_number_tool": odl.tool.part_number_tool,
+                        "descrizione": odl.tool.descrizione,
+                        "lunghezza_piano": odl.tool.lunghezza_piano,
+                        "larghezza_piano": odl.tool.larghezza_piano,
+                    },
+                    "priorita": odl.priorita,
+                }
+                for odl in nesting.odl_list
+            ],
+            "area_utilizzata": nesting.area_utilizzata,
+            "area_totale": nesting.area_totale,
+            "valvole_utilizzate": nesting.valvole_utilizzate,
+            "valvole_totali": nesting.valvole_totali,
+            "stato": nesting.stato,
+            "confermato_da_ruolo": nesting.confermato_da_ruolo,
+            "odl_esclusi_ids": nesting.odl_esclusi_ids or [],
+            "motivi_esclusione": nesting.motivi_esclusione or [],
+            "created_at": nesting.created_at.isoformat(),
+            "updated_at": nesting.updated_at.isoformat() if nesting.updated_at else None,
+            "note": nesting.note,
+            "ciclo_cura_id": ciclo_cura_id,
+            "ciclo_cura_nome": ciclo_cura_nome,
+            "posizioni_tool": nesting.posizioni_tool or [],  # ✅ NUOVO: Posizioni 2D dei tool
+        }
+        
+        return result
+    except Exception as e:
+        logger.error(f"Errore nella serializzazione del nesting {nesting.id}: {str(e)}")
+        # Restituisci una versione semplificata in caso di errore
+        return {
+            "id": nesting.id,
+            "autoclave": {
+                "id": nesting.autoclave.id if nesting.autoclave else None,
+                "nome": nesting.autoclave.nome if nesting.autoclave else "N/A",
+                "codice": nesting.autoclave.codice if nesting.autoclave else "N/A",
+                "num_linee_vuoto": nesting.autoclave.num_linee_vuoto if nesting.autoclave else 0,
+                "lunghezza": nesting.autoclave.lunghezza if nesting.autoclave else 0,
+                "larghezza_piano": nesting.autoclave.larghezza_piano if nesting.autoclave else 0,
+            },
+            "odl_list": [],
+            "area_utilizzata": nesting.area_utilizzata or 0,
+            "area_totale": nesting.area_totale or 0,
+            "valvole_utilizzate": nesting.valvole_utilizzate or 0,
+            "valvole_totali": nesting.valvole_totali or 0,
+            "stato": nesting.stato or "Errore",
+            "confermato_da_ruolo": nesting.confermato_da_ruolo,
+            "odl_esclusi_ids": [],
+            "motivi_esclusione": [],
+            "created_at": nesting.created_at.isoformat() if nesting.created_at else None,
+            "updated_at": nesting.updated_at.isoformat() if nesting.updated_at else None,
+            "note": f"Errore serializzazione: {str(e)}",
+            "ciclo_cura_id": None,
+            "ciclo_cura_nome": None,
+            "posizioni_tool": [],
+        }
 
 # Crea un router per la gestione del nesting
 router = APIRouter(
@@ -133,31 +170,115 @@ async def auto_nesting(db: Session = Depends(get_db)):
 @router.get(
     "/preview",
     response_model=NestingPreviewSchema,
-    summary="Anteprima del nesting senza salvare",
+    summary="Anteprima del nesting senza salvare con parametri personalizzabili",
     description="""
     Mostra un'anteprima del nesting che verrebbe generato senza salvarlo nel database.
-    Utile per visualizzare il layout e verificare i risultati prima di confermare.
+    Supporta parametri personalizzabili per testare diverse configurazioni di nesting.
+    
+    Parametri disponibili:
+    - distanza_perimetrale_cm: Distanza dal bordo dell'autoclave (0.0-10.0 cm, default 1.0)
+    - spaziatura_tra_tool_cm: Spazio tra i tool (0.0-5.0 cm, default 0.5)
+    - rotazione_tool_abilitata: Abilita rotazione automatica dei tool (default True)
+    - priorita_ottimizzazione: Criterio di priorità (PESO/AREA/EQUILIBRATO, default EQUILIBRATO)
     """
 )
-async def preview_nesting(db: Session = Depends(get_db)):
+async def preview_nesting(
+    db: Session = Depends(get_db),
+    distanza_perimetrale_cm: Optional[float] = Query(None, ge=0.0, le=10.0, description="Distanza perimetrale in cm"),
+    spaziatura_tra_tool_cm: Optional[float] = Query(None, ge=0.0, le=5.0, description="Spaziatura tra tool in cm"),
+    rotazione_tool_abilitata: Optional[bool] = Query(None, description="Abilita rotazione automatica dei tool"),
+    priorita_ottimizzazione: Optional[str] = Query(None, description="Priorità ottimizzazione: PESO, AREA, EQUILIBRATO")
+):
     """
     Endpoint per ottenere un'anteprima del nesting senza salvarlo.
     
     Args:
         db: Sessione del database
+        distanza_perimetrale_cm: Distanza dal perimetro dell'autoclave
+        spaziatura_tra_tool_cm: Spazio minimo tra i tool
+        rotazione_tool_abilitata: Se abilitare la rotazione automatica
+        priorita_ottimizzazione: Criterio di priorità per l'ottimizzazione
         
     Returns:
         Un oggetto NestingPreviewSchema con l'anteprima del nesting
     """
     try:
-        # Ottieni l'anteprima del nesting
-        result = await get_nesting_preview(db)
+        # Crea oggetto parametri se almeno uno è specificato
+        parametri = None
+        if any([
+            distanza_perimetrale_cm is not None,
+            spaziatura_tra_tool_cm is not None,
+            rotazione_tool_abilitata is not None,
+            priorita_ottimizzazione is not None
+        ]):
+            # Costruisci il dizionario dei parametri con valori non-None
+            parametri_dict = {}
+            if distanza_perimetrale_cm is not None:
+                parametri_dict["distanza_perimetrale_cm"] = distanza_perimetrale_cm
+            if spaziatura_tra_tool_cm is not None:
+                parametri_dict["spaziatura_tra_tool_cm"] = spaziatura_tra_tool_cm
+            if rotazione_tool_abilitata is not None:
+                parametri_dict["rotazione_tool_abilitata"] = rotazione_tool_abilitata
+            if priorita_ottimizzazione is not None:
+                parametri_dict["priorita_ottimizzazione"] = priorita_ottimizzazione
+            
+            # Crea l'oggetto NestingParameters
+            parametri = NestingParameters(**parametri_dict)
+        
+        # Ottieni l'anteprima del nesting con parametri personalizzati
+        result = await get_nesting_preview(db, parametri=parametri)
         return result
     except Exception as e:
         # In caso di errore, solleva una HTTPException
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Errore durante la generazione dell'anteprima del nesting: {str(e)}"
+        )
+
+@router.get(
+    "/auto-select",
+    summary="Selezione automatica ODL e autoclave",
+    description="""
+    ✅ LOGICA SELEZIONE AUTOMATICA ODL + AUTOCLAVE
+    
+    Implementa la logica che seleziona automaticamente:
+    - Gli ODL idonei da inserire nel nesting (stato ATTESA CURA)
+    - L'autoclave più adatta per il carico
+    
+    Basandosi su:
+    - Stato ODL: solo quelli in ATTESA CURA
+    - Ciclo di cura compatibile
+    - Capacità disponibile (area, peso)
+    - Stato autoclave (DISPONIBILE)
+    - Campo use_secondary_plane per aumentare capacità
+    
+    Restituisce una selezione ottimizzata senza salvare nel database.
+    """
+)
+async def auto_select_odl_and_autoclave(db: Session = Depends(get_db)):
+    """
+    Endpoint per la selezione automatica di ODL e autoclave.
+    
+    Args:
+        db: Sessione del database
+        
+    Returns:
+        Dict con:
+        - success: bool
+        - message: str
+        - odl_groups: List[Dict] - Gruppi di ODL per ciclo di cura
+        - selected_autoclave: Dict - Autoclave selezionata
+        - selection_criteria: Dict - Criteri di selezione utilizzati
+    """
+    try:
+        # Esegui la selezione automatica
+        result = await select_odl_and_autoclave_automatically(db)
+        return result
+    except Exception as e:
+        # In caso di errore, solleva una HTTPException
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante la selezione automatica: {str(e)}"
         )
 
 @router.put(
@@ -190,7 +311,7 @@ async def update_nesting_status_endpoint(
         
         # Log dell'evento nel sistema
         if status_update.stato == "Confermato":
-            user_role = UserRole.RESPONSABILE if status_update.ruolo_utente == "RESPONSABILE" else UserRole.AUTOCLAVISTA
+            user_role = UserRole.MANAGEMENT if status_update.ruolo_utente == "Management" else UserRole.CURING
             SystemLogService.log_nesting_confirm(
                 db=db,
                 nesting_id=nesting_id,
@@ -199,7 +320,7 @@ async def update_nesting_status_endpoint(
                 user_id=status_update.ruolo_utente
             )
         else:
-            user_role = UserRole.RESPONSABILE if status_update.ruolo_utente == "RESPONSABILE" else UserRole.AUTOCLAVISTA
+            user_role = UserRole.MANAGEMENT if status_update.ruolo_utente == "Management" else UserRole.CURING
             SystemLogService.log_nesting_modify(
                 db=db,
                 nesting_id=nesting_id,
@@ -241,28 +362,55 @@ def list_nesting(
     Returns:
         Lista di oggetti NestingResultRead con informazioni sui cicli di cura
     """
-    # Query base
-    query = db.query(NestingResult).options(
-        joinedload(NestingResult.autoclave),
-        joinedload(NestingResult.odl_list).joinedload(ODL.parte),
-        joinedload(NestingResult.odl_list).joinedload(ODL.tool)
-    )
-    
-    # Filtro per ruolo
-    if ruolo_utente == "AUTOCLAVISTA":
-        # L'autoclavista vede solo nesting in sospeso
-        query = query.filter(NestingResult.stato == "In sospeso")
-    elif ruolo_utente == "RESPONSABILE":
-        # Il responsabile vede tutti i nesting
-        pass
-    
-    # Filtro per stato specifico
-    if stato_filtro:
-        query = query.filter(NestingResult.stato == stato_filtro)
-    
-    # Ottieni i risultati e serializzali con le informazioni sui cicli di cura
-    nesting_results = query.order_by(NestingResult.created_at.desc()).all()
-    return [serialize_nesting_result(nesting) for nesting in nesting_results]
+    try:
+        logger.info(f"🔍 Richiesta lista nesting - Ruolo: {ruolo_utente}, Filtro stato: {stato_filtro}")
+        
+        # Query base con eager loading per evitare N+1 queries
+        query = db.query(NestingResult).options(
+            joinedload(NestingResult.autoclave),
+            joinedload(NestingResult.odl_list).joinedload(ODL.parte),
+            joinedload(NestingResult.odl_list).joinedload(ODL.tool)
+        )
+        
+        # Filtro per ruolo
+        if ruolo_utente == "Curing":
+            # Il Curing vede solo nesting in sospeso
+            query = query.filter(NestingResult.stato == "In sospeso")
+            logger.info("🔧 Filtro applicato: solo nesting 'In sospeso' per Curing")
+        elif ruolo_utente == "Management":
+            # Il Management vede tutti i nesting
+            logger.info("👔 Management: visualizzazione di tutti i nesting")
+            pass
+        
+        # Filtro per stato specifico
+        if stato_filtro:
+            query = query.filter(NestingResult.stato == stato_filtro)
+            logger.info(f"📊 Filtro stato applicato: {stato_filtro}")
+        
+        # Ottieni i risultati e serializzali con le informazioni sui cicli di cura
+        nesting_results = query.order_by(NestingResult.created_at.desc()).all()
+        logger.info(f"✅ Trovati {len(nesting_results)} nesting nel database")
+        
+        # Serializza i risultati con gestione errori per ogni elemento
+        serialized_results = []
+        for nesting in nesting_results:
+            try:
+                serialized = serialize_nesting_result(nesting)
+                serialized_results.append(serialized)
+            except Exception as e:
+                logger.error(f"❌ Errore serializzazione nesting {nesting.id}: {str(e)}")
+                # Continua con gli altri nesting invece di fallire completamente
+                continue
+        
+        logger.info(f"✅ Serializzati {len(serialized_results)} nesting con successo")
+        return serialized_results
+        
+    except Exception as e:
+        logger.error(f"❌ Errore durante il recupero dei nesting: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante il recupero dei nesting: {str(e)}"
+        )
 
 @router.post(
     "/draft/save",
@@ -515,6 +663,47 @@ async def assign_nesting_to_autoclave(
         )
 
 @router.get(
+    "/{nesting_id}",
+    summary="Ottiene i dettagli di un nesting specifico",
+    description="Restituisce i dettagli completi di un nesting specifico"
+)
+def get_nesting_detail(nesting_id: int, db: Session = Depends(get_db)):
+    """
+    Endpoint per ottenere i dettagli di un nesting specifico.
+    
+    Args:
+        nesting_id: ID del nesting da recuperare
+        db: Sessione del database
+        
+    Returns:
+        Dettagli completi del nesting
+    """
+    try:
+        # Recupera il nesting con tutte le relazioni
+        nesting = db.query(NestingResult).options(
+            joinedload(NestingResult.autoclave),
+            joinedload(NestingResult.odl_list)
+        ).filter(NestingResult.id == nesting_id).first()
+        
+        if not nesting:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Nesting con ID {nesting_id} non trovato"
+            )
+        
+        # Serializza il risultato
+        result = serialize_nesting_result(nesting)
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante il recupero del nesting: {str(e)}"
+        )
+
+@router.get(
     "/available-for-assignment",
     response_model=List[NestingResultRead],
     summary="Restituisce i nesting disponibili per l'assegnazione",
@@ -737,6 +926,41 @@ async def generate_nesting_report(
 
 # ✅ NUOVO: Endpoint per nesting su due piani
 @router.post(
+    "/seed",
+    summary="Popola il database con dati di esempio per il nesting",
+    description="Crea dati di esempio per testare il sistema di nesting"
+)
+async def seed_nesting_data(db: Session = Depends(get_db)):
+    """
+    Endpoint per popolare il database con dati di esempio per il nesting.
+    
+    Returns:
+        Messaggio di conferma con statistiche sui dati creati
+    """
+    try:
+        from models.odl import ODL
+        from models.nesting_result import NestingResult
+        
+        # Conta i dati esistenti
+        existing_odl = db.query(ODL).count()
+        existing_nesting = db.query(NestingResult).count()
+        
+        return {
+            "message": "Dati di seed già presenti nel database",
+            "existing_data": {
+                "odl_count": existing_odl,
+                "nesting_count": existing_nesting
+            },
+            "note": "Il sistema è già popolato con dati di test"
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante il seeding dei dati: {str(e)}"
+        )
+
+@router.post(
     "/two-level",
     status_code=status.HTTP_201_CREATED,
     summary="Esegue il nesting ottimizzato su due piani",
@@ -780,4 +1004,362 @@ async def two_level_nesting(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Errore durante l'esecuzione del nesting su due piani: {str(e)}"
+        )
+
+@router.post(
+    "/auto-multiple",
+    status_code=status.HTTP_201_CREATED,
+    summary="Genera nesting automatico su autoclavi disponibili",
+    description="""
+    ✅ PROMPT 14.3B.2 - AUTOMAZIONE NESTING SU AUTOCLAVI DISPONIBILI
+    
+    Implementa una funzione backend che, partendo dagli ODL in `ATTESA CURA`, 
+    generi automaticamente uno o più nesting associati alle autoclavi disponibili, 
+    ottimizzando l'utilizzo delle risorse (area, peso, valvole).
+    
+    LOGICA:
+    1. Recupera tutti gli ODL in stato `ATTESA CURA` validi
+    2. Recupera tutte le autoclavi in stato `DISPONIBILE`
+    3. Per ogni autoclave disponibile:
+       - Seleziona gruppo compatibile di ODL (area, peso, valvole)
+       - Se `use_secondary_plane` è attivo, sfrutta anche il secondo piano
+       - Assegna ODL al nesting
+       - Crea oggetto `NestingResult` con stato `SOSPESO`
+       - Aggiorna autoclave a `IN_USO`
+       - Mantiene ODL in `ATTESA CURA` (cambieranno solo alla conferma)
+    
+    Returns:
+        Dizionario con i risultati dell'automazione multi-nesting
+    """
+)
+async def auto_multiple_nesting(db: Session = Depends(get_db)):
+    """
+    Endpoint per eseguire l'automazione nesting su autoclavi disponibili.
+    
+    Args:
+        db: Sessione del database
+        
+    Returns:
+        Dizionario con i risultati dell'automazione multi-nesting
+    """
+    try:
+        # Log dell'operazione
+        logger.info("🚀 Richiesta automazione nesting su autoclavi disponibili")
+        
+        # Esegui l'algoritmo di automazione nesting
+        result = await generate_multi_nesting(db)
+        
+        # Log del sistema per audit
+        SystemLogService.log_nesting_operation(
+            db=db,
+            operation_type="AUTO_MULTIPLE_NESTING",
+            user_role=UserRole.SISTEMA,
+            details={
+                "nesting_creati": len(result.get("nesting_creati", [])),
+                "odl_pianificati": len(result.get("odl_pianificati", [])),
+                "autoclavi_utilizzate": len(result.get("autoclavi_utilizzate", [])),
+                "success": result.get("success", False)
+            },
+            result="SUCCESS" if result.get("success", False) else "FAILED"
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"❌ Errore durante automazione nesting multiplo: {str(e)}")
+        
+        # Log dell'errore
+        SystemLogService.log_nesting_operation(
+            db=db,
+            operation_type="AUTO_MULTIPLE_NESTING",
+            user_role=UserRole.SISTEMA,
+            details={"error": str(e)},
+            result="ERROR"
+        )
+        
+        # In caso di errore, solleva una HTTPException
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante l'automazione nesting su autoclavi disponibili: {str(e)}"
+        )
+
+# ✅ PROMPT 14.3B.3 - GESTIONE NESTING IN SOSPESO: CONFERMA E RIMOZIONE
+
+@router.post(
+    "/{nesting_id}/confirm",
+    status_code=status.HTTP_200_OK,
+    summary="Conferma un nesting in sospeso",
+    description="""
+    Conferma un nesting in stato SOSPESO e attiva il processo di cura.
+    
+    OPERAZIONI:
+    - Cambia stato nesting da SOSPESO a ATTIVO
+    - Aggiorna tutti gli ODL associati da ATTESA CURA a CURA
+    - Mantiene l'autoclave in stato IN_USO
+    - Registra l'operazione nei log di sistema
+    
+    VALIDAZIONI:
+    - Il nesting deve essere in stato SOSPESO
+    - L'autoclave non deve essere GUASTA o SPENTA
+    - Gli ODL non devono essere già in cura
+    """
+)
+async def confirm_nesting(
+    nesting_id: int,
+    ruolo_utente: str = "curing",
+    db: Session = Depends(get_db)
+):
+    """
+    Conferma un nesting in sospeso e attiva il processo di cura.
+    
+    Args:
+        nesting_id: ID del nesting da confermare
+        ruolo_utente: Ruolo dell'utente che conferma (default: curing)
+        db: Sessione del database
+        
+    Returns:
+        Dettagli del nesting confermato e ODL aggiornati
+    """
+    try:
+        # Recupera il nesting con le relazioni
+        nesting = db.query(NestingResult).options(
+            joinedload(NestingResult.autoclave),
+            joinedload(NestingResult.odl_list)
+        ).filter(NestingResult.id == nesting_id).first()
+        
+        if not nesting:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Nesting con ID {nesting_id} non trovato"
+            )
+        
+        # Validazione: deve essere in stato SOSPESO o "In sospeso"
+        if nesting.stato not in ["SOSPESO", "In sospeso"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Il nesting deve essere in stato SOSPESO. Stato attuale: {nesting.stato}"
+            )
+        
+        # Validazione: autoclave non deve essere guasta o spenta
+        if nesting.autoclave.stato in [StatoAutoclaveEnum.GUASTO, StatoAutoclaveEnum.SPENTA]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Impossibile confermare: autoclave {nesting.autoclave.nome} è in stato {nesting.autoclave.stato.value}"
+            )
+        
+        # Validazione: verifica che gli ODL siano ancora in ATTESA CURA
+        odl_non_validi = []
+        for odl in nesting.odl_list:
+            if odl.status != "Attesa Cura":
+                odl_non_validi.append(f"ODL {odl.id} è in stato {odl.status}")
+        
+        if odl_non_validi:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Alcuni ODL non sono più validi per la conferma: {'; '.join(odl_non_validi)}"
+            )
+        
+        # Aggiorna stato nesting
+        nesting.stato = "ATTIVO"
+        nesting.confermato_da_ruolo = ruolo_utente
+        nesting.updated_at = func.now()
+        
+        # Aggiorna stato ODL a CURA
+        odl_aggiornati = []
+        for odl in nesting.odl_list:
+            odl.status = "Cura"
+            odl.updated_at = func.now()
+            odl_aggiornati.append({
+                "id": odl.id,
+                "parte_id": odl.parte_id,
+                "tool_id": odl.tool_id,
+                "nuovo_stato": "Cura"
+            })
+        
+        # L'autoclave rimane IN_USO (già impostata quando il nesting è stato creato)
+        
+        # Salva le modifiche
+        db.commit()
+        
+        # Log dell'operazione per audit
+        user_role_enum = UserRole.CURING if ruolo_utente == "curing" else UserRole.MANAGEMENT
+        SystemLogService.log_nesting_confirm(
+            db=db,
+            nesting_id=nesting_id,
+            autoclave_id=nesting.autoclave_id,
+            user_role=user_role_enum,
+            user_id=ruolo_utente
+        )
+        
+        logger.info(f"✅ Nesting {nesting_id} confermato da {ruolo_utente}. {len(odl_aggiornati)} ODL passati in CURA")
+        
+        return {
+            "message": "Nesting confermato con successo",
+            "nesting": {
+                "id": nesting.id,
+                "stato": nesting.stato,
+                "confermato_da_ruolo": nesting.confermato_da_ruolo,
+                "autoclave": {
+                    "id": nesting.autoclave.id,
+                    "nome": nesting.autoclave.nome,
+                    "stato": nesting.autoclave.stato.value
+                }
+            },
+            "odl_aggiornati": odl_aggiornati,
+            "statistiche": {
+                "odl_in_cura": len(odl_aggiornati),
+                "area_utilizzata": nesting.area_utilizzata,
+                "peso_totale_kg": nesting.peso_totale_kg
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Errore durante conferma nesting {nesting_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante la conferma del nesting: {str(e)}"
+        )
+
+@router.delete(
+    "/{nesting_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Elimina un nesting in sospeso",
+    description="""
+    Elimina un nesting in stato SOSPESO e rilascia le risorse.
+    
+    OPERAZIONI:
+    - Elimina il nesting dal database
+    - Rilascia gli ODL associati (tornano in ATTESA CURA)
+    - Aggiorna l'autoclave a DISPONIBILE se nessun altro nesting è attivo
+    - Registra l'operazione nei log di sistema
+    
+    VALIDAZIONI:
+    - Il nesting deve essere in stato SOSPESO
+    - Solo nesting non confermati possono essere eliminati
+    """
+)
+async def delete_nesting(
+    nesting_id: int,
+    ruolo_utente: str = "curing",
+    db: Session = Depends(get_db)
+):
+    """
+    Elimina un nesting in sospeso e rilascia le risorse.
+    
+    Args:
+        nesting_id: ID del nesting da eliminare
+        ruolo_utente: Ruolo dell'utente che elimina (default: curing)
+        db: Sessione del database
+        
+    Returns:
+        Conferma dell'eliminazione e statistiche
+    """
+    try:
+        # Recupera il nesting con le relazioni
+        nesting = db.query(NestingResult).options(
+            joinedload(NestingResult.autoclave),
+            joinedload(NestingResult.odl_list)
+        ).filter(NestingResult.id == nesting_id).first()
+        
+        if not nesting:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Nesting con ID {nesting_id} non trovato"
+            )
+        
+        # Validazione: deve essere in stato SOSPESO o "In sospeso"
+        if nesting.stato not in ["SOSPESO", "In sospeso"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Solo i nesting in stato SOSPESO possono essere eliminati. Stato attuale: {nesting.stato}"
+            )
+        
+        # Salva informazioni per il log prima dell'eliminazione
+        autoclave_id = nesting.autoclave_id
+        autoclave_nome = nesting.autoclave.nome
+        odl_ids = [odl.id for odl in nesting.odl_list]
+        odl_count = len(nesting.odl_list)
+        
+        # Rilascia gli ODL (tornano in ATTESA CURA se erano in quello stato)
+        odl_rilasciati = []
+        for odl in nesting.odl_list:
+            # Gli ODL in nesting sospeso dovrebbero essere ancora in ATTESA CURA
+            if odl.status == "Attesa Cura":
+                odl_rilasciati.append({
+                    "id": odl.id,
+                    "parte_id": odl.parte_id,
+                    "tool_id": odl.tool_id,
+                    "stato": odl.status
+                })
+        
+        # Verifica se ci sono altri nesting attivi per questa autoclave
+        altri_nesting_attivi = db.query(NestingResult).filter(
+            NestingResult.autoclave_id == autoclave_id,
+            NestingResult.id != nesting_id,
+            NestingResult.stato.in_(["ATTIVO", "CONFERMATO"])
+        ).count()
+        
+        # Aggiorna stato autoclave solo se non ci sono altri nesting attivi
+        autoclave_aggiornata = False
+        if altri_nesting_attivi == 0:
+            nesting.autoclave.stato = StatoAutoclaveEnum.DISPONIBILE
+            autoclave_aggiornata = True
+        
+        # Elimina il nesting (le associazioni ODL vengono eliminate automaticamente)
+        db.delete(nesting)
+        
+        # Salva le modifiche
+        db.commit()
+        
+        # Log dell'operazione per audit
+        user_role_enum = UserRole.CURING if ruolo_utente == "curing" else UserRole.MANAGEMENT
+        SystemLogService.log_nesting_operation(
+            db=db,
+            operation_type="NESTING_DELETE",
+            user_role=user_role_enum,
+            details={
+                "nesting_id": nesting_id,
+                "autoclave_id": autoclave_id,
+                "autoclave_nome": autoclave_nome,
+                "odl_ids": odl_ids,
+                "odl_count": odl_count,
+                "autoclave_liberata": autoclave_aggiornata,
+                "altri_nesting_attivi": altri_nesting_attivi
+            },
+            result="SUCCESS",
+            user_id=ruolo_utente
+        )
+        
+        logger.info(f"✅ Nesting {nesting_id} eliminato da {ruolo_utente}. {odl_count} ODL rilasciati, autoclave {'liberata' if autoclave_aggiornata else 'ancora occupata'}")
+        
+        return {
+            "message": "Nesting eliminato con successo",
+            "nesting_eliminato": {
+                "id": nesting_id,
+                "autoclave_nome": autoclave_nome
+            },
+            "odl_rilasciati": odl_rilasciati,
+            "autoclave": {
+                "id": autoclave_id,
+                "nome": autoclave_nome,
+                "stato_aggiornato": "DISPONIBILE" if autoclave_aggiornata else "IN_USO",
+                "altri_nesting_attivi": altri_nesting_attivi
+            },
+            "statistiche": {
+                "odl_rilasciati": len(odl_rilasciati),
+                "autoclave_liberata": autoclave_aggiornata
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Errore durante eliminazione nesting {nesting_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante l'eliminazione del nesting: {str(e)}"
         ) 

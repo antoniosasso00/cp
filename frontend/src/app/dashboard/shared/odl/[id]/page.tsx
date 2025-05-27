@@ -177,7 +177,7 @@ export default function ODLDetailsPage() {
         'cura': 'Cura'
       }
       
-      await odlApi.update(Number(odlId), { status: statoMap[fase] })
+      await odlApi.updateStatus(Number(odlId), statoMap[fase])
       
       // Ricarica i dati
       window.location.reload()
@@ -215,7 +215,7 @@ export default function ODLDetailsPage() {
         'cura': 'Finito'
       }
       
-      await odlApi.update(Number(odlId), { status: nextState[faseName] })
+              await odlApi.updateStatus(Number(odlId), nextState[faseName])
       
       // Ricarica i dati
       window.location.reload()
@@ -249,7 +249,7 @@ export default function ODLDetailsPage() {
     <div className="space-y-6">
       <div className="flex items-center gap-2">
         <Button variant="outline" size="sm" asChild>
-          <Link href="/dashboard/odl">
+          <Link href="/dashboard/shared/odl">
             <ChevronLeft className="h-4 w-4 mr-1" />
             Torna alla lista
           </Link>

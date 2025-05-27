@@ -39,11 +39,13 @@ export function useToolsWithStatus(options: UseToolsWithStatusOptions = {}): Use
   
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const isActiveRef = useRef(true)
+  const isFetchingRef = useRef(false)
 
   const fetchTools = useCallback(async () => {
-    if (!isActiveRef.current) return
+    if (!isActiveRef.current || isFetchingRef.current) return
     
     try {
+      isFetchingRef.current = true
       setError(null)
       console.log('🔄 Fetching tools with status...', filters)
       const data = await toolApi.getAllWithStatus(filters)
@@ -77,18 +79,37 @@ export function useToolsWithStatus(options: UseToolsWithStatusOptions = {}): Use
       setError(errorMessage)
     } finally {
       setLoading(false)
+      isFetchingRef.current = false
     }
   }, [filters])
 
   const syncStatus = useCallback(async () => {
     try {
       setError(null)
-      await toolApi.updateStatusFromODL()
+      console.log('🔄 Sincronizzazione stato tools...')
+      const result = await toolApi.updateStatusFromODL()
+      console.log('✅ Sincronizzazione completata:', result)
+      
       // Dopo la sincronizzazione, ricarica i dati
       await fetchTools()
-    } catch (err) {
-      console.error('Errore nella sincronizzazione dello stato dei tool:', err)
-      setError(err instanceof Error ? err.message : 'Errore nella sincronizzazione')
+    } catch (err: any) {
+      console.error('❌ Errore nella sincronizzazione dello stato dei tool:', err)
+      
+      // Gestione migliorata degli errori
+      let errorMessage = 'Errore nella sincronizzazione dello stato dei tools'
+      
+      if (err?.response?.status === 422) {
+        errorMessage = 'Errore di validazione durante la sincronizzazione'
+      } else if (err?.response?.status === 500) {
+        errorMessage = 'Errore interno del server durante la sincronizzazione'
+      } else if (err?.message) {
+        errorMessage = err.message
+      } else if (typeof err === 'string') {
+        errorMessage = err
+      }
+      
+      setError(errorMessage)
+      throw new Error(errorMessage) // Rilancia l'errore con messaggio leggibile
     }
   }, [fetchTools])
 

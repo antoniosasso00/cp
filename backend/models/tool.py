@@ -19,7 +19,7 @@ class Tool(Base, TimestampMixin):
     larghezza_piano = Column(Float, nullable=False, doc="Larghezza utile del tool")
     
     # ✅ NUOVO: Campi per nesting su due piani
-    peso = Column(Float, nullable=True, default=0.0, doc="Peso del tool in kg")
+    peso = Column(Float, nullable=True, doc="Peso del tool in kg")
     materiale = Column(String(100), nullable=True, doc="Materiale del tool (es. Alluminio, Acciaio, etc.)")
     
     # Stato e disponibilità

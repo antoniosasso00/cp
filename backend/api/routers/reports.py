@@ -363,6 +363,127 @@ async def download_report_by_id(
         )
 
 @router.get(
+    "/nesting-efficiency",
+    summary="Report di efficienza del nesting",
+    description="Restituisce statistiche di efficienza del sistema di nesting"
+)
+async def get_nesting_efficiency_report(db: Session = Depends(get_db)):
+    """
+    Endpoint per ottenere il report di efficienza del nesting.
+    
+    Returns:
+        Statistiche di efficienza del sistema di nesting
+    """
+    try:
+        from models.nesting_result import NestingResult
+        from sqlalchemy import func
+        
+        # Calcola statistiche di efficienza
+        total_nestings = db.query(NestingResult).count()
+        
+        # Efficienza media area
+        avg_area_efficiency = db.query(
+            func.avg((NestingResult.area_utilizzata / NestingResult.area_totale) * 100)
+        ).scalar() or 0
+        
+        # Efficienza media valvole
+        avg_valve_efficiency = db.query(
+            func.avg((NestingResult.valvole_utilizzate / NestingResult.valvole_totali) * 100)
+        ).scalar() or 0
+        
+        # Nesting per stato
+        nesting_by_status = db.query(
+            NestingResult.stato,
+            func.count(NestingResult.id)
+        ).group_by(NestingResult.stato).all()
+        
+        return {
+            "total_nestings": total_nestings,
+            "average_area_efficiency": round(avg_area_efficiency, 2),
+            "average_valve_efficiency": round(avg_valve_efficiency, 2),
+            "nesting_by_status": {status: count for status, count in nesting_by_status},
+            "generated_at": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante la generazione del report di efficienza: {str(e)}"
+        )
+
+@router.get(
+    "/nesting/{nesting_id}/download",
+    summary="Scarica il report PDF di un nesting specifico",
+    description="Scarica il report PDF associato a un nesting completato"
+)
+async def download_nesting_report(
+    nesting_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint per scaricare il report PDF di un nesting specifico.
+    
+    Args:
+        nesting_id: ID del nesting di cui scaricare il report
+        db: Sessione del database
+        
+    Returns:
+        File PDF del report
+    """
+    try:
+        from models.nesting_result import NestingResult
+        
+        # Trova il nesting con il report associato
+        nesting = db.query(NestingResult).filter(NestingResult.id == nesting_id).first()
+        if not nesting:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Nesting con ID {nesting_id} non trovato"
+            )
+        
+        # Verifica che il nesting abbia un report associato
+        if not nesting.report_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Nessun report trovato per il nesting {nesting_id}"
+            )
+        
+        # Recupera il record del report
+        report = db.query(Report).filter(Report.id == nesting.report_id).first()
+        if not report:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Record del report non trovato nel database"
+            )
+        
+        # Verifica che il file esista
+        if not os.path.exists(report.file_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"File del report non trovato: {report.file_path}"
+            )
+        
+        # Restituisce il file PDF
+        return FileResponse(
+            path=report.file_path,
+            filename=report.filename,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename={report.filename}",
+                "Cache-Control": "no-cache"
+            }
+        )
+        
+    except HTTPException:
+        # Rilancia le HTTPException così come sono
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante il download del report: {str(e)}"
+        )
+
+@router.get(
     "/download/{filename}",
     summary="Scarica un report specifico per nome file",
     description="Scarica un report PDF esistente tramite nome file (compatibilità)"
