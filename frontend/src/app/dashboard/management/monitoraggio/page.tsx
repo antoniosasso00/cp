@@ -256,20 +256,18 @@ export default function MonitoraggioPage() {
     }
 
     try {
-      // TODO: Implementare API per ripristino stato
-      // await odlApi.restoreStatus(odlId)
+      const result = await odlApi.restoreStatus(odlId)
       toast({
-        title: 'Funzionalità non disponibile',
-        description: `Il ripristino dello stato sarà implementato in una versione futura.`,
-        variant: 'destructive',
+        title: 'Stato ripristinato',
+        description: `✅ Stato ODL ${odlId} ripristinato a: ${result.status}`,
       })
-      // fetchData()
+      fetchData() // Ricarica i dati per mostrare le modifiche
     } catch (error) {
       console.error(`Errore durante il ripristino:`, error)
       toast({
         variant: 'destructive',
         title: 'Errore',
-        description: `Impossibile ripristinare lo stato dell'ODL.`,
+        description: `Impossibile ripristinare lo stato dell'ODL. ${error instanceof Error ? error.message : ''}`,
       })
     }
   }

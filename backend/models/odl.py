@@ -29,6 +29,12 @@ class ODL(Base, TimestampMixin):
         doc="Stato corrente dell'ordine di lavoro"
     )
     
+    previous_status = Column(
+        String(20),
+        nullable=True,
+        doc="Stato precedente dell'ordine di lavoro (per funzione ripristino)"
+    )
+    
     note = Column(Text, nullable=True,
                  doc="Note aggiuntive sull'ordine di lavoro")
     

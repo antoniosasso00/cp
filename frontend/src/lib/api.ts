@@ -661,6 +661,19 @@ export const odlApi = {
     const response = await api.get(`/odl-monitoring/monitoring/${id}`);
     return response.data;
   },
+
+  // Funzione per ripristinare lo stato precedente di un ODL
+  restoreStatus: async (id: number): Promise<ODLResponse> => {
+    try {
+      console.log(`🔄 Ripristino stato ODL ${id}...`);
+      const response = await api.post<ODLResponse>(`/odl/${id}/restore-status`);
+      console.log(`✅ Stato ODL ${id} ripristinato con successo a: ${response.data.status}`);
+      return response.data;
+    } catch (error) {
+      console.error(`❌ Errore ripristino stato ODL ${id}:`, error);
+      throw error;
+    }
+  },
 };
 
 // Tipi base per TempoFase

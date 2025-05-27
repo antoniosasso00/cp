@@ -10,6 +10,9 @@ class ODLBase(BaseModel):
     status: Literal["Preparazione", "Laminazione", "In Coda", "Attesa Cura", "Cura", "Finito"] = Field(
         "Preparazione", description="Stato corrente dell'ordine di lavoro"
     )
+    previous_status: Optional[Literal["Preparazione", "Laminazione", "In Coda", "Attesa Cura", "Cura", "Finito"]] = Field(
+        None, description="Stato precedente dell'ordine di lavoro (per funzione ripristino)"
+    )
     note: Optional[str] = Field(None, description="Note aggiuntive sull'ordine di lavoro")
     motivo_blocco: Optional[str] = Field(None, description="Motivo per cui l'ODL è bloccato")
 
@@ -24,6 +27,9 @@ class ODLUpdate(BaseModel):
     priorita: Optional[int] = Field(None, ge=1, description="Priorità dell'ordine di lavoro (numero più alto = priorità maggiore)")
     status: Optional[Literal["Preparazione", "Laminazione", "In Coda", "Attesa Cura", "Cura", "Finito"]] = Field(
         None, description="Stato corrente dell'ordine di lavoro"
+    )
+    previous_status: Optional[Literal["Preparazione", "Laminazione", "In Coda", "Attesa Cura", "Cura", "Finito"]] = Field(
+        None, description="Stato precedente dell'ordine di lavoro (per funzione ripristino)"
     )
     note: Optional[str] = Field(None, description="Note aggiuntive sull'ordine di lavoro")
     motivo_blocco: Optional[str] = Field(None, description="Motivo per cui l'ODL è bloccato")
