@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'add_use_secondary_plane'
-down_revision = '20250526_125334_add_system_logs_table'
+down_revision = '1313c0186228'
 branch_labels = None
 depends_on = None
 

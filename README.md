@@ -16,17 +16,19 @@ Sistema completo per la gestione della produzione con autoclavi, ottimizzazione 
 - **Storico Filtrabile**: Cronologia ODL con filtri per stato, ricerca e range date
 - **Indicatori Colorati**: Stati visivi per performance e trend
 
-### 🔧 **NUOVO: Parametri di Nesting Regolabili** ⭐
-- **Controlli in tempo reale**: Modifica distanza perimetrale, spaziatura tool, rotazione automatica
-- **Preview dinamica**: Visualizzazione immediata dei risultati senza salvare
-- **Ottimizzazione personalizzata**: Priorità configurabile (peso/area/equilibrato)
-- **Interfaccia intuitiva**: Pannello dedicato con slider, toggle e dropdown
+### 🔧 **NUOVO: Sistema Nesting Rifattorizzato** ⭐
+- **Gestione Stati Strutturata**: Bozza → In Sospeso → Confermato → Completato/Annullato
+- **Blocco Autoclavi Solo alla Conferma**: Le autoclavi rimangono disponibili durante la generazione
+- **Algoritmo Batch Multi-Autoclave**: Ottimizzazione intelligente su tutte le autoclavi disponibili
+- **Parametri Personalizzabili**: Controllo completo di padding, bordi, valvole e rotazione
+- **Workflow Approvazioni**: Sistema di conferme per operazioni critiche
 
 ### 🎯 Sistema di Nesting Avanzato
-- Ottimizzazione automatica del posizionamento ODL nelle autoclavi
-- Nesting su due piani con gestione peso e area
-- Preview interattiva con drag & drop
-- Generazione automatica multipla per tutte le autoclavi disponibili
+- **Ottimizzazione Multi-Autoclave**: Distribuzione intelligente degli ODL su più autoclavi
+- **Nesting su Due Piani**: Gestione peso e area con configurazione superficie secondaria
+- **Preview Interattiva**: Visualizzazione in tempo reale con drag & drop
+- **Parametri Configurabili**: Spaziatura, bordi, limite valvole, rotazione automatica
+- **Scoring Intelligente**: Algoritmo di compatibilità autoclave-ODL per ottimizzazione
 
 ### 📊 Gestione Produzione
 - Monitoraggio ODL in tempo reale
@@ -59,7 +61,7 @@ Sistema completo per la gestione della produzione con autoclavi, ottimizzazione 
 ### Backend
 - **FastAPI**: Framework Python ad alte performance per API REST
 - **SQLAlchemy**: ORM per gestione database con modelli tipizzati
-- **PostgreSQL**: Database relazionale per persistenza dati
+- **PostgreSQL/SQLite**: Database relazionale per persistenza dati
 - **Pydantic**: Validazione dati e serializzazione automatica
 
 ### Frontend
@@ -73,6 +75,7 @@ Sistema completo per la gestione della produzione con autoclavi, ottimizzazione 
 - **Ottimizzazione Multi-obiettivo**: Bilanciamento area, valvole e priorità
 - **Bin Packing 2D**: Algoritmi per posizionamento ottimale tools
 - **Constraint Solving**: Gestione vincoli fisici e operativi
+- **Batch Processing**: Algoritmi per ottimizzazione multi-autoclave
 
 ## 🚀 Quick Start
 
@@ -97,7 +100,16 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. **Setup Frontend**
+3. **Configurazione Database**
+```bash
+# Esegui le migrazioni per aggiornare il database
+python migrations/add_nesting_enum_and_parameters.py
+
+# Valida la coerenza dei dati
+python ../tools/validate_nesting_states.py --verbose
+```
+
+4. **Setup Frontend**
 ```bash
 cd frontend
 npm install
@@ -121,25 +133,32 @@ npm run dev
 - Frontend: http://localhost:3000
 - API Docs: http://localhost:8000/docs
 
-## 🎮 Come Utilizzare i Parametri di Nesting
+## 🎮 Come Utilizzare il Nuovo Sistema Nesting
 
-### 1. Accesso alla Funzionalità
-1. Vai su **Dashboard → Autoclavista → Nesting**
-2. Clicca su **"Anteprima Nesting"**
-3. Il pannello **⚙️ Parametri Nesting** appare sopra la preview
+### 1. Workflow Stati Nesting
+1. **Generazione Bozza**: Crea nesting in stato "bozza" senza bloccare autoclavi
+2. **Promozione a In Sospeso**: Conferma il nesting e blocca l'autoclave
+3. **Conferma Finale**: Sposta ODL in "Cura" e mantiene autoclave occupata
+4. **Completamento**: Libera autoclave e completa il ciclo
 
-### 2. Controlli Disponibili
-- **Distanza Perimetrale** (0-10 cm): Spazio dal bordo dell'autoclave
-- **Spaziatura Tool** (0-5 cm): Spazio minimo tra i componenti
-- **Rotazione Automatica**: Abilita/disabilita rotazione tool per ottimizzare spazio
-- **Priorità Ottimizzazione**: PESO/AREA/EQUILIBRATO
+### 2. Algoritmo Batch Multi-Autoclave
+1. Vai su **Dashboard → Responsabile → Nesting Batch**
+2. Seleziona gli ODL in "Attesa Cura"
+3. Il sistema valuta tutte le autoclavi disponibili
+4. Genera automaticamente nesting ottimizzati per ogni autoclave
+5. Distribuisce gli ODL in modo bilanciato
 
-### 3. Utilizzo
-1. Modifica i parametri con i controlli intuitivi
-2. Clicca **"Applica Modifiche"** per rigenerare la preview
-3. Visualizza immediatamente i risultati
-4. Usa **"Reset Default"** per tornare ai valori predefiniti
-5. Salva o approva quando soddisfatto
+### 3. Parametri Personalizzabili
+- **Padding (mm)**: Spaziatura tra tool (default: 10mm)
+- **Borda (mm)**: Bordo minimo dall'autoclave (default: 20mm)
+- **Max Valvole**: Limite massimo valvole per autoclave (opzionale)
+- **Rotazione**: Abilita/disabilita rotazione automatica tool
+
+### 4. Controlli Disponibili
+1. Modifica i parametri nell'interfaccia dedicata
+2. Visualizza preview in tempo reale
+3. Salva configurazioni personalizzate
+4. Applica a singola autoclave o batch completo
 
 ## 📁 Struttura Progetto
 
@@ -151,6 +170,7 @@ carbonpilot/
 │   ├── schemas/            # Schemi Pydantic
 │   ├── services/           # Logica business
 │   ├── nesting_optimizer/  # Algoritmi ottimizzazione
+│   ├── migrations/         # Script migrazione database
 │   └── tests/              # Test backend
 ├── frontend/               # App React/Next.js
 │   ├── src/
@@ -159,10 +179,13 @@ carbonpilot/
 │   │   ├── lib/          # Utilities e API client
 │   │   └── utils/        # Helper functions
 │   └── public/           # Asset statici
-├── docs/                 # Documentazione
-│   ├── changelog.md      # Log delle modifiche
-│   └── *.md             # Guide specifiche
-└── README.md            # Questo file
+├── tools/                  # Script utilità
+│   ├── validate_nesting_states.py  # Validazione coerenza dati
+│   └── print_schema_summary.py     # Analisi schema database
+├── docs/                   # Documentazione
+│   ├── changelog.md        # Log delle modifiche dettagliato
+│   └── *.md               # Guide specifiche
+└── README.md              # Questo file
 ```
 
 ## 🔧 Configurazione
@@ -183,11 +206,11 @@ NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
 
 ## 📚 Documentazione
 
-- [Parametri Nesting Regolabili](docs/nesting-parametri-regolabili.md) - Guida completa alla nuova funzionalità
-- [Changelog](docs/changelog.md) - Cronologia delle modifiche
+- [Changelog Completo](docs/changelog.md) - Cronologia dettagliata delle modifiche
 - [API Documentation](http://localhost:8000/docs) - Swagger UI (quando il backend è attivo)
+- [Validazione Stati Nesting](tools/validate_nesting_states.py) - Script per controllo coerenza
 
-## 🧪 Testing
+## 🧪 Testing e Validazione
 
 ### Backend
 ```bash
@@ -195,41 +218,71 @@ cd backend
 pytest
 ```
 
+### Validazione Database
+```bash
+cd backend
+# Controllo coerenza stati nesting
+python ../tools/validate_nesting_states.py --verbose
+
+# Correzione automatica inconsistenze
+python ../tools/validate_nesting_states.py --fix --verbose
+```
+
 ### Frontend
 ```bash
 cd frontend
-npm test
-npm run build  # Test build produzione
+npm run test
 ```
 
-### Test Endpoint Parametri
+## 🔄 Migrazioni Database
+
+### Applicazione Migrazioni
 ```bash
-# Test senza parametri
-curl "http://localhost:8000/api/v1/nesting/preview"
-
-# Test con parametri personalizzati
-curl "http://localhost:8000/api/v1/nesting/preview?distanza_perimetrale_cm=2.0&spaziatura_tra_tool_cm=1.0&rotazione_tool_abilitata=true&priorita_ottimizzazione=PESO"
+cd backend
+# Migrazione parametri nesting e enum stati
+python migrations/add_nesting_enum_and_parameters.py
 ```
 
-## 🤝 Contribuire
+### Verifica Post-Migrazione
+```bash
+# Controllo struttura database
+python test_db_data.py
 
-1. Fork del progetto
-2. Crea un branch per la feature (`git checkout -b feature/AmazingFeature`)
-3. Commit delle modifiche (`git commit -m 'Add some AmazingFeature'`)
-4. Push al branch (`git push origin feature/AmazingFeature`)
-5. Apri una Pull Request
+# Validazione coerenza dati
+python ../tools/validate_nesting_states.py --verbose
+```
+
+## 🚨 Troubleshooting
+
+### Problemi Comuni
+
+1. **Errori Enum Stati**: Esegui la migrazione e validazione
+2. **Autoclavi Bloccate**: Usa lo script di validazione con `--fix`
+3. **ODL Inconsistenti**: Controlla log e applica correzioni automatiche
+4. **Parametri Mancanti**: La migrazione imposta valori di default
+
+### Log e Debug
+- Backend logs: Controllare console FastAPI
+- Database: Usare script `test_db_data.py` per diagnostica
+- Validazione: Script `validate_nesting_states.py` per controlli completi
+
+## 📈 Roadmap
+
+- [ ] Interfaccia frontend per nuovo sistema nesting
+- [ ] Dashboard real-time per monitoraggio batch
+- [ ] Ottimizzazioni algoritmo multi-autoclave
+- [ ] Sistema notifiche per stati nesting
+- [ ] Export/import configurazioni parametri
+
+## 🤝 Contributi
+
+Per contribuire al progetto:
+1. Fork del repository
+2. Crea branch feature (`git checkout -b feature/nome-feature`)
+3. Commit modifiche (`git commit -am 'Aggiunge nuova feature'`)
+4. Push al branch (`git push origin feature/nome-feature`)
+5. Crea Pull Request
 
 ## 📄 Licenza
 
-Questo progetto è sotto licenza MIT. Vedi il file `LICENSE` per i dettagli.
-
-## 🆘 Supporto
-
-Per problemi o domande:
-- Apri un issue su GitHub
-- Consulta la documentazione in `docs/`
-- Controlla il changelog per modifiche recenti
-
----
-
-**Sviluppato con ❤️ per l'ottimizzazione della produzione industriale**
+Questo progetto è sotto licenza MIT. Vedi il file `LICENSE` per dettagli.

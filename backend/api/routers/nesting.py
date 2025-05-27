@@ -8,9 +8,16 @@ from sqlalchemy import func
 from typing import List, Optional
 from pydantic import BaseModel
 from models.db import get_db
-from models.nesting_result import NestingResult
-from schemas.nesting import NestingResultSchema, NestingResultRead, NestingPreviewSchema, ManualNestingRequest, NestingParameters
-from services.nesting_service import run_automatic_nesting, get_all_nesting_results, get_nesting_preview, update_nesting_status, save_nesting_draft, load_nesting_draft, run_manual_nesting, extract_ciclo_cura_from_note, select_odl_and_autoclave_automatically
+from models.nesting_result import NestingResult, StatoNestingEnum
+from schemas.nesting import (
+    NestingResultSchema, NestingResultRead, NestingPreviewSchema, ManualNestingRequest, NestingParameters,
+    BatchNestingRequest, BatchNestingResponse, NestingResponse, NestingCreate, NestingUpdate, StatoNestingEnum as SchemaStatoNestingEnum
+)
+from services.nesting_service import (
+    run_automatic_nesting, get_all_nesting_results, get_nesting_preview, update_nesting_status, 
+    save_nesting_draft, load_nesting_draft, run_manual_nesting, extract_ciclo_cura_from_note, 
+    select_odl_and_autoclave_automatically, run_batch_nesting
+)
 from models.autoclave import Autoclave, StatoAutoclaveEnum
 from models.odl import ODL
 # ✅ NUOVO: Import per nesting su due piani
@@ -26,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 # Schema per l'aggiornamento dello stato del nesting
 class NestingStatusUpdate(BaseModel):
-    stato: str
+    stato: SchemaStatoNestingEnum
     note: str = None
     ruolo_utente: str = None
 
@@ -1362,4 +1369,143 @@ async def delete_nesting(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Errore durante l'eliminazione del nesting: {str(e)}"
+        )
+
+# ✅ NUOVO ENDPOINT: Batch nesting intelligente multi-autoclave
+@router.post(
+    "/batch",
+    response_model=BatchNestingResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Esegue batch nesting intelligente multi-autoclave",
+    description="""
+    🚀 BATCH NESTING INTELLIGENTE MULTI-AUTOCLAVE
+    
+    Implementa l'algoritmo batch che:
+    1. Valuta tutti gli ODL in attesa e tutte le autoclavi disponibili
+    2. Genera uno o più nesting contemporaneamente, ottimizzando superficie e valvole
+    3. Distribuisce ODL in modo bilanciato per ridurre il numero totale di nesting
+    4. Crea nesting in stato BOZZA (non blocca autoclavi fino alla conferma)
+    
+    VANTAGGI:
+    - Ottimizzazione globale invece che sequenziale
+    - Utilizzo bilanciato delle risorse
+    - Parametri personalizzabili per ogni batch
+    - Stato BOZZA permette revisione prima della conferma
+    
+    PARAMETRI PERSONALIZZABILI:
+    - padding_mm: Spaziatura tra tool (default: 10mm)
+    - borda_mm: Bordo minimo dall'autoclave (default: 20mm)
+    - max_valvole_per_autoclave: Limite valvole (opzionale)
+    - rotazione_abilitata: Rotazione automatica tool (default: true)
+    - priorita_ottimizzazione: PESO/AREA/EQUILIBRATO (default: EQUILIBRATO)
+    """
+)
+async def batch_nesting(
+    request: BatchNestingRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint per eseguire il batch nesting intelligente multi-autoclave.
+    
+    Args:
+        request: Richiesta con parametri personalizzabili
+        db: Sessione del database
+        
+    Returns:
+        BatchNestingResponse con i nesting creati e statistiche
+    """
+    try:
+        logger.info("🚀 Avvio batch nesting intelligente multi-autoclave")
+        
+        # Esegui il batch nesting
+        result = await run_batch_nesting(db, request)
+        
+        # Log del risultato
+        if result.success:
+            logger.info(f"✅ Batch completato: {len(result.nesting_creati)} nesting creati")
+        else:
+            logger.warning(f"⚠️ Batch fallito: {result.message}")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"❌ Errore nel batch nesting: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante il batch nesting: {str(e)}"
+        )
+
+# ✅ NUOVO ENDPOINT: Conferma nesting da BOZZA a IN_SOSPESO
+@router.post(
+    "/{nesting_id}/promote",
+    response_model=NestingResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Promuove un nesting da BOZZA a IN_SOSPESO",
+    description="""
+    🔄 PROMOZIONE NESTING: BOZZA → IN_SOSPESO
+    
+    Promuove un nesting dallo stato BOZZA allo stato IN_SOSPESO:
+    - Blocca l'autoclave (stato → IN_USO)
+    - Mantiene ODL in ATTESA CURA
+    - Permette successiva conferma da parte del Curing
+    
+    VALIDAZIONI:
+    - Il nesting deve essere in stato BOZZA
+    - L'autoclave deve essere DISPONIBILE
+    - Gli ODL devono essere ancora in ATTESA CURA
+    """
+)
+async def promote_nesting(
+    nesting_id: int,
+    ruolo_utente: str = "management",
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint per promuovere un nesting da BOZZA a IN_SOSPESO.
+    
+    Args:
+        nesting_id: ID del nesting da promuovere
+        ruolo_utente: Ruolo dell'utente che effettua l'operazione
+        db: Sessione del database
+        
+    Returns:
+        NestingResponse aggiornato
+    """
+    try:
+        logger.info(f"🔄 Promozione nesting {nesting_id} da BOZZA a IN_SOSPESO")
+        
+        # Aggiorna lo stato del nesting
+        nesting = await update_nesting_status(
+            db, 
+            nesting_id, 
+            StatoNestingEnum.IN_SOSPESO, 
+            note="Nesting promosso da bozza a in sospeso",
+            ruolo_utente=ruolo_utente
+        )
+        
+        # Blocca l'autoclave
+        if nesting.autoclave:
+            nesting.autoclave.stato = StatoAutoclaveEnum.IN_USO
+            db.add(nesting.autoclave)
+        
+        db.commit()
+        
+        logger.info(f"✅ Nesting {nesting_id} promosso con successo")
+        
+        # Converti in risposta
+        from services.nesting_service import nesting_to_response
+        return nesting_to_response(nesting)
+        
+    except ValueError as e:
+        logger.error(f"❌ Errore di validazione nella promozione nesting {nesting_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"❌ Errore nella promozione nesting {nesting_id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante la promozione del nesting: {str(e)}"
         ) 

@@ -1,7 +1,7 @@
 'use client'
 
 import { Badge } from '@/components/ui/badge'
-import { Clock, CheckCircle, XCircle, Package } from 'lucide-react'
+import { Clock, CheckCircle, XCircle, Package, FileText, Play } from 'lucide-react'
 
 interface NestingStatusBadgeProps {
   stato: string
@@ -12,6 +12,14 @@ interface NestingStatusBadgeProps {
 export function NestingStatusBadge({ stato, confermato_da_ruolo, className }: NestingStatusBadgeProps) {
   const getStatusConfig = (stato: string) => {
     switch (stato) {
+      case 'bozza':
+        return {
+          variant: 'outline' as const,
+          icon: FileText,
+          color: 'bg-gray-50 text-gray-700 border-gray-300',
+          label: 'Bozza'
+        }
+      case 'in_sospeso':
       case 'In sospeso':
         return {
           variant: 'secondary' as const,
@@ -19,13 +27,15 @@ export function NestingStatusBadge({ stato, confermato_da_ruolo, className }: Ne
           color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
           label: 'In Sospeso'
         }
+      case 'confermato':
       case 'Confermato':
         return {
           variant: 'default' as const,
-          icon: CheckCircle,
+          icon: Play,
           color: 'bg-blue-100 text-blue-800 border-blue-200',
           label: 'Confermato'
         }
+      case 'completato':
       case 'Completato':
         return {
           variant: 'default' as const,
@@ -33,6 +43,7 @@ export function NestingStatusBadge({ stato, confermato_da_ruolo, className }: Ne
           color: 'bg-green-100 text-green-800 border-green-200',
           label: 'Completato'
         }
+      case 'annullato':
       case 'Annullato':
         return {
           variant: 'destructive' as const,
