@@ -1,5 +1,10 @@
 """
-Schemas package initialization
+Package contenente tutti gli schema Pydantic dell'API CarbonPilot.
+
+Gli schema definiscono la struttura dei dati per:
+- Validazione dell'input
+- Serializzazione dell'output
+- Documentazione automatica dell'API
 """
 
 # Esporta gli schemi principali per un più facile import

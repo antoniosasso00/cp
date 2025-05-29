@@ -40,7 +40,7 @@ function ODLPendingNestingCard() {
     try {
       setIsLoading(true)
       setError(null)
-      const data = await odlApi.getPendingNesting()
+      const data = await odlApi.getByStatus('Attesa Cura')
       setOdlPending(data)
     } catch (err) {
       console.error('Errore nel caricamento ODL in attesa di nesting:', err)
@@ -187,7 +187,7 @@ export default function DashboardManagement() {
   useEffect(() => {
     const fetchOdlPendingCount = async () => {
       try {
-        const data = await odlApi.getPendingNesting()
+        const data = await odlApi.getByStatus('Attesa Cura')
         setOdlPendingCount(data.length)
       } catch (err) {
         console.error('Errore nel caricamento conteggio ODL:', err)
@@ -197,7 +197,7 @@ export default function DashboardManagement() {
     fetchOdlPendingCount()
   }, [])
 
-          // Sezioni principali per il management
+  // Sezioni principali per il management
   const responsabileSections = [
     {
       title: 'Gestione ODL',
@@ -249,7 +249,7 @@ export default function DashboardManagement() {
     }
   ]
 
-          // Metriche chiave reali per il management
+  // Metriche chiave reali per il management
   const getKPIMetrics = (): Array<{
     label: string;
     value: string;
@@ -283,9 +283,9 @@ export default function DashboardManagement() {
       },
       { 
         label: 'In Attesa Nesting', 
-        value: kpiData.odl_attesa_nesting.toString(), 
-        trend: kpiData.odl_attesa_nesting > 0 ? 'Pronti per nesting' : 'Tutti processati',
-        status: getAttesaNestingStatus(kpiData.odl_attesa_nesting),
+        value: odlPendingCount.toString(), 
+        trend: odlPendingCount > 0 ? 'Pronti per nesting' : 'Tutti processati',
+        status: getAttesaNestingStatus(odlPendingCount),
         icon: Package
       },
       { 

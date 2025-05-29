@@ -114,7 +114,15 @@ def get_odl_monitoring_detail(odl_id: int, db: Session = Depends(get_db)):
                 detail=f"ODL con ID {odl_id} non trovato"
             )
         
-        logger.info(f"Restituito monitoraggio completo per ODL {odl_id}")
+        # ✅ CORREZIONE: Validazione robusta dei logs nella risposta
+        if not hasattr(monitoring_detail, 'logs') or monitoring_detail.logs is None:
+            logger.warning(f"ODL {odl_id}: logs mancanti, impostando array vuoto")
+            monitoring_detail.logs = []
+        elif not isinstance(monitoring_detail.logs, list):
+            logger.warning(f"ODL {odl_id}: logs non è una lista, convertendo in array vuoto")
+            monitoring_detail.logs = []
+        
+        logger.info(f"Restituito monitoraggio completo per ODL {odl_id} con {len(monitoring_detail.logs)} logs")
         return monitoring_detail
         
     except HTTPException:
@@ -282,24 +290,34 @@ def get_odl_timeline(odl_id: int, db: Session = Depends(get_db)):
         # ✅ CORREZIONE: Usa StateTrackingService per i cambi di stato
         timeline_stati = StateTrackingService.ottieni_timeline_stati(db=db, odl_id=odl_id)
         
+        # ✅ CORREZIONE: Gestione robusta quando non ci sono dati timeline
+        if not timeline_stati or not isinstance(timeline_stati, list):
+            logger.warning(f"ODL {odl_id}: timeline_stati vuoto o non valido, usando fallback")
+            timeline_stati = []
+        
         # Arricchisci i dati della timeline
         logs_arricchiti = []
-        for evento in timeline_stati:
-            log_dict = {
-                "id": evento["id"],
-                "evento": f"Cambio stato: {evento['stato_precedente']} → {evento['stato_nuovo']}",
-                "stato_precedente": evento["stato_precedente"],
-                "stato_nuovo": evento["stato_nuovo"],
-                "descrizione": evento.get("note", ""),
-                "responsabile": evento.get("responsabile", "sistema"),
-                "timestamp": evento["timestamp"].isoformat(),
-                "nesting_stato": None,
-                "autoclave_nome": None,
-                "nesting_id": None,
-                "autoclave_id": None,
-                "schedule_entry_id": None
-            }
-            logs_arricchiti.append(log_dict)
+        if timeline_stati:  # Solo se ci sono dati
+            for evento in timeline_stati:
+                if not evento or not isinstance(evento, dict):
+                    logger.warning(f"ODL {odl_id}: evento timeline non valido, saltato")
+                    continue
+                    
+                log_dict = {
+                    "id": evento.get("id", 0),
+                    "evento": f"Cambio stato: {evento.get('stato_precedente', 'N/A')} → {evento.get('stato_nuovo', 'N/A')}",
+                    "stato_precedente": evento.get("stato_precedente"),
+                    "stato_nuovo": evento.get("stato_nuovo"),
+                    "descrizione": evento.get("note", ""),
+                    "responsabile": evento.get("responsabile", "sistema"),
+                    "timestamp": evento.get("timestamp", datetime.now()).isoformat() if hasattr(evento.get("timestamp"), 'isoformat') else str(evento.get("timestamp", datetime.now())),
+                    "nesting_stato": None,
+                    "autoclave_nome": None,
+                    "nesting_id": None,
+                    "autoclave_id": None,
+                    "schedule_entry_id": None
+                }
+                logs_arricchiti.append(log_dict)
         
         # Calcola le durate per stato
         durata_per_stato = {}
@@ -395,8 +413,10 @@ def get_odl_progress(odl_id: int, db: Session = Depends(get_db)):
     Restituisce i dati ottimizzati per la visualizzazione della barra di progresso temporale.
     Include solo i timestamp degli stati e le durate necessarie per il rendering.
     
-    Se non ci sono log disponibili, restituisce comunque i dati base dell'ODL
-    per permettere la visualizzazione stimata nel frontend.
+    MIGLIORAMENTO ROBUSTEZZA:
+    1. Prima prova con StateTrackingService (dati precisi)
+    2. Se non disponibile, usa ODLLogService (dati base)  
+    3. Se nemmeno quelli, restituisce dati fallback calcolati
     """
     try:
         from models.odl import ODL
@@ -410,58 +430,116 @@ def get_odl_progress(odl_id: int, db: Session = Depends(get_db)):
                 detail=f"ODL con ID {odl_id} non trovato"
             )
         
-        # ✅ CORREZIONE: Usa StateTrackingService invece di ODLLogService
-        # per recuperare i cambi di stato con timestamp precisi
-        
-        # Recupera la timeline degli stati
-        timeline_stati = StateTrackingService.ottieni_timeline_stati(db=db, odl_id=odl_id)
-        
-        # Calcola i timestamp per ogni stato
         timestamps_stati = []
+        has_real_timeline_data = False
+        data_source = "fallback"
         
-        # Se ci sono cambi di stato, elaborali
-        if timeline_stati and len(timeline_stati) > 0:
-            for i, evento in enumerate(timeline_stati):
-                if i < len(timeline_stati) - 1:
-                    # Non è l'ultimo evento, calcola durata fino al prossimo
-                    prossimo_evento = timeline_stati[i + 1]
-                    durata_delta = prossimo_evento["timestamp"] - evento["timestamp"]
-                    durata_minuti = int(durata_delta.total_seconds() / 60)
-                    
-                    timestamps_stati.append({
-                        "stato": evento["stato_nuovo"],
-                        "inizio": evento["timestamp"].isoformat(),
-                        "fine": prossimo_evento["timestamp"].isoformat(),
-                        "durata_minuti": durata_minuti
-                    })
-                else:
-                    # Ultimo evento - stato corrente
-                    if odl.status != 'Finito':
-                        durata_corrente = int((datetime.now() - evento["timestamp"]).total_seconds() / 60)
+        # 🎯 TENTATIVO 1: StateTrackingService (dati precisi da state_log)
+        try:
+            timeline_stati = StateTrackingService.ottieni_timeline_stati(db=db, odl_id=odl_id)
+            
+            if timeline_stati and len(timeline_stati) > 0:
+                has_real_timeline_data = True
+                data_source = "state_tracking"
+                
+                # Elabora i dati del StateTrackingService
+                for i, evento in enumerate(timeline_stati):
+                    if i < len(timeline_stati) - 1:
+                        # Non è l'ultimo evento, calcola durata fino al prossimo
+                        prossimo_evento = timeline_stati[i + 1]
+                        durata_delta = prossimo_evento["timestamp"] - evento["timestamp"]
+                        durata_minuti = int(durata_delta.total_seconds() / 60)
+                        
                         timestamps_stati.append({
                             "stato": evento["stato_nuovo"],
                             "inizio": evento["timestamp"].isoformat(),
-                            "fine": None,
-                            "durata_minuti": durata_corrente
+                            "fine": prossimo_evento["timestamp"].isoformat(),
+                            "durata_minuti": durata_minuti
                         })
                     else:
-                        # ODL finito
-                        timestamps_stati.append({
-                            "stato": evento["stato_nuovo"],
-                            "inizio": evento["timestamp"].isoformat(),
-                            "fine": evento["timestamp"].isoformat(),
-                            "durata_minuti": 0
-                        })
+                        # Ultimo evento - stato corrente
+                        if odl.status != 'Finito':
+                            durata_corrente = int((datetime.now() - evento["timestamp"]).total_seconds() / 60)
+                            timestamps_stati.append({
+                                "stato": evento["stato_nuovo"],
+                                "inizio": evento["timestamp"].isoformat(),
+                                "fine": None,
+                                "durata_minuti": durata_corrente
+                            })
+                        else:
+                            # ODL finito
+                            timestamps_stati.append({
+                                "stato": evento["stato_nuovo"],
+                                "inizio": evento["timestamp"].isoformat(),
+                                "fine": evento["timestamp"].isoformat(),
+                                "durata_minuti": 0
+                            })
+                
+                logger.info(f"📊 Dati progresso da StateTrackingService per ODL {odl_id}: {len(timestamps_stati)} timestamp")
+                
+        except Exception as state_error:
+            logger.warning(f"⚠️ StateTrackingService non disponibile per ODL {odl_id}: {str(state_error)}")
+        
+        # 🎯 TENTATIVO 2: ODLLogService (fallback con i log base)
+        if not has_real_timeline_data:
+            try:
+                logs = ODLLogService.ottieni_logs_odl(db, odl_id)
+                
+                if logs and len(logs) > 0:
+                    # Filtra solo i cambi di stato
+                    cambi_stato = [log for log in logs if 'stato' in log.evento.lower() and 'cambio' in log.evento.lower()]
+                    
+                    if cambi_stato:
+                        has_real_timeline_data = True
+                        data_source = "odl_logs"
+                        
+                        # Ordina per timestamp
+                        cambi_stato.sort(key=lambda x: x.timestamp)
+                        
+                        for i, log in enumerate(cambi_stato):
+                            if i < len(cambi_stato) - 1:
+                                # Calcola durata fino al prossimo cambio
+                                prossimo_log = cambi_stato[i + 1]
+                                durata_delta = prossimo_log.timestamp - log.timestamp
+                                durata_minuti = int(durata_delta.total_seconds() / 60)
+                                
+                                # Estrai lo stato dal log (semplificato)
+                                stato = log.stato_nuovo if hasattr(log, 'stato_nuovo') else odl.status
+                                
+                                timestamps_stati.append({
+                                    "stato": stato,
+                                    "inizio": log.timestamp.isoformat(),
+                                    "fine": prossimo_log.timestamp.isoformat(),
+                                    "durata_minuti": durata_minuti
+                                })
+                            else:
+                                # Ultimo cambio - stato corrente
+                                stato = log.stato_nuovo if hasattr(log, 'stato_nuovo') else odl.status
+                                durata_corrente = int((datetime.now() - log.timestamp).total_seconds() / 60)
+                                
+                                timestamps_stati.append({
+                                    "stato": stato,
+                                    "inizio": log.timestamp.isoformat(),
+                                    "fine": None if odl.status != 'Finito' else log.timestamp.isoformat(),
+                                    "durata_minuti": durata_corrente if odl.status != 'Finito' else 0
+                                })
+                        
+                        logger.info(f"📊 Dati progresso da ODLLogService per ODL {odl_id}: {len(timestamps_stati)} timestamp")
+                        
+            except Exception as log_error:
+                logger.warning(f"⚠️ ODLLogService non disponibile per ODL {odl_id}: {str(log_error)}")
         
         # Calcola tempo totale stimato
         tempo_totale_stimato = None
         if len(timestamps_stati) > 0:
             tempo_totale_stimato = sum(t["durata_minuti"] for t in timestamps_stati)
         else:
-            # Fallback: calcola durata dall'inizio dell'ODL
+            # 🎯 FALLBACK FINALE: calcola durata dall'inizio dell'ODL
             durata_dall_inizio = int((datetime.now() - odl.created_at).total_seconds() / 60)
             tempo_totale_stimato = durata_dall_inizio
+            data_source = "odl_created_time"
         
+        # Prepara la risposta
         progress_data = {
             "id": odl_id,
             "status": odl.status,
@@ -469,20 +547,22 @@ def get_odl_progress(odl_id: int, db: Session = Depends(get_db)):
             "updated_at": odl.updated_at.isoformat(),
             "timestamps": timestamps_stati,  # Può essere vuoto, il frontend gestirà il fallback
             "tempo_totale_stimato": tempo_totale_stimato,
-            "has_timeline_data": len(timestamps_stati) > 0  # Flag per indicare se ci sono dati reali
+            "has_timeline_data": has_real_timeline_data,  # Flag per indicare se ci sono dati reali
+            "data_source": data_source  # 🆕 Indica la fonte dei dati per debug
         }
         
-        if len(timestamps_stati) > 0:
-            logger.info(f"Restituiti dati di progresso per ODL {odl_id} con {len(timestamps_stati)} timestamps")
+        # Log di debug
+        if has_real_timeline_data:
+            logger.info(f"✅ Dati progresso per ODL {odl_id}: {len(timestamps_stati)} timestamp da {data_source}")
         else:
-            logger.info(f"Restituiti dati di progresso per ODL {odl_id} senza timeline (fallback mode)")
+            logger.info(f"📊 Dati progresso per ODL {odl_id}: modalità fallback ({data_source})")
         
         return progress_data
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Errore durante il recupero dei dati di progresso ODL {odl_id}: {str(e)}")
+        logger.error(f"❌ Errore durante il recupero dei dati di progresso ODL {odl_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Errore durante il recupero dei dati di progresso ODL"

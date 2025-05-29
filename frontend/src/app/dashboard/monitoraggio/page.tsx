@@ -118,7 +118,7 @@ export default function MonitoraggioPage() {
               <Label htmlFor="periodo">Periodo</Label>
               <Select
                 value={filtri.periodo}
-                onValueChange={(value) => updateFiltri({ periodo: value })}
+                onValueChange={(value: string) => updateFiltri({ periodo: value })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Seleziona periodo" />
@@ -136,7 +136,7 @@ export default function MonitoraggioPage() {
               <Label htmlFor="partNumber">Part Number</Label>
               <Select
                 value={filtri.partNumber}
-                onValueChange={(value) => updateFiltri({ partNumber: value })}
+                onValueChange={(value: string) => updateFiltri({ partNumber: value })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Tutti i part number" />
@@ -156,18 +156,18 @@ export default function MonitoraggioPage() {
               <Label htmlFor="statoODL">Stato ODL</Label>
               <Select
                 value={filtri.statoODL}
-                onValueChange={(value) => updateFiltri({ statoODL: value })}
+                onValueChange={(value: string) => updateFiltri({ statoODL: value })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Tutti gli stati" />
+                  <SelectValue placeholder="Tutti gli stati ODL" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Tutti gli stati</SelectItem>
+                  <SelectItem value="all">Tutti gli stati ODL</SelectItem>
                   <SelectItem value="Preparazione">Preparazione</SelectItem>
                   <SelectItem value="Laminazione">Laminazione</SelectItem>
                   <SelectItem value="Attesa Cura">Attesa Cura</SelectItem>
                   <SelectItem value="Cura">Cura</SelectItem>
-                  <SelectItem value="Completato">Completato</SelectItem>
+                  <SelectItem value="Finito">Finito</SelectItem>
                   <SelectItem value="Bloccato">Bloccato</SelectItem>
                 </SelectContent>
               </Select>

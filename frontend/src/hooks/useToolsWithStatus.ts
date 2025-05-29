@@ -47,9 +47,7 @@ export function useToolsWithStatus(options: UseToolsWithStatusOptions = {}): Use
     try {
       isFetchingRef.current = true
       setError(null)
-      console.log('🔄 Fetching tools with status...', filters)
       const data = await toolApi.getAllWithStatus(filters)
-      console.log('✅ Tools fetched successfully:', data)
       
       // Validazione dei dati ricevuti
       if (!Array.isArray(data)) {
@@ -59,7 +57,6 @@ export function useToolsWithStatus(options: UseToolsWithStatusOptions = {}): Use
       // Validazione di ogni tool
       const validatedTools = data.map((tool, index) => {
         if (!tool || typeof tool !== 'object') {
-          console.warn(`Tool ${index} non è un oggetto valido:`, tool)
           return null
         }
         
@@ -74,7 +71,6 @@ export function useToolsWithStatus(options: UseToolsWithStatusOptions = {}): Use
       setTools(validatedTools)
       setLastUpdated(new Date())
     } catch (err) {
-      console.error('❌ Errore nel caricamento dei tool:', err)
       const errorMessage = err instanceof Error ? err.message : 'Errore sconosciuto nel caricamento dei tools'
       setError(errorMessage)
     } finally {
@@ -86,15 +82,11 @@ export function useToolsWithStatus(options: UseToolsWithStatusOptions = {}): Use
   const syncStatus = useCallback(async () => {
     try {
       setError(null)
-      console.log('🔄 Sincronizzazione stato tools...')
       const result = await toolApi.updateStatusFromODL()
-      console.log('✅ Sincronizzazione completata:', result)
       
       // Dopo la sincronizzazione, ricarica i dati
       await fetchTools()
     } catch (err: any) {
-      console.error('❌ Errore nella sincronizzazione dello stato dei tool:', err)
-      
       // Gestione migliorata degli errori
       let errorMessage = 'Errore nella sincronizzazione dello stato dei tools'
       

@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ODLResponse, odlApi } from '@/lib/api'
+import { ODLResponse, odlApi, updateOdlStatus } from '@/lib/api'
 import { formatDateTime } from '@/lib/utils'
 import { 
   Loader2, 
@@ -107,7 +107,7 @@ export default function ProduzioneCuringPage() {
   const handleStatusChange = async (odl: ODLResponse, newStatus: "Cura" | "Finito") => {
     setIsAdvancing(true)
     try {
-      await odlApi.updateStatusCuring(odl.id, newStatus)
+      await updateOdlStatus(odl.id, newStatus)
       
       toast({
         title: '✅ Stato aggiornato con successo',
@@ -183,10 +183,10 @@ export default function ProduzioneCuringPage() {
           </p>
         </div>
         <div className="flex gap-2">
-                          <Link href="/dashboard/curing/nesting">
-            <Button variant="outline">
-              <Grid3X3 className="mr-2 h-4 w-4" />
-              Gestione Nesting
+          <Link href="/dashboard/curing/nesting">
+            <Button className="w-full" variant="outline" size="sm">
+              <Grid3X3 className="h-4 w-4 mr-2" />
+              Gestisci Nesting
             </Button>
           </Link>
           <Button onClick={fetchData} disabled={isLoading}>

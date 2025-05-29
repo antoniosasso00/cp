@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, String, Boolean, Text, DateTime, func, Enum
+from sqlalchemy import Column, Integer, Float, String, Boolean, Text, DateTime, func
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.orm import relationship
 from enum import Enum as PyEnum
@@ -31,9 +31,17 @@ class Autoclave(Base, TimestampMixin):
     temperatura_max = Column(Float, doc="Temperatura massima in gradi Celsius")
     pressione_max = Column(Float, doc="Pressione massima in bar")
     
-    # Stato operativo (compatibile SQLite)
+    # ✅ NUOVO: Carico massimo per nesting su due piani
+    max_load_kg = Column(Float, nullable=True, default=1000.0, 
+                        doc="Carico massimo supportato dall'autoclave in kg")
+    
+    # ✅ NUOVO: Supporto per piano secondario
+    use_secondary_plane = Column(Boolean, nullable=False, default=False,
+                               doc="Indica se l'autoclave può utilizzare un piano secondario per aumentare la capacità")
+    
+    # Stato operativo
     stato = Column(
-        Enum(StatoAutoclaveEnum, values_callable=lambda x: [e.value for e in x]),
+        PgEnum(StatoAutoclaveEnum, name="statoautoclave", create_type=True, validate_strings=True),
         default=StatoAutoclaveEnum.DISPONIBILE,
         nullable=False,
         doc="Stato attuale dell'autoclave"
@@ -62,4 +70,4 @@ class Autoclave(Base, TimestampMixin):
         return 0.0
     
     def __repr__(self):
-        return f"<Autoclave(id={self.id}, nome='{self.nome}', stato={self.stato.value})>" 
+        return f"<Autoclave(id={self.id}, nome='{self.nome}', max_load={self.max_load_kg}kg, stato={self.stato.value})>" 

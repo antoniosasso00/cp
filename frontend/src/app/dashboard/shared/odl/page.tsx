@@ -114,7 +114,7 @@ export default function ODLPage() {
     }
 
     try {
-      await odlApi.delete(id)
+      await odlApi.delete(id, true)
       toast({
         variant: 'success',
         title: 'Eliminato',
@@ -123,10 +123,31 @@ export default function ODLPage() {
       fetchODLs()
     } catch (error) {
       console.error(`Errore durante l'eliminazione dell'ODL ${id}:`, error)
+      
+      let errorMessage = `Impossibile eliminare l'ODL con ID ${id}.`
+      
+      if (error instanceof Error) {
+        if (error.message.includes('500')) {
+          errorMessage = 'Errore del server durante l\'eliminazione. L\'ODL potrebbe avere dipendenze che impediscono l\'eliminazione.'
+        } else if (error.message.includes('422')) {
+          errorMessage = 'ODL non può essere eliminato: potrebbe essere in uso o avere dipendenze.'
+        } else if (error.message.includes('404')) {
+          errorMessage = 'ODL non trovato. Potrebbe essere già stato eliminato.'
+        } else if (error.message.includes('403')) {
+          errorMessage = 'Non hai i permessi per eliminare questo ODL.'
+        } else if (error.message.includes('400')) {
+          errorMessage = 'Richiesta non valida. Per eliminare un ODL in stato "Finito" è richiesta la conferma esplicita.'
+        } else if (error.message.includes('schedule_type') || error.message.includes('compatibilità database')) {
+          errorMessage = 'Problema di compatibilità database. L\'ODL potrebbe avere relazioni che impediscono l\'eliminazione.'
+        } else {
+          errorMessage = `Errore: ${error.message}`
+        }
+      }
+      
       toast({
         variant: 'destructive',
-        title: 'Errore',
-        description: `Impossibile eliminare l'ODL con ID ${id}.`,
+        title: 'Errore Eliminazione',
+        description: errorMessage,
       })
     }
   }

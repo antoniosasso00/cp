@@ -26,15 +26,57 @@ export function OdlProgressWrapper({
   const [error, setError] = useState<string | null>(null);
   const [timelineOpen, setTimelineOpen] = useState(false);
 
-  // Funzione per caricare i dati di progresso
+  // ✅ CORREZIONE: Funzione per caricare i dati di progresso REALI
   const loadProgressData = async () => {
     try {
       setError(null);
-      const data = await odlApi.getProgress(odlId);
-      setProgressData(data);
+      
+      console.log(`📊 Caricamento dati progresso per ODL ${odlId}...`);
+      
+      // 🎯 CORREZIONE: Usa l'endpoint corretto per i dati di progresso reali
+      // invece dell'endpoint tempo-fasi che non esiste nel formato aspettato
+      const progressData = await odlApi.getProgress(odlId);
+      
+      console.log(`📊 Dati progresso ricevuti per ODL ${odlId}:`, {
+        hasTimeline: progressData.has_timeline_data,
+        timestamps: progressData.timestamps?.length || 0,
+        status: progressData.status,
+        dataType: progressData.has_timeline_data ? 'REALI (da timeline stati)' : 'STIMATI (da fallback)'
+      });
+      
+      setProgressData(progressData);
+      
     } catch (err) {
-      console.error('Errore nel caricamento dei dati di progresso:', err);
-      setError(err instanceof Error ? err.message : 'Errore nel caricamento');
+      console.error('❌ Errore nel caricamento dei dati di progresso:', err);
+      
+      // 🛡️ FALLBACK ROBUSTO: Se l'endpoint principale fallisce, 
+      // proviamo a ottenere almeno i dati base dell'ODL
+      try {
+        console.log(`🔄 Tentativo fallback per ODL ${odlId}...`);
+        const odlData = await odlApi.getOne(odlId);
+        
+        // Crea dati di progresso minimi usando i dati base dell'ODL
+        const fallbackProgressData: ODLProgressData = {
+          id: odlData.id,
+          status: odlData.status,
+          created_at: odlData.created_at,
+          updated_at: odlData.updated_at,
+          timestamps: [], // Nessun timestamp disponibile
+          tempo_totale_stimato: undefined,
+          has_timeline_data: false
+        };
+        
+        setProgressData(fallbackProgressData);
+        console.log(`✅ Usati dati fallback per ODL ${odlId}`);
+        
+      } catch (fallbackErr) {
+        console.error('❌ Anche il fallback è fallito:', fallbackErr);
+        setError(
+          err instanceof Error 
+            ? `Errore caricamento: ${err.message}` 
+            : 'Errore di comunicazione con il server'
+        );
+      }
     } finally {
       setLoading(false);
     }

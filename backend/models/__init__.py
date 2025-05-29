@@ -18,6 +18,7 @@ from .odl_log import ODLLog
 from .state_log import StateLog
 from .tempo_fase import TempoFase
 from .nesting_result import NestingResult
+from .nesting_batch import NestingBatch
 from .schedule_entry import ScheduleEntry, ScheduleEntryStatus, ScheduleEntryType
 from .tempo_produzione import TempoProduzione
 from .report import Report, ReportTypeEnum
@@ -39,6 +40,7 @@ __all__ = [
     "StateLog",
     "TempoFase",
     "NestingResult",
+    "NestingBatch",
     "ScheduleEntry",
     "ScheduleEntryStatus",
     "ScheduleEntryType",

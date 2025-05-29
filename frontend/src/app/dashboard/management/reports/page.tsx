@@ -41,7 +41,7 @@ import {
 
 export default function ReportsPage() {
   const [isGenerating, setIsGenerating] = useState(false)
-  const [reportType, setReportType] = useState<ReportTypeEnum>('nesting')
+  const [reportType, setReportType] = useState<ReportTypeEnum>('produzione')
   const [rangeType, setRangeType] = useState<ReportRangeType>('giorno')
   const [includeSections, setIncludeSections] = useState<ReportIncludeSection[]>([])
   const [odlFilter, setOdlFilter] = useState('')
@@ -181,7 +181,6 @@ export default function ReportsPage() {
       case 'qualita': return <CheckCircle className="h-4 w-4" />
       case 'tempi': return <Timer className="h-4 w-4" />
       case 'completo': return <BarChart3 className="h-4 w-4" />
-      case 'nesting': return <Settings className="h-4 w-4" />
       default: return <FileText className="h-4 w-4" />
     }
   }
@@ -192,8 +191,7 @@ export default function ReportsPage() {
       'produzione': 'bg-blue-100 text-blue-800',
       'qualita': 'bg-green-100 text-green-800',
       'tempi': 'bg-orange-100 text-orange-800',
-      'completo': 'bg-purple-100 text-purple-800',
-      'nesting': 'bg-indigo-100 text-indigo-800'
+      'completo': 'bg-purple-100 text-purple-800'
     }
     
     return (
@@ -245,12 +243,6 @@ export default function ReportsPage() {
                   <SelectValue placeholder="Seleziona tipo di report" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="nesting">
-                    <div className="flex items-center gap-2">
-                      <Settings className="h-4 w-4" />
-                      Nesting
-                    </div>
-                  </SelectItem>
                   <SelectItem value="produzione">
                     <div className="flex items-center gap-2">
                       <Package className="h-4 w-4" />
@@ -412,7 +404,6 @@ export default function ReportsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Tutti i tipi</SelectItem>
-                      <SelectItem value="nesting">Nesting</SelectItem>
                       <SelectItem value="produzione">Produzione</SelectItem>
                       <SelectItem value="qualita">Qualità</SelectItem>
                       <SelectItem value="tempi">Tempi</SelectItem>

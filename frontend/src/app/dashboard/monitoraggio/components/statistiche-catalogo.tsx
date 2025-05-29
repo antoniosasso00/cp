@@ -66,7 +66,7 @@ export default function StatisticheCatalogo({ filtri, catalogo, onError }: Stati
           setStatistiche(result)
         }
       } catch (err) {
-        console.error('Errore nel caricamento delle statistiche:', err)
+        console.error('❌ StatisticheCatalogo: Errore nel caricamento delle statistiche:', err)
         if (isMounted) {
           onError('Impossibile caricare le statistiche del catalogo. Riprova più tardi.')
         }
@@ -189,13 +189,18 @@ export default function StatisticheCatalogo({ filtri, catalogo, onError }: Stati
     return fasiConDati > 0 ? scostamentoTotale / fasiConDati : 0;
   }
 
-  // Verifica se ci sono ODL completati
+  // Verifica se ci sono dati validi da mostrare
   const hasDatiValidi = (): boolean => {
     if (!statistiche) return false;
     
     try {
       const totaleODL = statistiche.totale_odl || 0;
-      return totaleODL > 0;
+      const hasPrevisioni = statistiche.previsioni && Object.keys(statistiche.previsioni).length > 0;
+      
+      // Considera validi i dati se:
+      // 1. Ci sono ODL completati (totaleODL > 0) OPPURE
+      // 2. Ci sono previsioni disponibili (anche se nessun ODL completato)
+      return totaleODL > 0 || hasPrevisioni;
     } catch (err) {
       console.error('Errore nella verifica dei dati validi:', err);
       return false;
@@ -255,8 +260,8 @@ export default function StatisticheCatalogo({ filtri, catalogo, onError }: Stati
             <CardHeader>
               <CardTitle className="text-lg">
                 {selectedPartNumber 
-                  ? `Statistiche per ${selectedPartNumber}`
-                  : 'Seleziona un part number'}
+                  ? `Statistiche ODL per Part Number: ${selectedPartNumber}`
+                  : 'Seleziona un part number per visualizzare le statistiche ODL'}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -279,6 +284,13 @@ export default function StatisticheCatalogo({ filtri, catalogo, onError }: Stati
                   <AlertDescription>
                     Non ci sono ODL completati per il part number selezionato nel periodo specificato.
                     Le statistiche saranno disponibili quando verranno completati degli ordini di lavoro.
+                    {/* Debug info */}
+                    {statistiche && (
+                      <div className="mt-2 text-xs">
+                        <strong>Debug:</strong> Totale ODL: {statistiche.totale_odl || 0}, 
+                        Previsioni: {statistiche.previsioni ? Object.keys(statistiche.previsioni).length : 0}
+                      </div>
+                    )}
                   </AlertDescription>
                 </Alert>
               ) : (

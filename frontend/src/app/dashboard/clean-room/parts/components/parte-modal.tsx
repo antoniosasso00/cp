@@ -307,6 +307,9 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
         ciclo_cura_id: formData.ciclo_cura_id || undefined,
         tool_ids: formData.tool_ids
       }
+      
+      console.log('📤 Dati inviati al backend (Salva e nuovo):', createData) // Debug
+      
       await partiApi.create(createData)
       
       toast({
@@ -329,12 +332,9 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
       // ✅ FIX 1: Refresh automatico dopo operazione
       router.refresh()
       
-      // ✅ FIX 2: Aggiorna i dati senza chiudere il modal
-      startTransition(() => {
-        onSuccess() // Questo aggiorna la lista principale
-      })
+      // ✅ FIX: NON chiamiamo onSuccess() per evitare che il modal si chiuda
+      // Il modal rimane aperto per il prossimo inserimento
       
-      // NON chiudiamo il modal - rimane aperto per il prossimo inserimento
       // Il focus viene automaticamente messo sul primo campo
       setTimeout(() => {
         const partNumberInput = document.getElementById('part_number') as HTMLInputElement
@@ -343,12 +343,27 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
         }
       }, 100)
       
-    } catch (error: unknown) {
-      console.error('Errore durante il salvataggio:', error)
+    } catch (error: any) {
+      console.error('❌ Errore durante il salvataggio (Salva e nuovo):', error)
+      
+      // ✅ FIX: Gestione errori migliorata
       let errorMessage = 'Si è verificato un errore durante il salvataggio.'
-      if (error instanceof Error) {
+      
+      if (error?.response?.status === 422) {
+        const details = error.response.data?.detail
+        if (typeof details === 'string') {
+          errorMessage = `Errore di validazione: ${details}`
+        } else if (Array.isArray(details)) {
+          errorMessage = `Errori di validazione: ${details.map((d: any) => d.msg || d.message || d).join(', ')}`
+        } else {
+          errorMessage = 'Dati non validi. Controlla i campi inseriti.'
+        }
+      } else if (error?.response?.status === 400) {
+        errorMessage = error.response.data?.detail || 'Richiesta non valida.'
+      } else if (error?.message) {
         errorMessage = error.message
       }
+      
       toast({
         variant: 'destructive',
         title: 'Errore',

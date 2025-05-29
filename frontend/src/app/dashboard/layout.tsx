@@ -93,7 +93,7 @@ const sidebarSections: SidebarSection[] = [
         title: "Nesting",
         href: "/dashboard/curing/nesting",
         icon: <LayoutGrid className="h-4 w-4" />,
-        roles: ['ADMIN', 'Curing']
+        roles: ['ADMIN', 'Curing', 'Management']
       },
       {
         title: "Autoclavi",

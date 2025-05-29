@@ -1,6 +1,12 @@
-# Modulo per algoritmi di ottimizzazione e nesting
-from .auto_nesting import compute_nesting, NestingResult
+"""
+Modulo per l'ottimizzazione automatica del nesting degli ODL nelle autoclavi.
 
-__all__ = ["compute_nesting", "NestingResult"]
+Questo modulo contiene gli algoritmi di ottimizzazione per:
+- Nesting automatico su piano singolo
+- Nesting automatico su due piani
+- Ottimizzazione dell'utilizzo dello spazio
+"""
 
-# Verrà implementato nelle fasi successive 
+from .auto_nesting import compute_nesting, generate_automatic_nesting
+
+__all__ = ["compute_nesting", "generate_automatic_nesting"] 

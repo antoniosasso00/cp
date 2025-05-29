@@ -1,0 +1,224 @@
+[
+  {
+    "file": "components/ui/EmptyState.tsx",
+    "feature": "Icona default EmptyState",
+    "type": "🛠 default icon",
+    "note": "Icona 🛠 usata come default per stati vuoti generici"
+  },
+  {
+    "file": "components/nesting/NestingSelector.tsx",
+    "feature": "Messaggio nessun nesting",
+    "type": "🛠 empty state",
+    "note": "Mostra '🛠 Nessun nesting trovato' quando la lista è vuota"
+  },
+  {
+    "file": "components/nesting/NestingTable.tsx",
+    "feature": "Rigenerazione Nesting",
+    "type": "🛠 toast fallback",
+    "note": "Mostra toast fallback '🛠 Funzione da implementare' se endpoint rigenera non esiste (404/405)"
+  },
+  {
+    "file": "components/nesting/NestingTable.tsx",
+    "feature": "Eliminazione Nesting",
+    "type": "🛠 toast fallback",
+    "note": "Mostra toast fallback '🛠 Funzione da implementare' se endpoint elimina non esiste (404/405)"
+  },
+  {
+    "file": "components/nesting/NestingTable.tsx",
+    "feature": "Nome Autoclave",
+    "type": "🛠 fallback data",
+    "note": "Mostra '🛠 Non disponibile' se autoclave_nome è null/undefined"
+  },
+  {
+    "file": "components/nesting/tabs/ConfirmedLayoutsTab.tsx",
+    "feature": "Empty state layout confermati",
+    "type": "🛠 empty state",
+    "note": "Mostra '🛠 Nessun layout confermato' quando non ci sono dati"
+  },
+  {
+    "file": "components/nesting/tabs/NestingManualTab.tsx",
+    "feature": "Errore caricamento",
+    "type": "🛠 error state",
+    "note": "Mostra '🛠 Errore nel caricamento' in caso di errore"
+  },
+  {
+    "file": "components/nesting/tabs/NestingManualTab.tsx",
+    "feature": "Empty state nesting",
+    "type": "🛠 empty state",
+    "note": "Mostra '🛠 Nessun nesting disponibile' quando lista è vuota"
+  },
+  {
+    "file": "components/nesting/tabs/ParametersTab.tsx",
+    "feature": "Errore parametri",
+    "type": "🛠 error state",
+    "note": "Mostra '🛠 Errore nel caricamento parametri' in caso di errore"
+  },
+  {
+    "file": "components/nesting/tabs/ParametersTab.tsx",
+    "feature": "Parametri non disponibili",
+    "type": "🛠 empty state",
+    "note": "Mostra '🛠 Parametri non disponibili' quando non ci sono parametri"
+  },
+  {
+    "file": "components/nesting/tabs/ParametersTab.tsx",
+    "feature": "Pannello parametri",
+    "type": "🛠 not implemented",
+    "note": "Mostra '🛠 Pannello parametri da implementare' - funzionalità completa mancante"
+  },
+  {
+    "file": "components/nesting/tabs/ReportsTab.tsx",
+    "feature": "Nome Autoclave",
+    "type": "🛠 fallback data",
+    "note": "Mostra '🛠 Non disponibile' se autoclave_nome è null/undefined"
+  },
+  {
+    "file": "components/nesting/tabs/ReportsTab.tsx",
+    "feature": "Empty state report",
+    "type": "🛠 empty state",
+    "note": "Mostra '🛠 Nessun report disponibile' quando non ci sono report"
+  },
+  {
+    "file": "components/nesting/tabs/ReportsTab.tsx",
+    "feature": "Export CSV/Excel/PDF",
+    "type": "toast fallback",
+    "note": "Mostra toast 'Funzionalità in Sviluppo' se API export non implementate (404/501)"
+  },
+  {
+    "file": "components/nesting/tabs/PreviewOptimizationTab.tsx",
+    "feature": "Canvas non disponibile",
+    "type": "🛠 empty state",
+    "note": "Mostra '🛠 Canvas non disponibile' quando il canvas non può essere caricato"
+  },
+  {
+    "file": "components/nesting/tabs/MultiAutoclaveTab.tsx",
+    "feature": "Multi-Batch",
+    "type": "🛠 not implemented",
+    "note": "Mostra '🛠 Multi-Batch da implementare' - intera funzionalità mancante"
+  },
+  {
+    "file": "components/nesting/tabs/MultiAutoclaveTab.tsx",
+    "feature": "Errore caricamento batch",
+    "type": "🛠 error state",
+    "note": "Mostra '🛠 Errore nel caricamento' se MultiBatchNesting fallisce"
+  },
+  {
+    "file": "components/nesting/MultiBatchNesting.tsx",
+    "feature": "Batch Mock Data",
+    "type": "mock data",
+    "note": "Usa dati mock '🛠 Batch Mock 1/2' se API non disponibili con toast 'usando dati mock per il test'"
+  },
+  {
+    "file": "components/nesting/MultiBatchNesting.tsx",
+    "feature": "Preview Mock",
+    "type": "mock data",
+    "note": "Crea preview mock '🛠 Batch Preview Mock' se API preview non disponibili"
+  },
+  {
+    "file": "components/nesting/MultiBatchNesting.tsx",
+    "feature": "Ruolo utente",
+    "type": "TODO",
+    "note": "TODO: Ottenere il ruolo dal contesto utente invece di hardcoded 'Operatore'"
+  },
+  {
+    "file": "components/nesting/BatchPreviewPanel.tsx",
+    "feature": "Parametri nesting",
+    "type": "N/A fallback",
+    "note": "Mostra 'N/A' per parametri mancanti: distanza_minima, padding_bordo, margine_sicurezza, priorita_minima, efficienza_minima"
+  },
+  {
+    "file": "components/nesting/BatchPreviewPanel.tsx",
+    "feature": "Info autoclave",
+    "type": "N/A fallback",
+    "note": "Mostra 'N/A' per area_piano e capacita_peso autoclave se mancanti"
+  },
+  {
+    "file": "components/nesting/NestingPreview.tsx",
+    "feature": "Codice parte e tool",
+    "type": "N/A fallback",
+    "note": "Mostra 'N/A' per parte_codice e tool_nome se mancanti negli ODL"
+  },
+  {
+    "file": "components/nesting/NestingVisualizationPage.tsx",
+    "feature": "Nome tool e codice parte",
+    "type": "N/A fallback",
+    "note": "Mostra 'N/A' per tool_nome e parte_codice del tool selezionato se mancanti"
+  },
+  {
+    "file": "components/nesting/NestingExcludedTools.tsx",
+    "feature": "ODL esclusi",
+    "type": "N/A fallback",
+    "note": "Mostra 'N/A' per parte_codice e tool_nome degli ODL esclusi se mancanti"
+  },
+  {
+    "file": "app/dashboard/management/monitoraggio/page.tsx",
+    "feature": "Ripristino stato",
+    "type": "TODO",
+    "note": "TODO: Implementare endpoint per il ripristino dello stato (commented out)"
+  },
+  {
+    "file": "lib/api.ts",
+    "feature": "API Logging",
+    "type": "console logs",
+    "note": "Numerosi console.log e console.error per debug API - potrebbero essere rimossi in produzione"
+  },
+  {
+    "file": "hooks/useToolsWithStatus.ts",
+    "feature": "Tool validation",
+    "type": "console.warn",
+    "note": "console.warn per tool non validi durante la validazione"
+  },
+  {
+    "file": "hooks/useNestingParameters.ts",
+    "feature": "Error handling",
+    "type": "console.error",
+    "note": "console.error per errori in caricamento parametri, validazione, preview e generazione automatica"
+  },
+  {
+    "file": "hooks/useDashboardKPI.ts",
+    "feature": "Statistiche autoclavi",
+    "type": "console.warn",
+    "note": "console.warn se errore nel recupero statistiche autoclavi"
+  },
+  {
+    "file": "components/nesting/NestingTable.tsx",
+    "feature": "Console errors",
+    "type": "console.error",
+    "note": "console.error per errori durante azioni e caricamento nesting"
+  },
+  {
+    "file": "components/nesting/NestingCanvas.tsx",
+    "feature": "Console logs",
+    "type": "console.log/error",
+    "note": "console.log per successo caricamento layout, console.error per errori"
+  },
+  {
+    "file": "components/nesting/NestingSelector.tsx",
+    "feature": "Console logs",
+    "type": "console.log/error", 
+    "note": "console.log per lista nesting caricata, console.error per errori caricamento"
+  },
+  {
+    "file": "components/nesting/tabs/ConfirmedLayoutsTab.tsx",
+    "feature": "Console warnings",
+    "type": "console.warn/error",
+    "note": "console.warn per dettagli non caricabili, console.error per errori generali"
+  },
+  {
+    "file": "components/nesting/tabs/ReportsTab.tsx",
+    "feature": "Console errors",
+    "type": "console.error",
+    "note": "console.error per errori in caricamento nesting, download report, generazione report dettagliato, export"
+  },
+  {
+    "file": "components/nesting/tabs/PreviewOptimizationTab.tsx",
+    "feature": "Console logs",
+    "type": "console.log/error",
+    "note": "console.log per nesting automatico generato e tool selezionato, console.error per errori generazione"
+  },
+  {
+    "file": "components/nesting/MultiBatchNesting.tsx",
+    "feature": "Console errors",
+    "type": "console.error",
+    "note": "console.error per errori in caricamento batch, creazione preview, salvataggio, aggiornamento stato, eliminazione"
+  }
+] 

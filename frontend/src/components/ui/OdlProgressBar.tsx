@@ -9,7 +9,7 @@ import { Clock, AlertTriangle, Info } from 'lucide-react';
 export interface ODLStateTimestamp {
   stato: string;
   inizio: string;
-  fine?: string;
+  fine?: string | null;
   durata_minuti?: number;
 }
 
@@ -20,6 +20,7 @@ export interface ODLProgressData {
   updated_at: string;
   timestamps: ODLStateTimestamp[];
   tempo_totale_stimato?: number;
+  has_timeline_data?: boolean;
 }
 
 interface OdlProgressBarProps {
@@ -402,6 +403,7 @@ export const createTestODLData = (overrides: Partial<ODLProgressData> = {}): ODL
     updated_at: now.toISOString(),
     timestamps: [],
     tempo_totale_stimato: 480,
+    has_timeline_data: true,
     ...overrides
   };
 }; 

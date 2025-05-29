@@ -256,12 +256,14 @@ export default function MonitoraggioPage() {
     }
 
     try {
-      const result = await odlApi.restoreStatus(odlId)
+      // TODO: Implementare endpoint per il ripristino dello stato
+      // const result = await odlApi.restoreStatus(odlId)
       toast({
-        title: 'Stato ripristinato',
-        description: `✅ Stato ODL ${odlId} ripristinato a: ${result.status}`,
+        variant: 'destructive',
+        title: 'Funzionalità non disponibile',
+        description: `Il ripristino dello stato non è ancora implementato.`,
       })
-      fetchData() // Ricarica i dati per mostrare le modifiche
+      // fetchData() // Ricarica i dati per mostrare le modifiche
     } catch (error) {
       console.error(`Errore durante il ripristino:`, error)
       toast({
@@ -278,7 +280,8 @@ export default function MonitoraggioPage() {
     }
 
     try {
-      await odlApi.delete(odlId)
+      // ✅ FIX 3: Passa sempre confirm=true per evitare errori di eliminazione
+      await odlApi.delete(odlId, true)
       toast({
         title: 'ODL eliminato',
         description: `ODL ${odlId} eliminato con successo.`,
@@ -286,10 +289,26 @@ export default function MonitoraggioPage() {
       fetchData()
     } catch (error) {
       console.error(`Errore durante l'eliminazione ODL:`, error)
+      
+      // ✅ FIX: Gestione errori migliorata
+      let errorMessage = 'Impossibile eliminare l\'ODL.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('422')) {
+          errorMessage = 'ODL non può essere eliminato: potrebbe essere in uso o avere dipendenze.';
+        } else if (error.message.includes('404')) {
+          errorMessage = 'ODL non trovato. Potrebbe essere già stato eliminato.';
+        } else if (error.message.includes('403')) {
+          errorMessage = 'Non hai i permessi per eliminare questo ODL.';
+        } else {
+          errorMessage = `Errore: ${error.message}`;
+        }
+      }
+      
       toast({
         variant: 'destructive',
-        title: 'Errore',
-        description: `Impossibile eliminare l'ODL.`,
+        title: 'Errore Eliminazione',
+        description: errorMessage,
       })
     }
   }

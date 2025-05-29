@@ -19,6 +19,7 @@ from schemas.odl_monitoring import (
     ODLLogRead
 )
 from services.odl_log_service import ODLLogService
+from services.state_tracking_service import StateTrackingService
 
 logger = logging.getLogger(__name__)
 
@@ -60,41 +61,75 @@ class ODLMonitoringService:
             # Ottieni informazioni ciclo di cura
             ciclo_info = ODLMonitoringService._ottieni_info_ciclo_cura(db, odl)
             
-            # Calcola statistiche temporali
-            tempo_stato_corrente = ODLLogService.calcola_tempo_in_stato(db, odl_id, odl.status)
-            tempo_totale = ODLLogService.calcola_tempo_totale_produzione(db, odl_id)
+            # ✅ CORREZIONE: Calcola statistiche temporali usando StateTrackingService
+            try:
+                tempo_stato_corrente = StateTrackingService.calcola_tempo_in_stato_corrente(db, odl_id)
+                tempo_totale = StateTrackingService.calcola_tempo_totale_produzione(db, odl_id)
+                logger.info(f"✅ Tempi calcolati per ODL {odl_id}: stato corrente={tempo_stato_corrente}min, totale={tempo_totale}min")
+            except Exception as e:
+                logger.warning(f"⚠️ Errore calcolo tempi StateTrackingService per ODL {odl_id}: {str(e)}, fallback a ODLLogService")
+                # Fallback al servizio precedente se StateTrackingService fallisce
+                tempo_stato_corrente = ODLLogService.calcola_tempo_in_stato(db, odl_id, odl.status)
+                tempo_totale = ODLLogService.calcola_tempo_totale_produzione(db, odl_id)
             
             # Prepara i log con informazioni aggiuntive
             logs_arricchiti = []
-            for log in odl.logs:
-                log_dict = {
-                    "id": log.id,
-                    "odl_id": log.odl_id,
-                    "evento": log.evento,
-                    "stato_precedente": log.stato_precedente,
-                    "stato_nuovo": log.stato_nuovo,
-                    "descrizione": log.descrizione,
-                    "responsabile": log.responsabile,
-                    "nesting_id": log.nesting_id,
-                    "autoclave_id": log.autoclave_id,
-                    "schedule_entry_id": log.schedule_entry_id,
-                    "timestamp": log.timestamp,
-                    "nesting_stato": None,
-                    "autoclave_nome": None
-                }
-                
-                # Aggiungi informazioni correlate
-                if log.nesting_id:
-                    nesting = db.query(NestingResult).filter(NestingResult.id == log.nesting_id).first()
-                    if nesting:
-                        log_dict["nesting_stato"] = nesting.stato
-                
-                if log.autoclave_id:
-                    autoclave = db.query(Autoclave).filter(Autoclave.id == log.autoclave_id).first()
-                    if autoclave:
-                        log_dict["autoclave_nome"] = autoclave.nome
-                
-                logs_arricchiti.append(ODLLogRead(**log_dict))
+            
+            # ✅ CORREZIONE: Validazione robusta dei logs
+            if hasattr(odl, 'logs') and odl.logs is not None:
+                try:
+                    for log in odl.logs:
+                        # Valida che il log abbia i campi essenziali
+                        if not log or not hasattr(log, 'id') or not hasattr(log, 'evento') or not hasattr(log, 'timestamp'):
+                            logger.warning(f"ODL {odl_id}: log entry mancante o invalido, saltato")
+                            continue
+                            
+                        log_dict = {
+                            "id": log.id,
+                            "odl_id": log.odl_id,
+                            "evento": log.evento or "evento_sconosciuto",
+                            "stato_precedente": getattr(log, 'stato_precedente', None),
+                            "stato_nuovo": getattr(log, 'stato_nuovo', None),
+                            "descrizione": getattr(log, 'descrizione', None),
+                            "responsabile": getattr(log, 'responsabile', None),
+                            "nesting_id": getattr(log, 'nesting_id', None),
+                            "autoclave_id": getattr(log, 'autoclave_id', None),
+                            "schedule_entry_id": getattr(log, 'schedule_entry_id', None),
+                            "timestamp": log.timestamp,
+                            "nesting_stato": None,
+                            "autoclave_nome": None
+                        }
+                        
+                        # Aggiungi informazioni correlate se disponibili
+                        try:
+                            if log.nesting_id:
+                                nesting = db.query(NestingResult).filter(NestingResult.id == log.nesting_id).first()
+                                if nesting:
+                                    log_dict["nesting_stato"] = nesting.stato
+                        except Exception as e:
+                            logger.warning(f"Errore nel recupero nesting {log.nesting_id}: {str(e)}")
+                        
+                        try:
+                            if log.autoclave_id:
+                                autoclave = db.query(Autoclave).filter(Autoclave.id == log.autoclave_id).first()
+                                if autoclave:
+                                    log_dict["autoclave_nome"] = autoclave.nome
+                        except Exception as e:
+                            logger.warning(f"Errore nel recupero autoclave {log.autoclave_id}: {str(e)}")
+                        
+                        # Crea l'oggetto ODLLogRead solo se i dati sono validi
+                        try:
+                            logs_arricchiti.append(ODLLogRead(**log_dict))
+                        except Exception as e:
+                            logger.error(f"Errore nella creazione ODLLogRead per log {log.id}: {str(e)}")
+                            continue
+                            
+                except Exception as e:
+                    logger.error(f"Errore durante l'elaborazione dei logs per ODL {odl_id}: {str(e)}")
+                    logs_arricchiti = []  # Fallback a lista vuota
+            else:
+                logger.info(f"ODL {odl_id}: nessun log disponibile o logs è None")
+                logs_arricchiti = []
             
             # Costruisci il risultato
             result = ODLMonitoringRead(
@@ -205,8 +240,12 @@ class ODLMonitoringService:
                 nesting_info = ODLMonitoringService._ottieni_info_nesting(db, odl.id)
                 schedule_info = ODLMonitoringService._ottieni_info_schedulazione(db, odl.id)
                 
-                # Calcola tempo nello stato corrente
-                tempo_stato = ODLLogService.calcola_tempo_in_stato(db, odl.id, odl.status)
+                # ✅ CORREZIONE: Calcola tempo nello stato corrente usando StateTrackingService
+                try:
+                    tempo_stato = StateTrackingService.calcola_tempo_in_stato_corrente(db, odl.id)
+                except Exception as e:
+                    logger.warning(f"⚠️ Errore calcolo tempo StateTrackingService per ODL {odl.id}: {str(e)}, fallback a ODLLogService")
+                    tempo_stato = ODLLogService.calcola_tempo_in_stato(db, odl.id, odl.status)
                 
                 summary = ODLMonitoringSummary(
                     id=odl.id,

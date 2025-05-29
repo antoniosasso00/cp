@@ -111,12 +111,7 @@ class NestingReportGenerator:
                 logger.error(f"Nesting {nesting_id} non trovato")
                 return None
             
-            # Verifica che il nesting sia completato
-            if nesting.stato != "Completato":
-                logger.warning(f"Nesting {nesting_id} non è completato (stato: {nesting.stato})")
-                return None
-            
-            # Verifica che non esista già un report
+            # Verifica che non esista già un report (se non forziamo la rigenerazione)
             if nesting.report_id:
                 logger.info(f"Report già esistente per nesting {nesting_id}")
                 existing_report = self.db.query(Report).filter(Report.id == nesting.report_id).first()
@@ -143,17 +138,22 @@ class NestingReportGenerator:
             
         except Exception as e:
             logger.error(f"❌ Errore durante la generazione del report per nesting {nesting_id}: {e}")
-            self.db.rollback()
             return None
     
     def _load_nesting_data(self, nesting_id: int) -> Optional[NestingResult]:
         """Carica i dati del nesting con tutte le relazioni necessarie"""
-        return self.db.query(NestingResult).options(
-            joinedload(NestingResult.autoclave),
-            joinedload(NestingResult.odl_list).joinedload(ODL.parte).joinedload(Parte.catalogo),
-            joinedload(NestingResult.odl_list).joinedload(ODL.parte).joinedload(Parte.ciclo_cura),
-            joinedload(NestingResult.odl_list).joinedload(ODL.tool)
-        ).filter(NestingResult.id == nesting_id).first()
+        try:
+            nesting = self.db.query(NestingResult).options(
+                joinedload(NestingResult.autoclave),
+                joinedload(NestingResult.odl_list).joinedload(ODL.parte).joinedload(Parte.catalogo),
+                joinedload(NestingResult.odl_list).joinedload(ODL.tool),
+                joinedload(NestingResult.odl_list).joinedload(ODL.parte).joinedload(Parte.ciclo_cura)
+            ).filter(NestingResult.id == nesting_id).first()
+            
+            return nesting
+        except Exception as e:
+            logger.error(f"Errore nel caricamento dati nesting {nesting_id}: {e}")
+            return None
     
     def _create_pdf_report(self, nesting: NestingResult, file_path: str):
         """Crea il file PDF del report"""
@@ -263,13 +263,19 @@ class NestingReportGenerator:
         
         autoclave = nesting.autoclave
         if autoclave:
+            # Calcola l'area totale se disponibile
+            area_totale = "N/A"
+            if autoclave.lunghezza and autoclave.larghezza_piano:
+                area_totale = f"{autoclave.lunghezza * autoclave.larghezza_piano / 100:.0f} cm²"
+            
             data = [
                 ['Campo', 'Valore'],
                 ['Nome', autoclave.nome],
-                ['Codice', autoclave.codice],
-                ['Dimensioni', f"{autoclave.lunghezza} x {autoclave.larghezza_piano} cm"],
-                ['Area Totale', f"{autoclave.lunghezza * autoclave.larghezza_piano:.0f} cm²"],
-                ['Linee Vuoto', str(autoclave.num_linee_vuoto)],
+                ['Codice', autoclave.codice or 'N/A'],
+                ['Dimensioni (mm)', f"{autoclave.lunghezza} x {autoclave.larghezza_piano}" if autoclave.lunghezza and autoclave.larghezza_piano else 'N/A'],
+                ['Area Totale', area_totale],
+                ['Carico Max (kg)', f"{autoclave.max_load_kg}" if autoclave.max_load_kg else 'N/A'],
+                ['Linee Vuoto', str(autoclave.num_linee_vuoto) if autoclave.num_linee_vuoto else 'N/A'],
                 ['Stato', autoclave.stato.value if autoclave.stato else 'N/A']
             ]
         else:
@@ -315,12 +321,17 @@ class NestingReportGenerator:
                 part_number = odl.parte.catalogo.part_number
                 descrizione = odl.parte.descrizione_breve or 'N/A'
             
+            # Gestisce il campo status che può essere un enum o una stringa
+            status_value = odl.status
+            if hasattr(status_value, 'value'):
+                status_value = status_value.value
+            
             data.append([
                 str(odl.id),
                 part_number,
                 descrizione[:40] + '...' if len(descrizione) > 40 else descrizione,
                 str(odl.priorita),
-                odl.status
+                str(status_value)
             ])
         
         table = Table(data, colWidths=[2*cm, 3*cm, 6*cm, 2*cm, 2*cm])
@@ -356,24 +367,31 @@ class NestingReportGenerator:
             return elements
         
         # Header della tabella
-        data = [['Codice Tool', 'Dimensioni (cm)', 'Peso (kg)', 'Materiale', 'Note']]
+        data = [['Codice Tool', 'Dimensioni (mm)', 'Area (cm²)', 'Peso (kg)', 'Note']]
         
         # Aggiungi i dati dei tool
         for tool in tools:
-            dimensioni = f"{tool.lunghezza}x{tool.larghezza}x{tool.altezza}" if all([tool.lunghezza, tool.larghezza, tool.altezza]) else 'N/A'
-            peso = f"{tool.peso:.2f}" if tool.peso else 'N/A'
-            materiale = tool.materiale or 'N/A'
+            # Dimensioni in mm
+            dimensioni = f"{tool.lunghezza_piano}x{tool.larghezza_piano}" if tool.lunghezza_piano and tool.larghezza_piano else 'N/A'
+            
+            # Area in cm²
+            area = f"{tool.area:.2f}" if tool.lunghezza_piano and tool.larghezza_piano else 'N/A'
+            
+            # Peso (usa proprietà peso che ha un default)
+            peso = f"{tool.peso:.2f}" if hasattr(tool, 'peso') and tool.peso else '10.0'  # Default weight
+            
+            # Note
             note = (tool.note[:30] + '...') if tool.note and len(tool.note) > 30 else (tool.note or 'N/A')
             
             data.append([
-                tool.codice,
+                tool.part_number_tool,
                 dimensioni,
+                area,
                 peso,
-                materiale,
                 note
             ])
         
-        table = Table(data, colWidths=[3*cm, 3*cm, 2*cm, 3*cm, 4*cm])
+        table = Table(data, colWidths=[3*cm, 3*cm, 2*cm, 2*cm, 5*cm])
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.darkorange),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -406,14 +424,31 @@ class NestingReportGenerator:
             return elements
         
         for ciclo in cicli:
+            # Calcola durata totale
+            durata_totale = ciclo.durata_stasi1 or 0
+            if ciclo.attiva_stasi2 and ciclo.durata_stasi2:
+                durata_totale += ciclo.durata_stasi2
+            
             data = [
                 ['Parametro', 'Valore'],
                 ['Nome Ciclo', ciclo.nome],
-                ['Temperatura', f"{ciclo.temperatura}°C" if ciclo.temperatura else 'N/A'],
-                ['Durata', f"{ciclo.durata_minuti} min" if ciclo.durata_minuti else 'N/A'],
-                ['Pressione', f"{ciclo.pressione} bar" if ciclo.pressione else 'N/A'],
-                ['Descrizione', ciclo.descrizione or 'N/A']
+                ['Temperatura Stasi 1', f"{ciclo.temperatura_stasi1}°C" if ciclo.temperatura_stasi1 else 'N/A'],
+                ['Pressione Stasi 1', f"{ciclo.pressione_stasi1} bar" if ciclo.pressione_stasi1 else 'N/A'],
+                ['Durata Stasi 1', f"{ciclo.durata_stasi1} min" if ciclo.durata_stasi1 else 'N/A'],
             ]
+            
+            # Aggiungi stasi 2 se attiva
+            if ciclo.attiva_stasi2:
+                data.extend([
+                    ['Temperatura Stasi 2', f"{ciclo.temperatura_stasi2}°C" if ciclo.temperatura_stasi2 else 'N/A'],
+                    ['Pressione Stasi 2', f"{ciclo.pressione_stasi2} bar" if ciclo.pressione_stasi2 else 'N/A'],
+                    ['Durata Stasi 2', f"{ciclo.durata_stasi2} min" if ciclo.durata_stasi2 else 'N/A'],
+                ])
+            
+            data.extend([
+                ['Durata Totale', f"{durata_totale} min"],
+                ['Descrizione', ciclo.descrizione or 'N/A']
+            ])
             
             table = Table(data, colWidths=[4*cm, 10*cm])
             table.setStyle(TableStyle([

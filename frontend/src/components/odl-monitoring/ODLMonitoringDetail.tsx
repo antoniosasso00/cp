@@ -388,8 +388,8 @@ export function ODLMonitoringDetail({ odlId, onBack }: ODLMonitoringDetailProps)
 
         <TabsContent value="timeline" className="space-y-4">
           <ODLTimelineEnhanced 
-            logs={odlDetail.logs} 
-            currentStatus={odlDetail.status}
+            logs={Array.isArray(odlDetail.logs) ? odlDetail.logs : []} 
+            currentStatus={odlDetail.status || 'Unknown'}
           />
         </TabsContent>
 
@@ -402,7 +402,7 @@ export function ODLMonitoringDetail({ odlId, onBack }: ODLMonitoringDetailProps)
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {odlDetail.logs.length > 0 ? (
+              {Array.isArray(odlDetail.logs) && odlDetail.logs.length > 0 ? (
                 <div className="space-y-4">
                   {odlDetail.logs.map((log) => (
                     <div key={log.id} className="border rounded-lg p-4">

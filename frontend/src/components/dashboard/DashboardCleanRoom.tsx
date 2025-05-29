@@ -309,18 +309,6 @@ export default function DashboardCleanRoom() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Link href="/dashboard/clean-room/parts">
-                <Button className="w-full" variant="outline" size="sm">
-                  <Package className="h-4 w-4 mr-2" />
-                  Catalogo Parti
-                </Button>
-              </Link>
-              <Link href="/dashboard/clean-room/tools">
-                <Button className="w-full" variant="outline" size="sm">
-                  <Wrench className="h-4 w-4 mr-2" />
-                  Gestione Tools
-                </Button>
-              </Link>
               <Link href="/dashboard/shared/odl">
                 <Button className="w-full" variant="outline" size="sm">
                   <ClipboardCheck className="h-4 w-4 mr-2" />

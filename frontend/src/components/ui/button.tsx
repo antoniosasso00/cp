@@ -1,36 +1,35 @@
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
-import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
-const buttonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap rounded-2xl text-sm font-medium ring-offset-background transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
-  {
-    variants: {
-      variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-md hover:shadow-lg",
-        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-md hover:shadow-lg",
-        outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground shadow-sm hover:shadow-md",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm hover:shadow-md",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 hover:underline",
-        success: "bg-success text-success-foreground hover:bg-success/90 shadow-md hover:shadow-lg",
-        warning: "bg-warning text-warning-foreground hover:bg-warning/90 shadow-md hover:shadow-lg",
-        info: "bg-info text-info-foreground hover:bg-info/90 shadow-md hover:shadow-lg",
-      },
-      size: {
-        default: "h-10 px-4 py-2",
-        sm: "h-9 rounded-xl px-3",
-        lg: "h-11 rounded-2xl px-8",
-        icon: "h-10 w-10",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
+// Funzione per generare le classi del button
+const getButtonClasses = (variant?: string, size?: string) => {
+  const baseClasses = "inline-flex items-center justify-center whitespace-nowrap rounded-2xl text-sm font-medium ring-offset-background transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+  
+  const variantClasses = {
+    default: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-md hover:shadow-lg",
+    destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-md hover:shadow-lg",
+    outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground shadow-sm hover:shadow-md",
+    secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm hover:shadow-md",
+    ghost: "hover:bg-accent hover:text-accent-foreground",
+    link: "text-primary underline-offset-4 hover:underline",
+    success: "bg-success text-success-foreground hover:bg-success/90 shadow-md hover:shadow-lg",
+    warning: "bg-warning text-warning-foreground hover:bg-warning/90 shadow-md hover:shadow-lg",
+    info: "bg-info text-info-foreground hover:bg-info/90 shadow-md hover:shadow-lg",
   }
-)
+  
+  const sizeClasses = {
+    default: "h-10 px-4 py-2",
+    sm: "h-9 rounded-xl px-3",
+    lg: "h-11 rounded-2xl px-8",
+    icon: "h-10 w-10",
+  }
+  
+  const variantClass = variantClasses[variant as keyof typeof variantClasses] || variantClasses.default
+  const sizeClass = sizeClasses[size as keyof typeof sizeClasses] || sizeClasses.default
+  
+  return `${baseClasses} ${variantClass} ${sizeClass}`
+}
 
 // Icona spinner per loading
 const LoadingSpinner = () => (
@@ -57,28 +56,69 @@ const LoadingSpinner = () => (
 )
 
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
+  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   asChild?: boolean
   loading?: boolean
+  variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link" | "success" | "warning" | "info"
+  size?: "default" | "sm" | "lg" | "icon"
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, loading = false, children, disabled, ...props }, ref) => {
     const Comp = asChild ? Slot : "button"
+    
+    // Se asChild è true e loading è true, non possiamo usare Slot
+    // perché creerebbe multipli children causando l'errore React.Children.only
+    if (asChild && loading) {
+      console.warn("Button: asChild={true} con loading={true} non è supportato. Usando button normale.")
+      return (
+        <button
+          className={cn(getButtonClasses(variant, size), className)}
+          ref={ref}
+          disabled={disabled || loading}
+          {...props}
+        >
+          <span className="flex items-center">
+            <LoadingSpinner />
+            Caricamento...
+          </span>
+        </button>
+      )
+    }
+    
     return (
       <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
+        className={cn(getButtonClasses(variant, size), className)}
         ref={ref}
         disabled={disabled || loading}
         {...props}
       >
-        {loading && <LoadingSpinner />}
-        {loading ? "Caricamento..." : children}
+        {loading ? (
+          <span className="flex items-center">
+            <LoadingSpinner />
+            Caricamento...
+          </span>
+        ) : (
+          children
+        )}
       </Comp>
     )
   }
 )
 Button.displayName = "Button"
+
+// Esportiamo anche buttonVariants per compatibilità
+const buttonVariants = (props?: { variant?: string; size?: string } | string, size?: string) => {
+  if (typeof props === 'string') {
+    // Se il primo parametro è una stringa, è la variant
+    return getButtonClasses(props, size)
+  } else if (props && typeof props === 'object') {
+    // Se è un oggetto, estrai variant e size
+    return getButtonClasses(props.variant, props.size)
+  } else {
+    // Nessun parametro, usa i default
+    return getButtonClasses()
+  }
+}
 
 export { Button, buttonVariants } 

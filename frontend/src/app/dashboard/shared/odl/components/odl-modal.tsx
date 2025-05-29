@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useTransition } from 'react'
 import { Tool, ParteResponse, ODLResponse, ODLCreate, ODLUpdate, odlApi, toolApi, partiApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
@@ -8,10 +8,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
-import { Loader2, AlertTriangle } from 'lucide-react'
+import { Loader2, AlertTriangle, Plus } from 'lucide-react'
 import { cn } from "@/lib/utils"
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import React from 'react'
+import { useRouter } from 'next/navigation'
 
 interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
 
@@ -40,12 +41,14 @@ type ODLModalProps = {
 
 const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
   const { toast } = useToast()
+  const router = useRouter()
   const [tools, setTools] = useState<Tool[]>([])
   const [parti, setParti] = useState<ParteResponse[]>([])
   const [filteredTools, setFilteredTools] = useState<Tool[]>([])
   const [selectedParte, setSelectedParte] = useState<ParteResponse | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isPending, startTransition] = useTransition()
   
   // Form state
   const [formData, setFormData] = useState<ODLCreate | ODLUpdate>({
@@ -170,13 +173,109 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
         })
       }
       
-      onSuccess()
+      // ✅ FIX: Refresh automatico dopo operazione
+      router.refresh()
+      
+      // ✅ FIX: Usa startTransition per evitare freeze
+      startTransition(() => {
+        onSuccess()
+        onClose()
+      })
     } catch (error) {
       console.error('Errore nel salvataggio dell\'ODL:', error)
+      
+      // ✅ FIX: Gestione errori migliorata
+      let errorMessage = 'Impossibile salvare l\'ODL. Verifica i dati e riprova.'
+      
+      if (error instanceof Error) {
+        if (error.message.includes('422')) {
+          errorMessage = 'Dati non validi. Controlla i campi inseriti.'
+        } else if (error.message.includes('400')) {
+          errorMessage = 'Richiesta non valida. Verifica i dati inseriti.'
+        } else {
+          errorMessage = error.message
+        }
+      }
+      
       toast({
         variant: 'destructive',
         title: 'Errore',
-        description: 'Impossibile salvare l\'ODL. Verifica i dati e riprova.',
+        description: errorMessage,
+      })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // ✅ NUOVO: Funzione per salvare e resettare il form (solo in modalità creazione)
+  const handleSaveAndNew = async () => {
+    // Validazione base
+    if (!formData.parte_id || !formData.tool_id) {
+      toast({
+        variant: 'destructive',
+        title: 'Validazione fallita',
+        description: 'Seleziona una parte e un tool validi.',
+      })
+      return
+    }
+
+    try {
+      setIsSaving(true)
+      
+      // Solo modalità creazione (il pulsante è visibile solo in creazione)
+      await odlApi.create(formData as ODLCreate)
+      toast({
+        variant: 'success',
+        title: 'ODL creato e pronto per il prossimo',
+        description: 'ODL creato con successo. Form resettato per un nuovo inserimento.',
+      })
+      
+      // Reset del form per un nuovo inserimento
+      setFormData({
+        parte_id: 0,
+        tool_id: 0,
+        priorita: 1,
+        status: "Preparazione",
+        note: ""
+      })
+      setSelectedParte(null)
+      setFilteredTools([])
+      
+      // ✅ FIX: Refresh automatico dopo operazione
+      router.refresh()
+      
+      // ✅ FIX: NON chiamiamo onSuccess() per evitare che il modal si chiuda
+      // Invece, forziamo un refresh della lista senza chiudere il modal
+      
+      // NON chiudiamo il modal - rimane aperto per il prossimo inserimento
+      // Il focus viene automaticamente messo sul primo campo
+      setTimeout(() => {
+        const parteSelect = document.querySelector('[role="combobox"]') as HTMLElement
+        if (parteSelect) {
+          parteSelect.focus()
+        }
+      }, 100)
+      
+    } catch (error) {
+      console.error('Errore nel salvataggio dell\'ODL (Salva e nuovo):', error)
+      
+      // ✅ FIX: Gestione errori migliorata
+      let errorMessage = 'Impossibile salvare l\'ODL. Verifica i dati e riprova.'
+      
+      if (error instanceof Error) {
+        if (error.message.includes('422')) {
+          errorMessage = 'Dati non validi. Controlla i campi inseriti.'
+        } else if (error.message.includes('400')) {
+          errorMessage = 'Richiesta non valida. Verifica i dati inseriti.'
+        } else {
+          errorMessage = error.message
+        }
+      }
+      
+      toast({
+        variant: 'destructive',
+        title: 'Errore',
+        description: errorMessage,
       })
     } finally {
       setIsSaving(false)
@@ -383,11 +482,26 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
         )}
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} disabled={isSaving || isPending}>
             Annulla
           </Button>
-          <Button onClick={handleSubmit} disabled={isSaving}>
-            {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          
+          {/* ✅ NUOVO: Pulsante "Salva e nuovo" visibile solo in modalità creazione */}
+          {!item && (
+            <Button 
+              type="button" 
+              variant="secondary" 
+              onClick={handleSaveAndNew} 
+              disabled={isSaving || isPending}
+              className="gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Salva e Nuovo
+            </Button>
+          )}
+          
+          <Button onClick={handleSubmit} disabled={isSaving || isPending}>
+            {(isSaving || isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {item ? 'Aggiorna' : 'Crea'}
           </Button>
         </DialogFooter>

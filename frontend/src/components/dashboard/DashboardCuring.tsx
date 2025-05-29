@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
 import { 
   Flame, 
   Thermometer, 
@@ -19,146 +20,159 @@ import {
   Calendar,
   Loader2,
   RefreshCw,
-  FileText
+  FileText,
+  Gauge,
+  AlertCircle,
+  Timer
 } from 'lucide-react'
 import Link from 'next/link'
-import { useODLByRole } from '@/hooks/useODLByRole'
-import { useDashboardKPI } from '@/hooks/useDashboardKPI'
-import { nestingApi, type NestingResponse } from '@/lib/api'
+import { odlApi, autoclaveApi, type ODLResponse, type Autoclave } from '@/lib/api'
 
 /**
- * Dashboard dedicata agli operatori Curing
+ * 🔥 Dashboard Curing - Pannello di controllo per il reparto di cura
  * 
- * Fornisce strumenti specifici per la gestione autoclavi:
- * - ODL in Attesa Cura e Cura (dati reali)
- * - Nesting confermati caricabili
- * - Cambio stato ODL con pulsanti funzionali
- * - KPI reali di produzione
+ * Funzionalità principali:
+ * - ODL in cura e completati
+ * - Stato autoclavi
+ * - Statistiche di produzione
  */
-export default function DashboardCuring() {
-  const { odlList, loading, error, refresh, updateODLStatus } = useODLByRole({ 
-    role: 'Curing',
-    autoRefresh: true,
-    refreshInterval: 30000 
-  })
-  
-  const { data: kpiData, loading: kpiLoading } = useDashboardKPI()
-  
-  const [updatingODL, setUpdatingODL] = useState<number | null>(null)
-  const [nestingList, setNestingList] = useState<NestingResponse[]>([])
-  const [nestingLoading, setNestingLoading] = useState(true)
-  const [nestingError, setNestingError] = useState<string | null>(null)
 
-  // Carica i nesting confermati
-  const fetchNestingConfermati = async () => {
+export default function DashboardCuring() {
+  const [odlInCura, setOdlInCura] = useState<ODLResponse[]>([])
+  const [odlCompletati, setOdlCompletati] = useState<ODLResponse[]>([])
+  const [autoclavi, setAutoclavi] = useState<Autoclave[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Carica i dati del dashboard
+  const fetchDashboardData = async () => {
     try {
-      setNestingLoading(true)
-      setNestingError(null)
+      setLoading(true)
+      setError(null)
+
+      // Carica ODL in cura
+      const odlCura = await odlApi.getByStatus('Cura')
+      setOdlInCura(odlCura)
+
+      // Carica ODL completati oggi
+      const oggi = new Date()
+      oggi.setHours(0, 0, 0, 0)
+      const domani = new Date(oggi)
+      domani.setDate(domani.getDate() + 1)
       
-      // Ottieni tutti i nesting confermati
-      const allNesting = await nestingApi.getAll()
-      const nestingConfermati = allNesting.filter(nesting => 
-        nesting.confermato_da_ruolo && nesting.stato === 'confermato'
-      )
-      
-      setNestingList(nestingConfermati)
+      const odlFiniti = await odlApi.getCompleted({
+        start_date: oggi.toISOString().split('T')[0],
+        end_date: domani.toISOString().split('T')[0]
+      })
+      setOdlCompletati(odlFiniti)
+
+      // Carica stato autoclavi
+      const autoclaveList = await autoclaveApi.getAll()
+      setAutoclavi(autoclaveList)
+
     } catch (err) {
-      console.error('Errore nel caricamento nesting:', err)
-      setNestingError('Errore nel caricamento dei nesting')
+      console.error('Errore nel caricamento dashboard curing:', err)
+      setError('Errore nel caricamento dei dati')
     } finally {
-      setNestingLoading(false)
+      setLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchNestingConfermati()
+    fetchDashboardData()
   }, [])
 
-  // Calcola metriche operative reali
-  const getOperativeMetrics = () => {
-    const odlInAttesaCura = odlList.filter(odl => odl.status === 'Attesa Cura').length
-    const odlInCura = odlList.filter(odl => odl.status === 'Cura').length
-    const odlTotali = odlList.length
-    
-    return [
-      { 
-        label: 'ODL in Attesa Cura', 
-        value: odlInAttesaCura.toString(), 
-        trend: 'Pronti per autoclave',
-        status: odlInAttesaCura > 0 ? 'active' : 'success',
-        icon: Clock
-      },
-      { 
-        label: 'ODL in Cura', 
-        value: odlInCura.toString(), 
-        trend: 'Attualmente in autoclave',
-        status: odlInCura > 0 ? 'active' : 'success',
-        icon: Flame
-      },
-      { 
-        label: 'Nesting Confermati', 
-        value: nestingList.length.toString(), 
-        trend: 'Pronti per caricamento',
-        status: nestingList.length > 0 ? 'active' : 'success',
-        icon: Grid3X3
-      },
-      { 
-        label: 'Utilizzo Autoclavi', 
-        value: kpiData ? `${kpiData.utilizzo_medio_autoclavi}%` : '--', 
-        trend: kpiData && kpiData.utilizzo_medio_autoclavi > 80 ? 'Alto utilizzo' : 'Capacità disponibile',
-        status: kpiData && kpiData.utilizzo_medio_autoclavi > 90 ? 'warning' : 'success',
-        icon: TrendingUp
-      }
-    ]
-  }
+  // Calcola statistiche
+  const autoclavi_in_uso = autoclavi.filter(a => a.stato === 'IN_USO').length
+  const autoclavi_disponibili = autoclavi.filter(a => a.stato === 'DISPONIBILE').length
+  const autoclavi_guaste = autoclavi.filter(a => a.stato === 'GUASTO').length
 
-  // Gestisce il cambio stato di un ODL
-  const handleStatusChange = async (odlId: number, newStatus: string) => {
-    try {
-      setUpdatingODL(odlId)
-      await updateODLStatus(odlId, newStatus)
-    } catch (err) {
-      console.error('Errore nel cambio stato:', err)
-      alert('Errore nel cambio stato. Riprova.')
-    } finally {
-      setUpdatingODL(null)
+  const kpiCards = [
+    {
+      title: 'ODL in Cura',
+      value: odlInCura.length.toString(),
+      description: 'Attualmente in processo',
+      icon: <Thermometer className="h-4 w-4" />,
+      status: odlInCura.length > 0 ? 'active' : 'success',
+    },
+    {
+      title: 'Completati Oggi',
+      value: odlCompletati.length.toString(),
+      description: 'ODL finiti oggi',
+      icon: <CheckCircle className="h-4 w-4" />,
+      status: 'success',
+    },
+    {
+      title: 'Autoclavi in Uso',
+      value: autoclavi_in_uso.toString(),
+      description: `${autoclavi_disponibili} disponibili`,
+      icon: <Gauge className="h-4 w-4" />,
+      status: autoclavi_in_uso > 0 ? 'active' : 'warning',
+    },
+    {
+      title: 'Autoclavi Guaste',
+      value: autoclavi_guaste.toString(),
+      description: 'Richiedono manutenzione',
+      icon: <AlertCircle className="h-4 w-4" />,
+      status: autoclavi_guaste > 0 ? 'error' : 'success',
     }
-  }
+  ]
 
   const getStatusColor = (status: string) => {
-    const colors = {
-      active: 'text-orange-600',
-      success: 'text-green-600',
-      warning: 'text-yellow-600',
-      error: 'text-red-600',
-      info: 'text-purple-600'
+    switch (status) {
+      case 'active': return 'text-blue-600 bg-blue-50'
+      case 'success': return 'text-green-600 bg-green-50'
+      case 'warning': return 'text-yellow-600 bg-yellow-50'
+      case 'error': return 'text-red-600 bg-red-50'
+      default: return 'text-gray-600 bg-gray-50'
     }
-    return colors[status as keyof typeof colors] || 'text-gray-600'
   }
 
-  const getODLStatusBadge = (status: string) => {
-    const variants = {
-      'Attesa Cura': { variant: 'secondary', label: 'Attesa Cura', color: 'bg-orange-500' },
-      'Cura': { variant: 'default', label: 'In Cura', color: 'bg-red-500' }
-    }
-    return variants[status as keyof typeof variants] || { variant: 'outline', label: status, color: 'bg-gray-500' }
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard Curing</h1>
+          <RefreshCw className="h-6 w-6 animate-spin text-gray-400" />
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="animate-pulse">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <div className="h-4 bg-gray-200 rounded w-24"></div>
+                <div className="h-4 w-4 bg-gray-200 rounded"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="h-8 bg-gray-200 rounded w-16 mb-2"></div>
+                <div className="h-3 bg-gray-200 rounded w-32"></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
   }
 
-  const getPriorityColor = (priority: number) => {
-    if (priority >= 8) return 'text-red-600'
-    if (priority >= 5) return 'text-yellow-600'
-    return 'text-green-600'
-  }
-
-  const getPriorityLabel = (priority: number) => {
-    if (priority >= 8) return 'Alta'
-    if (priority >= 5) return 'Media'
-    return 'Bassa'
-  }
-
-  const refreshAll = () => {
-    refresh()
-    fetchNestingConfermati()
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard Curing</h1>
+          <Button onClick={fetchDashboardData} variant="outline" size="sm">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Riprova
+          </Button>
+        </div>
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center space-x-2 text-red-600">
+              <AlertCircle className="h-5 w-5" />
+              <span>{error}</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -166,342 +180,118 @@ export default function DashboardCuring() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <Flame className="h-8 w-8 text-orange-500" />
-            Dashboard Curing
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Gestione ODL in Attesa Cura e Cura - Controllo autoclavi e nesting
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard Curing</h1>
+          <p className="text-muted-foreground">
+            Monitoraggio processi di cura e stato autoclavi
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={refreshAll}
-            disabled={loading || nestingLoading}
-          >
-            <RefreshCw className={`h-4 w-4 ${(loading || nestingLoading) ? 'animate-spin' : ''}`} />
-          </Button>
-          <Badge variant="default" className="text-sm bg-orange-500">
-            <Flame className="h-4 w-4 mr-1" />
-            Curing
-          </Badge>
-        </div>
+        <Button onClick={fetchDashboardData} variant="outline" size="sm">
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Aggiorna
+        </Button>
       </div>
 
-      {/* Metriche operative reali */}
+      {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {getOperativeMetrics().map((metric, index) => {
-          const IconComponent = metric.icon
-          return (
-            <Card key={index}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{metric.label}</CardTitle>
-                <IconComponent className={`h-4 w-4 ${getStatusColor(metric.status)}`} />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{metric.value}</div>
-                <p className={`text-xs ${getStatusColor(metric.status)}`}>{metric.trend}</p>
-              </CardContent>
-            </Card>
-          )
-        })}
+        {kpiCards.map((kpi, index) => (
+          <Card key={index}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                {kpi.title}
+              </CardTitle>
+              <div className={`p-2 rounded-md ${getStatusColor(kpi.status)}`}>
+                {kpi.icon}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{kpi.value}</div>
+              <p className="text-xs text-muted-foreground">
+                {kpi.description}
+              </p>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {/* Layout principale */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* ODL Attivi - Dati Reali */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* ODL in Attesa Cura e Cura */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Flame className="h-5 w-5" />
-                    ODL Assegnati
-                  </CardTitle>
-                  <CardDescription>
-                    Ordini di lavoro in Attesa Cura e Cura
-                  </CardDescription>
-                </div>
-                <Badge variant="outline">
-                  {odlList.length} ODL
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  <span className="ml-2 text-sm text-muted-foreground">Caricamento ODL...</span>
-                </div>
-              ) : error ? (
-                <div className="text-center py-8">
-                  <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-2" />
-                  <p className="text-sm text-red-600 mb-3">{error}</p>
-                  <Button variant="outline" size="sm" onClick={refresh}>
-                    Riprova
-                  </Button>
-                </div>
-              ) : odlList.length === 0 ? (
-                <div className="text-center py-8">
-                  <CheckCircle className="h-8 w-8 text-green-500 mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">
-                    Nessun ODL assegnato al momento
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {odlList.map((odl) => {
-                    const statusInfo = getODLStatusBadge(odl.status)
-                    const isUpdating = updatingODL === odl.id
-                    
-                    return (
-                      <div key={odl.id} className="p-4 rounded-lg border space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="font-medium">ODL #{odl.id}</div>
-                          <Badge variant={statusInfo.variant as any}>
-                            {statusInfo.label}
-                          </Badge>
-                        </div>
-                        
-                        <div className="space-y-1 text-sm">
-                          <div><strong>Parte:</strong> {odl.parte.part_number}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {odl.parte.descrizione_breve}
-                          </div>
-                          <div><strong>Tool:</strong> {odl.tool.part_number_tool}</div>
-                          <div className="flex items-center justify-between">
-                            <span><strong>Priorità:</strong></span>
-                            <span className={`font-medium ${getPriorityColor(odl.priorita)}`}>
-                              {getPriorityLabel(odl.priorita)} (P{odl.priorita})
-                            </span>
-                          </div>
-                          <div><strong>Valvole richieste:</strong> {odl.parte.num_valvole_richieste}</div>
-                        </div>
-
-                        {/* Pulsanti azione */}
-                        <div className="flex gap-2 pt-2">
-                          {odl.status === 'Attesa Cura' && (
-                            <Button 
-                              size="sm" 
-                              className="flex-1"
-                              onClick={() => handleStatusChange(odl.id, 'Cura')}
-                              disabled={isUpdating}
-                            >
-                              {isUpdating ? (
-                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                              ) : (
-                                <PlayCircle className="h-3 w-3 mr-1" />
-                              )}
-                              Avvia Cura
-                            </Button>
-                          )}
-                          
-                          {odl.status === 'Cura' && (
-                            <Button 
-                              size="sm" 
-                              className="flex-1"
-                              onClick={() => handleStatusChange(odl.id, 'Finito')}
-                              disabled={isUpdating}
-                            >
-                              {isUpdating ? (
-                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                              ) : (
-                                <CheckCircle className="h-3 w-3 mr-1" />
-                              )}
-                              Completa Cura
-                            </Button>
-                          )}
-                          
-                          <Link href={`/dashboard/shared/odl/${odl.id}`}>
-                            <Button size="sm" variant="outline">
-                              <FileText className="h-3 w-3" />
-                            </Button>
-                          </Link>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Nesting Confermati */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Grid3X3 className="h-5 w-5" />
-                    Nesting Confermati
-                  </CardTitle>
-                  <CardDescription>
-                    Nesting pronti per il caricamento in autoclave
-                  </CardDescription>
-                </div>
-                <Badge variant="outline">
-                  {nestingList.length} Nesting
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {nestingLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  <span className="ml-2 text-sm text-muted-foreground">Caricamento nesting...</span>
-                </div>
-              ) : nestingError ? (
-                <div className="text-center py-8">
-                  <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-2" />
-                  <p className="text-sm text-red-600 mb-3">{nestingError}</p>
-                  <Button variant="outline" size="sm" onClick={fetchNestingConfermati}>
-                    Riprova
-                  </Button>
-                </div>
-              ) : nestingList.length === 0 ? (
-                <div className="text-center py-8">
-                  <Grid3X3 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">
-                    Nessun nesting confermato disponibile
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {nestingList.map((nesting) => (
-                    <div key={nesting.id} className="p-4 rounded-lg border space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="font-medium">Nesting #{nesting.id}</div>
-                        <Badge variant="default" className="bg-green-500">
-                          Confermato
-                        </Badge>
-                      </div>
-                      
-                      <div className="space-y-1 text-sm">
-                        <div><strong>Autoclave:</strong> {nesting.autoclave.nome} ({nesting.autoclave.codice})</div>
-                        <div><strong>ODL inclusi:</strong> {nesting.odl_list.length}</div>
-                        <div><strong>Utilizzo area:</strong> {Math.round((nesting.area_utilizzata / nesting.area_totale) * 100)}%</div>
-                        <div><strong>Valvole:</strong> {nesting.valvole_utilizzate}/{nesting.valvole_totali}</div>
-                        {nesting.ciclo_cura_nome && (
-                          <div><strong>Ciclo cura:</strong> {nesting.ciclo_cura_nome}</div>
-                        )}
-                      </div>
-
-                      <div className="flex gap-2 pt-2">
-                        <Link href={`/dashboard/curing/nesting/${nesting.id}`}>
-                          <Button size="sm" className="flex-1">
-                            <PlayCircle className="h-3 w-3 mr-1" />
-                            Carica in Autoclave
-                          </Button>
-                        </Link>
-                        <Link href={`/dashboard/curing/nesting/${nesting.id}`}>
-                          <Button size="sm" variant="outline">
-                            <FileText className="h-3 w-3" />
-                          </Button>
-                        </Link>
-                      </div>
+      {/* Dettagli ODL e Autoclavi */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* ODL in Cura */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Thermometer className="h-5 w-5" />
+              <span>ODL in Cura</span>
+            </CardTitle>
+            <CardDescription>
+              Ordini attualmente in processo di cura
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {odlInCura.length === 0 ? (
+              <p className="text-muted-foreground text-center py-4">
+                Nessun ODL in cura al momento
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {odlInCura.slice(0, 5).map((odl) => (
+                  <div key={odl.id} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">ODL #{odl.id}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {odl.parte.part_number} - {odl.parte.descrizione_breve}
+                      </p>
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Sidebar con azioni rapide */}
-        <div className="space-y-6">
-          {/* Azioni rapide */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="h-5 w-5" />
-                Azioni Rapide
-              </CardTitle>
-              <CardDescription>
-                Operazioni frequenti
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Link href="/dashboard/curing/nesting">
-                <Button className="w-full" variant="outline" size="sm">
-                  <Grid3X3 className="h-4 w-4 mr-2" />
-                  Gestione Nesting
-                </Button>
-              </Link>
-              <Link href="/dashboard/curing/autoclavi">
-                <Button className="w-full" variant="outline" size="sm">
-                  <Flame className="h-4 w-4 mr-2" />
-                  Stato Autoclavi
-                </Button>
-              </Link>
-              <Link href="/dashboard/shared/odl">
-                <Button className="w-full" variant="outline" size="sm">
-                  <FileText className="h-4 w-4 mr-2" />
-                  Tutti gli ODL
-                </Button>
-              </Link>
-              <Button className="w-full" variant="outline" size="sm" onClick={refreshAll}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Aggiorna Dati
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Informazioni turno */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5" />
-                Info Turno
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="text-sm">
-                <div className="flex justify-between">
-                  <span>ODL Completati oggi:</span>
-                  <span className="font-medium">{kpiData?.odl_finiti || 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Utilizzo Autoclavi:</span>
-                  <span className={`font-medium ${kpiData && kpiData.utilizzo_medio_autoclavi > 80 ? 'text-orange-600' : 'text-green-600'}`}>
-                    {kpiData?.utilizzo_medio_autoclavi || 0}%
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Nesting Attivi:</span>
-                  <span className="font-medium">{kpiData?.nesting_attivi || 0}</span>
-                </div>
+                    <Badge variant="secondary">
+                      <Activity className="h-3 w-3 mr-1" />
+                      In Cura
+                    </Badge>
+                  </div>
+                ))}
+                {odlInCura.length > 5 && (
+                  <p className="text-sm text-muted-foreground text-center">
+                    ... e altri {odlInCura.length - 5} ODL
+                  </p>
+                )}
               </div>
-            </CardContent>
-          </Card>
+            )}
+          </CardContent>
+        </Card>
 
-          {/* Stato sistema */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5" />
-                Stato Sistema
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="text-sm">
-                <div className="flex justify-between">
-                  <span>Efficienza:</span>
-                  <span className={`font-medium ${kpiData && kpiData.efficienza_produzione >= 80 ? 'text-green-600' : 'text-yellow-600'}`}>
-                    {kpiData?.efficienza_produzione || 0}%
-                  </span>
+        {/* Stato Autoclavi */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Gauge className="h-5 w-5" />
+              <span>Stato Autoclavi</span>
+            </CardTitle>
+            <CardDescription>
+              Panoramica dello stato delle autoclavi
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {autoclavi.map((autoclave) => (
+                <div key={autoclave.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <p className="font-medium">{autoclave.nome}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {autoclave.codice}
+                    </p>
+                  </div>
+                  <Badge 
+                    variant={
+                      autoclave.stato === 'DISPONIBILE' ? 'default' :
+                      autoclave.stato === 'IN_USO' ? 'secondary' :
+                      autoclave.stato === 'GUASTO' ? 'destructive' : 'outline'
+                    }
+                  >
+                    {autoclave.stato}
+                  </Badge>
                 </div>
-                <div className="flex justify-between">
-                  <span>ODL Totali:</span>
-                  <span className="font-medium">{kpiData?.odl_totali || 0}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

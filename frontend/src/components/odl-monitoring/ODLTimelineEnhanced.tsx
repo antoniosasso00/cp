@@ -38,6 +38,39 @@ interface ODLTimelineEnhancedProps {
 }
 
 export function ODLTimelineEnhanced({ logs, currentStatus }: ODLTimelineEnhancedProps) {
+  // ✅ CORREZIONE: Validazione robusta dei dati di input
+  const validLogs = React.useMemo(() => {
+    if (!logs) {
+      console.warn('⚠️ ODLTimelineEnhanced: logs prop è undefined/null');
+      return [];
+    }
+    
+    if (!Array.isArray(logs)) {
+      console.error('❌ ODLTimelineEnhanced: logs prop non è un array:', typeof logs, logs);
+      return [];
+    }
+    
+    // Filtra e valida ogni log
+    return logs.filter(log => {
+      if (!log || typeof log !== 'object') {
+        console.warn('⚠️ ODLTimelineEnhanced: log entry non valido:', log);
+        return false;
+      }
+      
+      if (!log.id || !log.evento || !log.timestamp) {
+        console.warn('⚠️ ODLTimelineEnhanced: log entry manca campi essenziali:', log);
+        return false;
+      }
+      
+      return true;
+    }).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  }, [logs]);
+
+  // ✅ CORREZIONE: Validazione status corrente
+  const validCurrentStatus = React.useMemo(() => {
+    return currentStatus && typeof currentStatus === 'string' ? currentStatus : 'Unknown';
+  }, [currentStatus]);
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return {
@@ -108,14 +141,14 @@ export function ODLTimelineEnhanced({ logs, currentStatus }: ODLTimelineEnhanced
   };
 
   const isEventCompleted = (index: number) => {
-    return index < logs.length - 1 || currentStatus === 'Finito';
+    return index < validLogs.length - 1 || validCurrentStatus === 'Finito';
   };
 
   const calculateDuration = (currentIndex: number) => {
-    if (currentIndex === logs.length - 1) return null;
+    if (currentIndex === validLogs.length - 1) return null;
     
-    const current = new Date(logs[currentIndex].timestamp);
-    const next = new Date(logs[currentIndex + 1].timestamp);
+    const current = new Date(validLogs[currentIndex].timestamp);
+    const next = new Date(validLogs[currentIndex + 1].timestamp);
     const diffMs = next.getTime() - current.getTime();
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
@@ -126,7 +159,7 @@ export function ODLTimelineEnhanced({ logs, currentStatus }: ODLTimelineEnhanced
     return `${diffMinutes}m`;
   };
 
-  if (logs.length === 0) {
+  if (validLogs.length === 0) {
     return (
       <Card>
         <CardHeader>
@@ -162,7 +195,7 @@ export function ODLTimelineEnhanced({ logs, currentStatus }: ODLTimelineEnhanced
           <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gray-200"></div>
           
           <div className="space-y-6">
-            {logs.map((log, index) => {
+            {validLogs.map((log, index) => {
               const isCompleted = isEventCompleted(index);
               const duration = calculateDuration(index);
               const { date, time } = formatDate(log.timestamp);

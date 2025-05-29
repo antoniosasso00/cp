@@ -87,11 +87,26 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
       const tempiData = await tempoFasiApi.getAll();
       
       // Carica i dati degli ODL per riferimento
-      const odlData = await odlApi.getAll();
+      let odlData: any[] = [];
+      try {
+        odlData = await odlApi.getAll();
+      } catch (odlError) {
+        console.warn('⚠️ TempiODL: API ODL non disponibile:', odlError);
+        // Se l'API ODL fallisce, non possiamo correlare i dati
+        // Ma possiamo comunque mostrare i tempi fasi disponibili
+        odlData = [];
+      }
+      
+      // Verifica se abbiamo dati da mostrare
+      if (!tempiData || tempiData.length === 0) {
+        setTempiFasi([]);
+        setOdlList(odlData || []);
+        return;
+      }
       
       // Applica i filtri globali
-      let tempiFiltrati = tempiData;
-      let odlFiltrati = odlData;
+      let tempiFiltrati = tempiData || [];
+      let odlFiltrati = odlData || [];
       
       // Filtra per periodo
       if (filtri.dataInizio && filtri.dataFine) {
@@ -101,8 +116,8 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
         });
       }
       
-      // Filtra per part number
-      if (filtri.partNumber && filtri.partNumber !== 'all') {
+      // Filtra per part number (solo se abbiamo dati ODL)
+      if (filtri.partNumber && filtri.partNumber !== 'all' && odlData.length > 0) {
         const odlConPartNumber = odlData.filter(odl => 
           odl.parte?.part_number === filtri.partNumber
         ).map(odl => odl.id);
@@ -112,8 +127,8 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
         );
       }
       
-      // Filtra per stato ODL
-      if (filtri.statoODL && filtri.statoODL !== 'all') {
+      // Filtra per stato ODL (solo se abbiamo dati ODL)
+      if (filtri.statoODL && filtri.statoODL !== 'all' && odlData.length > 0) {
         const odlConStato = odlData.filter(odl => 
           odl.status === filtri.statoODL
         ).map(odl => odl.id);
@@ -126,7 +141,7 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
       setTempiFasi(tempiFiltrati);
       setOdlList(odlData);
     } catch (error) {
-      console.error('Errore nel caricamento dei dati:', error)
+      console.error('❌ TempiODL: Errore nel caricamento dei dati:', error)
       onError('Impossibile caricare i dati di monitoraggio tempi. Riprova più tardi.')
     } finally {
       setIsLoading(false)
@@ -203,9 +218,7 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
   // Funzione per eliminare un ODL
   const handleDeleteOdl = async (odlId: number) => {
     const odl = getOdlInfo(odlId);
-    if (!odl) return;
-    
-    const isFinished = odl.status === 'Finito';
+    const isFinished = odl?.status === 'Finito';
     
     try {
       const confirmed = await confirm({
@@ -218,8 +231,8 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
         variant: "danger",
         itemName: `ODL ${odlId} - ${odl.parte?.part_number || 'N/A'}`,
         onConfirm: async () => {
-          // Elimina l'ODL con conferma se necessario
-          await odlApi.delete(odlId, isFinished);
+          // ✅ FIX 3: Elimina l'ODL con conferma sempre attiva
+          await odlApi.delete(odlId, true);
           
           toast({
             title: "🗑️ ODL eliminato con successo",
@@ -233,9 +246,25 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
       
     } catch (error) {
       console.error('Errore durante l\'eliminazione ODL:', error);
+      
+      // ✅ FIX: Gestione errori migliorata
+      let errorMessage = "Impossibile eliminare l'ODL. Riprova più tardi.";
+      
+      if (error instanceof Error) {
+        if (error.message.includes('422')) {
+          errorMessage = 'ODL non può essere eliminato: potrebbe essere in uso o avere dipendenze.';
+        } else if (error.message.includes('404')) {
+          errorMessage = 'ODL non trovato. Potrebbe essere già stato eliminato.';
+        } else if (error.message.includes('403')) {
+          errorMessage = 'Non hai i permessi per eliminare questo ODL.';
+        } else {
+          errorMessage = `Errore: ${error.message}`;
+        }
+      }
+      
       toast({
-        title: "❌ Errore",
-        description: "Impossibile eliminare l'ODL. Riprova più tardi.",
+        title: "❌ Errore Eliminazione",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -270,8 +299,40 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Nessun dato disponibile</AlertTitle>
           <AlertDescription>
-            Nessun dato di monitoraggio tempi trovato per i filtri selezionati. 
-            Prova a modificare i criteri di ricerca o il periodo temporale.
+            <div>
+              {tempiFasi.length === 0 ? (
+                <div>
+                  Non ci sono dati di tempo fasi registrati nel sistema. 
+                  I tempi fasi vengono creati automaticamente quando gli ODL cambiano stato durante il processo produttivo.
+                  <br /><br />
+                  <strong>Per generare dati tempo fasi:</strong>
+                  <ul className="list-disc list-inside mt-2 text-sm">
+                    <li>Assicurati che ci siano ODL attivi nel sistema</li>
+                    <li>Modifica lo stato degli ODL (es. da "Preparazione" a "Laminazione")</li>
+                    <li>I tempi fasi verranno registrati automaticamente ad ogni cambio di stato</li>
+                  </ul>
+                </div>
+              ) : (
+                <div>
+                  Nessun dato di monitoraggio tempi trovato per i filtri selezionati. 
+                  Prova a modificare i criteri di ricerca o il periodo temporale.
+                </div>
+              )}
+              {/* Debug info */}
+              <div className="mt-3 p-2 bg-muted rounded text-xs">
+                <strong>Debug Info:</strong> Tempi fasi totali: {tempiFasi.length}, 
+                ODL totali: {odlList.length}, 
+                Dopo filtri: {filteredItems.length}
+                {odlList.length > 0 && tempiFasi.length === 0 && (
+                  <div>
+                    <span className="text-amber-600">
+                      ⚠️ Ci sono {odlList.length} ODL ma nessun tempo fase registrato. 
+                      Prova a cambiare lo stato di alcuni ODL per generare dati tempo fasi.
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
           </AlertDescription>
         </Alert>
       ) : (

@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, TrendingUp, TrendingDown, Clock, CheckCircle, AlertCircle } from 'lucide-react'
-import { odlApi, tempoFasiApi, CatalogoResponse } from '@/lib/api'
+import { odlApi, tempoFasiApi, CatalogoResponse, odlMonitoringApi, ODLMonitoringStats } from '@/lib/api'
 import { formatDuration } from '@/lib/utils'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { NoDataEmptyState } from '@/components/ui/empty-state'
 
 interface FiltriGlobali {
   periodo: string;
@@ -41,81 +42,158 @@ export default function PerformanceGenerale({ filtri, catalogo, onError }: Perfo
       try {
         setIsLoading(true)
         
-        // Carica tutti gli ODL
-        const odlData = await odlApi.getAll()
-        
-        // Filtra gli ODL in base ai filtri globali
-        let odlFiltrati = odlData
-        
-        if (filtri.partNumber && filtri.partNumber !== 'all') {
-          odlFiltrati = odlFiltrati.filter(odl => 
-            odl.parte?.part_number === filtri.partNumber
+        // Prima prova a ottenere le statistiche dal backend
+        try {
+          const statsBackend = await odlMonitoringApi.getStats()
+          
+          // ⚠️ IMPORTANTE: L'API di monitoraggio restituisce statistiche globali
+          // Se ci sono filtri attivi, dobbiamo usare il calcolo manuale
+          const hasFiltriAttivi = (
+            (filtri.partNumber && filtri.partNumber !== 'all') ||
+            (filtri.statoODL && filtri.statoODL !== 'all')
           )
+          
+          if (!hasFiltriAttivi) {
+            // Nessun filtro attivo: usa le statistiche globali del backend
+            const statisticheCalcolate: StatisticheGenerali = {
+              totaleODL: statsBackend.totale_odl,
+              odlCompletati: statsBackend.per_stato['Finito'] || 0,
+              odlInCorso: (statsBackend.per_stato['Preparazione'] || 0) + 
+                         (statsBackend.per_stato['Laminazione'] || 0) + 
+                         (statsBackend.per_stato['Attesa Cura'] || 0) + 
+                         (statsBackend.per_stato['Cura'] || 0),
+              odlBloccati: statsBackend.in_ritardo || 0,
+              tempoMedioCompletamento: Math.round((statsBackend.media_tempo_completamento || 0) * 60), // Converti ore in minuti
+              efficienza: statsBackend.totale_odl > 0 ? 
+                Math.round(((statsBackend.per_stato['Finito'] || 0) / statsBackend.totale_odl) * 100) : 0,
+              tendenzaSettimanale: statsBackend.completati_oggi || 0
+            }
+            
+            setStatistiche(statisticheCalcolate)
+            return
+          }
+        } catch (backendError) {
+          console.warn('⚠️ PerformanceGenerale: API backend non disponibile, uso calcolo manuale:', backendError)
         }
         
-        if (filtri.statoODL && filtri.statoODL !== 'all') {
-          odlFiltrati = odlFiltrati.filter(odl => odl.status === filtri.statoODL)
-        }
-        
-        if (filtri.dataInizio && filtri.dataFine) {
-          odlFiltrati = odlFiltrati.filter(odl => {
-            const dataCreazione = new Date(odl.created_at)
-            return dataCreazione >= filtri.dataInizio! && dataCreazione <= filtri.dataFine!
+        // Fallback: calcolo manuale (necessario quando ci sono filtri attivi)
+        try {
+          const odlData = await odlApi.getAll()
+          
+          if (!odlData || odlData.length === 0) {
+            setStatistiche({
+              totaleODL: 0,
+              odlCompletati: 0,
+              odlInCorso: 0,
+              odlBloccati: 0,
+              tempoMedioCompletamento: 0,
+              efficienza: 0,
+              tendenzaSettimanale: 0
+            })
+            return
+          }
+          
+          // Filtra gli ODL in base ai filtri globali
+          let odlFiltrati = odlData
+          
+          if (filtri.partNumber && filtri.partNumber !== 'all') {
+            odlFiltrati = odlFiltrati.filter(odl => 
+              odl.parte?.part_number === filtri.partNumber
+            )
+          }
+          
+          if (filtri.statoODL && filtri.statoODL !== 'all') {
+            odlFiltrati = odlFiltrati.filter(odl => odl.status === filtri.statoODL)
+          }
+          
+          if (filtri.dataInizio && filtri.dataFine) {
+            odlFiltrati = odlFiltrati.filter(odl => {
+              const dataCreazione = new Date(odl.created_at)
+              return dataCreazione >= filtri.dataInizio! && dataCreazione <= filtri.dataFine!
+            })
+          }
+          
+          // Calcola le statistiche manualmente
+          const totaleODL = odlFiltrati.length
+          const odlCompletati = odlFiltrati.filter(odl => odl.status === 'Finito').length
+          const odlInCorso = odlFiltrati.filter(odl => 
+            ['Preparazione', 'Laminazione', 'Attesa Cura', 'Cura'].includes(odl.status)
+          ).length
+          const odlBloccati = 0 // Non esiste stato "Bloccato" nel sistema
+          
+          // Calcola tempo medio di completamento (solo per ODL completati)
+          let tempoMedioCompletamento = 0
+          if (odlCompletati > 0) {
+            try {
+              const tempiData = await tempoFasiApi.getAll()
+              const tempiCompletati = tempiData.filter(tempo => 
+                odlFiltrati.some(odl => odl.id === tempo.odl_id && odl.status === 'Finito')
+              )
+              
+              if (tempiCompletati.length > 0) {
+                const sommaTempi = tempiCompletati.reduce((sum, tempo) => 
+                  sum + (tempo.durata_minuti || 0), 0
+                )
+                tempoMedioCompletamento = Math.round(sommaTempi / tempiCompletati.length)
+              }
+            } catch (err) {
+              console.warn('⚠️ PerformanceGenerale: Errore nel calcolo del tempo medio:', err)
+              // Fallback: calcola una stima basata sui tempi di creazione/aggiornamento
+              if (odlCompletati > 0) {
+                const odlFiniti = odlFiltrati.filter(odl => odl.status === 'Finito')
+                const tempiStimati = odlFiniti.map(odl => {
+                  const creazione = new Date(odl.created_at)
+                  const aggiornamento = new Date(odl.updated_at)
+                  return Math.round((aggiornamento.getTime() - creazione.getTime()) / (1000 * 60))
+                })
+                
+                if (tempiStimati.length > 0) {
+                  tempoMedioCompletamento = Math.round(
+                    tempiStimati.reduce((sum, tempo) => sum + tempo, 0) / tempiStimati.length
+                  )
+                }
+              }
+            }
+          }
+          
+          // Calcola efficienza (% di ODL completati vs totali) - evita divisione per zero
+          const efficienza = totaleODL > 0 ? Math.round((odlCompletati / totaleODL) * 100) : 0
+          
+          // Calcola tendenza settimanale (semplificata)
+          const settimanaScorsa = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+          const odlSettimanaScorsa = odlFiltrati.filter(odl => 
+            new Date(odl.created_at) >= settimanaScorsa
+          ).length
+          const tendenzaSettimanale = odlSettimanaScorsa
+          
+          const statisticheManuali = {
+            totaleODL,
+            odlCompletati,
+            odlInCorso,
+            odlBloccati,
+            tempoMedioCompletamento,
+            efficienza,
+            tendenzaSettimanale
+          }
+          
+          setStatistiche(statisticheManuali)
+          
+        } catch (odlApiError) {
+          console.error('❌ PerformanceGenerale: Errore nell\'API ODL:', odlApiError)
+          // Se anche l'API ODL fallisce, mostra almeno le statistiche di base
+          setStatistiche({
+            totaleODL: 0,
+            odlCompletati: 0,
+            odlInCorso: 0,
+            odlBloccati: 0,
+            tempoMedioCompletamento: 0,
+            efficienza: 0,
+            tendenzaSettimanale: 0
           })
         }
         
-        // Calcola le statistiche
-        const totaleODL = odlFiltrati.length
-        const odlCompletati = odlFiltrati.filter(odl => odl.status === 'Finito').length
-        const odlInCorso = odlFiltrati.filter(odl => 
-          ['Preparazione', 'Laminazione', 'Attesa Cura', 'Cura'].includes(odl.status)
-        ).length
-        const odlBloccati = 0 // Non esiste stato "Bloccato" nel sistema
-        
-        // Calcola tempo medio di completamento (solo per ODL completati)
-        let tempoMedioCompletamento = 0
-        if (odlCompletati > 0) {
-          try {
-            // Qui dovresti implementare la logica per calcolare il tempo medio
-            // basandoti sui dati di TempoFase
-            const tempiData = await tempoFasiApi.getAll()
-            const tempiCompletati = tempiData.filter(tempo => 
-              odlFiltrati.some(odl => odl.id === tempo.odl_id && odl.status === 'Finito')
-            )
-            
-            if (tempiCompletati.length > 0) {
-              const sommaTempi = tempiCompletati.reduce((sum, tempo) => 
-                sum + (tempo.durata_minuti || 0), 0
-              )
-              tempoMedioCompletamento = sommaTempi / tempiCompletati.length
-            }
-          } catch (err) {
-            console.warn('Errore nel calcolo del tempo medio:', err)
-          }
-        }
-        
-        // Calcola efficienza (% di ODL completati vs totali)
-        const efficienza = totaleODL > 0 ? (odlCompletati / totaleODL) * 100 : 0
-        
-        // Calcola tendenza settimanale (semplificata)
-        const settimanaScorsa = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-        const odlSettimanaScorsa = odlFiltrati.filter(odl => 
-          new Date(odl.created_at) >= settimanaScorsa
-        ).length
-        const tendenzaSettimanale = odlSettimanaScorsa
-        
-        setStatistiche({
-          totaleODL,
-          odlCompletati,
-          odlInCorso,
-          odlBloccati,
-          tempoMedioCompletamento,
-          efficienza,
-          tendenzaSettimanale
-        })
-        
       } catch (error) {
-        console.error('Errore nel caricamento delle statistiche generali:', error)
+        console.error('❌ PerformanceGenerale: Errore nel caricamento delle statistiche generali:', error)
         onError('Impossibile caricare le statistiche generali. Riprova più tardi.')
       } finally {
         setIsLoading(false)
@@ -134,15 +212,15 @@ export default function PerformanceGenerale({ filtri, catalogo, onError }: Perfo
     )
   }
 
-  if (!statistiche) {
+  if (!statistiche || statistiche.totaleODL === 0) {
     return (
-      <Alert>
-        <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Nessun dato disponibile</AlertTitle>
-        <AlertDescription>
-          Nessun dato disponibile per i filtri selezionati. Prova a modificare i criteri di ricerca.
-        </AlertDescription>
-      </Alert>
+      <NoDataEmptyState
+        hasFilters={filtri.partNumber !== 'all' || filtri.statoODL !== 'all'}
+        onReset={() => {
+          // Non possiamo resettare i filtri direttamente qui, ma possiamo suggerire
+          // Questo sarà gestito dal componente padre
+        }}
+      />
     )
   }
 

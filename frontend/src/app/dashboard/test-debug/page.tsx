@@ -7,13 +7,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/use-toast'
-import { odlApi, toolApi, nestingApi } from '@/lib/api'
-import { Loader2, Bug, TestTube, Wrench, Grid3X3, Activity } from 'lucide-react'
+import { odlApi, toolApi } from '@/lib/api'
+import { Loader2, Bug, TestTube, Wrench, Activity } from 'lucide-react'
 
 export default function TestDebugPage() {
   const [isTestingODL, setIsTestingODL] = useState(false)
   const [isTestingTools, setIsTestingTools] = useState(false)
-  const [isTestingNesting, setIsTestingNesting] = useState(false)
   const { toast } = useToast()
 
   const testODLFunctions = async () => {
@@ -35,20 +34,13 @@ export default function TestDebugPage() {
         description: `Trovati ${odlCleanRoom.length} ODL per Clean Room`,
       })
 
-      // Test 3: Test filtri per Curing
+      // Test 3: Test ODL per Curing
       const odlCuring = odlList.filter(odl => 
         odl.status === "Attesa Cura" || odl.status === "Cura"
       )
       toast({
         title: '✅ Test ODL - Filtro Curing',
         description: `Trovati ${odlCuring.length} ODL per Curing`,
-      })
-
-      // Test 4: Test ODL pending nesting
-      const odlPending = await odlApi.getPendingNesting()
-      toast({
-        title: '✅ Test ODL - Pending Nesting',
-        description: `Trovati ${odlPending.length} ODL pronti per nesting`,
       })
 
     } catch (error) {
@@ -97,41 +89,6 @@ export default function TestDebugPage() {
     }
   }
 
-  const testNestingFunctions = async () => {
-    setIsTestingNesting(true)
-    try {
-      // Test 1: Carica nesting
-      const nestingList = await nestingApi.getAll()
-      toast({
-        title: '✅ Test Nesting - Lista',
-        description: `Caricati ${nestingList.length} nesting`,
-      })
-
-      // Test 2: Preview nesting
-      const preview = await nestingApi.getPreview()
-      toast({
-        title: '✅ Test Nesting - Preview',
-        description: `Preview: ${preview.autoclavi.length} autoclavi, ${preview.odl_esclusi.length} ODL esclusi`,
-      })
-
-      // Test 3: Lista bozze
-      const drafts = await nestingApi.listDrafts()
-      toast({
-        title: '✅ Test Nesting - Bozze',
-        description: `Trovate ${drafts.count} bozze`,
-      })
-
-    } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: '❌ Test Nesting Fallito',
-        description: error instanceof Error ? error.message : 'Errore sconosciuto',
-      })
-    } finally {
-      setIsTestingNesting(false)
-    }
-  }
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -151,11 +108,10 @@ export default function TestDebugPage() {
       </div>
 
       <Tabs defaultValue="api" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="api">Test API</TabsTrigger>
           <TabsTrigger value="odl">Test ODL</TabsTrigger>
           <TabsTrigger value="tools">Test Tools</TabsTrigger>
-          <TabsTrigger value="nesting">Test Nesting</TabsTrigger>
         </TabsList>
 
         <TabsContent value="api" className="space-y-4">
@@ -200,7 +156,6 @@ export default function TestDebugPage() {
                     <li>• Caricamento lista ODL</li>
                     <li>• Filtri per ruolo Clean Room</li>
                     <li>• Filtri per ruolo Curing</li>
-                    <li>• ODL pronti per nesting</li>
                   </ul>
                 </div>
                 <div>
@@ -208,7 +163,6 @@ export default function TestDebugPage() {
                   <ul className="space-y-1 text-muted-foreground">
                     <li>• odlApi.getAll()</li>
                     <li>• Filtri per stato</li>
-                    <li>• odlApi.getPendingNesting()</li>
                     <li>• Gestione errori</li>
                   </ul>
                 </div>
@@ -253,9 +207,8 @@ export default function TestDebugPage() {
                   <h4 className="font-medium mb-2">Test inclusi:</h4>
                   <ul className="space-y-1 text-muted-foreground">
                     <li>• Caricamento lista tools</li>
-                    <li>• Tools con status ODL</li>
-                    <li>• Aggiornamento status automatico</li>
-                    <li>• Gestione disponibilità</li>
+                    <li>• Tools con status</li>
+                    <li>• Aggiornamento status da ODL</li>
                   </ul>
                 </div>
                 <div>
@@ -264,62 +217,6 @@ export default function TestDebugPage() {
                     <li>• toolApi.getAll()</li>
                     <li>• toolApi.getAllWithStatus()</li>
                     <li>• toolApi.updateStatusFromODL()</li>
-                    <li>• Gestione errori</li>
-                  </ul>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="nesting" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Grid3X3 className="h-5 w-5" />
-                Test Funzionalità Nesting
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-muted-foreground">
-                Testa tutte le funzionalità relative al Nesting
-              </p>
-              
-              <Button 
-                onClick={testNestingFunctions} 
-                disabled={isTestingNesting}
-                className="w-full"
-              >
-                {isTestingNesting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Testing Nesting...
-                  </>
-                ) : (
-                  <>
-                    <TestTube className="mr-2 h-4 w-4" />
-                    Avvia Test Nesting
-                  </>
-                )}
-              </Button>
-
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <h4 className="font-medium mb-2">Test inclusi:</h4>
-                  <ul className="space-y-1 text-muted-foreground">
-                    <li>• Caricamento lista nesting</li>
-                    <li>• Preview nesting automatico</li>
-                    <li>• Gestione bozze</li>
-                    <li>• Nesting su due piani</li>
-                  </ul>
-                </div>
-                <div>
-                  <h4 className="font-medium mb-2">Funzioni testate:</h4>
-                  <ul className="space-y-1 text-muted-foreground">
-                    <li>• nestingApi.getAll()</li>
-                    <li>• nestingApi.getPreview()</li>
-                    <li>• nestingApi.listDrafts()</li>
-                    <li>• Gestione errori</li>
                   </ul>
                 </div>
               </div>

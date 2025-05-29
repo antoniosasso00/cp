@@ -3,7 +3,7 @@ from typing import List, Optional, Literal
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session, joinedload, joinedload
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import desc
+from sqlalchemy import desc, text
 from datetime import datetime
 
 from api.database import get_db
@@ -13,7 +13,7 @@ from models.tool import Tool
 from models.tempo_fase import TempoFase
 from schemas.odl import ODLCreate, ODLRead, ODLUpdate
 from services.odl_queue_service import ODLQueueService
-from services.nesting_service import get_odl_attesa_cura_filtered
+# from services.nesting_service import get_odl_attesa_cura_filtered  # Temporaneamente commentato - sarà implementato nel prossimo step
 from services.system_log_service import SystemLogService
 from services.state_tracking_service import StateTrackingService
 from models.system_log import UserRole
@@ -131,34 +131,35 @@ def read_odl(
     
     return query.offset(skip).limit(limit).all()
 
-@router.get("/pending-nesting", response_model=List[ODLRead], 
-            summary="Ottiene gli ODL in attesa di essere nidificati")
-async def get_odl_pending_nesting(db: Session = Depends(get_db)):
-    """
-    Recupera tutti gli ODL che sono pronti per essere inclusi nel nesting.
-    
-    Un ODL è considerato pronto per il nesting se:
-    - Ha stato "Attesa Cura"
-    - Non è già incluso in un nesting attivo
-    - Ha tutti i dati necessari (parte, catalogo, area, valvole)
-    
-    Returns:
-        Lista di ODL pronti per il nesting, ordinati per priorità decrescente
-    """
-    try:
-        # Utilizza la logica esistente del servizio nesting per filtrare gli ODL
-        odl_validi = await get_odl_attesa_cura_filtered(db)
-        
-        logger.info(f"Trovati {len(odl_validi)} ODL pronti per il nesting")
-        
-        return odl_validi
-        
-    except Exception as e:
-        logger.error(f"Errore durante il recupero degli ODL in attesa di nesting: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Si è verificato un errore durante il recupero degli ODL in attesa di nesting."
-        )
+# TEMPORANEAMENTE COMMENTATO - Sarà implementato nel prossimo step quando creeremo il nesting_service
+# @router.get("/pending-nesting", response_model=List[ODLRead], 
+#             summary="Ottiene gli ODL in attesa di essere nidificati")
+# async def get_odl_pending_nesting(db: Session = Depends(get_db)):
+#     """
+#     Recupera tutti gli ODL che sono pronti per essere inclusi nel nesting.
+#     
+#     Un ODL è considerato pronto per il nesting se:
+#     - Ha stato "Attesa Cura"
+#     - Non è già incluso in un nesting attivo
+#     - Ha tutti i dati necessari (parte, catalogo, area, valvole)
+#     
+#     Returns:
+#         Lista di ODL pronti per il nesting, ordinati per priorità decrescente
+#     """
+#     try:
+#         # Utilizza la logica esistente del servizio nesting per filtrare gli ODL
+#         odl_validi = await get_odl_attesa_cura_filtered(db)
+#         
+#         logger.info(f"Trovati {len(odl_validi)} ODL pronti per il nesting")
+#         
+#         return odl_validi
+#         
+#     except Exception as e:
+#         logger.error(f"Errore durante il recupero degli ODL in attesa di nesting: {str(e)}")
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="Si è verificato un errore durante il recupero degli ODL in attesa di nesting."
+#         )
 
 @router.get("/{odl_id}", response_model=ODLRead, 
             summary="Ottiene un ordine di lavoro specifico")
@@ -309,51 +310,120 @@ def delete_odl(
     
     Per ODL in stato "Finito", è richiesta la conferma esplicita tramite il parametro 'confirm=true'.
     """
-    db_odl = db.query(ODL).filter(ODL.id == odl_id).first()
+    from sqlalchemy import text
     
-    if db_odl is None:
-        logger.warning(f"Tentativo di cancellazione di ODL inesistente: {odl_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail=f"ODL con ID {odl_id} non trovato"
-        )
+    logger.info(f"🔍 ELIMINAZIONE ODL {odl_id} - confirm: {confirm}")
     
-    # ✅ NUOVO: Protezione per ODL finiti - richiede conferma esplicita
-    if db_odl.status == "Finito" and not confirm:
-        logger.warning(f"Tentativo di eliminazione ODL finito {odl_id} senza conferma")
+    # Verifica che l'ODL esista usando query SQL diretta per evitare 
+    # il caricamento automatico delle relazioni schedule_entries
+    try:
+        result = db.execute(text("SELECT id, status FROM odl WHERE id = :odl_id"), {"odl_id": odl_id})
+        odl_data = result.fetchone()
+        
+        if odl_data is None:
+            logger.warning(f"❌ ODL {odl_id} non trovato")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, 
+                detail=f"ODL con ID {odl_id} non trovato"
+            )
+        
+        odl_status = odl_data[1]  # status è la seconda colonna
+        logger.info(f"✅ ODL {odl_id} trovato - Stato: {odl_status}")
+        
+        # Protezione per ODL finiti
+        if odl_status == "Finito" and not confirm:
+            logger.warning(f"⚠️ ODL finito {odl_id} richiede conferma")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Per eliminare un ODL in stato 'Finito' è richiesta la conferma esplicita. Aggiungi il parametro 'confirm=true' alla richiesta."
+            )
+        
+    except HTTPException:
+        # Re-raise HTTPException as-is
+        raise
+    except Exception as e:
+        logger.error(f"❌ Errore verifica ODL {odl_id}: {e}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Per eliminare un ODL in stato 'Finito' è richiesta la conferma esplicita. Aggiungi il parametro 'confirm=true' alla richiesta."
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante la verifica dell'ODL {odl_id}"
         )
     
     try:
-        # Log dell'operazione per audit
-        SystemLogService.log_odl_operation(
-            db=db,
-            operation_type="ODL_DELETE",
-            user_role=UserRole.ADMIN,  # Default admin per eliminazione
-            details={
-                "odl_id": odl_id,
-                "status": db_odl.status,
-                "parte_id": db_odl.parte_id,
-                "tool_id": db_odl.tool_id,
-                "confirmed": confirm
-            },
-            result="SUCCESS",
-            user_id="sistema"
-        )
+        logger.info(f"🚀 Eliminazione ODL {odl_id} in corso...")
         
-        db.delete(db_odl)
+        # Elimina relazioni in ordine sicuro usando SOLO query SQL dirette
+        # per evitare problemi di schema con i modelli SQLAlchemy
+        
+        # 1. Elimina nesting_result_odl (many-to-many)
+        try:
+            result = db.execute(text("DELETE FROM nesting_result_odl WHERE odl_id = :odl_id"), {"odl_id": odl_id})
+            logger.info(f"✅ nesting_result_odl: {result.rowcount} eliminati")
+        except Exception as e:
+            logger.warning(f"⚠️ Errore nesting_result_odl: {e}")
+        
+        # 2. Elimina schedule_entries (SOLO query SQL diretta)
+        try:
+            result = db.execute(text("DELETE FROM schedule_entries WHERE odl_id = :odl_id"), {"odl_id": odl_id})
+            logger.info(f"✅ schedule_entries: {result.rowcount} eliminati")
+        except Exception as e:
+            logger.warning(f"⚠️ Errore schedule_entries: {e}")
+        
+        # 3. Elimina tempo_fasi
+        try:
+            result = db.execute(text("DELETE FROM tempo_fasi WHERE odl_id = :odl_id"), {"odl_id": odl_id})
+            logger.info(f"✅ tempo_fasi: {result.rowcount} eliminati")
+        except Exception as e:
+            logger.warning(f"⚠️ Errore tempo_fasi: {e}")
+        
+        # 4. Elimina odl_logs
+        try:
+            result = db.execute(text("DELETE FROM odl_logs WHERE odl_id = :odl_id"), {"odl_id": odl_id})
+            logger.info(f"✅ odl_logs: {result.rowcount} eliminati")
+        except Exception as e:
+            logger.warning(f"⚠️ Errore odl_logs: {e}")
+        
+        # 5. Elimina state_logs
+        try:
+            result = db.execute(text("DELETE FROM state_logs WHERE odl_id = :odl_id"), {"odl_id": odl_id})
+            logger.info(f"✅ state_logs: {result.rowcount} eliminati")
+        except Exception as e:
+            logger.warning(f"⚠️ Errore state_logs: {e}")
+        
+        # 6. Elimina l'ODL principale usando query SQL diretta
+        logger.info(f"🎯 Eliminazione ODL principale {odl_id}...")
+        result = db.execute(text("DELETE FROM odl WHERE id = :odl_id"), {"odl_id": odl_id})
+        if result.rowcount == 0:
+            logger.error(f"❌ ODL {odl_id} non eliminato - possibile problema di concorrenza")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"ODL {odl_id} non è stato eliminato"
+            )
+        
+        # 7. Commit finale
         db.commit()
+        logger.info(f"🎉 ODL {odl_id} eliminato con successo!")
         
-        logger.info(f"✅ ODL {odl_id} (stato: {db_odl.status}) eliminato con successo")
-        
+    except HTTPException:
+        # Re-raise HTTPException as-is
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
-        logger.error(f"Errore durante l'eliminazione dell'ODL {odl_id}: {str(e)}")
+        logger.error(f"❌ ERRORE eliminazione ODL {odl_id}: {type(e).__name__} - {str(e)}")
+        
+        # Messaggio di errore semplificato
+        error_message = str(e).lower()
+        
+        if "foreign key constraint" in error_message:
+            detail = f"Impossibile eliminare l'ODL {odl_id}: è ancora referenziato da altre entità del sistema."
+        elif "no such column" in error_message or "no such table" in error_message:
+            detail = f"Errore di schema database durante l'eliminazione dell'ODL {odl_id}."
+        else:
+            detail = f"Errore durante l'eliminazione dell'ODL {odl_id}: {str(e)}"
+        
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Si è verificato un errore durante l'eliminazione dell'ODL."
+            detail=detail
         )
 
 @router.post("/check-queue", 
@@ -919,35 +989,13 @@ def update_odl_status_generic(
         stato_precedente = db_odl.status
         ora_corrente = datetime.now()
         
-        # Aggiorna lo stato
+        logger.info(f"🔄 Inizio aggiornamento ODL {odl_id}: '{stato_precedente}' → '{new_status}'")
+        
+        # Aggiorna SOLO i campi essenziali
         db_odl.status = new_status
-        # ✅ NUOVO: Salva lo stato precedente per la funzione ripristino
         db_odl.previous_status = stato_precedente
         
-        logger.info(f"Generico - Cambio stato ODL {odl_id}: da '{stato_precedente}' a '{new_status}'")
-        
-        # ✅ NUOVO: Registra il cambio di stato con timestamp preciso
-        StateTrackingService.registra_cambio_stato(
-            db=db,
-            odl_id=odl_id,
-            stato_precedente=stato_precedente,
-            stato_nuovo=new_status,
-            responsabile="generic",
-            ruolo_responsabile="ADMIN",
-            note="Cambio stato da endpoint generico"
-        )
-        
-        # Log dell'evento nel sistema
-        SystemLogService.log_odl_state_change(
-            db=db,
-            odl_id=odl_id,
-            old_state=stato_precedente,
-            new_state=new_status,
-            user_role=UserRole.ADMIN,  # Default admin per endpoint generico
-            user_id="generic"
-        )
-        
-        # Chiudi la fase precedente se era in uno stato monitorato
+        # ✅ NUOVO: Gestione tempo fasi - Chiudi la fase precedente se era in uno stato monitorato
         if stato_precedente in STATO_A_FASE:
             tipo_fase_precedente = STATO_A_FASE[stato_precedente]
             fase_attiva = db.query(TempoFase).filter(
@@ -963,10 +1011,10 @@ def update_odl_status_generic(
                 # Aggiorna il record esistente
                 fase_attiva.fine_fase = ora_corrente
                 fase_attiva.durata_minuti = durata 
-                fase_attiva.note = f"{fase_attiva.note or ''} - Fase completata con cambio stato generico a '{new_status}'"
+                fase_attiva.note = f"{fase_attiva.note or ''} - Fase completata con cambio stato a '{new_status}'"
                 logger.info(f"Chiusa fase '{tipo_fase_precedente}' per ODL {odl_id} con durata {durata} minuti")
         
-        # Apri una nuova fase se il nuovo stato è monitorato
+        # ✅ NUOVO: Gestione tempo fasi - Apri una nuova fase se il nuovo stato è monitorato
         if new_status in STATO_A_FASE:
             tipo_fase_nuova = STATO_A_FASE[new_status]
             
@@ -983,25 +1031,60 @@ def update_odl_status_generic(
                     odl_id=odl_id,
                     fase=tipo_fase_nuova,
                     inizio_fase=ora_corrente,
-                    note=f"Fase {tipo_fase_nuova} iniziata con cambio stato generico da '{stato_precedente}'"
+                    note=f"Fase {tipo_fase_nuova} iniziata con cambio stato da '{stato_precedente}'"
                 )
                 db.add(nuova_fase)
                 logger.info(f"Aperta nuova fase '{tipo_fase_nuova}' per ODL {odl_id}")
         
+        # Commit immediato per l'aggiornamento principale
         db.commit()
         db.refresh(db_odl)
         
-        # Log di successo con informazioni dettagliate
-        logger.info(f"✅ Stato ODL {odl_id} aggiornato con successo: '{stato_precedente}' → '{new_status}'")
+        logger.info(f"✅ Aggiornamento stato ODL {odl_id} completato con successo: '{stato_precedente}' → '{db_odl.status}'")
+        
+        # Ora gestisci i log in modo separato (non critico)
+        try:
+            StateTrackingService.registra_cambio_stato(
+                db=db,
+                odl_id=odl_id,
+                stato_precedente=stato_precedente,
+                stato_nuovo=new_status,
+                responsabile="generic",
+                ruolo_responsabile="ADMIN",
+                note="Cambio stato da endpoint generico"
+            )
+            db.commit()  # Commit separato per i log
+            logger.info(f"✅ StateTrackingService completato per ODL {odl_id}")
+        except Exception as e:
+            logger.error(f"❌ Errore StateTrackingService per ODL {odl_id}: {str(e)}")
+            db.rollback()  # Rollback solo per i log, non per l'ODL
+        
+        try:
+            SystemLogService.log_odl_state_change(
+                db=db,
+                odl_id=odl_id,
+                old_state=stato_precedente,
+                new_state=new_status,
+                user_role=UserRole.ADMIN,
+                user_id="generic"
+            )
+            db.commit()  # Commit separato per i log
+            logger.info(f"✅ SystemLogService completato per ODL {odl_id}")
+        except Exception as e:
+            logger.error(f"❌ Errore SystemLogService per ODL {odl_id}: {str(e)}")
+            db.rollback()  # Rollback solo per i log, non per l'ODL
         
         return db_odl
         
     except Exception as e:
         db.rollback()
         logger.error(f"❌ Errore durante l'aggiornamento stato ODL {odl_id}: {str(e)}")
+        logger.error(f"❌ Tipo errore: {type(e).__name__}")
+        import traceback
+        logger.error(f"❌ Stack trace: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Si è verificato un errore durante l'aggiornamento dello stato ODL."
+            detail=f"Si è verificato un errore durante l'aggiornamento dello stato ODL: {str(e)}"
         )
 
 @router.post("/{odl_id}/restore-status", 

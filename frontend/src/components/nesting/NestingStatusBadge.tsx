@@ -1,83 +1,92 @@
 'use client'
 
 import { Badge } from '@/components/ui/badge'
-import { Clock, CheckCircle, XCircle, Package, FileText, Play } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface NestingStatusBadgeProps {
   stato: string
-  confermato_da_ruolo?: string
   className?: string
 }
 
-export function NestingStatusBadge({ stato, confermato_da_ruolo, className }: NestingStatusBadgeProps) {
-  const getStatusConfig = (stato: string) => {
-    switch (stato) {
-      case 'bozza':
-        return {
-          variant: 'outline' as const,
-          icon: FileText,
-          color: 'bg-gray-50 text-gray-700 border-gray-300',
-          label: 'Bozza'
-        }
-      case 'in_sospeso':
-      case 'In sospeso':
-        return {
-          variant: 'secondary' as const,
-          icon: Clock,
-          color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-          label: 'In Sospeso'
-        }
-      case 'confermato':
-      case 'Confermato':
-        return {
-          variant: 'default' as const,
-          icon: Play,
-          color: 'bg-blue-100 text-blue-800 border-blue-200',
-          label: 'Confermato'
-        }
-      case 'completato':
-      case 'Completato':
-        return {
-          variant: 'default' as const,
-          icon: Package,
-          color: 'bg-green-100 text-green-800 border-green-200',
-          label: 'Completato'
-        }
-      case 'annullato':
-      case 'Annullato':
-        return {
-          variant: 'destructive' as const,
-          icon: XCircle,
-          color: 'bg-red-100 text-red-800 border-red-200',
-          label: 'Annullato'
-        }
-      default:
-        return {
-          variant: 'outline' as const,
-          icon: Clock,
-          color: 'bg-gray-100 text-gray-800 border-gray-200',
-          label: stato
-        }
-    }
+// Funzione per ottenere il colore del badge in base allo stato
+const getStatoBadgeVariant = (stato: string) => {
+  switch (stato.toLowerCase()) {
+    case 'bozza':
+      return 'outline' as const
+    case 'creato':
+      return 'secondary' as const
+    case 'in sospeso':
+      return 'default' as const
+    case 'confermato':
+      return 'default' as const
+    case 'caricato':
+      return 'destructive' as const
+    case 'completato':
+      return 'default' as const
+    case 'errore':
+      return 'destructive' as const
+    default:
+      return 'outline' as const
   }
+}
 
-  const config = getStatusConfig(stato)
-  const IconComponent = config.icon
+// Funzione per ottenere l'icona dello stato
+const getStatoIcon = (stato: string) => {
+  switch (stato.toLowerCase()) {
+    case 'bozza':
+      return '📝'
+    case 'creato':
+      return '✨'
+    case 'in sospeso':
+      return '⏳'
+    case 'confermato':
+      return '✅'
+    case 'caricato':
+      return '🔥'
+    case 'completato':
+      return '🎉'
+    case 'errore':
+      return '❌'
+    default:
+      return '❓'
+  }
+}
+
+// Funzione per ottenere la descrizione dello stato
+const getStatoDescription = (stato: string) => {
+  switch (stato.toLowerCase()) {
+    case 'bozza':
+      return 'Nesting in fase di creazione'
+    case 'creato':
+      return 'Nesting creato, pronto per la conferma'
+    case 'in sospeso':
+      return 'Nesting confermato, pronto per il caricamento'
+    case 'confermato':
+      return 'Nesting confermato, pronto per il caricamento'
+    case 'caricato':
+      return 'Nesting caricato in autoclave, cura in corso'
+    case 'completato':
+      return 'Nesting completato con successo'
+    case 'errore':
+      return 'Errore durante il processo'
+    default:
+      return 'Stato sconosciuto'
+  }
+}
+
+export function NestingStatusBadge({ stato, className }: NestingStatusBadgeProps) {
+  const variant = getStatoBadgeVariant(stato)
+  const icon = getStatoIcon(stato)
+  const description = getStatoDescription(stato)
 
   return (
-    <div className={`flex flex-col items-center gap-1 ${className}`}>
-      <Badge 
-        variant={config.variant}
-        className={`${config.color} flex items-center gap-1 px-2 py-1`}
-      >
-        <IconComponent className="h-3 w-3" />
-        {config.label}
-      </Badge>
-      {confermato_da_ruolo && stato === 'Confermato' && (
-        <span className="text-xs text-muted-foreground">
-          da {confermato_da_ruolo}
-        </span>
-      )}
-    </div>
+    <Badge 
+      variant={variant} 
+      className={cn("flex items-center gap-1", className)}
+      title={description}
+    >
+      <span className="text-xs">{icon}</span>
+      <span>{stato}</span>
+    </Badge>
   )
 } 

@@ -1,298 +1,342 @@
+"""
+Schema Pydantic per la gestione dei dati di nesting.
+
+Questo modulo definisce i modelli di dati per:
+- NestingRead: Schema per la lettura dei dati di nesting
+- NestingCreate: Schema per la creazione di nuovi nesting
+"""
+
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional, Any
 from datetime import datetime
-from enum import Enum
+from typing import Optional, List, Dict, Any
 
-class StatoNestingEnum(str, Enum):
-    """Enum per lo stato del nesting"""
-    BOZZA = "bozza"
-    IN_SOSPESO = "in_sospeso"
-    CONFERMATO = "confermato"
-    ANNULLATO = "annullato"
-    COMPLETATO = "completato"
 
-class NestingODLStatus(str, Enum):
-    """Enum per gli stati degli ODL nel processo di nesting"""
-    PIANIFICATO = "pianificato"
-    NON_PIANIFICABILE = "non_pianificabile"
+class NestingBase(BaseModel):
+    """
+    Schema base per il nesting con i campi comuni.
+    """
+    note: Optional[str] = Field(
+        default=None, 
+        description="Note aggiuntive sul nesting",
+        max_length=500
+    )
+
+
+class NestingCreate(NestingBase):
+    """
+    Schema per la creazione di un nuovo nesting.
     
-# ✅ NUOVO: Enum per la priorità di ottimizzazione
-class PrioritaOttimizzazione(str, Enum):
-    """Enum per la priorità di ottimizzazione del nesting"""
-    PESO = "peso"
-    AREA = "area"
-    EQUILIBRATO = "equilibrato"
+    Contiene solo i campi che l'utente può specificare durante la creazione.
+    I campi come ID e created_at vengono generati automaticamente dal sistema.
+    """
+    pass  # Per ora eredita solo da NestingBase
 
-# ✅ AGGIORNATO: Schema per i parametri di nesting regolabili
+
+class NestingRead(NestingBase):
+    """
+    Schema per la lettura dei dati di nesting.
+    
+    Contiene tutti i campi inclusi quelli generati automaticamente dal sistema.
+    """
+    id: str = Field(
+        description="Identificativo univoco del nesting"
+    )
+    created_at: datetime = Field(
+        description="Data e ora di creazione del nesting"
+    )
+    stato: str = Field(
+        description="Stato corrente del nesting",
+        examples=["bozza", "confermato", "sospeso", "cura", "finito"]
+    )
+    
+    # ✅ CAMPI AGGIUNTIVI: Aggiungo tutti i campi disponibili dal database
+    autoclave_id: Optional[int] = Field(None, description="ID dell'autoclave")
+    autoclave_nome: Optional[str] = Field(None, description="Nome dell'autoclave")
+    ciclo_cura: Optional[str] = Field(None, description="Ciclo di cura")
+    odl_inclusi: Optional[int] = Field(None, description="Numero di ODL inclusi")
+    odl_esclusi: Optional[int] = Field(None, description="Numero di ODL esclusi")
+    efficienza: Optional[float] = Field(None, description="Efficienza in percentuale")
+    area_utilizzata: Optional[float] = Field(None, description="Area utilizzata in cm²")
+    area_totale: Optional[float] = Field(None, description="Area totale disponibile in cm²")
+    peso_totale: Optional[float] = Field(None, description="Peso totale in kg")
+    valvole_utilizzate: Optional[int] = Field(None, description="Numero di valvole utilizzate")
+    valvole_totali: Optional[int] = Field(None, description="Numero totale di valvole")
+
+    class Config:
+        """
+        Configurazione del modello Pydantic.
+        """
+        # Permette la serializzazione da oggetti ORM (quando useremo SQLAlchemy)
+        from_attributes = True
+        
+        # Esempio di come apparirà il JSON
+        json_schema_extra = {
+            "example": {
+                "id": "123",
+                "created_at": "2024-01-15T10:30:00",
+                "note": "Nesting per ottimizzazione taglio lamiera",
+                "stato": "confermato",
+                "autoclave_id": 1,
+                "autoclave_nome": "Autoclave Alpha",
+                "ciclo_cura": "Standard 180°C",
+                "odl_inclusi": 5,
+                "odl_esclusi": 2,
+                "efficienza": 75.5,
+                "area_utilizzata": 3500.0,
+                "area_totale": 4500.0,
+                "peso_totale": 420.0,
+                "valvole_utilizzate": 16,
+                "valvole_totali": 20
+            }
+        }
+
+class AutomaticNestingRequest(BaseModel):
+    """Schema per la richiesta di nesting automatico"""
+    force_regenerate: bool = Field(False, description="Forza la rigenerazione anche se esistono nesting in bozza")
+    max_autoclaves: Optional[int] = Field(None, description="Numero massimo di autoclavi da utilizzare")
+    priority_threshold: Optional[int] = Field(None, description="Soglia minima di priorità degli ODL da considerare")
+
+class ODLNestingInfo(BaseModel):
+    """Informazioni su un ODL nel contesto del nesting"""
+    id: int = Field(..., description="ID dell'ODL")
+    parte_codice: Optional[str] = Field(None, description="Codice della parte")
+    tool_nome: Optional[str] = Field(None, description="Nome del tool")
+    priorita: int = Field(..., description="Priorità dell'ODL")
+    dimensioni: Dict[str, float] = Field(..., description="Dimensioni del tool (larghezza, lunghezza, peso)")
+    ciclo_cura: Optional[str] = Field(None, description="Ciclo di cura richiesto")
+    status: str = Field(..., description="Stato attuale dell'ODL")
+
+class AutoclaveNestingInfo(BaseModel):
+    """Informazioni su un'autoclave nel contesto del nesting"""
+    id: int = Field(..., description="ID dell'autoclave")
+    nome: str = Field(..., description="Nome dell'autoclave")
+    area_piano: float = Field(..., description="Area del piano in cm²")
+    max_load_kg: Optional[float] = Field(None, description="Carico massimo in kg")
+    stato: str = Field(..., description="Stato dell'autoclave")
+
+class NestingResultSummary(BaseModel):
+    """Riepilogo di un risultato di nesting"""
+    id: int = Field(..., description="ID del nesting result")
+    autoclave_id: int = Field(..., description="ID dell'autoclave")
+    autoclave_nome: str = Field(..., description="Nome dell'autoclave")
+    ciclo_cura: str = Field(..., description="Ciclo di cura del gruppo")
+    odl_inclusi: int = Field(..., description="Numero di ODL inclusi")
+    odl_esclusi: int = Field(..., description="Numero di ODL esclusi")
+    efficienza: float = Field(..., description="Efficienza di utilizzo in percentuale")
+    area_utilizzata: float = Field(..., description="Area utilizzata in cm²")
+    peso_totale: float = Field(..., description="Peso totale in kg")
+    stato: str = Field(..., description="Stato del nesting")
+
+class AutomaticNestingResponse(BaseModel):
+    """Risposta della generazione automatica del nesting"""
+    success: bool = Field(..., description="Indica se l'operazione è riuscita")
+    message: str = Field(..., description="Messaggio descrittivo del risultato")
+    nesting_results: List[NestingResultSummary] = Field(..., description="Lista dei nesting generati")
+    summary: Optional[Dict[str, Any]] = Field(None, description="Riepilogo statistico dell'operazione")
+
+class NestingPreviewRequest(BaseModel):
+    """Schema per la richiesta di preview del nesting"""
+    include_excluded: bool = Field(True, description="Include gli ODL esclusi nella preview")
+    group_by_cycle: bool = Field(True, description="Raggruppa per ciclo di cura")
+
+class ODLGroupPreview(BaseModel):
+    """Preview di un gruppo di ODL per ciclo di cura"""
+    ciclo_cura: str = Field(..., description="Identificativo del ciclo di cura")
+    odl_list: List[ODLNestingInfo] = Field(..., description="Lista degli ODL nel gruppo")
+    total_area: float = Field(..., description="Area totale richiesta in cm²")
+    total_weight: float = Field(..., description="Peso totale in kg")
+    compatible_autoclaves: List[AutoclaveNestingInfo] = Field(..., description="Autoclavi compatibili")
+
+class NestingPreviewResponse(BaseModel):
+    """Risposta della preview del nesting"""
+    success: bool = Field(..., description="Indica se l'operazione è riuscita")
+    message: str = Field(..., description="Messaggio descrittivo")
+    odl_groups: List[ODLGroupPreview] = Field(..., description="Gruppi di ODL per ciclo di cura")
+    available_autoclaves: List[AutoclaveNestingInfo] = Field(..., description="Autoclavi disponibili")
+    total_odl_pending: int = Field(..., description="Totale ODL in attesa")
+
+class NestingDetailResponse(BaseModel):
+    """Dettagli completi di un nesting result"""
+    id: int = Field(..., description="ID del nesting result")
+    autoclave: AutoclaveNestingInfo = Field(..., description="Informazioni dell'autoclave")
+    odl_inclusi: List[ODLNestingInfo] = Field(..., description="ODL inclusi nel nesting")
+    odl_esclusi: List[ODLNestingInfo] = Field(..., description="ODL esclusi dal nesting")
+    motivi_esclusione: List[str] = Field(..., description="Motivi di esclusione degli ODL")
+    statistiche: Dict[str, float] = Field(..., description="Statistiche del nesting")
+    stato: str = Field(..., description="Stato del nesting")
+    note: Optional[str] = Field(None, description="Note aggiuntive")
+    created_at: datetime = Field(..., description="Data di creazione")
+
+class NestingStatusUpdate(BaseModel):
+    """Schema per l'aggiornamento dello stato di un nesting"""
+    stato: str = Field(..., description="Nuovo stato del nesting")
+    note: Optional[str] = Field(None, description="Note aggiuntive")
+    confermato_da_ruolo: Optional[str] = Field(None, description="Ruolo che conferma il nesting")
+
+
 class NestingParameters(BaseModel):
-    """Schema per i parametri regolabili del nesting"""
-    padding_mm: float = Field(
+    """Schema per i parametri regolabili dell'algoritmo di nesting"""
+    distanza_minima_tool_cm: float = Field(
+        default=2.0, 
+        ge=0.1, 
+        le=10.0,
+        description="Distanza minima tra tool in centimetri"
+    )
+    padding_bordo_autoclave_cm: float = Field(
+        default=1.5, 
+        ge=0.1, 
+        le=5.0,
+        description="Padding dal bordo dell'autoclave in centimetri"
+    )
+    margine_sicurezza_peso_percent: float = Field(
         default=10.0, 
         ge=0.0, 
         le=50.0,
-        description="Spaziatura tra tool in mm"
+        description="Margine di sicurezza per il peso in percentuale"
     )
-    borda_mm: float = Field(
-        default=20.0, 
-        ge=0.0, 
-        le=100.0,
-        description="Bordo minimo dall'autoclave in mm"
+    priorita_minima: int = Field(
+        default=1, 
+        ge=1, 
+        le=10,
+        description="Priorità minima degli ODL da considerare"
     )
-    max_valvole_per_autoclave: Optional[int] = Field(
-        default=None,
-        ge=1,
-        description="Limite massimo valvole per autoclave (opzionale)"
+    efficienza_minima_percent: float = Field(
+        default=60.0, 
+        ge=30.0, 
+        le=95.0,
+        description="Efficienza minima richiesta per accettare un nesting"
     )
-    rotazione_abilitata: bool = Field(
-        default=True,
-        description="Abilita la rotazione automatica dei tool per ottimizzare lo spazio"
-    )
-    priorita_ottimizzazione: PrioritaOttimizzazione = Field(
-        default=PrioritaOttimizzazione.EQUILIBRATO,
-        description="Priorità di ottimizzazione: peso, area o equilibrato"
-    )
-    
+
     class Config:
         json_schema_extra = {
             "example": {
-                "padding_mm": 10.0,
-                "borda_mm": 20.0,
-                "max_valvole_per_autoclave": None,
-                "rotazione_abilitata": True,
-                "priorita_ottimizzazione": "equilibrato"
+                "distanza_minima_tool_cm": 2.0,
+                "padding_bordo_autoclave_cm": 1.5,
+                "margine_sicurezza_peso_percent": 10.0,
+                "priorita_minima": 1,
+                "efficienza_minima_percent": 60.0
             }
         }
 
-class ODLNestingInfo(BaseModel):
-    """Schema per l'informazione di un ODL nel nesting"""
-    id: int
-    parte_descrizione: str
-    num_valvole: int
-    priorita: int
-    status: NestingODLStatus
-    
-class AutoclaveNestingInfo(BaseModel):
-    """Schema per l'informazione di un'autoclave nel nesting"""
-    id: int
-    nome: str
-    area_disponibile: float
-    valvole_disponibili: int
-    peso_max_kg: float
-    
-class NestingResultSchema(BaseModel):
-    """Schema per il risultato dell'operazione di nesting"""
-    success: bool
-    message: str
-    autoclavi: List[AutoclaveNestingInfo] = []
-    odl_pianificati: List[ODLNestingInfo] = []
-    odl_non_pianificabili: List[ODLNestingInfo] = []
 
-# Nuovi schemi per la preview
-class ODLPreviewInfo(BaseModel):
-    """Schema per l'anteprima di un ODL nel nesting"""
-    id: int
-    part_number: str
-    descrizione: str
-    area_cm2: float
-    num_valvole: int
-    priorita: int
-    color: str = Field(default="#3B82F6", description="Colore per la visualizzazione")
+class NestingParametersResponse(BaseModel):
+    """Risposta per i parametri di nesting"""
+    success: bool = Field(..., description="Indica se l'operazione è riuscita")
+    message: str = Field(..., description="Messaggio descrittivo")
+    parameters: NestingParameters = Field(..., description="Parametri attuali")
 
-class AutoclavePreviewInfo(BaseModel):
-    """Schema per l'anteprima dell'autoclave nel nesting"""
-    id: int
-    nome: str
-    codice: str
-    lunghezza: float  # mm
-    larghezza_piano: float  # mm
-    area_totale_cm2: float
-    area_utilizzata_cm2: float
-    valvole_totali: int
-    valvole_utilizzate: int
-    odl_inclusi: List[ODLPreviewInfo] = []
-    ciclo_cura_id: Optional[int] = Field(None, description="ID del ciclo di cura assegnato")
-    ciclo_cura_nome: Optional[str] = Field(None, description="Nome del ciclo di cura assegnato")
-    
-# ✅ NUOVO: Schema per la creazione di un nesting
-class NestingCreate(BaseModel):
-    """Schema per la creazione di un nuovo nesting"""
-    autoclave_id: int
-    odl_ids: List[int]
-    parametri: Optional[NestingParameters] = None
-    note: Optional[str] = None
 
-# ✅ NUOVO: Schema per l'aggiornamento di un nesting
-class NestingUpdate(BaseModel):
-    """Schema per l'aggiornamento di un nesting"""
-    stato: Optional[StatoNestingEnum] = None
-    parametri: Optional[NestingParameters] = None
-    note: Optional[str] = None
-    confermato_da_ruolo: Optional[str] = None
+class AutomaticNestingRequestWithParams(AutomaticNestingRequest):
+    """Schema esteso per la richiesta di nesting automatico con parametri personalizzati"""
+    parameters: Optional[NestingParameters] = Field(
+        None, 
+        description="Parametri personalizzati per l'algoritmo di nesting"
+    )
 
-# ✅ NUOVO: Schema per la risposta di un nesting
-class NestingResponse(BaseModel):
-    """Schema per la risposta di un nesting"""
-    id: int
-    autoclave_id: int
-    autoclave_nome: Optional[str] = None
-    odl_ids: List[int]
-    odl_esclusi_ids: List[int] = []
-    motivi_esclusione: List[Dict] = []
-    stato: StatoNestingEnum
-    confermato_da_ruolo: Optional[str] = None
-    
-    # Parametri utilizzati
-    padding_mm: float
-    borda_mm: float
-    max_valvole_per_autoclave: Optional[int] = None
-    rotazione_abilitata: bool
-    
-    # Statistiche
-    area_utilizzata: float
-    area_totale: float
-    valvole_utilizzate: int
-    valvole_totali: int
-    peso_totale_kg: float
-    area_piano_1: float
-    area_piano_2: float
-    superficie_piano_2_max: Optional[float] = None
-    
-    # Posizioni e note
-    posizioni_tool: List[Dict] = []
-    note: Optional[str] = None
-    
-    # Timestamp
-    created_at: datetime
-    updated_at: datetime
-    
-    # Proprietà calcolate
-    is_editable: bool
-    is_confirmed: bool
-    
-    class Config:
-        from_attributes = True
 
-# ✅ NUOVO: Schema per il batch multi-autoclave
-class BatchNestingRequest(BaseModel):
-    """Schema per la richiesta di batch nesting multi-autoclave"""
-    parametri: Optional[NestingParameters] = None
-    note: Optional[str] = None
-    forza_generazione: bool = Field(default=False, description="Forza la generazione anche se ci sono pochi ODL")
+# ✅ NUOVO: Schema per la visualizzazione grafica del nesting
+class ToolPosition(BaseModel):
+    """Posizione di un tool nel layout del nesting"""
+    odl_id: int = Field(..., description="ID dell'ODL")
+    x: float = Field(..., description="Posizione X in mm")
+    y: float = Field(..., description="Posizione Y in mm")
+    width: float = Field(..., description="Larghezza del tool in mm")
+    height: float = Field(..., description="Altezza del tool in mm")
+    rotated: bool = Field(False, description="Se il tool è ruotato di 90°")
+    piano: int = Field(1, description="Piano dell'autoclave (1 o 2)")
 
-class BatchNestingResponse(BaseModel):
-    """Schema per la risposta del batch nesting multi-autoclave"""
-    success: bool
-    message: str
-    nesting_creati: List[NestingResponse] = []
-    odl_non_assegnati: List[ODLNestingInfo] = []
-    statistiche: Dict[str, Any] = {}
 
-# ✅ AGGIORNATO: Schema per l'anteprima del nesting
-class NestingPreviewSchema(BaseModel):
-    """Schema per l'anteprima del nesting con parametri personalizzabili"""
-    success: bool
-    message: str
-    parametri_utilizzati: NestingParameters
-    autoclavi_disponibili: List[AutoclaveNestingInfo] = []
-    odl_disponibili: List[ODLNestingInfo] = []
-    preview_risultati: List[Dict[str, Any]] = []
-    statistiche_globali: Dict[str, Any] = {}
+class ToolDetailInfo(BaseModel):
+    """Informazioni dettagliate di un tool per il layout"""
+    id: int = Field(..., description="ID del tool")
+    part_number_tool: str = Field(..., description="Part number del tool")
+    descrizione: Optional[str] = Field(None, description="Descrizione del tool")
+    lunghezza_piano: float = Field(..., description="Lunghezza del piano in mm")
+    larghezza_piano: float = Field(..., description="Larghezza del piano in mm")
+    peso: Optional[float] = Field(None, description="Peso del tool in kg")
+    materiale: Optional[str] = Field(None, description="Materiale del tool")
+    orientamento_preferito: Optional[str] = Field(None, description="Orientamento preferito")
 
-# Schema per la risposta del database
-class ParteInNestingResponse(BaseModel):
-    id: int
-    part_number: str
-    descrizione_breve: str
-    area: Optional[float] = None
-    num_valvole_richieste: int
-    
-class ToolInNestingResponse(BaseModel):
-    id: int
-    part_number_tool: str
-    descrizione: Optional[str] = None
 
-class ODLInNestingResponse(BaseModel):
-    id: int
-    parte: ParteInNestingResponse
-    tool: ToolInNestingResponse
-    priorita: int
-    
-class AutoclaveInNestingResponse(BaseModel):
-    id: int
-    nome: str
-    codice: str
-    num_linee_vuoto: int
-    lunghezza: float
-    larghezza_piano: float
-    
-class NestingResultRead(BaseModel):
-    id: int
-    autoclave: AutoclaveInNestingResponse
-    odl_list: List[ODLInNestingResponse]
-    area_utilizzata: float
-    area_totale: float
-    valvole_utilizzate: int
-    valvole_totali: int
-    stato: str
-    confermato_da_ruolo: Optional[str] = None
-    odl_esclusi_ids: List[int] = []
-    motivi_esclusione: List[Dict] = []
-    created_at: datetime
-    updated_at: Optional[datetime] = None
-    note: Optional[str] = None
-    ciclo_cura_id: Optional[int] = None
-    ciclo_cura_nome: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
+class ParteDetailInfo(BaseModel):
+    """Informazioni dettagliate di una parte per il layout"""
+    id: int = Field(..., description="ID della parte")
+    part_number: str = Field(..., description="Part number della parte")
+    descrizione_breve: str = Field(..., description="Descrizione breve")
+    num_valvole_richieste: int = Field(..., description="Numero di valvole richieste")
+    area_cm2: Optional[float] = Field(None, description="Area in cm²")
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "success": True,
-                "message": "Nesting completato con successo",
-                "autoclavi": [
-                    {
-                        "id": 1,
-                        "nome": "Autoclave 1",
-                        "odl_assegnati": [10, 15, 18],
-                        "valvole_utilizzate": 5,
-                        "valvole_totali": 12,
-                        "area_utilizzata": 4.5,
-                        "area_totale": 10.0
-                    }
-                ],
-                "odl_pianificati": [
-                    {
-                        "id": 10,
-                        "parte_descrizione": "Pannello A",
-                        "num_valvole": 2,
-                        "priorita": 3,
-                        "status": "pianificato"
-                    }
-                ],
-                "odl_non_pianificabili": [
-                    {
-                        "id": 11,
-                        "parte_descrizione": "Pannello B",
-                        "num_valvole": 8,
-                        "priorita": 1,
-                        "status": "non_pianificabile"
-                    }
-                ]
-            }
-        }
 
-# Schema per il nesting manuale
-class ManualNestingRequest(BaseModel):
-    """Schema per la richiesta di nesting manuale"""
-    odl_ids: List[int] = Field(..., description="Lista degli ID degli ODL da includere nel nesting", min_items=1)
-    note: Optional[str] = Field(None, description="Note opzionali per il nesting")
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "odl_ids": [1, 2, 3],
-                "note": "Nesting manuale creato dal management"
-            }
-        } 
+class ODLLayoutInfo(BaseModel):
+    """Informazioni di un ODL per il layout del nesting"""
+    id: int = Field(..., description="ID dell'ODL")
+    priorita: int = Field(..., description="Priorità dell'ODL")
+    parte: ParteDetailInfo = Field(..., description="Informazioni della parte")
+    tool: ToolDetailInfo = Field(..., description="Informazioni del tool")
+
+
+class AutoclaveLayoutInfo(BaseModel):
+    """Informazioni di un'autoclave per il layout"""
+    id: int = Field(..., description="ID dell'autoclave")
+    nome: str = Field(..., description="Nome dell'autoclave")
+    codice: str = Field(..., description="Codice dell'autoclave")
+    lunghezza: float = Field(..., description="Lunghezza in mm")
+    larghezza_piano: float = Field(..., description="Larghezza del piano in mm")
+    temperatura_max: float = Field(..., description="Temperatura massima")
+    num_linee_vuoto: int = Field(..., description="Numero di linee vuoto")
+
+
+class NestingLayoutData(BaseModel):
+    """Dati completi per la visualizzazione del layout di un nesting"""
+    id: int = Field(..., description="ID del nesting")
+    autoclave: AutoclaveLayoutInfo = Field(..., description="Informazioni dell'autoclave")
+    odl_list: List[ODLLayoutInfo] = Field(..., description="Lista degli ODL nel nesting")
+    posizioni_tool: List[ToolPosition] = Field(..., description="Posizioni dei tool nel layout")
+    area_utilizzata: float = Field(..., description="Area utilizzata in cm²")
+    area_totale: float = Field(..., description="Area totale disponibile in cm²")
+    valvole_utilizzate: int = Field(..., description="Numero di valvole utilizzate")
+    valvole_totali: int = Field(..., description="Numero totale di valvole")
+    stato: str = Field(..., description="Stato del nesting")
+    ciclo_cura_nome: Optional[str] = Field(None, description="Nome del ciclo di cura")
+    created_at: datetime = Field(..., description="Data di creazione")
+    note: Optional[str] = Field(None, description="Note aggiuntive")
+    padding_mm: float = Field(10.0, description="Padding tra tool in mm")
+    borda_mm: float = Field(20.0, description="Bordo dall'autoclave in mm")
+    rotazione_abilitata: bool = Field(True, description="Se la rotazione è abilitata")
+
+
+class MultiNestingLayoutData(BaseModel):
+    """Dati per la visualizzazione di più nesting"""
+    nesting_list: List[NestingLayoutData] = Field(..., description="Lista dei nesting")
+    statistiche_globali: Dict[str, Any] = Field(..., description="Statistiche aggregate")
+
+
+class OrientationCalculationRequest(BaseModel):
+    """Richiesta per il calcolo dell'orientamento ottimale"""
+    tool_length: float = Field(..., description="Lunghezza del tool in mm")
+    tool_width: float = Field(..., description="Larghezza del tool in mm")
+    autoclave_length: float = Field(..., description="Lunghezza dell'autoclave in mm")
+    autoclave_width: float = Field(..., description="Larghezza dell'autoclave in mm")
+
+
+class OrientationCalculationResponse(BaseModel):
+    """Risposta del calcolo dell'orientamento ottimale"""
+    should_rotate: bool = Field(..., description="Se il tool dovrebbe essere ruotato")
+    normal_efficiency: float = Field(..., description="Efficienza orientamento normale")
+    rotated_efficiency: float = Field(..., description="Efficienza orientamento ruotato")
+    improvement_percentage: float = Field(..., description="Miglioramento percentuale")
+    recommended_orientation: str = Field(..., description="Orientamento raccomandato")
+
+
+class NestingLayoutResponse(BaseModel):
+    """Risposta per i dati di layout del nesting"""
+    success: bool = Field(..., description="Indica se l'operazione è riuscita")
+    message: str = Field(..., description="Messaggio descrittivo")
+    layout_data: Optional[NestingLayoutData] = Field(None, description="Dati del layout")
+
+
+class MultiNestingLayoutResponse(BaseModel):
+    """Risposta per i dati di layout di più nesting"""
+    success: bool = Field(..., description="Indica se l'operazione è riuscita")
+    message: str = Field(..., description="Messaggio descrittivo")
+    layout_data: Optional[MultiNestingLayoutData] = Field(None, description="Dati dei layout") 

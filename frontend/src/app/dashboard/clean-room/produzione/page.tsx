@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ODLResponse, odlApi } from '@/lib/api'
+import { ODLResponse, odlApi, updateOdlStatus } from '@/lib/api'
 import { formatDateTime } from '@/lib/utils'
 import { 
   Loader2, 
@@ -101,7 +101,7 @@ export default function ProduzionePage() {
   const handleStatusChange = async (odl: ODLResponse, newStatus: "Laminazione" | "Attesa Cura") => {
     setIsAdvancing(true)
     try {
-      await odlApi.updateStatusCleanRoom(odl.id, newStatus)
+      await updateOdlStatus(odl.id, newStatus)
       
       toast({
         title: '✅ Stato aggiornato con successo',
