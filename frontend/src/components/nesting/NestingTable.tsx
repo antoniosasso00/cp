@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/use-toast'
+import { useRouter } from 'next/navigation'
 import { 
   RefreshCw, 
   Eye, 
@@ -85,6 +86,7 @@ export function NestingTable({ data, isLoading, onRefresh }: NestingTableProps) 
   const [loadNotes, setLoadNotes] = useState('')
   const [loadingActions, setLoadingActions] = useState<Record<string, string>>({})
   const { toast } = useToast()
+  const router = useRouter()
 
   // Funzione per gestire azioni con loading state
   const handleActionWithLoading = async (
@@ -285,15 +287,14 @@ export function NestingTable({ data, isLoading, onRefresh }: NestingTableProps) 
     
     return (
       <div className="flex items-center gap-1">
-        {/* Pulsante Visualizza - sempre presente */}
+        {/* ✅ AGGIORNATO: Pulsante Visualizza - naviga alla pagina di dettaglio */}
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => setSelectedNesting(
-            selectedNesting === nesting.id ? null : nesting.id
-          )}
+          onClick={() => router.push(`/dashboard/curing/nesting/${nesting.id}`)}
           className="h-8 w-8 p-0"
-          title="Visualizza dettagli"
+          title="Visualizza dettagli completi"
+          data-nesting-action="view"
         >
           <Eye className="h-4 w-4" />
         </Button>
@@ -308,6 +309,7 @@ export function NestingTable({ data, isLoading, onRefresh }: NestingTableProps) 
               disabled={isLoading === 'conferma'}
               className="h-8 px-2 text-green-600 hover:text-green-700 hover:bg-green-50"
               title="Conferma nesting"
+              data-nesting-action="confirm"
             >
               {isLoading === 'conferma' ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -399,6 +401,7 @@ export function NestingTable({ data, isLoading, onRefresh }: NestingTableProps) 
           disabled={isLoading === 'elimina'}
           className="h-8 w-8 p-0 text-destructive hover:text-destructive"
           title="Elimina nesting"
+          data-nesting-action="delete"
         >
           {isLoading === 'elimina' ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -449,7 +452,7 @@ export function NestingTable({ data, isLoading, onRefresh }: NestingTableProps) 
   )
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-odl-list>
       {/* Tabella principale */}
       <div className="rounded-md border">
         <Table>
@@ -459,7 +462,8 @@ export function NestingTable({ data, isLoading, onRefresh }: NestingTableProps) 
               <TableHead className="w-[140px]">Autoclave</TableHead>
               <TableHead className="w-[120px]">Stato</TableHead>
               <TableHead className="w-[80px]">ODL</TableHead>
-              <TableHead className="w-[100px]">Efficienza</TableHead>
+              <TableHead className="w-[120px]">Efficienza</TableHead>
+              <TableHead className="w-[120px]">Dettagli</TableHead>
               <TableHead className="w-[180px]">Data Creazione</TableHead>
               <TableHead>Note</TableHead>
               <TableHead className="w-[200px]">Azioni</TableHead>
@@ -475,43 +479,93 @@ export function NestingTable({ data, isLoading, onRefresh }: NestingTableProps) 
                 <TableRow 
                   key={nesting.id}
                   className={selectedNesting === nesting.id ? 'bg-muted/50' : ''}
+                  data-odl-item
                 >
                   <TableCell className="font-mono text-sm">
                     {nesting.id.substring(0, 8)}...
                   </TableCell>
                   <TableCell>
-                    {nesting.autoclave_nome || "—"}
+                    {nesting.autoclave_nome || "Autoclave non assegnata"}
                   </TableCell>
                   <TableCell>
                     <Badge variant={getStatoBadgeVariant(nesting.stato)}>
                       {nesting.stato}
                     </Badge>
+                    {/* ✅ NUOVO: Mostra ciclo cura se disponibile */}
+                    {nesting.ciclo_cura && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {nesting.ciclo_cura}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="text-center">
-                    {nesting.odl_inclusi !== undefined ? (
+                    {nesting.odl_inclusi !== undefined && nesting.odl_inclusi > 0 ? (
                       <span className="font-medium">
                         {nesting.odl_inclusi}
                         {nesting.odl_esclusi !== undefined && nesting.odl_esclusi > 0 && (
                           <span className="text-muted-foreground text-xs ml-1">
-                            (+{nesting.odl_esclusi})
+                            (+{nesting.odl_esclusi} esclusi)
                           </span>
                         )}
                       </span>
                     ) : (
-                      <span className="text-muted-foreground">—</span>
+                      <span className="text-muted-foreground text-sm">Nessun ODL</span>
                     )}
                   </TableCell>
                   <TableCell>
-                    {nesting.efficienza !== undefined ? (
-                      <span className={`font-medium ${
-                        nesting.efficienza >= 70 ? 'text-green-600' : 
-                        nesting.efficienza >= 50 ? 'text-yellow-600' : 'text-red-600'
-                      }`}>
-                        {nesting.efficienza.toFixed(1)}%
-                      </span>
+                    {nesting.efficienza !== undefined && nesting.efficienza > 0 ? (
+                      <div className="flex flex-col gap-1">
+                        <span className={`font-medium ${
+                          nesting.efficienza >= 70 ? 'text-green-600' : 
+                          nesting.efficienza >= 50 ? 'text-yellow-600' : 'text-red-600'
+                        }`}>
+                          {nesting.efficienza.toFixed(1)}%
+                        </span>
+                        {/* ✅ NUOVO: Dettagli area se disponibili */}
+                        {nesting.area_utilizzata && nesting.area_totale && (
+                          <span className="text-xs text-muted-foreground">
+                            {nesting.area_utilizzata.toFixed(1)} / {nesting.area_totale.toFixed(1)} m²
+                          </span>
+                        )}
+                      </div>
                     ) : (
-                      <span className="text-muted-foreground">—</span>
+                      <span className="text-muted-foreground text-sm">Da calcolare</span>
                     )}
+                  </TableCell>
+                  <TableCell>
+                    {/* ✅ NUOVO: Colonna Dettagli con dati reali */}
+                    <div className="text-xs space-y-1">
+                      {/* Peso totale */}
+                      {nesting.peso_totale !== undefined && nesting.peso_totale > 0 && (
+                        <div className="flex items-center gap-1">
+                          <span className="font-medium">Peso:</span>
+                          <span>{nesting.peso_totale.toFixed(1)} kg</span>
+                        </div>
+                      )}
+                      
+                      {/* Valvole utilizzate */}
+                      {nesting.valvole_utilizzate !== undefined && nesting.valvole_totali !== undefined && (
+                        <div className="flex items-center gap-1">
+                          <span className="font-medium">Valvole:</span>
+                          <span>{nesting.valvole_utilizzate}/{nesting.valvole_totali}</span>
+                        </div>
+                      )}
+                      
+                      {/* Motivi esclusione se presenti */}
+                      {nesting.motivi_esclusione && nesting.motivi_esclusione.length > 0 && (
+                        <div className="text-orange-600">
+                          <span className="font-medium">Esclusioni:</span>
+                          <span className="ml-1">{nesting.motivi_esclusione.length}</span>
+                        </div>
+                      )}
+                      
+                      {/* Fallback quando non ci sono dettagli */}
+                      {(!nesting.peso_totale || nesting.peso_totale === 0) && 
+                       (!nesting.valvole_utilizzate || nesting.valvole_utilizzate === 0) && 
+                       (!nesting.motivi_esclusione || nesting.motivi_esclusione.length === 0) && (
+                        <span className="text-muted-foreground">Dettagli non disponibili</span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     {formatDate(nesting.created_at)}

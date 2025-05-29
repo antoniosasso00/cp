@@ -175,7 +175,7 @@ export function MultiBatchNesting() {
         },
         body: JSON.stringify({
           batch_preview: batchPreview,
-          creato_da_ruolo: 'Operatore' // TODO: Ottenere dal contesto utente
+          creato_da_ruolo: localStorage.getItem('user_role') || 'Operatore' // Ottiene dal localStorage o default
         }),
       });
       

@@ -17,7 +17,7 @@ from models.nesting_batch import NestingBatch
 logger = logging.getLogger(__name__)
 
 # Router per gli endpoint del nesting multiplo
-router = APIRouter(prefix="/api/multi-nesting", tags=["Multi Nesting"])
+router = APIRouter(prefix="/multi-nesting", tags=["Multi Nesting"])
 
 
 # Schemi Pydantic per le richieste e risposte

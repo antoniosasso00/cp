@@ -509,12 +509,22 @@ export interface ParteInODLResponse {
   part_number: string;
   descrizione_breve: string;
   num_valvole_richieste: number;
+  // ✅ NUOVO: Ciclo cura per nesting
+  ciclo_cura?: {
+    id: number;
+    nome: string;
+  };
 }
 
 export interface ToolInODLResponse {
   id: number;
   part_number_tool: string;
   descrizione?: string;
+  // ✅ NUOVO: Dimensioni e peso per nesting
+  lunghezza_piano?: number;
+  larghezza_piano?: number;
+  peso?: number;
+  materiale?: string;
 }
 
 export interface ODLResponse extends ODLBase {
@@ -569,7 +579,7 @@ export const odlApi = {
 
   // Funzioni specifiche per stati
   getByStatus: (status: string) => 
-    apiRequest<ODLResponse[]>(`/odl/status/${status}`),
+    apiRequest<ODLResponse[]>(`/odl/?status=${encodeURIComponent(status)}`),
 
   // Funzioni per il monitoraggio
   getInProgress: () => 
@@ -1048,6 +1058,14 @@ export interface AutomaticNestingRequest {
   force_regenerate?: boolean;
   max_autoclaves?: number;
   priority_threshold?: number;
+  // ✅ NUOVO: Aggiungo i parametri di nesting mancanti
+  parameters?: {
+    distanza_minima_tool_cm?: number;
+    padding_bordo_autoclave_cm?: number;
+    margine_sicurezza_peso_percent?: number;
+    priorita_minima?: number;
+    efficienza_minima_percent?: number;
+  };
 }
 
 export interface ODLNestingInfo {
@@ -1149,13 +1167,15 @@ export interface NestingConfirmRequest {
   note_conferma?: string;
 }
 
-// 🆕 Interfaccia per il caricamento del nesting
 export interface NestingLoadRequest {
   caricato_da_ruolo?: string;
   note_caricamento?: string;
 }
 
-// ✅ Interfaccia per il risultato singolo di nesting nella lista
+export interface AutoclaveSelectionRequest {
+  autoclave_id: number;
+}
+
 export interface NestingResult {
   id: number;
   stato: string;
@@ -1258,8 +1278,28 @@ export const nestingApi = {
   getDetails: (nestingId: number) => 
     apiRequest<NestingDetailResponse>(`/nesting/${nestingId}`),
   
+  // ✅ NUOVO: Ottiene i tool inclusi in un nesting specifico (Step 2 semplificato)
+  getTools: (nestingId: number) => 
+    apiRequest<NestingToolsResponse>(`/nesting/${nestingId}/tools`),
+  
   updateStatus: (nestingId: number, statusUpdate: NestingStatusUpdate) => 
     apiRequest<{success: boolean; message: string}>(`/nesting/${nestingId}/status`, 'PUT', statusUpdate),
+
+  // ✅ NUOVO: Assegna autoclave a un nesting (Step 1 workflow manuale)
+  assignAutoclave: (nestingId: number, autoclaveData: AutoclaveSelectionRequest) => 
+    apiRequest<{
+      success: boolean;
+      message: string;
+      nesting_id: number;
+      autoclave_assegnata: {
+        id: number;
+        nome: string;
+        codice: string;
+        stato: string;
+      };
+      odl_associati: number;
+      compatibilita_verificata: boolean;
+    }>(`/nesting/${nestingId}/select-autoclave`, 'POST', autoclaveData),
 
   // 🆕 Conferma nesting - cambia stato a "in sospeso"
   confirm: (nestingId: number, confirmData?: NestingConfirmRequest) => 
@@ -1364,7 +1404,65 @@ export const nestingApi = {
     }>(`/nesting/${nestingId}/report`);
   },
 
-  // 🆕 NUOVO: Rigenera un nesting esistente
+  // 🆕 NUOVO: Gestione posizioni drag and drop
+  
+  // Salva le posizioni dei tool dopo drag and drop
+  saveToolPositions: (nestingId: number, positions: ToolPosition[]) => 
+    apiRequest<{
+      success: boolean;
+      message: string;
+      nesting_id: number;
+      statistiche: {
+        tools_posizionati: number;
+        area_piano_1: number;
+        area_piano_2: number;
+        area_totale_utilizzata: number;
+        efficienza_totale: number;
+      };
+    }>(`/nesting/${nestingId}/layout/positions`, 'PUT', positions),
+
+  // Recupera le posizioni salvate dei tool
+  getToolPositions: (nestingId: number) => 
+    apiRequest<{
+      success: boolean;
+      message: string;
+      nesting_id: number;
+      positions: ToolPosition[];
+      has_custom_positions: boolean;
+    }>(`/nesting/${nestingId}/layout/positions`),
+
+  // Reset delle posizioni dei tool al layout automatico
+  resetToolPositions: (nestingId: number) => 
+    apiRequest<{
+      success: boolean;
+      message: string;
+      nesting_id: number;
+      positions: ToolPosition[];
+    }>(`/nesting/${nestingId}/layout/reset`, 'POST'),
+
+  // ✅ NUOVO: Funzione di eliminazione nesting mancante
+  delete: (nestingId: number) => 
+    apiRequest<{
+      success: boolean;
+      message: string;
+      nesting_eliminato: {
+        id: number;
+        stato_originale: string;
+        autoclave: string;
+        note_originali?: string;
+      };
+      odl_liberati: Array<{
+        id: number;
+        parte: string;
+        tool: string;
+        stato_precedente: string;
+        stato_nuovo: string;
+      }>;
+      autoclave_liberata?: string;
+      timestamp: string;
+    }>(`/nesting/${nestingId}`, 'DELETE'),
+
+  // ✅ NUOVO: Rigenera nesting esistente  
   regenerate: (nestingId: number, forceRegenerate?: boolean) => {
     const queryParams = new URLSearchParams();
     if (forceRegenerate !== undefined) {
@@ -1377,15 +1475,12 @@ export const nestingApi = {
       message: string;
       nesting_id: number;
       stato: string;
+      odl_count: number;
+      autoclave: string;
+      efficienza: number;
+      timestamp: string;
     }>(`/nesting/${nestingId}/regenerate${query}`, 'POST');
-  },
-
-  // 🆕 NUOVO: Elimina un nesting
-  delete: (nestingId: number) => 
-    apiRequest<{
-      success: boolean;
-      message: string;
-    }>(`/nesting/${nestingId}`, 'DELETE'),
+  }
 };
 
 // ✅ NUOVO: Interfacce per la visualizzazione grafica del nesting
@@ -1485,7 +1580,43 @@ export interface MultiNestingLayoutResponse {
   layout_data?: MultiNestingLayoutData;
 }
 
-// ✅ NUOVE API PER MONITORAGGIO ODL
+// ✅ NUOVO: Interfacce per Step 2 semplificato del Nesting Manuale
+export interface NestingToolInfo {
+  id: number;
+  part_number_tool: string;
+  descrizione?: string;
+  dimensioni: {
+    larghezza: number;
+    lunghezza: number;
+  };
+  peso?: number;
+  materiale?: string;
+  disponibile: boolean;
+  area_cm2: number;
+  // Informazioni correlate
+  odl_id: number;
+  parte_codice: string;
+  priorita: number;
+}
+
+export interface NestingToolsResponse {
+  success: boolean;
+  message: string;
+  nesting_id: number;
+  autoclave_nome?: string;
+  tools: NestingToolInfo[];
+  statistiche_tools: {
+    totale_tools: number;
+    peso_totale: number;
+    area_totale: number;
+    tools_disponibili: number;
+    tools_non_disponibili: number;
+    efficienza_area: number;
+  };
+}
+
+// ✅ FINE NUOVO
+
 export interface ODLMonitoringStats {
   totale_odl: number;
   per_stato: Record<string, number>;
@@ -1636,4 +1767,215 @@ export const getStatisticheByPartNumber = async (partNumber: string, giorni: num
 }> => {
   // Questa funzione usa l'API esistente dei tempi fasi
   return tempoFasiApi.getStatisticheByPartNumber(partNumber, giorni);
+};
+
+// ✅ NUOVE API PER MULTI-NESTING
+export interface MultiNestingParameters {
+  distanza_minima_tool_cm: number;
+  padding_bordo_autoclave_cm: number;
+  margine_sicurezza_peso_percent: number;
+  priorita_minima: number;
+  efficienza_minima_percent: number;
+}
+
+export interface BatchPreview {
+  nome: string;
+  descrizione: string;
+  gruppi_ciclo_cura: string[];
+  assegnazioni: Record<string, any[]>;
+  statistiche: {
+    numero_autoclavi: number;
+    numero_odl_totali: number;
+    numero_odl_assegnati: number;
+    numero_odl_non_assegnati: number;
+    peso_totale_kg: number;
+    area_totale_utilizzata: number;
+    efficienza_media: number;
+  };
+  parametri_nesting: MultiNestingParameters;
+  autoclavi_disponibili: number;
+  autoclavi_utilizzate: number;
+  odl_totali: number;
+  odl_assegnati: number;
+  odl_non_assegnati: number;
+  efficienza_media: number;
+}
+
+export interface BatchPreviewRequest {
+  parametri_nesting?: MultiNestingParameters;
+  priorita_minima: number;
+  nome_batch?: string;
+}
+
+export interface BatchSaveRequest {
+  batch_preview: BatchPreview;
+  creato_da_ruolo?: string;
+}
+
+export interface BatchInfo {
+  id: number;
+  nome: string;
+  descrizione?: string;
+  stato: string;
+  numero_autoclavi: number;
+  numero_odl_totali: number;
+  peso_totale_kg: number;
+  efficienza_media: number;
+  created_at: string;
+  creato_da_ruolo?: string;
+}
+
+export interface AutoclaveDisponibile {
+  id: number;
+  nome: string;
+  area_piano: number;
+  capacita_peso: number;
+  lunghezza: number;
+  larghezza_piano: number;
+  stato: string;
+}
+
+export interface GruppoODL {
+  [ciclo_key: string]: Array<{
+    id: number;
+    parte_nome: string;
+    tool_nome: string;
+    priorita: number;
+    status: string;
+    categoria: string;
+    sotto_categoria: string;
+  }>;
+}
+
+// API per il multi-nesting
+export const multiNestingApi = {
+  // Raggruppa ODL per ciclo di cura
+  getGruppiODL: async (priorita_minima: number = 1): Promise<{
+    success: boolean;
+    message: string;
+    gruppi_odl: GruppoODL;
+    statistiche: {
+      numero_gruppi: number;
+      odl_totali: number;
+      priorita_minima_utilizzata: number;
+    };
+  }> => {
+    const queryParams = new URLSearchParams();
+    queryParams.append('priorita_minima', priorita_minima.toString());
+    
+    return apiRequest<{
+      success: boolean;
+      message: string;
+      gruppi_odl: GruppoODL;
+      statistiche: {
+        numero_gruppi: number;
+        odl_totali: number;
+        priorita_minima_utilizzata: number;
+      };
+    }>(`/multi-nesting/gruppi-odl?${queryParams.toString()}`);
+  },
+
+  // Ottieni autoclavi disponibili
+  getAutoclaviDisponibili: async (): Promise<{
+    success: boolean;
+    message: string;
+    autoclavi: AutoclaveDisponibile[];
+  }> => {
+    return apiRequest<{
+      success: boolean;
+      message: string;
+      autoclavi: AutoclaveDisponibile[];
+    }>('/multi-nesting/autoclavi-disponibili');
+  },
+
+  // Crea preview del batch
+  createBatchPreview: async (request: BatchPreviewRequest): Promise<{
+    success: boolean;
+    message: string;
+    batch_preview: BatchPreview;
+  }> => {
+    return apiRequest<{
+      success: boolean;
+      message: string;
+      batch_preview: BatchPreview;
+    }>('/multi-nesting/preview-batch', 'POST', request);
+  },
+
+  // Salva batch nel database
+  saveBatch: async (request: BatchSaveRequest): Promise<{
+    success: boolean;
+    message: string;
+    batch_id: number;
+    batch: BatchInfo;
+  }> => {
+    return apiRequest<{
+      success: boolean;
+      message: string;
+      batch_id: number;
+      batch: BatchInfo;
+    }>('/multi-nesting/salva-batch', 'POST', request);
+  },
+
+  // Ottieni lista batch salvati
+  getBatchList: async (stato?: string): Promise<{
+    success: boolean;
+    message: string;
+    batch_list: BatchInfo[];
+  }> => {
+    const queryParams = new URLSearchParams();
+    if (stato) queryParams.append('stato', stato);
+    
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    return apiRequest<{
+      success: boolean;
+      message: string;
+      batch_list: BatchInfo[];
+    }>(`/multi-nesting/batch${query}`);
+  },
+
+  // Ottieni dettagli di un batch specifico
+  getBatchDetails: async (batchId: number): Promise<{
+    success: boolean;
+    message: string;
+    batch: BatchInfo & {
+      assegnazioni: Record<string, any[]>;
+      parametri_nesting: MultiNestingParameters;
+    };
+  }> => {
+    return apiRequest<{
+      success: boolean;
+      message: string;
+      batch: BatchInfo & {
+        assegnazioni: Record<string, any[]>;
+        parametri_nesting: MultiNestingParameters;
+      };
+    }>(`/multi-nesting/batch/${batchId}`);
+  },
+
+  // Aggiorna stato di un batch
+  updateBatchStatus: async (batchId: number, nuovoStato: string): Promise<{
+    success: boolean;
+    message: string;
+    batch: BatchInfo;
+  }> => {
+    const queryParams = new URLSearchParams();
+    queryParams.append('nuovo_stato', nuovoStato);
+    
+    return apiRequest<{
+      success: boolean;
+      message: string;
+      batch: BatchInfo;
+    }>(`/multi-nesting/batch/${batchId}/stato?${queryParams.toString()}`, 'PUT');
+  },
+
+  // Elimina un batch
+  deleteBatch: async (batchId: number): Promise<{
+    success: boolean;
+    message: string;
+  }> => {
+    return apiRequest<{
+      success: boolean;
+      message: string;
+    }>(`/multi-nesting/batch/${batchId}`, 'DELETE');
+  }
 }; 

@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast'
 
 interface ConfirmedLayoutsTabProps {
   onViewDetails: (nestingId: number) => Promise<void>
+  onRefresh?: () => Promise<void>
 }
 
 // ✅ NUOVO: Interfaccia per i dati arricchiti del nesting
@@ -21,7 +22,7 @@ interface EnrichedNestingData extends NestingResponse {
   odl_count?: number;
 }
 
-export function ConfirmedLayoutsTab({ onViewDetails }: ConfirmedLayoutsTabProps) {
+export function ConfirmedLayoutsTab({ onViewDetails, onRefresh }: ConfirmedLayoutsTabProps) {
   const [confirmedNestings, setConfirmedNestings] = useState<EnrichedNestingData[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [downloadingReports, setDownloadingReports] = useState<Set<string>>(new Set())
@@ -94,6 +95,11 @@ export function ConfirmedLayoutsTab({ onViewDetails }: ConfirmedLayoutsTabProps)
       }
       
       setConfirmedNestings(enrichedNestings)
+      
+      // Chiama onRefresh se fornito
+      if (onRefresh) {
+        await onRefresh()
+      }
     } catch (error) {
       toast({
         title: "Errore",
@@ -174,7 +180,7 @@ export function ConfirmedLayoutsTab({ onViewDetails }: ConfirmedLayoutsTabProps)
 
   // ✅ NUOVO: Funzione per formattare il peso
   const formatPeso = (peso?: number): string => {
-    if (peso === undefined || peso === null) return '—'
+    if (peso === undefined || peso === null) return 'Peso non disponibile'
     return `${peso.toFixed(1)} kg`
   }
 
@@ -182,20 +188,65 @@ export function ConfirmedLayoutsTab({ onViewDetails }: ConfirmedLayoutsTabProps)
   const getAutoclaveName = (nesting: EnrichedNestingData): string => {
     return nesting.autoclave_nome || 
            nesting.dettagli?.autoclave?.nome || 
-           '—'
+           'Autoclave non assegnata'
   }
 
   // ✅ NUOVO: Funzione per ottenere il tool principale
   const getToolName = (nesting: EnrichedNestingData): string => {
-    return nesting.tool_principale || 
-           nesting.dettagli?.odl_inclusi?.[0]?.tool_nome ||
-           '—'
+    // Prima controlla se abbiamo dettagli caricati
+    if (nesting.dettagli?.odl_inclusi && nesting.dettagli.odl_inclusi.length > 0) {
+      const primoOdl = nesting.dettagli.odl_inclusi[0]
+      return primoOdl.tool_nome || primoOdl.parte_codice || 'Tool non specificato'
+    }
+    
+    // Poi controlla i dati base del nesting
+    if (nesting.tool_principale) {
+      return nesting.tool_principale
+    }
+    
+    // Se non abbiamo dettagli, suggerisci di caricarli
+    return 'Carica dettagli per vedere il tool'
   }
 
   // ✅ NUOVO: Funzione per ottenere il numero di ODL
   const getOdlCount = (nesting: EnrichedNestingData): string => {
     const count = nesting.odl_count || nesting.odl_inclusi || 0
-    return count > 0 ? `${count} ODL` : '—'
+    return count > 0 ? `${count} ODL` : 'Nessun ODL'
+  }
+
+  // ✅ NUOVO: Funzione per ottenere informazioni sul ciclo di cura
+  const getCicloInfo = (nesting: EnrichedNestingData): string => {
+    if (nesting.ciclo_cura) {
+      return nesting.ciclo_cura
+    }
+    
+    // Usa le proprietà disponibili dal dettaglio autoclave
+    if (nesting.dettagli?.autoclave?.nome) {
+      return `Autoclave ${nesting.dettagli.autoclave.nome}`
+    }
+    
+    return 'Ciclo non assegnato'
+  }
+
+  // ✅ NUOVO: Funzione per ottenere informazioni sui piani utilizzati
+  const getPlaneInfo = (nesting: EnrichedNestingData): string => {
+    // Prova a ottenere info dalle statistiche del nesting
+    if (nesting.valvole_utilizzate && nesting.valvole_totali) {
+      return `${nesting.valvole_utilizzate}/${nesting.valvole_totali} valvole`
+    }
+    
+    // Usa informazioni generiche se disponibili  
+    if (nesting.dettagli?.autoclave) {
+      return `Autoclave: ${nesting.dettagli.autoclave.nome}`
+    }
+    
+    return 'Info piani non disponibili'
+  }
+
+  // ✅ NUOVO: Funzione per verificare se un nesting ha dati completi
+  const hasCompleteData = (nesting: EnrichedNestingData): boolean => {
+    return !!(nesting.dettagli || 
+             (nesting.peso_totale && nesting.ciclo_cura && nesting.valvole_utilizzate))
   }
 
   // Carica i dati al primo render
@@ -418,7 +469,7 @@ export function ConfirmedLayoutsTab({ onViewDetails }: ConfirmedLayoutsTabProps)
                         </div>
                       </div>
 
-                      {/* ✅ AGGIORNATO: Informazioni reali dal backend */}
+                      {/* ✅ AGGIORNATO: Informazioni reali dal backend con fallback informativi */}
                       <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div className="flex items-center gap-1">
                           <FileText className="h-3 w-3 text-muted-foreground" />
@@ -431,7 +482,19 @@ export function ConfirmedLayoutsTab({ onViewDetails }: ConfirmedLayoutsTabProps)
                         <div className="flex items-center gap-1">
                           <Wrench className="h-3 w-3 text-muted-foreground" />
                           <span className="text-muted-foreground">Tool:</span>
-                          <span className="ml-1 font-medium">{getToolName(nesting)}</span>
+                          <span className={`ml-1 ${
+                            getToolName(nesting).includes('Carica dettagli') 
+                              ? 'text-blue-600 hover:underline cursor-pointer'
+                              : 'font-medium'
+                          }`}
+                          onClick={() => {
+                            if (getToolName(nesting).includes('Carica dettagli')) {
+                              loadNestingDetails(nesting.id)
+                            }
+                          }}
+                          >
+                            {getToolName(nesting)}
+                          </span>
                         </div>
                         <div className="flex items-center gap-1">
                           <Package className="h-3 w-3 text-muted-foreground" />
@@ -447,35 +510,49 @@ export function ConfirmedLayoutsTab({ onViewDetails }: ConfirmedLayoutsTabProps)
                         </div>
                       </div>
 
-                      {/* ✅ NUOVO: Informazioni aggiuntive se disponibili */}
-                      {(nesting.ciclo_cura || nesting.area_utilizzata || nesting.valvole_utilizzate) && (
-                        <div className="mt-2 pt-2 border-t border-gray-100">
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs text-muted-foreground">
-                            {nesting.ciclo_cura && (
-                              <div>
-                                <span>Ciclo:</span>
-                                <span className="ml-1 font-medium text-foreground">{nesting.ciclo_cura}</span>
-                              </div>
-                            )}
-                            {nesting.area_utilizzata && nesting.area_totale && (
-                              <div>
-                                <span>Area:</span>
-                                <span className="ml-1 font-medium text-foreground">
-                                  {nesting.area_utilizzata.toFixed(0)}/{nesting.area_totale.toFixed(0)} cm²
-                                </span>
-                              </div>
-                            )}
-                            {nesting.valvole_utilizzate && nesting.valvole_totali && (
-                              <div>
-                                <span>Valvole:</span>
-                                <span className="ml-1 font-medium text-foreground">
-                                  {nesting.valvole_utilizzate}/{nesting.valvole_totali}
-                                </span>
-                              </div>
-                            )}
+                      {/* ✅ MIGLIORATO: Informazioni aggiuntive con fallback intelligenti */}
+                      <div className="mt-2 pt-2 border-t border-gray-100">
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <span>🔄 Ciclo:</span>
+                            <span className="ml-1 font-medium text-foreground">
+                              {getCicloInfo(nesting)}
+                            </span>
+                          </div>
+                          
+                          {(nesting.area_utilizzata || nesting.dettagli?.statistiche?.area_totale) && (
+                            <div className="flex items-center gap-1">
+                              <span>📐 Area:</span>
+                              <span className="ml-1 font-medium text-foreground">
+                                {nesting.area_utilizzata && nesting.statistiche?.area_totale 
+                                  ? `${nesting.area_utilizzata.toFixed(0)}/${nesting.statistiche.area_totale.toFixed(0)} cm²`
+                                  : `${nesting.dettagli?.statistiche?.area_totale?.toFixed(0) || '-'} cm²`}
+                              </span>
+                            </div>
+                          )}
+                          
+                          <div className="flex items-center gap-1">
+                            <span>🏭 Piani:</span>
+                            <span className="ml-1 font-medium text-foreground">
+                              {getPlaneInfo(nesting)}
+                            </span>
                           </div>
                         </div>
-                      )}
+                        
+                        {/* ✅ NUOVO: Indicatore stato caricamento dati */}
+                        {!hasCompleteData(nesting) && !loadingDetails.has(nesting.id) && (
+                          <div className="mt-2 text-xs text-blue-600 flex items-center gap-1">
+                            <RefreshCw className="h-3 w-3" />
+                            <span>Alcuni dettagli sono limitati - </span>
+                            <button 
+                              onClick={() => loadNestingDetails(nesting.id)}
+                              className="underline hover:text-blue-800"
+                            >
+                              carica informazioni complete
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 ))}

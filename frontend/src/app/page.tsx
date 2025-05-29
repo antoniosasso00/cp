@@ -8,7 +8,7 @@ export default function Home() {
         <div className="bg-white shadow-xl rounded-xl p-8 w-full max-w-2xl">
           <div className="flex justify-center mb-6">
             <div className="bg-primary/10 rounded-full p-6 w-24 h-24 flex items-center justify-center">
-              <span className="text-4xl font-bold text-primary">CP</span>
+              <span className="text-4xl font-bold text-primary">MG</span>
             </div>
           </div>
           
@@ -27,7 +27,7 @@ export default function Home() {
             </div>
             
             <p className="text-center text-sm text-gray-500 mt-8">
-              Manta Group v0.4.0 &copy; {new Date().getFullYear()} - Sistema Gestione Compositi
+              Manta Group v1.0.0 DEMO &copy; {new Date().getFullYear()} - Sistema Gestione Compositi
             </p>
           </div>
         </div>

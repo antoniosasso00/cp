@@ -13,10 +13,11 @@ import { nestingApi, NestingResponse, reportsApi, ReportGenerateRequest, ReportT
 import { useToast } from '@/components/ui/use-toast'
 
 interface ReportsTabProps {
-  nestingList: NestingResponse[]
+  nestingList?: NestingResponse[]
+  onRefresh?: () => Promise<void>
 }
 
-export function ReportsTab({ nestingList }: ReportsTabProps) {
+export function ReportsTab({ nestingList, onRefresh }: ReportsTabProps) {
   const [reportData, setReportData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [completedNestings, setCompletedNestings] = useState<NestingResponse[]>([])
@@ -47,6 +48,11 @@ export function ReportsTab({ nestingList }: ReportsTabProps) {
       
       setCompletedNestings(completed)
       setFilteredNestings(completed)
+      
+      // Chiama onRefresh se fornito
+      if (onRefresh) {
+        await onRefresh()
+      }
       
       toast({
         title: "Dati Aggiornati",
@@ -221,17 +227,25 @@ export function ReportsTab({ nestingList }: ReportsTabProps) {
         description: `Report dettagliato scaricato con successo: ${reportInfo.file_name}`,
       })
     } catch (error: any) {
-      // Gestione errori API non implementate
+      // ✅ MIGLIORATO: Gestione errori più specifica
+      console.error('Dettaglio errore generazione report:', error)
+      
       if (error?.status === 404 || error?.status === 501) {
         toast({
-          title: "Funzionalità in Sviluppo",
+          title: "🔧 Funzionalità in Sviluppo",
           description: "La generazione di report dettagliati sarà disponibile a breve. Le API sono in fase di implementazione.",
           variant: "default",
+        })
+      } else if (error?.status === 500) {
+        toast({
+          title: "Errore Server",
+          description: "Errore interno del server durante la generazione del report. Riprova più tardi.",
+          variant: "destructive",
         })
       } else {
         toast({
           title: "Errore",
-          description: "Impossibile generare il report dettagliato. Verifica che ci siano dati disponibili.",
+          description: error?.message || "Impossibile generare il report dettagliato. Verifica che ci siano dati disponibili.",
           variant: "destructive",
         })
       }
@@ -288,17 +302,31 @@ export function ReportsTab({ nestingList }: ReportsTabProps) {
         description: `File ${format.toUpperCase()} scaricato con successo: ${fileName}`,
       })
     } catch (error: any) {
-      // Gestione errori API non implementate
+      // ✅ MIGLIORATO: Gestione errori più specifica per export
+      console.error(`Dettaglio errore export ${format}:`, error)
+      
       if (error?.status === 404 || error?.status === 501) {
         toast({
-          title: "Funzionalità in Sviluppo",
-          description: `L'export in formato ${format.toUpperCase()} sarà disponibile a breve. Le API sono in fase di implementazione.`,
+          title: "🔧 Funzionalità in Sviluppo",
+          description: `L'export in formato ${format.toUpperCase()} sarà disponibile a breve. Stiamo lavorando all'implementazione delle API di esportazione.`,
           variant: "default",
+        })
+      } else if (error?.status === 500) {
+        toast({
+          title: "Errore Server", 
+          description: `Errore interno durante l'export ${format.toUpperCase()}. Il server potrebbe essere sovraccarico.`,
+          variant: "destructive",
+        })
+      } else if (error?.message?.includes('Failed to fetch')) {
+        toast({
+          title: "Connessione Persa",
+          description: `Impossibile contattare il server per l'export ${format.toUpperCase()}. Verifica la connessione.`,
+          variant: "destructive",
         })
       } else {
         toast({
           title: "Errore Export",
-          description: `Impossibile esportare i dati in formato ${format.toUpperCase()}. Riprova più tardi.`,
+          description: error?.message || `Impossibile esportare i dati in formato ${format.toUpperCase()}. Riprova più tardi.`,
           variant: "destructive",
         })
       }
@@ -466,7 +494,7 @@ export function ReportsTab({ nestingList }: ReportsTabProps) {
                       <TableCell>
                         <div className="flex flex-col">
                           <span className="font-medium">
-                            {nesting.autoclave_nome || "Autoclave Sconosciuta"}
+                            {nesting.autoclave_nome || "Autoclave non specificata"}
                           </span>
                           {nesting.ciclo_cura && (
                             <span className="text-xs text-muted-foreground">
@@ -494,11 +522,11 @@ export function ReportsTab({ nestingList }: ReportsTabProps) {
                       </TableCell>
                       <TableCell>
                         <span className="font-medium">
-                          {nesting.peso_totale ? `${nesting.peso_totale.toFixed(1)} kg` : "—"}
+                          {nesting.peso_totale ? `${nesting.peso_totale.toFixed(1)} kg` : "Peso non disponibile"}
                         </span>
                       </TableCell>
                       <TableCell>
-                        {nesting.efficienza !== undefined ? (
+                        {nesting.efficienza !== undefined && nesting.efficienza > 0 ? (
                           <span className={`font-medium ${
                             nesting.efficienza >= 70 ? 'text-green-600' : 
                             nesting.efficienza >= 50 ? 'text-yellow-600' : 'text-red-600'
@@ -506,7 +534,7 @@ export function ReportsTab({ nestingList }: ReportsTabProps) {
                             {nesting.efficienza.toFixed(1)}%
                           </span>
                         ) : (
-                          <span className="text-muted-foreground">—</span>
+                          <span className="text-muted-foreground">Efficienza non calcolata</span>
                         )}
                       </TableCell>
                       <TableCell>

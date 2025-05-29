@@ -26,10 +26,26 @@ class NestingCreate(NestingBase):
     """
     Schema per la creazione di un nuovo nesting.
     
-    Contiene solo i campi che l'utente può specificare durante la creazione.
-    I campi come ID e created_at vengono generati automaticamente dal sistema.
+    Contiene i campi che l'utente può specificare durante la creazione.
     """
-    pass  # Per ora eredita solo da NestingBase
+    # ✅ NUOVO: Campi per associare autoclave e ODL
+    autoclave_id: Optional[int] = Field(
+        None, 
+        description="ID dell'autoclave da utilizzare per il nesting"
+    )
+    odl_ids: Optional[List[int]] = Field(
+        None, 
+        description="Lista degli ID degli ODL da includere nel nesting"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "note": "Nesting creato manualmente per test",
+                "autoclave_id": 1,
+                "odl_ids": [3, 4, 5]
+            }
+        }
 
 
 class NestingRead(NestingBase):
@@ -61,6 +77,7 @@ class NestingRead(NestingBase):
     peso_totale: Optional[float] = Field(None, description="Peso totale in kg")
     valvole_utilizzate: Optional[int] = Field(None, description="Numero di valvole utilizzate")
     valvole_totali: Optional[int] = Field(None, description="Numero totale di valvole")
+    motivi_esclusione: Optional[List[str]] = Field(None, description="Motivi di esclusione degli ODL")
 
     class Config:
         """
@@ -86,7 +103,8 @@ class NestingRead(NestingBase):
                 "area_totale": 4500.0,
                 "peso_totale": 420.0,
                 "valvole_utilizzate": 16,
-                "valvole_totali": 20
+                "valvole_totali": 20,
+                "motivi_esclusione": ["Motivo 1", "Motivo 2"]
             }
         }
 
@@ -172,6 +190,18 @@ class NestingStatusUpdate(BaseModel):
     stato: str = Field(..., description="Nuovo stato del nesting")
     note: Optional[str] = Field(None, description="Note aggiuntive")
     confermato_da_ruolo: Optional[str] = Field(None, description="Ruolo che conferma il nesting")
+
+
+class AutoclaveSelectionSchema(BaseModel):
+    """Schema per la selezione di un'autoclave in un nesting manuale"""
+    autoclave_id: int = Field(..., description="ID dell'autoclave da assegnare al nesting")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "autoclave_id": 1
+            }
+        }
 
 
 class NestingParameters(BaseModel):
@@ -339,4 +369,31 @@ class MultiNestingLayoutResponse(BaseModel):
     """Risposta per i dati di layout di più nesting"""
     success: bool = Field(..., description="Indica se l'operazione è riuscita")
     message: str = Field(..., description="Messaggio descrittivo")
-    layout_data: Optional[MultiNestingLayoutData] = Field(None, description="Dati dei layout") 
+    layout_data: Optional[MultiNestingLayoutData] = Field(None, description="Dati dei layout")
+
+
+# ✅ NUOVO: Schema per la semplificazione dello Step 2
+class NestingToolInfo(BaseModel):
+    """Informazioni complete sui tool inclusi in un nesting"""
+    id: int = Field(..., description="ID del tool")
+    part_number_tool: str = Field(..., description="Part Number del tool")
+    descrizione: Optional[str] = Field(None, description="Descrizione del tool")
+    dimensioni: Dict[str, float] = Field(..., description="Dimensioni del tool (larghezza, lunghezza)")
+    peso: Optional[float] = Field(None, description="Peso del tool in kg")
+    materiale: Optional[str] = Field(None, description="Materiale del tool")
+    disponibile: bool = Field(..., description="Stato di disponibilità")
+    area_cm2: float = Field(..., description="Area del tool in cm²")
+    # Informazioni correlate
+    odl_id: int = Field(..., description="ID dell'ODL che utilizza questo tool")
+    parte_codice: str = Field(..., description="Part number della parte associata")
+    priorita: int = Field(..., description="Priorità dell'ODL")
+
+
+class NestingToolsResponse(BaseModel):
+    """Risposta per la lista dei tool inclusi in un nesting"""
+    success: bool = Field(..., description="Indica se l'operazione è riuscita")
+    message: str = Field(..., description="Messaggio descrittivo")
+    nesting_id: int = Field(..., description="ID del nesting")
+    autoclave_nome: Optional[str] = Field(None, description="Nome dell'autoclave assegnata")
+    tools: List[NestingToolInfo] = Field(..., description="Lista dei tool inclusi")
+    statistiche_tools: Dict[str, Any] = Field(..., description="Statistiche sui tool") 

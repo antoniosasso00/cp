@@ -217,7 +217,7 @@ export function NestingSelector({
         {/* Lista nesting raggruppati per autoclave */}
         {Object.keys(nestingByAutoclave).length === 0 ? (
           <EmptyState
-            message="🛠 Nessun nesting trovato"
+            message="Nessun nesting trovato"
             description="Prova a modificare i filtri di ricerca o crea un nuovo nesting"
             icon="🔍"
             size="sm"

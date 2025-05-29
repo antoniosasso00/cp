@@ -10,6 +10,12 @@ export { NestingVisualizationPage } from './NestingVisualizationPage'
 export { ActiveNestingTable } from './ActiveNestingTable'
 export { NestingCanvas } from './NestingCanvas'
 export { NestingSelector } from './NestingSelector'
+export { NestingTabWrapper } from './NestingTabsWrapper'
+
+// Nuovi componenti per il redesign workflow-based
+export { NestingModeSelector } from './NestingModeSelector'
+export { NestingStepIndicator } from './NestingStepIndicator'
+export { NestingStateIndicator } from './NestingStateIndicator'
 
 // Componenti per il multi-batch nesting
 export { MultiBatchNesting } from './MultiBatchNesting'

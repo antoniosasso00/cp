@@ -16,12 +16,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { RefreshCw, Play, Eye, Clock, Zap, Package } from 'lucide-react'
+import { RefreshCw, Play, Eye, Clock, Zap, Package, StopCircle } from 'lucide-react'
 import { nestingApi, NestingDetailResponse, NestingLoadRequest } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
 
 interface ActiveNestingTableProps {
   onRefresh?: () => void
+  onTerminateCure?: (nestingId: number) => Promise<void>
 }
 
 // Funzione per ottenere il colore del badge in base allo stato
@@ -70,13 +71,14 @@ const formatDate = (dateString: string) => {
   }
 }
 
-export function ActiveNestingTable({ onRefresh }: ActiveNestingTableProps) {
+export function ActiveNestingTable({ onRefresh, onTerminateCure }: ActiveNestingTableProps) {
   const [data, setData] = useState<NestingDetailResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedNesting, setSelectedNesting] = useState<NestingDetailResponse | null>(null)
   const [loadingNestingId, setLoadingNestingId] = useState<number | null>(null)
   const [loadDialogOpen, setLoadDialogOpen] = useState(false)
   const [loadNotes, setLoadNotes] = useState('')
+  const [terminatingNestingId, setTerminatingNestingId] = useState<number | null>(null)
   const { toast } = useToast()
 
   // Funzione per caricare i dati
@@ -138,6 +140,40 @@ export function ActiveNestingTable({ onRefresh }: ActiveNestingTableProps) {
       })
     } finally {
       setLoadingNestingId(null)
+    }
+  }
+
+  // Funzione per terminare un ciclo di cura
+  const handleTerminateCure = async (nestingId: number) => {
+    try {
+      setTerminatingNestingId(nestingId)
+      
+      if (onTerminateCure) {
+        await onTerminateCure(nestingId)
+      } else {
+        // Implementazione di default se onTerminateCure non è fornito
+        await nestingApi.updateStatus(nestingId, { 
+          stato: 'completato',
+          note: 'Ciclo di cura terminato'
+        })
+        
+        toast({
+          title: "Successo",
+          description: "Ciclo di cura terminato con successo",
+        })
+      }
+      
+      // Ricarica i dati
+      await fetchActiveNesting()
+      
+    } catch (error) {
+      toast({
+        title: "Errore",
+        description: "Impossibile terminare il ciclo di cura",
+        variant: "destructive",
+      })
+    } finally {
+      setTerminatingNestingId(null)
     }
   }
 
@@ -310,9 +346,28 @@ export function ActiveNestingTable({ onRefresh }: ActiveNestingTableProps) {
                               selectedNesting?.id === nesting.id ? null : nesting
                             )}
                             className="h-8 w-8 p-0"
+                            title="Visualizza dettagli"
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
+                          
+                          {/* Pulsante per terminare il ciclo di cura */}
+                          {nesting.stato.toLowerCase() === 'caricato' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleTerminateCure(nesting.id)}
+                              disabled={terminatingNestingId === nesting.id}
+                              className="h-8 w-8 p-0"
+                              title="Termina ciclo di cura"
+                            >
+                              {terminatingNestingId === nesting.id ? (
+                                <RefreshCw className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <StopCircle className="h-4 w-4 text-red-600" />
+                              )}
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
