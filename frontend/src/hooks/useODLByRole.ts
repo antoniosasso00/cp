@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { odlApi, updateOdlStatus, type ODLResponse } from '@/lib/api'
+import { odlApi, reportsApi, type ODLResponse } from '@/lib/api'
 
 interface UseODLByRoleOptions {
   role: 'Clean Room' | 'Curing'
@@ -90,7 +90,7 @@ export function useODLByRole({
       }
 
       // Usa la funzione di utilità migliorata
-      const updatedODL = await updateOdlStatus(odlId, newStatus)
+      const updatedODL = await reportsApi.updateOdlStatus(odlId, newStatus)
       
       // Aggiorna la lista locale
       setOdlList(prevList => 

@@ -1,16 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { odlApi, nestingApi, autoclaveApi } from '@/lib/api'
+import { odlApi, autoclaveApi } from '@/lib/api'
 
 export interface DashboardKPI {
   odl_totali: number
   odl_finiti: number
   odl_in_cura: number
-  odl_attesa_nesting: number
-  nesting_totali: number
-  nesting_attivi: number
-  nesting_completati: number
+  odl_attesa_cura: number
   utilizzo_medio_autoclavi: number
   completati_oggi: number
   efficienza_produzione: number
@@ -42,7 +39,7 @@ export function useDashboardKPI() {
       const odl_totali = allODL.length
       const odl_finiti = allODL.filter(odl => odl.status === 'Finito').length
       const odl_in_cura = allODL.filter(odl => odl.status === 'Cura').length
-      const odl_attesa_nesting = allODL.filter(odl => odl.status === 'Attesa Cura').length
+      const odl_attesa_cura = allODL.filter(odl => odl.status === 'Attesa Cura').length
       
       // Calcola ODL completati oggi
       const oggi = new Date()
@@ -52,21 +49,6 @@ export function useDashboardKPI() {
         const dataAggiornamento = new Date(odl.updated_at)
         return dataAggiornamento >= oggi
       }).length
-
-      // Recupera statistiche nesting (se disponibili)
-      let nesting_totali = 0
-      let nesting_attivi = 0
-      let nesting_completati = 0
-      
-      try {
-        const nestingList = await nestingApi.getAll()
-        nesting_totali = nestingList.length
-        nesting_attivi = nestingList.filter(n => n.stato === 'attivo' || n.stato === 'in_corso').length
-        nesting_completati = nestingList.filter(n => n.stato === 'completato').length
-      } catch (nestingError) {
-        console.warn('Errore nel recupero statistiche nesting:', nestingError)
-        // Continua senza bloccare il caricamento
-      }
 
       // Recupera informazioni autoclavi per calcolare utilizzo
       let utilizzo_medio_autoclavi = 0
@@ -93,10 +75,7 @@ export function useDashboardKPI() {
         odl_totali,
         odl_finiti,
         odl_in_cura,
-        odl_attesa_nesting,
-        nesting_totali,
-        nesting_attivi,
-        nesting_completati,
+        odl_attesa_cura,
         utilizzo_medio_autoclavi,
         completati_oggi,
         efficienza_produzione

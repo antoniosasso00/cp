@@ -24,14 +24,12 @@ import {
 import Link from 'next/link'
 import { useODLByRole } from '@/hooks/useODLByRole'
 import { useDashboardKPI } from '@/hooks/useDashboardKPI'
-import { nestingApi, type NestingResponse } from '@/lib/api'
 
 /**
  * Dashboard dedicata agli operatori Curing
  * 
  * Fornisce strumenti specifici per la gestione autoclavi:
  * - ODL in Attesa Cura e Cura (dati reali)
- * - Nesting confermati caricabili
  * - Cambio stato ODL con pulsanti funzionali
  * - KPI reali di produzione
  */
@@ -45,34 +43,6 @@ export default function DashboardCuring() {
   const { data: kpiData, loading: kpiLoading } = useDashboardKPI()
   
   const [updatingODL, setUpdatingODL] = useState<number | null>(null)
-  const [nestingList, setNestingList] = useState<NestingResponse[]>([])
-  const [nestingLoading, setNestingLoading] = useState(true)
-  const [nestingError, setNestingError] = useState<string | null>(null)
-
-  // Carica i nesting confermati
-  const fetchNestingConfermati = async () => {
-    try {
-      setNestingLoading(true)
-      setNestingError(null)
-      
-      // Ottieni tutti i nesting confermati
-      const allNesting = await nestingApi.getAll()
-      const nestingConfermati = allNesting.filter(nesting => 
-        nesting.confermato_da_ruolo && nesting.stato === 'confermato'
-      )
-      
-      setNestingList(nestingConfermati)
-    } catch (err) {
-      console.error('Errore nel caricamento nesting:', err)
-      setNestingError('Errore nel caricamento dei nesting')
-    } finally {
-      setNestingLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchNestingConfermati()
-  }, [])
 
   // Calcola metriche operative reali
   const getOperativeMetrics = () => {
@@ -94,13 +64,6 @@ export default function DashboardCuring() {
         trend: 'Attualmente in autoclave',
         status: odlInCura > 0 ? 'active' : 'success',
         icon: Flame
-      },
-      { 
-        label: 'Nesting Confermati', 
-        value: nestingList.length.toString(), 
-        trend: 'Pronti per caricamento',
-        status: nestingList.length > 0 ? 'active' : 'success',
-        icon: Grid3X3
       },
       { 
         label: 'Utilizzo Autoclavi', 
@@ -158,7 +121,6 @@ export default function DashboardCuring() {
 
   const refreshAll = () => {
     refresh()
-    fetchNestingConfermati()
   }
 
   return (
@@ -179,9 +141,9 @@ export default function DashboardCuring() {
             variant="ghost"
             size="sm"
             onClick={refreshAll}
-            disabled={loading || nestingLoading}
+            disabled={loading}
           >
-            <RefreshCw className={`h-4 w-4 ${(loading || nestingLoading) ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
           <Badge variant="default" className="text-sm bg-orange-500">
             <Flame className="h-4 w-4 mr-1" />
@@ -329,86 +291,6 @@ export default function DashboardCuring() {
               )}
             </CardContent>
           </Card>
-
-          {/* Nesting Confermati */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Grid3X3 className="h-5 w-5" />
-                    Nesting Confermati
-                  </CardTitle>
-                  <CardDescription>
-                    Nesting pronti per il caricamento in autoclave
-                  </CardDescription>
-                </div>
-                <Badge variant="outline">
-                  {nestingList.length} Nesting
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {nestingLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  <span className="ml-2 text-sm text-muted-foreground">Caricamento nesting...</span>
-                </div>
-              ) : nestingError ? (
-                <div className="text-center py-8">
-                  <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-2" />
-                  <p className="text-sm text-red-600 mb-3">{nestingError}</p>
-                  <Button variant="outline" size="sm" onClick={fetchNestingConfermati}>
-                    Riprova
-                  </Button>
-                </div>
-              ) : nestingList.length === 0 ? (
-                <div className="text-center py-8">
-                  <Grid3X3 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">
-                    Nessun nesting confermato disponibile
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {nestingList.map((nesting) => (
-                    <div key={nesting.id} className="p-4 rounded-lg border space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="font-medium">Nesting #{nesting.id}</div>
-                        <Badge variant="default" className="bg-green-500">
-                          Confermato
-                        </Badge>
-                      </div>
-                      
-                      <div className="space-y-1 text-sm">
-                        <div><strong>Autoclave:</strong> {nesting.autoclave.nome} ({nesting.autoclave.codice})</div>
-                        <div><strong>ODL inclusi:</strong> {nesting.odl_list.length}</div>
-                        <div><strong>Utilizzo area:</strong> {Math.round((nesting.area_utilizzata / nesting.area_totale) * 100)}%</div>
-                        <div><strong>Valvole:</strong> {nesting.valvole_utilizzate}/{nesting.valvole_totali}</div>
-                        {nesting.ciclo_cura_nome && (
-                          <div><strong>Ciclo cura:</strong> {nesting.ciclo_cura_nome}</div>
-                        )}
-                      </div>
-
-                      <div className="flex gap-2 pt-2">
-                        <Link href={`/dashboard/curing/nesting/${nesting.id}`}>
-                          <Button size="sm" className="flex-1">
-                            <PlayCircle className="h-3 w-3 mr-1" />
-                            Carica in Autoclave
-                          </Button>
-                        </Link>
-                        <Link href={`/dashboard/curing/nesting/${nesting.id}`}>
-                          <Button size="sm" variant="outline">
-                            <FileText className="h-3 w-3" />
-                          </Button>
-                        </Link>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </div>
 
         {/* Sidebar con azioni rapide */}
@@ -425,12 +307,6 @@ export default function DashboardCuring() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Link href="/dashboard/curing/nesting">
-                <Button className="w-full" variant="outline" size="sm">
-                  <Grid3X3 className="h-4 w-4 mr-2" />
-                  Gestione Nesting
-                </Button>
-              </Link>
               <Link href="/dashboard/curing/autoclavi">
                 <Button className="w-full" variant="outline" size="sm">
                   <Flame className="h-4 w-4 mr-2" />
@@ -469,10 +345,6 @@ export default function DashboardCuring() {
                   <span className={`font-medium ${kpiData && kpiData.utilizzo_medio_autoclavi > 80 ? 'text-orange-600' : 'text-green-600'}`}>
                     {kpiData?.utilizzo_medio_autoclavi || 0}%
                   </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Nesting Attivi:</span>
-                  <span className="font-medium">{kpiData?.nesting_attivi || 0}</span>
                 </div>
               </div>
             </CardContent>

@@ -21,154 +21,11 @@ import {
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { odlApi, type ODLResponse } from '@/lib/api'
-import { NestingStatusCard } from './NestingStatusCard'
 import { OdlProgressWrapper } from '@/components/ui/OdlProgressWrapper'
 import { KPIBox } from './KPIBox'
 import { ODLHistoryTable } from './ODLHistoryTable'
 import { DashboardShortcuts } from './DashboardShortcuts'
 import { useDashboardKPI } from '@/hooks/useDashboardKPI'
-
-/**
- * Componente per visualizzare gli ODL in attesa di nesting
- */
-function ODLPendingNestingCard() {
-  const [odlPending, setOdlPending] = useState<ODLResponse[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const fetchODLPending = async () => {
-    try {
-      setIsLoading(true)
-      setError(null)
-      const data = await odlApi.getPendingNesting()
-      setOdlPending(data)
-    } catch (err) {
-      console.error('Errore nel caricamento ODL in attesa di nesting:', err)
-      setError('Errore nel caricamento dei dati')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchODLPending()
-  }, [])
-
-  const handleRefresh = () => {
-    fetchODLPending()
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            ODL in Attesa Nesting
-          </CardTitle>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isLoading}
-          >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          </Button>
-        </div>
-        <CardDescription>
-          ODL pronti per essere nidificati nelle autoclavi
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            <span className="ml-2 text-sm text-muted-foreground">Caricamento...</span>
-          </div>
-        ) : error ? (
-          <div className="text-center py-8">
-            <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-2" />
-            <p className="text-sm text-red-600 mb-3">{error}</p>
-            <Button variant="outline" size="sm" onClick={handleRefresh}>
-              Riprova
-            </Button>
-          </div>
-        ) : odlPending.length === 0 ? (
-          <div className="text-center py-8">
-            <CheckCircle className="h-8 w-8 text-green-500 mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">
-              Nessun ODL in attesa di nesting
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Tutti gli ODL sono stati processati
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium">
-                {odlPending.length} ODL in attesa
-              </span>
-              <Badge variant="secondary" className="text-xs">
-                Attesa Cura
-              </Badge>
-            </div>
-            
-            <div className="space-y-3 max-h-80 overflow-y-auto">
-              {odlPending.map((odl) => (
-                <div
-                  key={odl.id}
-                  className="p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">ODL #{odl.id}</span>
-                        <Badge variant="outline" className="text-xs">
-                          P{odl.priorita}
-                        </Badge>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {new Date(odl.created_at).toLocaleDateString('it-IT')}
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-1">
-                      <p className="text-xs text-muted-foreground truncate">
-                        {odl.parte.part_number} - {odl.parte.descrizione_breve}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Tool: {odl.tool.part_number_tool}
-                      </p>
-                    </div>
-                    
-                    {/* Barra di progresso compatta */}
-                    <div className="mt-2">
-                      <OdlProgressWrapper 
-                        odlId={odl.id}
-                        showDetails={false}
-                        className="text-xs"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            <div className="pt-3 border-t">
-              <Link href="/dashboard/curing/nesting">
-                <Button className="w-full" variant="outline" size="sm">
-                  <Package className="h-4 w-4 mr-2" />
-                  Gestisci Nesting
-                </Button>
-              </Link>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
 
 /**
  * Dashboard dedicata ai Responsabili
@@ -180,24 +37,9 @@ function ODLPendingNestingCard() {
  * - Pianificazione attività
  */
 export default function DashboardManagement() {
-  const [odlPendingCount, setOdlPendingCount] = useState<number>(0)
   const { data: kpiData, loading: kpiLoading, error: kpiError, refresh: refreshKPI } = useDashboardKPI()
 
-  // Fetch del conteggio ODL in attesa di nesting per le metriche
-  useEffect(() => {
-    const fetchOdlPendingCount = async () => {
-      try {
-        const data = await odlApi.getPendingNesting()
-        setOdlPendingCount(data.length)
-      } catch (err) {
-        console.error('Errore nel caricamento conteggio ODL:', err)
-      }
-    }
-    
-    fetchOdlPendingCount()
-  }, [])
-
-          // Sezioni principali per il management
+  // Sezioni principali per il management
   const responsabileSections = [
     {
       title: 'Gestione ODL',
@@ -249,7 +91,7 @@ export default function DashboardManagement() {
     }
   ]
 
-          // Metriche chiave reali per il management
+  // Metriche chiave reali per il management
   const getKPIMetrics = (): Array<{
     label: string;
     value: string;
@@ -259,17 +101,19 @@ export default function DashboardManagement() {
   }> => {
     if (!kpiData) return []
     
-    // Funzione helper per determinare lo status dell'attesa nesting
-    const getAttesaNestingStatus = (count: number): 'success' | 'warning' | 'info' | 'error' => {
-      if (count > 5) return 'warning'
-      if (count > 0) return 'info'
-      return 'success'
+    // Funzione helper per determinare lo status dell'attesa cura
+    const getAttesaCuraStatus = (count: number): 'success' | 'warning' | 'info' | 'error' => {
+      if (count === 0) return 'success'
+      if (count <= 5) return 'info'
+      if (count <= 10) return 'warning'
+      return 'error'
     }
     
     // Funzione helper per determinare lo status dell'efficienza
     const getEfficienzaStatus = (efficienza: number): 'success' | 'warning' | 'info' | 'error' => {
-      if (efficienza >= 80) return 'success'
-      if (efficienza >= 60) return 'warning'
+      if (efficienza >= 90) return 'success'
+      if (efficienza >= 80) return 'info'
+      if (efficienza >= 70) return 'warning'
       return 'error'
     }
     
@@ -282,10 +126,10 @@ export default function DashboardManagement() {
         icon: ClipboardList
       },
       { 
-        label: 'In Attesa Nesting', 
-        value: kpiData.odl_attesa_nesting.toString(), 
-        trend: kpiData.odl_attesa_nesting > 0 ? 'Pronti per nesting' : 'Tutti processati',
-        status: getAttesaNestingStatus(kpiData.odl_attesa_nesting),
+        label: 'In Attesa Cura', 
+        value: kpiData.odl_attesa_cura.toString(), 
+        trend: kpiData.odl_attesa_cura > 0 ? 'Pronti per cura' : 'Tutti processati',
+        status: getAttesaCuraStatus(kpiData.odl_attesa_cura),
         icon: Package
       },
       { 
@@ -448,12 +292,6 @@ export default function DashboardManagement() {
 
         {/* Sidebar con ODL in attesa e alert */}
         <div className="space-y-6">
-          {/* Gestione Nesting */}
-          <NestingStatusCard />
-          
-          {/* ODL in attesa di nesting */}
-          <ODLPendingNestingCard />
-
           {/* Alert e notifiche */}
           <Card>
             <CardHeader>
