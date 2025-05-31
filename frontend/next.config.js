@@ -10,6 +10,21 @@ const nextConfig = {
       },
     ]
   },
+  webpack: (config, { isServer }) => {
+    // Escludi canvas e konva dal server-side rendering
+    if (isServer) {
+      config.externals.push('canvas', 'konva')
+    }
+    
+    // Configura fallback per moduli Node.js
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      canvas: false,
+      fs: false,
+    }
+    
+    return config
+  },
 }
 
 module.exports = nextConfig 

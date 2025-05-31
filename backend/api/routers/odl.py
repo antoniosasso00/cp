@@ -28,6 +28,21 @@ STATO_A_FASE = {
     "Cura": "cura"
 }
 
+# ✅ NUOVO: Mapping degli alias per gli stati ODL
+ALIAS_STATI = {
+    # Frontend potrebbe inviare questi valori
+    "Attesa%20Cura": "Attesa Cura",
+    "In%20Cura": "Cura", 
+    "In Cura": "Cura",
+    "attesa_cura": "Attesa Cura",
+    "in_cura": "Cura",
+    "in_attesa_cura": "Attesa Cura",
+    "cura": "Cura",
+    "laminazione": "Laminazione",
+    "preparazione": "Preparazione",
+    "finito": "Finito"
+}
+
 # Creazione router
 router = APIRouter(
     tags=["ODL"],
@@ -114,22 +129,36 @@ def read_odl(
     - **limit**: numero massimo di elementi da restituire
     - **parte_id**: filtro opzionale per ID parte
     - **tool_id**: filtro opzionale per ID tool
-    - **status**: filtro opzionale per stato
+    - **status**: filtro opzionale per stato (supporta alias come 'Attesa%20Cura', 'In Cura', etc.)
     """
-    query = db.query(ODL)
-    
-    # Applicazione filtri
-    if parte_id:
-        query = query.filter(ODL.parte_id == parte_id)
-    if tool_id:
-        query = query.filter(ODL.tool_id == tool_id)
-    if status:
-        query = query.filter(ODL.status == status)
-    
-    # Ordina per priorità decrescente
-    query = query.order_by(desc(ODL.priorita))
-    
-    return query.offset(skip).limit(limit).all()
+    try:
+        query = db.query(ODL)
+        
+        # Applicazione filtri
+        if parte_id:
+            query = query.filter(ODL.parte_id == parte_id)
+        if tool_id:
+            query = query.filter(ODL.tool_id == tool_id)
+        if status:
+            # ✅ NUOVO: Gestione alias stati
+            actual_status = ALIAS_STATI.get(status, status)
+            logger.info(f"Filtro stato: '{status}' -> '{actual_status}'")
+            query = query.filter(ODL.status == actual_status)
+        
+        # Ordina per priorità decrescente
+        query = query.order_by(desc(ODL.priorita))
+        
+        result = query.offset(skip).limit(limit).all()
+        logger.info(f"Recuperati {len(result)} ODL con filtri: parte_id={parte_id}, tool_id={tool_id}, status={status}")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Errore durante il recupero degli ODL: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante il recupero degli ODL: {str(e)}"
+        )
 
 @router.get("/pending-nesting", response_model=List[ODLRead], 
             summary="Ottiene gli ODL in attesa di essere nidificati")

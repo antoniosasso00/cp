@@ -78,6 +78,12 @@ class BatchNesting(Base):
     data_conferma = Column(DateTime, nullable=True,
                           doc="Data e ora di conferma del batch")
     
+    data_completamento = Column(DateTime, nullable=True,
+                               doc="Data e ora di completamento del ciclo di cura")
+    
+    durata_ciclo_minuti = Column(Integer, nullable=True,
+                                doc="Durata del ciclo di cura in minuti (calcolata automaticamente)")
+    
     # Timestamp automatici
     created_at = Column(DateTime, nullable=False, default=func.now(),
                        doc="Data e ora di creazione del record")

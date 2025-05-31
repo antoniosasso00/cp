@@ -209,9 +209,11 @@ def read_batch_nesting_full(batch_id: str, db: Session = Depends(get_db)):
         
         # Informazioni autoclave
         "autoclave": {
+            "id": autoclave.id if autoclave else None,
             "nome": autoclave.nome if autoclave else None,
             "larghezza_piano": autoclave.larghezza_piano if autoclave else None,
             "lunghezza": autoclave.lunghezza if autoclave else None,
+            "codice": autoclave.codice if autoclave else None,
             "produttore": autoclave.produttore if autoclave else None,
         } if autoclave else None,
         
@@ -252,7 +254,7 @@ def update_batch_nesting(
     
     try:
         # Salva i valori precedenti per il logging
-        old_state = db_batch.stato.value if db_batch.stato else None
+        old_state = db_batch.stato
         
         # Aggiornamento dei campi presenti nella richiesta
         update_data = batch_update.model_dump(exclude_unset=True)
@@ -260,10 +262,6 @@ def update_batch_nesting(
         
         for key, value in update_data.items():
             old_value = getattr(db_batch, key)
-            
-            # Gestione speciale per enum
-            if hasattr(old_value, 'value'):
-                old_value = old_value.value
             
             # Gestione speciale per oggetti Pydantic nei campi JSON
             if key in ['parametri', 'configurazione_json'] and value is not None:
@@ -320,10 +318,10 @@ def delete_batch_nesting(batch_id: str, db: Session = Depends(get_db)):
         )
     
     # Verifica che il batch sia in stato modificabile
-    if db_batch.stato != StatoBatchNestingEnum.SOSPESO:
+    if db_batch.stato != StatoBatchNestingEnum.SOSPESO.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Impossibile eliminare il batch nesting in stato '{db_batch.stato.value}'. "
+            detail=f"Impossibile eliminare il batch nesting in stato '{db_batch.stato}'. "
                    f"Solo i batch in stato 'sospeso' possono essere eliminati."
         )
     
@@ -358,7 +356,7 @@ def get_batch_statistics(batch_id: str, db: Session = Depends(get_db)):
     statistics = {
         "batch_id": batch_id,
         "nome": db_batch.nome,
-        "stato": db_batch.stato.value,
+        "stato": db_batch.stato,
         "autoclave_id": db_batch.autoclave_id,
         "numero_odl": len(db_batch.odl_ids) if db_batch.odl_ids else 0,
         "numero_nesting": db_batch.numero_nesting,
@@ -371,7 +369,7 @@ def get_batch_statistics(batch_id: str, db: Session = Depends(get_db)):
         "data_conferma": db_batch.data_conferma
     }
     
-    return statistics 
+    return statistics
 
 @router.patch("/{batch_id}/conferma", response_model=BatchNestingResponse,
               summary="Conferma il batch e avvia il ciclo di cura")
@@ -497,4 +495,142 @@ def conferma_batch_nesting(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Si è verificato un errore durante la conferma del batch: {str(e)}"
+        )
+
+@router.patch("/{batch_id}/chiudi", response_model=BatchNestingResponse,
+              summary="Chiude il batch e completa il ciclo di cura")
+def chiudi_batch_nesting(
+    batch_id: str, 
+    chiuso_da_utente: str = Query(..., description="ID dell'utente che chiude il batch"),
+    chiuso_da_ruolo: str = Query(..., description="Ruolo dell'utente che chiude"),
+    db: Session = Depends(get_db)
+):
+    """
+    Chiude il batch nesting e completa il ciclo di cura.
+    
+    Effettua le seguenti operazioni in transazione:
+    1. Aggiorna il batch da "confermato" a "terminato"  
+    2. Aggiorna l'autoclave a disponibile
+    3. Aggiorna tutti gli ODL da "Cura" a "Terminato"
+    4. Registra timestamp di completamento
+    
+    **Prerequisiti:**
+    - Il batch deve essere in stato "confermato"
+    - L'autoclave deve essere in uso
+    - Gli ODL devono essere in stato "Cura"
+    """
+    # Recupera il batch con le relazioni
+    db_batch = db.query(BatchNesting).filter(BatchNesting.id == batch_id).first()
+    if db_batch is None:
+        logger.warning(f"Tentativo di chiusura di batch inesistente: {batch_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Batch nesting con ID {batch_id} non trovato"
+        )
+    
+    # Verifica che il batch sia in stato "confermato"
+    if db_batch.stato != StatoBatchNestingEnum.CONFERMATO.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Il batch è in stato '{db_batch.stato}' e non può essere chiuso. Solo i batch in stato 'confermato' possono essere chiusi."
+        )
+    
+    # Recupera l'autoclave associata
+    autoclave = db.query(Autoclave).filter(Autoclave.id == db_batch.autoclave_id).first()
+    if not autoclave:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Autoclave con ID {db_batch.autoclave_id} non trovata"
+        )
+    
+    # Verifica che l'autoclave sia in uso
+    if autoclave.stato != StatoAutoclaveEnum.IN_USO:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"L'autoclave '{autoclave.nome}' non è in uso (stato: {autoclave.stato.value}). Non può essere liberata."
+        )
+    
+    # Recupera gli ODL associati al batch
+    if not db_batch.odl_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Il batch non contiene ODL da processare"
+        )
+    
+    odl_list = db.query(ODL).filter(ODL.id.in_(db_batch.odl_ids)).all()
+    
+    if len(odl_list) != len(db_batch.odl_ids):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uno o più ODL del batch non esistono nel database"
+        )
+    
+    # Verifica che tutti gli ODL siano in stato "Cura"
+    odl_non_validi = [odl for odl in odl_list if odl.status != "Cura"]
+    if odl_non_validi:
+        stati_non_validi = [f"ODL {odl.id}: {odl.status}" for odl in odl_non_validi]
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"I seguenti ODL non sono in stato 'Cura': {', '.join(stati_non_validi)}"
+        )
+    
+    try:
+        # Inizia la transazione
+        ora_chiusura = datetime.now()
+        
+        logger.info(f"🏁 Avvio chiusura batch {batch_id} con {len(odl_list)} ODL")
+        
+        # 1. Aggiorna il batch nesting
+        db_batch.stato = StatoBatchNestingEnum.TERMINATO.value
+        # Aggiungi campo ended_at se non esiste (compatibilità)
+        if hasattr(db_batch, 'ended_at'):
+            db_batch.ended_at = ora_chiusura
+        
+        # Salva data di completamento e calcola durata
+        db_batch.data_completamento = ora_chiusura
+        durata_cura_minuti = None
+        if db_batch.data_conferma:
+            durata_cura = ora_chiusura - db_batch.data_conferma
+            durata_cura_minuti = int(durata_cura.total_seconds() / 60)
+            db_batch.durata_ciclo_minuti = durata_cura_minuti
+        
+        logger.info(f"✅ Batch {batch_id} aggiornato a stato 'terminato'")
+        if durata_cura_minuti:
+            logger.info(f"📊 Durata ciclo di cura: {durata_cura_minuti} minuti")
+        
+        # 2. Aggiorna l'autoclave (rende disponibile)
+        autoclave.stato = StatoAutoclaveEnum.DISPONIBILE
+        
+        logger.info(f"✅ Autoclave {autoclave.id} ({autoclave.nome}) aggiornata a stato 'disponibile'")
+        
+        # 3. Aggiorna tutti gli ODL da "Cura" a "Terminato"
+        odl_aggiornati = []
+        for odl in odl_list:
+            odl.previous_status = odl.status  # Salva stato precedente per eventuale ripristino
+            odl.status = "Terminato"
+            odl_aggiornati.append(odl.id)
+        
+        logger.info(f"✅ {len(odl_aggiornati)} ODL aggiornati a stato 'Terminato': {odl_aggiornati}")
+        
+        # Commit della transazione
+        db.commit()
+        db.refresh(db_batch)
+        
+        logger.info(f"🎉 Chiusura batch {batch_id} completata con successo!")
+        logger.info(f"📊 Riepilogo:")
+        logger.info(f"   - Batch: {db_batch.stato}")
+        logger.info(f"   - Autoclave: {autoclave.stato.value}")
+        logger.info(f"   - ODL processati: {len(odl_aggiornati)}")
+        logger.info(f"   - Chiuso da: {chiuso_da_utente} ({chiuso_da_ruolo})")
+        if durata_cura_minuti:
+            logger.info(f"   - Durata ciclo: {durata_cura_minuti} minuti")
+        
+        return db_batch
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Errore durante la chiusura del batch {batch_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Si è verificato un errore durante la chiusura del batch nesting: {str(e)}"
         ) 

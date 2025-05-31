@@ -25,7 +25,6 @@ class NestingParametri(BaseModel):
     padding_mm: int = 20
     min_distance_mm: int = 15
     priorita_area: bool = True
-    accorpamento_odl: bool = False
 
 class NestingRequest(BaseModel):
     odl_ids: List[str]
@@ -85,7 +84,6 @@ def genera_nesting_ortools(
             padding_mm=request.parametri.padding_mm,
             min_distance_mm=request.parametri.min_distance_mm,
             priorita_area=request.parametri.priorita_area,
-            accorpamento_odl=request.parametri.accorpamento_odl
         )
         
         # Esegui l'algoritmo di nesting
@@ -122,7 +120,6 @@ def genera_nesting_ortools(
             "padding_mm": request.parametri.padding_mm,
             "min_distance_mm": request.parametri.min_distance_mm,
             "priorita_area": request.parametri.priorita_area,
-            "accorpamento_odl": request.parametri.accorpamento_odl,
             "timeout_secondi": 30,
             "algoritmo_status": nesting_result.algorithm_status,
             "generated_at": datetime.utcnow().isoformat()

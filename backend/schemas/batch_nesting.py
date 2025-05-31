@@ -116,6 +116,8 @@ class BatchNestingResponse(BatchNestingBase):
     confermato_da_utente: Optional[str] = None
     confermato_da_ruolo: Optional[str] = None
     data_conferma: Optional[datetime] = None
+    data_completamento: Optional[datetime] = Field(None, description="Data e ora di completamento del ciclo")
+    durata_ciclo_minuti: Optional[int] = Field(None, description="Durata del ciclo di cura in minuti")
     
     # Timestamp
     created_at: datetime

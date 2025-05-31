@@ -28,7 +28,6 @@ class NestingParameters:
     padding_mm: int = 20
     min_distance_mm: int = 15
     priorita_area: bool = True
-    accorpamento_odl: bool = False
     
 @dataclass
 class ToolPosition:

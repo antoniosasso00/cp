@@ -22,8 +22,69 @@ import Link from 'next/link'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import dynamic from 'next/dynamic'
 
+// Error Boundary per gestire errori nel canvas
+class CanvasErrorBoundary extends React.Component<
+  { children: React.ReactNode; fallback?: React.ReactNode },
+  { hasError: boolean; error?: Error }
+> {
+  constructor(props: { children: React.ReactNode; fallback?: React.ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Errore nel canvas nesting:', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <Card className="border-red-200">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-center py-16 bg-red-50 rounded-lg">
+              <div className="text-center space-y-2">
+                <AlertTriangle className="h-12 w-12 text-red-500 mx-auto" />
+                <p className="text-red-800 font-medium">Errore nel rendering del canvas</p>
+                <p className="text-sm text-red-600">
+                  Si è verificato un problema nella visualizzazione del layout nesting
+                </p>
+                <button 
+                  onClick={() => this.setState({ hasError: false })}
+                  className="mt-3 px-4 py-2 bg-red-100 text-red-800 rounded hover:bg-red-200 transition-colors"
+                >
+                  Riprova
+                </button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )
+    }
+
+    return this.props.children
+  }
+}
+
 // Importo dinamicamente il componente Konva per evitare errori SSR
-const NestingCanvas = dynamic(() => import('./NestingCanvas'), { ssr: false })
+const NestingCanvas = dynamic(() => import('./NestingCanvas'), { 
+  ssr: false,
+  loading: () => (
+    <Card>
+      <CardContent className="pt-6">
+        <div className="flex items-center justify-center py-16 bg-muted/30 rounded-lg">
+          <div className="text-center space-y-2">
+            <Loader2 className="h-12 w-12 text-blue-500 mx-auto animate-spin" />
+            <p className="text-muted-foreground">Caricamento componente canvas...</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+})
 
 interface ODLDettaglio {
   odl_id: string | number
@@ -434,24 +495,26 @@ export default function NestingResultPage({ params }: Props) {
 
       {/* Visualizzazione Canvas Nesting */}
       {batchData.configurazione_json && batchData.configurazione_json.length > 0 && batchData.autoclave ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="h-5 w-5" />
-              Visualizzazione Layout Nesting
-            </CardTitle>
-            <CardDescription>
-              Layout 2D interattivo del posizionamento degli ODL nell'autoclave
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <NestingCanvas 
-              odlData={batchData.configurazione_json}
-              autoclave={batchData.autoclave}
-              className="w-full"
-            />
-          </CardContent>
-        </Card>
+        <CanvasErrorBoundary>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Package className="h-5 w-5" />
+                Visualizzazione Layout Nesting
+              </CardTitle>
+              <CardDescription>
+                Layout 2D interattivo del posizionamento degli ODL nell'autoclave
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <NestingCanvas 
+                odlData={batchData.configurazione_json}
+                autoclave={batchData.autoclave}
+                className="w-full"
+              />
+            </CardContent>
+          </Card>
+        </CanvasErrorBoundary>
       ) : (
         <Card className="border-dashed">
           <CardHeader>
