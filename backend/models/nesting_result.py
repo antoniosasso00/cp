@@ -14,6 +14,11 @@ class NestingResult(Base):
     autoclave_id = Column(Integer, ForeignKey("autoclavi.id"), index=True)
     autoclave = relationship("Autoclave", back_populates="nesting_results")
     
+    # ✅ NUOVO: Relazione con il batch nesting
+    batch_id = Column(String(36), ForeignKey("batch_nesting.id"), nullable=True, index=True,
+                     doc="ID del batch di cui fa parte questo nesting")
+    batch = relationship("BatchNesting", back_populates="nesting_results")
+    
     # Lista degli ODL inclusi nel nesting (come array di ID)
     odl_ids = Column(JSON, default=list)
     

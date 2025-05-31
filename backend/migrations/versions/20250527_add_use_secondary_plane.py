@@ -1,7 +1,7 @@
 """add use_secondary_plane to autoclave
 
 Revision ID: add_use_secondary_plane
-Revises: 20250526_125334_add_system_logs_table
+Revises: 1313c0186228
 Create Date: 2025-01-27 14:30:00.000000
 
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'add_use_secondary_plane'
-down_revision = '20250526_125334_add_system_logs_table'
+down_revision = '1313c0186228'
 branch_labels = None
 depends_on = None
 

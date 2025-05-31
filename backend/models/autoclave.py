@@ -57,6 +57,9 @@ class Autoclave(Base, TimestampMixin):
     # Relazioni
     nesting_results = relationship("NestingResult", back_populates="autoclave")
     
+    # ✅ NUOVO: Relazione con i batch nesting
+    batch_nesting = relationship("BatchNesting", back_populates="autoclave")
+    
     @property
     def disponibile(self) -> bool:
         """Indica se l'autoclave è disponibile per l'uso"""

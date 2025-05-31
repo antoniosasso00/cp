@@ -12,7 +12,7 @@ from models.autoclave import Autoclave, StatoAutoclaveEnum
 from models.parte import Parte
 from models.catalogo import Catalogo
 from models.tempo_produzione import TempoProduzione
-from nesting_optimizer.auto_nesting import compute_nesting
+# from nesting_optimizer.auto_nesting import compute_nesting  # Temporaneamente commentato
 from schemas.schedule import (
     ScheduleEntryCreate, ScheduleEntryUpdate, AutoScheduleResponse,
     RecurringScheduleCreate, ScheduleOperatorAction

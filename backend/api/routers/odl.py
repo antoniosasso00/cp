@@ -13,7 +13,7 @@ from models.tool import Tool
 from models.tempo_fase import TempoFase
 from schemas.odl import ODLCreate, ODLRead, ODLUpdate
 from services.odl_queue_service import ODLQueueService
-from services.nesting_service import get_odl_attesa_cura_filtered
+# from services.nesting_service import get_odl_attesa_cura_filtered  # Temporaneamente commentato
 from services.system_log_service import SystemLogService
 from services.state_tracking_service import StateTrackingService
 from models.system_log import UserRole
@@ -147,7 +147,10 @@ async def get_odl_pending_nesting(db: Session = Depends(get_db)):
     """
     try:
         # Utilizza la logica esistente del servizio nesting per filtrare gli ODL
-        odl_validi = await get_odl_attesa_cura_filtered(db)
+        # odl_validi = await get_odl_attesa_cura_filtered(db)
+        
+        # Temporaneamente restituisco una lista vuota
+        odl_validi = []
         
         logger.info(f"Trovati {len(odl_validi)} ODL pronti per il nesting")
         
