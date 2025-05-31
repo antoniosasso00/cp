@@ -102,6 +102,12 @@ const sidebarSections: SidebarSection[] = [
         roles: ['ADMIN', 'Curing']
       },
       {
+        title: "Statistiche",
+        href: "/dashboard/curing/statistics",
+        icon: <TrendingUp className="h-4 w-4" />,
+        roles: ['ADMIN', 'Curing', 'Management']
+      },
+      {
         title: "Reports",
         href: "/dashboard/management/reports",
         icon: <FileText className="h-4 w-4" />,

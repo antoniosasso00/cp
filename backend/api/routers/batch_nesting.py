@@ -7,7 +7,7 @@ from datetime import datetime
 
 from api.database import get_db
 from models.batch_nesting import BatchNesting, StatoBatchNestingEnum
-from models.autoclave import Autoclave
+from models.autoclave import Autoclave, StatoAutoclaveEnum
 from models.odl import ODL
 from models.nesting_result import NestingResult
 from schemas.batch_nesting import (
@@ -372,3 +372,129 @@ def get_batch_statistics(batch_id: str, db: Session = Depends(get_db)):
     }
     
     return statistics 
+
+@router.patch("/{batch_id}/conferma", response_model=BatchNestingResponse,
+              summary="Conferma il batch e avvia il ciclo di cura")
+def conferma_batch_nesting(
+    batch_id: str, 
+    confermato_da_utente: str = Query(..., description="ID dell'utente che conferma il batch"),
+    confermato_da_ruolo: str = Query(..., description="Ruolo dell'utente che conferma"),
+    db: Session = Depends(get_db)
+):
+    """
+    Conferma il batch nesting e avvia il ciclo di cura.
+    
+    Effettua le seguenti operazioni in transazione:
+    1. Aggiorna il batch da "sospeso" a "confermato"  
+    2. Aggiorna l'autoclave a non disponibile
+    3. Aggiorna tutti gli ODL da "Attesa Cura" a "Cura"
+    4. Registra timestamp di conferma
+    
+    **Prerequisiti:**
+    - Il batch deve essere in stato "sospeso"
+    - L'autoclave deve essere disponibile
+    - Gli ODL devono essere in stato "Attesa Cura"
+    """
+    # Recupera il batch con le relazioni
+    db_batch = db.query(BatchNesting).filter(BatchNesting.id == batch_id).first()
+    if db_batch is None:
+        logger.warning(f"Tentativo di conferma di batch inesistente: {batch_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Batch nesting con ID {batch_id} non trovato"
+        )
+    
+    # Verifica che il batch sia in stato "sospeso"
+    if db_batch.stato != StatoBatchNestingEnum.SOSPESO.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Il batch è in stato '{db_batch.stato}' e non può essere confermato. Solo i batch in stato 'sospeso' possono essere confermati."
+        )
+    
+    # Recupera l'autoclave associata
+    autoclave = db.query(Autoclave).filter(Autoclave.id == db_batch.autoclave_id).first()
+    if not autoclave:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Autoclave con ID {db_batch.autoclave_id} non trovata"
+        )
+    
+    # Verifica che l'autoclave sia disponibile
+    if autoclave.stato != StatoAutoclaveEnum.DISPONIBILE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"L'autoclave '{autoclave.nome}' non è disponibile (stato: {autoclave.stato.value})"
+        )
+    
+    # Recupera gli ODL associati al batch
+    if not db_batch.odl_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Il batch non contiene ODL da processare"
+        )
+    
+    odl_list = db.query(ODL).filter(ODL.id.in_(db_batch.odl_ids)).all()
+    
+    if len(odl_list) != len(db_batch.odl_ids):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uno o più ODL del batch non esistono nel database"
+        )
+    
+    # Verifica che tutti gli ODL siano in stato "Attesa Cura"
+    odl_non_validi = [odl for odl in odl_list if odl.status != "Attesa Cura"]
+    if odl_non_validi:
+        stati_non_validi = [f"ODL {odl.id}: {odl.status}" for odl in odl_non_validi]
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"I seguenti ODL non sono in stato 'Attesa Cura': {', '.join(stati_non_validi)}"
+        )
+    
+    try:
+        # Inizia la transazione
+        ora_conferma = datetime.now()
+        
+        logger.info(f"🚀 Avvio conferma batch {batch_id} con {len(odl_list)} ODL")
+        
+        # 1. Aggiorna il batch nesting
+        db_batch.stato = StatoBatchNestingEnum.CONFERMATO.value
+        db_batch.confermato_da_utente = confermato_da_utente
+        db_batch.confermato_da_ruolo = confermato_da_ruolo
+        db_batch.data_conferma = ora_conferma
+        
+        logger.info(f"✅ Batch {batch_id} aggiornato a stato 'confermato'")
+        
+        # 2. Aggiorna l'autoclave (rende non disponibile)
+        autoclave.stato = StatoAutoclaveEnum.IN_USO
+        
+        logger.info(f"✅ Autoclave {autoclave.id} ({autoclave.nome}) aggiornata a stato 'in_uso'")
+        
+        # 3. Aggiorna tutti gli ODL da "Attesa Cura" a "Cura"
+        odl_aggiornati = []
+        for odl in odl_list:
+            odl.status = "Cura"
+            odl.previous_status = "Attesa Cura"  # Salva stato precedente per eventuale ripristino
+            odl_aggiornati.append(odl.id)
+        
+        logger.info(f"✅ {len(odl_aggiornati)} ODL aggiornati a stato 'Cura': {odl_aggiornati}")
+        
+        # Commit della transazione
+        db.commit()
+        db.refresh(db_batch)
+        
+        logger.info(f"🎉 Conferma batch {batch_id} completata con successo!")
+        logger.info(f"📊 Riepilogo:")
+        logger.info(f"   - Batch: {db_batch.stato}")
+        logger.info(f"   - Autoclave: {autoclave.stato.value}")
+        logger.info(f"   - ODL processati: {len(odl_aggiornati)}")
+        logger.info(f"   - Confermato da: {confermato_da_utente} ({confermato_da_ruolo})")
+        
+        return db_batch
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Errore durante la conferma del batch {batch_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Si è verificato un errore durante la conferma del batch: {str(e)}"
+        ) 

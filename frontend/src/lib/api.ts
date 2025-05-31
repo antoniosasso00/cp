@@ -947,4 +947,197 @@ export const scheduleApi = {
     const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
     return apiRequest<ProductionTimeEstimate>(`/schedules/production-times/estimate${query}`);
   },
+};
+
+// Tipi per Batch Nesting
+export interface BatchNestingBase {
+  nome?: string;
+  stato: 'sospeso' | 'confermato' | 'terminato';
+  autoclave_id: number;
+  odl_ids: number[];
+  parametri?: any;
+  configurazione_json?: any;
+  note?: string;
+}
+
+export interface BatchNestingCreate extends BatchNestingBase {
+  creato_da_utente?: string;
+  creato_da_ruolo?: string;
+}
+
+export interface BatchNestingUpdate extends Partial<BatchNestingBase> {
+  confermato_da_utente?: string;
+  confermato_da_ruolo?: string;
+}
+
+export interface BatchNestingResponse extends BatchNestingBase {
+  id: string;
+  numero_nesting: number;
+  peso_totale_kg: number;
+  area_totale_utilizzata: number;
+  valvole_totali_utilizzate: number;
+  creato_da_utente?: string;
+  creato_da_ruolo?: string;
+  confermato_da_utente?: string;
+  confermato_da_ruolo?: string;
+  data_conferma?: string;
+  created_at: string;
+  updated_at: string;
+  stato_descrizione?: string;
+}
+
+export interface BatchNestingList {
+  id: string;
+  nome?: string;
+  stato: 'sospeso' | 'confermato' | 'terminato';
+  autoclave_id: number;
+  numero_nesting: number;
+  peso_totale_kg: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// API Batch Nesting
+export const batchNestingApi = {
+  getAll: (params?: {
+    skip?: number;
+    limit?: number;
+    autoclave_id?: number;
+    stato?: 'sospeso' | 'confermato' | 'terminato';
+    nome?: string;
+  }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.skip !== undefined) queryParams.append('skip', params.skip.toString());
+    if (params?.limit !== undefined) queryParams.append('limit', params.limit.toString());
+    if (params?.autoclave_id) queryParams.append('autoclave_id', params.autoclave_id.toString());
+    if (params?.stato) queryParams.append('stato', params.stato);
+    if (params?.nome) queryParams.append('nome', params.nome);
+    
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    return apiRequest<BatchNestingList[]>(`/batch_nesting${query}`);
+  },
+
+  getOne: (id: string) => 
+    apiRequest<BatchNestingResponse>(`/batch_nesting/${id}`),
+
+  getFull: (id: string) => 
+    apiRequest<any>(`/batch_nesting/${id}/full`),
+
+  create: (data: BatchNestingCreate) => 
+    apiRequest<BatchNestingResponse>('/batch_nesting/', 'POST', data),
+
+  update: (id: string, data: BatchNestingUpdate) => 
+    apiRequest<BatchNestingResponse>(`/batch_nesting/${id}`, 'PUT', data),
+
+  delete: (id: string) => 
+    apiRequest<void>(`/batch_nesting/${id}`, 'DELETE'),
+
+  getStatistics: (id: string) => 
+    apiRequest<any>(`/batch_nesting/${id}/statistics`),
+
+  // 🆕 Nuova funzione per confermare il batch e avviare il ciclo di cura
+  conferma: async (
+    id: string, 
+    confermato_da_utente: string, 
+    confermato_da_ruolo: string
+  ): Promise<BatchNestingResponse> => {
+    try {
+      console.log(`🚀 Avvio conferma batch ${id}...`);
+      
+      const queryParams = new URLSearchParams();
+      queryParams.append('confermato_da_utente', confermato_da_utente);
+      queryParams.append('confermato_da_ruolo', confermato_da_ruolo);
+      
+      const response = await apiRequest<BatchNestingResponse>(
+        `/batch_nesting/${id}/conferma?${queryParams.toString()}`, 
+        'PATCH'
+      );
+      
+      console.log(`✅ Batch ${id} confermato con successo!`);
+      return response;
+    } catch (error: any) {
+      console.error(`❌ Errore nella conferma del batch ${id}:`, error);
+      
+      // Estrai il messaggio di errore più specifico
+      const errorMessage = error?.message || error?.detail || 'Errore sconosciuto nella conferma del batch';
+      throw new Error(errorMessage);
+    }
+  },
+
+  // 🆕 Nuova funzione per chiudere il batch e completare il ciclo di cura
+  chiudi: async (
+    id: string, 
+    chiuso_da_utente: string, 
+    chiuso_da_ruolo: string
+  ): Promise<BatchNestingResponse> => {
+    try {
+      console.log(`🏁 Avvio chiusura batch ${id}...`);
+      
+      const queryParams = new URLSearchParams();
+      queryParams.append('chiuso_da_utente', chiuso_da_utente);
+      queryParams.append('chiuso_da_ruolo', chiuso_da_ruolo);
+      
+      const response = await apiRequest<BatchNestingResponse>(
+        `/batch_nesting/${id}/chiudi?${queryParams.toString()}`, 
+        'PATCH'
+      );
+      
+      console.log(`✅ Batch ${id} chiuso con successo!`);
+      return response;
+    } catch (error: any) {
+      console.error(`❌ Errore nella chiusura del batch ${id}:`, error);
+      
+      // Estrai il messaggio di errore più specifico
+      const errorMessage = error?.message || error?.detail || 'Errore sconosciuto nella chiusura del batch';
+      throw new Error(errorMessage);
+    }
+  }
+};
+
+// ✅ NUOVO: API per la produzione
+export interface ProduzioneODLResponse {
+  attesa_cura: ODLResponse[];
+  in_cura: ODLResponse[];
+  statistiche: {
+    totale_attesa_cura: number;
+    totale_in_cura: number;
+    ultima_sincronizzazione: string;
+  };
+}
+
+export interface ProduzioneStatistiche {
+  odl_per_stato: Record<string, number>;
+  autoclavi: {
+    disponibili: number;
+    occupate: number;
+    totali: number;
+  };
+  batch_nesting: {
+    attivi: number;
+  };
+  produzione_giornaliera: {
+    odl_completati_oggi: number;
+    data: string;
+  };
+  timestamp: string;
+}
+
+export interface ProduzioneHealthCheck {
+  status: string;
+  database: string;
+  odl_totali: string;
+  autoclavi_totali: string;
+  timestamp: string;
+}
+
+// API Produzione
+export const produzioneApi = {
+  getODL: (): Promise<ProduzioneODLResponse> => 
+    apiRequest<ProduzioneODLResponse>('/produzione/odl'),
+
+  getStatistiche: (): Promise<ProduzioneStatistiche> => 
+    apiRequest<ProduzioneStatistiche>('/produzione/statistiche'),
+
+  getHealth: (): Promise<ProduzioneHealthCheck> => 
+    apiRequest<ProduzioneHealthCheck>('/produzione/health'),
 }; 

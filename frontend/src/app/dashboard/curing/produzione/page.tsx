@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ODLResponse, odlApi } from '@/lib/api'
+import { ODLResponse, odlApi, produzioneApi } from '@/lib/api'
 import { formatDateTime } from '@/lib/utils'
 import { 
   Loader2, 
@@ -53,20 +53,63 @@ export default function ProduzioneCuringPage() {
     try {
       setIsLoading(true)
       
-      // Carica solo ODL rilevanti per il Curing (Attesa Cura e Cura)
+      // ✅ NUOVO: Usa le nuove API dedicate per la produzione
+      try {
+        // Prova prima con l'API dedicata produzione
+        const data = await produzioneApi.getODL()
+        const allOdl = [...data.attesa_cura, ...data.in_cura]
+        setOdlList(allOdl)
+        
+        toast({
+          title: '✅ Dati caricati',
+          description: `${data.statistiche.totale_attesa_cura} ODL in attesa, ${data.statistiche.totale_in_cura} in cura`,
+        })
+        
+        return // Successo, esci dalla funzione
+      } catch (error) {
+        console.warn('⚠️ API produzione non disponibile, fallback su API standard:', error)
+      }
+      
+      // ✅ FALLBACK: Se l'API produzione non funziona, usa l'API standard con gestione robusta
+      console.log('🔄 Fallback: caricamento con API standard...')
+      
       const allOdl = await odlApi.getAll()
       const relevantOdl = allOdl.filter(odl => 
         odl.status === "Attesa Cura" || odl.status === "Cura"
       )
       setOdlList(relevantOdl)
       
-    } catch (error) {
-      console.error('Errore nel caricamento dei dati:', error)
+      const attesaCura = relevantOdl.filter(odl => odl.status === "Attesa Cura").length
+      const inCura = relevantOdl.filter(odl => odl.status === "Cura").length
+      
+      toast({
+        title: '✅ Dati caricati (fallback)',
+        description: `${attesaCura} ODL in attesa, ${inCura} in cura`,
+      })
+      
+    } catch (error: any) {
+      console.error('❌ Errore nel caricamento dei dati:', error)
+      
+      // ✅ NUOVO: Gestione errori più robusta
+      let errorMessage = 'Impossibile caricare i dati di produzione.'
+      
+      if (error.message?.includes('connessione') || error.code === 'ECONNREFUSED') {
+        errorMessage = 'Errore di connessione al server. Verifica che il backend sia attivo.'
+      } else if (error.message?.includes('404') || error.response?.status === 404) {
+        errorMessage = 'Endpoint non trovato. Verifica la configurazione del backend.'
+      } else if (error.response?.status >= 500) {
+        errorMessage = 'Errore interno del server. Riprova più tardi.'
+      }
+      
       toast({
         variant: 'destructive',
-        title: 'Errore',
-        description: 'Impossibile caricare i dati di produzione. Riprova più tardi.',
+        title: '❌ Errore caricamento',
+        description: errorMessage,
       })
+      
+      // ✅ NUOVO: In caso di errore, mostra comunque una lista vuota invece di bloccare l'interfaccia
+      setOdlList([])
+      
     } finally {
       setIsLoading(false)
     }

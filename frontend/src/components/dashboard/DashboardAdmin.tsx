@@ -99,30 +99,30 @@ export default function DashboardAdmin() {
     return [
       { 
         label: 'ODL Totali', 
-        value: kpiData.odl_totali.toString(), 
-        trend: `${kpiData.odl_finiti} completati`,
+        value: (kpiData.odl_totali ?? 0).toString(), 
+        trend: `${kpiData.odl_finiti ?? 0} completati`,
         status: 'info',
         icon: FileText
       },
       { 
         label: 'Utilizzo Autoclavi', 
-        value: `${kpiData.utilizzo_medio_autoclavi}%`, 
-        trend: kpiData.utilizzo_medio_autoclavi > 80 ? 'Alto utilizzo' : 'Capacità disponibile',
-        status: kpiData.utilizzo_medio_autoclavi > 90 ? 'warning' : 'success',
+        value: `${kpiData.utilizzo_medio_autoclavi ?? 0}%`, 
+        trend: (kpiData.utilizzo_medio_autoclavi ?? 0) > 80 ? 'Alto utilizzo' : 'Capacità disponibile',
+        status: (kpiData.utilizzo_medio_autoclavi ?? 0) > 90 ? 'warning' : 'success',
         icon: Activity
       },
       { 
         label: 'Nesting Attivi', 
-        value: kpiData.nesting_attivi.toString(), 
-        trend: `${kpiData.nesting_totali} totali`,
+        value: (kpiData.nesting_attivi ?? 0).toString(), 
+        trend: `${kpiData.nesting_totali ?? 0} totali`,
         status: 'info',
         icon: Database
       },
       { 
         label: 'Efficienza Sistema', 
-        value: `${kpiData.efficienza_produzione}%`, 
-        trend: kpiData.efficienza_produzione >= 80 ? 'Ottima performance' : 'Da ottimizzare',
-        status: kpiData.efficienza_produzione >= 80 ? 'success' : kpiData.efficienza_produzione >= 60 ? 'warning' : 'error',
+        value: `${kpiData.efficienza_produzione ?? 0}%`, 
+        trend: (kpiData.efficienza_produzione ?? 0) >= 80 ? 'Ottima performance' : 'Da ottimizzare',
+        status: (kpiData.efficienza_produzione ?? 0) >= 80 ? 'success' : (kpiData.efficienza_produzione ?? 0) >= 60 ? 'warning' : 'error',
         icon: BarChart3
       }
     ]

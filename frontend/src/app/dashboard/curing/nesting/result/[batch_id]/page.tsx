@@ -14,29 +14,57 @@ import {
   CheckCircle2, 
   AlertTriangle,
   Download,
-  RefreshCw
+  RefreshCw,
+  Info
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import dynamic from 'next/dynamic'
+
+// Importo dinamicamente il componente Konva per evitare errori SSR
+const NestingCanvas = dynamic(() => import('./NestingCanvas'), { ssr: false })
+
+interface ODLDettaglio {
+  odl_id: string | number
+  tool_id: string | number
+  x_mm: number
+  y_mm: number
+  larghezza_mm: number
+  lunghezza_mm: number
+  part_number: string
+  descrizione: string
+  ciclo_cura: string
+  tool_nome: string
+}
+
+interface AutoclaveInfo {
+  id: number
+  nome: string
+  lunghezza: number
+  larghezza_piano: number
+  codice: string
+}
 
 interface BatchNestingResult {
   id: string
   nome: string
   stato: string
   autoclave_id: number
+  autoclave?: AutoclaveInfo
   odl_ids: number[]
+  configurazione_json: ODLDettaglio[] | null
   parametri: {
     padding_mm: number
     min_distance_mm: number
     priorita_area: boolean
-    accorpamento_odl: boolean
+    accorpamento_odl?: boolean // Campo opzionale che sarà rimosso
   }
   created_at: string
   numero_nesting: number
-  area_utilizzata?: number
   peso_totale_kg?: number
-  valvole_utilizzate?: number
-  valvole_totali?: number
+  area_totale_utilizzata?: number
+  valvole_totali_utilizzate?: number
   note?: string
 }
 
@@ -62,7 +90,8 @@ export default function NestingResultPage({ params }: Props) {
       setLoading(true)
       setError(null)
 
-      const response = await fetch(`/api/batch_nesting/${params.batch_id}`)
+      // Uso l'endpoint /full per ottenere tutti i dati inclusa l'autoclave
+      const response = await fetch(`/api/batch_nesting/${params.batch_id}/full`)
       if (!response.ok) {
         if (response.status === 404) {
           throw new Error('Batch nesting non trovato')
@@ -224,8 +253,10 @@ export default function NestingResultPage({ params }: Props) {
             <p className="font-semibold">{batchData.odl_ids.length}</p>
           </div>
           <div className="space-y-1">
-            <p className="text-sm font-medium text-muted-foreground">Numero Nesting</p>
-            <p className="font-semibold">{batchData.numero_nesting}</p>
+            <p className="text-sm font-medium text-muted-foreground">ODL Posizionati</p>
+            <p className="font-semibold">
+              {batchData.configurazione_json ? batchData.configurazione_json.length : 0}
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -238,7 +269,7 @@ export default function NestingResultPage({ params }: Props) {
             Configurazione dell'algoritmo di ottimizzazione
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-1">
             <p className="text-sm font-medium text-muted-foreground">Padding</p>
             <p className="font-semibold">{batchData.parametri.padding_mm} mm</p>
@@ -257,21 +288,11 @@ export default function NestingResultPage({ params }: Props) {
               )}
             </p>
           </div>
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-muted-foreground">Accorpamento ODL</p>
-            <p className="font-semibold">
-              {batchData.parametri.accorpamento_odl ? (
-                <span className="text-green-600">✓ Attivato</span>
-              ) : (
-                <span className="text-gray-500">✗ Disattivato</span>
-              )}
-            </p>
-          </div>
         </CardContent>
       </Card>
 
       {/* Statistiche Risultato */}
-      {(batchData.area_utilizzata || batchData.peso_totale_kg || batchData.valvole_utilizzate) && (
+      {(batchData.area_totale_utilizzata || batchData.peso_totale_kg || batchData.valvole_totali_utilizzate) && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -283,10 +304,10 @@ export default function NestingResultPage({ params }: Props) {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {batchData.area_utilizzata && (
+            {batchData.area_totale_utilizzata && (
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">Area Utilizzata</p>
-                <p className="font-semibold">{batchData.area_utilizzata.toFixed(2)} cm²</p>
+                <p className="font-semibold">{batchData.area_totale_utilizzata.toFixed(2)} cm²</p>
               </div>
             )}
             {batchData.peso_totale_kg && (
@@ -295,15 +316,10 @@ export default function NestingResultPage({ params }: Props) {
                 <p className="font-semibold">{batchData.peso_totale_kg.toFixed(2)} kg</p>
               </div>
             )}
-            {batchData.valvole_utilizzate && batchData.valvole_totali && (
+            {batchData.valvole_totali_utilizzate && (
               <div className="space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">Valvole</p>
-                <p className="font-semibold">
-                  {batchData.valvole_utilizzate} / {batchData.valvole_totali}
-                  <span className="text-sm text-muted-foreground ml-1">
-                    ({Math.round((batchData.valvole_utilizzate / batchData.valvole_totali) * 100)}%)
-                  </span>
-                </p>
+                <p className="font-semibold">{batchData.valvole_totali_utilizzate}</p>
               </div>
             )}
           </CardContent>
@@ -327,17 +343,62 @@ export default function NestingResultPage({ params }: Props) {
         <CardHeader>
           <CardTitle>ODL Inclusi nel Nesting</CardTitle>
           <CardDescription>
-            Lista degli ordini di lavoro processati
+            {batchData.configurazione_json && batchData.configurazione_json.length > 0 
+              ? "Dettagli degli ordini di lavoro posizionati nel layout"
+              : "Lista degli ordini di lavoro processati"
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
-            {batchData.odl_ids.map((odlId) => (
-              <Badge key={odlId} variant="secondary" className="justify-center">
-                ODL #{odlId}
-              </Badge>
-            ))}
-          </div>
+          {batchData.configurazione_json && batchData.configurazione_json.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Part Number</TableHead>
+                  <TableHead>Descrizione</TableHead>
+                  <TableHead>Ciclo Cura</TableHead>
+                  <TableHead>Tool</TableHead>
+                  <TableHead>Posizione (X, Y)</TableHead>
+                  <TableHead>Dimensioni (L × H)</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {batchData.configurazione_json.map((odl, index) => (
+                  <TableRow key={`${odl.odl_id}_${index}`}>
+                    <TableCell className="font-medium">{odl.part_number}</TableCell>
+                    <TableCell>{odl.descrizione}</TableCell>
+                    <TableCell>{odl.ciclo_cura}</TableCell>
+                    <TableCell>{odl.tool_nome}</TableCell>
+                    <TableCell>
+                      {odl.x_mm}, {odl.y_mm} mm
+                    </TableCell>
+                    <TableCell>
+                      {odl.larghezza_mm} × {odl.lunghezza_mm} mm
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <Info className="h-5 w-5 text-yellow-600" />
+                <div>
+                  <p className="font-medium text-yellow-800">Configurazione non disponibile</p>
+                  <p className="text-sm text-yellow-700">
+                    Nessun ODL è stato posizionato nel nesting. Verifica i parametri di generazione.
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                {batchData.odl_ids.map((odlId) => (
+                  <Badge key={odlId} variant="secondary" className="justify-center">
+                    ODL #{odlId}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -371,26 +432,50 @@ export default function NestingResultPage({ params }: Props) {
         </CardContent>
       </Card>
 
-      {/* Placeholder per Canvas Grafico */}
-      <Card className="border-dashed">
-        <CardHeader>
-          <CardTitle className="text-muted-foreground">Visualizzazione Grafica</CardTitle>
-          <CardDescription>
-            La visualizzazione canvas 2D del layout sarà implementata nella prossima versione
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center py-16 bg-muted/30 rounded-lg">
-            <div className="text-center space-y-2">
-              <Package className="h-12 w-12 text-muted-foreground mx-auto" />
-              <p className="text-muted-foreground">Canvas Nesting 2D</p>
-              <p className="text-sm text-muted-foreground">
-                Prossimamente: visualizzazione interattiva del layout
-              </p>
+      {/* Visualizzazione Canvas Nesting */}
+      {batchData.configurazione_json && batchData.configurazione_json.length > 0 && batchData.autoclave ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Visualizzazione Layout Nesting
+            </CardTitle>
+            <CardDescription>
+              Layout 2D interattivo del posizionamento degli ODL nell'autoclave
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <NestingCanvas 
+              odlData={batchData.configurazione_json}
+              autoclave={batchData.autoclave}
+              className="w-full"
+            />
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-dashed">
+          <CardHeader>
+            <CardTitle className="text-muted-foreground flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Visualizzazione Layout Nesting
+            </CardTitle>
+            <CardDescription>
+              Il canvas 2D non può essere visualizzato senza la configurazione di posizionamento
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-center py-16 bg-muted/30 rounded-lg">
+              <div className="text-center space-y-2">
+                <AlertTriangle className="h-12 w-12 text-muted-foreground mx-auto" />
+                <p className="text-muted-foreground">Dati di configurazione mancanti</p>
+                <p className="text-sm text-muted-foreground">
+                  Il batch non contiene informazioni di posizionamento degli ODL
+                </p>
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 } 

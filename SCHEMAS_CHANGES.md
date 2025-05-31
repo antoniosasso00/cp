@@ -799,4 +799,67 @@ interface ToolPosition {
 
 ---
 
-// ... existing code ... 
+## 📅 [2025-01-28] - Aggiornamenti Comportamentali per Conferma Batch
+
+### 🔄 Modifiche Comportamentali
+
+#### 📄 Tabella: `batch_nesting`
+**Nuovo Workflow**: Aggiunta gestione completa del ciclo di vita batch
+
+#### ➕ Comportamenti Aggiunti:
+- **Validazione Transizione Stati**: Solo batch "sospeso" → "confermato" consentita via API `/conferma`
+- **Auto-popolamento Campi Audit**: 
+  - `confermato_da_utente` e `confermato_da_ruolo` popolati automaticamente
+  - `data_conferma` impostata a timestamp corrente
+- **Aggiornamento Atomico**: `updated_at` aggiornato automaticamente in transazione
+
+#### 🔗 Effetti Cascata:
+- **Autoclave Associata**: Stato `DISPONIBILE` → `IN_USO` automaticamente
+- **ODL del Batch**: Tutti gli ODL passano da `Attesa Cura` → `Cura`
+
+#### 📄 Tabella: `autoclavi`
+**Nuovo Comportamento**: Gestione automatica disponibilità
+
+#### ➕ Logiche Aggiunte:
+- **Validazione Pre-Conferma**: Controllo stato `DISPONIBILE` obbligatorio
+- **Aggiornamento Stato**: Passaggio automatico a `IN_USO` durante conferma batch
+- **Rollback Supportato**: Stato ripristinato in caso di errore transazione
+
+#### 📄 Tabella: `odl`
+**Nuovo Comportamento**: Transizione di stato coordinata
+
+#### ➕ Validazioni Aggiunte:
+- **Prerequisito Stato**: Solo ODL in `Attesa Cura` possono essere confermati
+- **Aggiornamento Batch**: Tutti gli ODL del batch aggiornati contemporaneamente
+- **Backup Stato**: Campo `previous_status` popolato per eventuale ripristino
+
+### 🛡️ Nuove Validazioni Sistema
+
+#### ✅ Controlli Pre-Conferma:
+1. **Batch**: Stato deve essere "sospeso"
+2. **Autoclave**: Deve essere disponibile (`DISPONIBILE`)
+3. **ODL**: Tutti devono essere in stato `Attesa Cura`
+4. **Relazioni**: Tutti gli ODL devono esistere nel database
+
+#### ⚠️ Gestione Errori:
+- **Rollback Automatico**: Qualsiasi errore annulla tutta la transazione
+- **Messaggi Specifici**: Errori dettagliati per ogni tipo di validazione fallita
+- **Logging Completo**: Tracciamento operazioni per debug e audit
+
+### 📊 Impatti Performance
+
+#### ⚡ Ottimizzazioni:
+- **Transazione Singola**: Tutte le operazioni in un'unica transazione DB
+- **Query Batch**: Aggiornamento ODL in blocco invece che individuale
+- **Validazioni Anticipate**: Controlli prerequisiti prima di modifiche DB
+
+#### 📈 Scalabilità:
+- **Gestione Volumi**: Supporto per batch con molti ODL
+- **Timeout Gestito**: Operazioni lunghe con timeout appropriati
+- **Concorrenza**: Gestione accessi concorrenti allo stesso batch
+
+---
+
+## 📅 [2025-01-27] - Creazione Modello BatchNesting
+
+// ... existing content ... 

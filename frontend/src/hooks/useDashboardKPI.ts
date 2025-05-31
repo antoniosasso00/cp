@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { odlApi, autoclaveApi } from '@/lib/api'
+import { odlApi, autoclaveApi, batchNestingApi } from '@/lib/api'
 
 export interface DashboardKPI {
   odl_totali: number
@@ -11,6 +11,8 @@ export interface DashboardKPI {
   utilizzo_medio_autoclavi: number
   completati_oggi: number
   efficienza_produzione: number
+  nesting_attivi: number
+  nesting_totali: number
 }
 
 export interface KPIStatus {
@@ -35,28 +37,29 @@ export function useDashboardKPI() {
       // Recupera tutti gli ODL per calcolare le statistiche
       const allODL = await odlApi.getAll()
       
-      // Calcola statistiche ODL
-      const odl_totali = allODL.length
-      const odl_finiti = allODL.filter(odl => odl.status === 'Finito').length
-      const odl_in_cura = allODL.filter(odl => odl.status === 'Cura').length
-      const odl_attesa_cura = allODL.filter(odl => odl.status === 'Attesa Cura').length
+      // Calcola statistiche ODL con valori di sicurezza
+      const odl_totali = allODL?.length ?? 0
+      const odl_finiti = allODL?.filter(odl => odl.status === 'Finito')?.length ?? 0
+      const odl_in_cura = allODL?.filter(odl => odl.status === 'Cura')?.length ?? 0
+      const odl_attesa_cura = allODL?.filter(odl => odl.status === 'Attesa Cura')?.length ?? 0
       
       // Calcola ODL completati oggi
       const oggi = new Date()
       oggi.setHours(0, 0, 0, 0)
-      const completati_oggi = allODL.filter(odl => {
+      const completati_oggi = allODL?.filter(odl => {
         if (odl.status !== 'Finito') return false
+        if (!odl.updated_at) return false
         const dataAggiornamento = new Date(odl.updated_at)
         return dataAggiornamento >= oggi
-      }).length
+      })?.length ?? 0
 
       // Recupera informazioni autoclavi per calcolare utilizzo
       let utilizzo_medio_autoclavi = 0
       try {
         const autoclavi = await autoclaveApi.getAll()
-        const autoclavi_disponibili = autoclavi.filter(a => a.stato === 'DISPONIBILE').length
-        const autoclavi_in_uso = autoclavi.filter(a => a.stato === 'IN_USO').length
-        const totale_autoclavi = autoclavi.length
+        const autoclavi_disponibili = autoclavi?.filter(a => a.stato === 'DISPONIBILE')?.length ?? 0
+        const autoclavi_in_uso = autoclavi?.filter(a => a.stato === 'IN_USO')?.length ?? 0
+        const totale_autoclavi = autoclavi?.length ?? 0
         
         if (totale_autoclavi > 0) {
           utilizzo_medio_autoclavi = Math.round((autoclavi_in_uso / totale_autoclavi) * 100)
@@ -71,6 +74,20 @@ export function useDashboardKPI() {
         ? Math.round((odl_finiti / odl_totali) * 100)
         : 0
 
+      // Calcola statistiche nesting
+      let nesting_attivi = 0
+      let nesting_totali = 0
+      try {
+        // Recupera tutti i batch nesting per calcolare le statistiche
+        const batches = await batchNestingApi.getAll()
+        nesting_totali = batches?.length ?? 0
+        nesting_attivi = batches?.filter(batch => batch.stato === 'confermato')?.length ?? 0
+      } catch (nestingError) {
+        console.warn('Errore nel recupero statistiche nesting:', nestingError)
+        nesting_attivi = 0
+        nesting_totali = 0
+      }
+
       const kpiData: DashboardKPI = {
         odl_totali,
         odl_finiti,
@@ -78,7 +95,9 @@ export function useDashboardKPI() {
         odl_attesa_cura,
         utilizzo_medio_autoclavi,
         completati_oggi,
-        efficienza_produzione
+        efficienza_produzione,
+        nesting_attivi,
+        nesting_totali
       }
 
       setStatus({

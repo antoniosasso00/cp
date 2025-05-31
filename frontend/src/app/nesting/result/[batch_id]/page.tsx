@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, CheckCircle, X, RotateCw } from 'lucide-react';
+import { Loader2, CheckCircle, X, RotateCw, PlayCircle } from 'lucide-react';
+import { batchNestingApi } from '@/lib/api';
 import axios from 'axios';
 
 // Interfacce TypeScript per i dati
@@ -152,7 +153,41 @@ export default function NestingResultPage() {
     });
   };
 
-  // Funzione per confermare la configurazione
+  // Funzione per confermare il batch e avviare il ciclo di cura
+  const confirmBatchAndStartCuring = async () => {
+    try {
+      setIsConfirming(true);
+      
+      // Utilizza il nuovo endpoint API
+      const updatedBatch = await batchNestingApi.conferma(
+        batch_id,
+        'utente_frontend', // In futuro si potrà prendere dall'auth
+        'Curing'
+      );
+      
+      // Aggiorna lo stato locale
+      setBatchData(prev => prev ? { 
+        ...prev, 
+        stato: 'confermato',
+        confermato_da_utente: 'utente_frontend',
+        confermato_da_ruolo: 'Curing',
+        data_conferma: new Date().toISOString()
+      } : null);
+      
+      // Mostra messaggio di successo
+      alert('🎉 Batch Confermato! Il batch è stato confermato e il ciclo di cura è stato avviato. Tutti gli ODL sono ora in stato "Cura".');
+      
+    } catch (err: any) {
+      console.error('❌ Errore nella conferma del batch:', err);
+      
+      // Mostra errore dettagliato all'utente
+      alert(`❌ Errore nella Conferma: ${err.message || 'Si è verificato un errore durante la conferma del batch'}`);
+    } finally {
+      setIsConfirming(false);
+    }
+  };
+
+  // Funzione legacy per confermare solo la configurazione (senza avviare cura)
   const confirmConfiguration = async () => {
     try {
       setIsConfirming(true);
@@ -164,6 +199,7 @@ export default function NestingResultPage() {
       });
       
       setBatchData(prev => prev ? { ...prev, stato: 'confermato' } : null);
+      
       alert('✅ Configurazione confermata con successo!');
       
     } catch (err: any) {
@@ -424,17 +460,26 @@ export default function NestingResultPage() {
             <CardContent className="space-y-3">
               {batchData.stato === 'sospeso' && (
                 <Button 
-                  onClick={confirmConfiguration}
+                  onClick={confirmBatchAndStartCuring}
                   disabled={isConfirming}
                   className="w-full"
+                  size="lg"
                 >
                   {isConfirming ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   ) : (
-                    <CheckCircle className="h-4 w-4 mr-2" />
+                    <PlayCircle className="h-4 w-4 mr-2" />
                   )}
-                  Accetta Configurazione
+                  Avvia Cura
                 </Button>
+              )}
+              
+              {batchData.stato === 'confermato' && (
+                <div className="w-full p-3 bg-green-50 border border-green-200 rounded-lg text-center">
+                  <CheckCircle className="h-5 w-5 mx-auto mb-2 text-green-600" />
+                  <p className="text-sm font-medium text-green-800">Ciclo di Cura in Corso</p>
+                  <p className="text-xs text-green-600 mt-1">Il batch è confermato e gli ODL sono in cura</p>
+                </div>
               )}
               
               <Button 
