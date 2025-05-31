@@ -3,7 +3,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Settings, RefreshCw, AlertCircle } from 'lucide-react'
-import { NestingParametersPanel, NestingParameters } from '@/components/nesting/NestingParametersPanel'
+import { NestingParametersPanel, NestingParameters } from '@/components/Nesting/NestingParametersPanel'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useToast } from '@/hooks/use-toast'
 import { Alert, AlertDescription } from '@/components/ui/alert'

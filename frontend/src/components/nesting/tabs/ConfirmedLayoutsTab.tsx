@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CheckCircle, RefreshCw, Eye, Calendar, Download, FileText, Clock, Play, CheckSquare, Wrench, Package } from 'lucide-react'
-import { ActiveNestingTable } from '@/components/nesting/ActiveNestingTable'
+import { ActiveNestingTable } from '@/components/Nesting/ActiveNestingTable'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { nestingApi, NestingResponse, NestingDetailResponse } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'

@@ -85,6 +85,7 @@ class NestingLayoutService:
     ) -> List[ToolPosition]:
         """
         Calcola le posizioni ottimali dei tool nel nesting.
+        Priorità: usa posizioni salvate -> posizioni da algoritmo -> layout automatico fallback
         
         Args:
             nesting: Risultato del nesting
@@ -98,37 +99,81 @@ class NestingLayoutService:
         try:
             positions = []
             
-            # Se abbiamo posizioni salvate, usale
+            # PRIORITÀ 1: Se abbiamo posizioni già salvate nel database, usale
             if nesting.posizioni_tool:
+                logger.debug(f"Caricamento posizioni salvate per nesting {nesting.id}")
                 for pos_data in nesting.posizioni_tool:
                     if isinstance(pos_data, dict):
-                        positions.append(ToolPosition(**pos_data))
-                return positions
+                        # Valida i campi richiesti
+                        required_fields = ['odl_id', 'x', 'y', 'width', 'height']
+                        if all(field in pos_data for field in required_fields):
+                            positions.append(ToolPosition(**pos_data))
+                        else:
+                            logger.warning(f"Posizione tool incompleta nel nesting {nesting.id}: {pos_data}")
+                
+                if positions:
+                    logger.info(f"Caricate {len(positions)} posizioni salvate per nesting {nesting.id}")
+                    return positions
+                else:
+                    logger.warning(f"Posizioni salvate non valide per nesting {nesting.id}, procedo con calcolo automatico")
             
-            # Altrimenti calcola layout automatico
+            # PRIORITÀ 2: Se il nesting ha metadati dell'algoritmo, usa quelli
+            if hasattr(nesting, 'note') and nesting.note:
+                try:
+                    import json
+                    # Cerca se nelle note ci sono i dati dell'algoritmo
+                    note_lines = nesting.note.split('\n')
+                    for line in note_lines:
+                        if line.strip().startswith('{') and 'tool_positions' in line:
+                            algorithm_data = json.loads(line.strip())
+                            if 'tool_positions' in algorithm_data:
+                                logger.debug(f"Caricamento posizioni da algoritmo per nesting {nesting.id}")
+                                for pos_data in algorithm_data['tool_positions']:
+                                    positions.append(ToolPosition(**pos_data))
+                                
+                                if positions:
+                                    logger.info(f"Caricate {len(positions)} posizioni da algoritmo per nesting {nesting.id}")
+                                    return positions
+                except (json.JSONDecodeError, KeyError):
+                    logger.debug(f"Metadati algoritmo non trovati o non validi per nesting {nesting.id}")
+            
+            # PRIORITÀ 3: Layout automatico fallback
+            logger.debug(f"Calcolo layout automatico fallback per nesting {nesting.id}")
             autoclave = nesting.autoclave
             if not autoclave:
+                logger.error(f"Autoclave non trovata per nesting {nesting.id}")
                 return positions
                 
             # Area disponibile considerando i bordi
             available_width = autoclave.lunghezza - (2 * borda_mm)
             available_height = autoclave.larghezza_piano - (2 * borda_mm)
             
+            if available_width <= 0 or available_height <= 0:
+                logger.error(f"Dimensioni disponibili non valide per autoclave {autoclave.id}: {available_width}x{available_height}mm")
+                return positions
+            
             # Layout automatico con orientamento ottimale
             current_x = borda_mm
             current_y = borda_mm
             row_height = 0
             
+            logger.debug(f"Area disponibile: {available_width}x{available_height}mm con bordo {borda_mm}mm")
+            
             for odl in nesting.odl_list:
                 if not odl.tool:
+                    logger.warning(f"ODL {odl.id} non ha tool associato, saltato")
                     continue
                     
                 tool = odl.tool
                 
+                # Usa dimensioni reali del tool
+                base_width = tool.lunghezza_piano or 100.0  # Default se non specificato
+                base_height = tool.larghezza_piano or 100.0  # Default se non specificato
+                
                 # Calcola orientamento ottimale se abilitato
                 orientation_info = NestingLayoutService.calculate_optimal_orientation(
-                    tool.lunghezza_piano,
-                    tool.larghezza_piano,
+                    base_width,
+                    base_height,
                     autoclave.lunghezza,
                     autoclave.larghezza_piano
                 ) if rotazione_abilitata else {"should_rotate": False}
@@ -136,20 +181,22 @@ class NestingLayoutService:
                 is_rotated = orientation_info.get("should_rotate", False)
                 
                 # Dimensioni effettive considerando rotazione
-                tool_width = tool.larghezza_piano if is_rotated else tool.lunghezza_piano
-                tool_height = tool.lunghezza_piano if is_rotated else tool.larghezza_piano
+                tool_width = base_height if is_rotated else base_width
+                tool_height = base_width if is_rotated else base_height
                 
                 # Verifica se c'è spazio nella riga corrente
-                if current_x + tool_width > available_width and current_x > borda_mm:
+                if current_x + tool_width > autoclave.lunghezza - borda_mm and current_x > borda_mm:
                     # Vai alla riga successiva
                     current_x = borda_mm
                     current_y += row_height + padding_mm
                     row_height = 0
+                    logger.debug(f"Tool ODL {odl.id}: nuova riga, posizione ({current_x}, {current_y})")
                 
                 # Verifica se c'è spazio verticale
-                if current_y + tool_height > available_height:
+                if current_y + tool_height > autoclave.larghezza_piano - borda_mm:
                     # Non c'è più spazio, ferma il posizionamento
-                    logger.warning(f"Spazio insufficiente per ODL {odl.id} nel nesting {nesting.id}")
+                    logger.warning(f"Spazio verticale insufficiente per ODL {odl.id} nel nesting {nesting.id} "
+                                 f"(richiesto: {current_y + tool_height}mm, disponibile: {autoclave.larghezza_piano - borda_mm}mm)")
                     break
                 
                 # Crea posizione
@@ -164,11 +211,14 @@ class NestingLayoutService:
                 )
                 
                 positions.append(position)
+                logger.debug(f"Tool ODL {odl.id} posizionato a ({current_x:.1f}, {current_y:.1f}) - {tool_width:.1f}x{tool_height:.1f}mm" +
+                           (" (ruotato)" if is_rotated else ""))
                 
                 # Aggiorna posizione per il prossimo tool
                 current_x += tool_width + padding_mm
                 row_height = max(row_height, tool_height)
             
+            logger.info(f"Layout automatico completato per nesting {nesting.id}: {len(positions)} tool posizionati")
             return positions
             
         except Exception as e:
@@ -208,8 +258,14 @@ class NestingLayoutService:
             
             # Converti ODL
             odl_data = []
-            for odl in nesting.odl_list:
+            logger.info(f"🔧 DEBUG: Convertendo {len(nesting.odl_list)} ODL per nesting {nesting.id}")
+            
+            for i, odl in enumerate(nesting.odl_list):
+                logger.info(f"🔧 DEBUG: ODL {i+1}: ID={odl.id}, tool={odl.tool is not None}, parte={odl.parte is not None}")
+                
                 if odl.tool and odl.parte:
+                    logger.info(f"🔧 DEBUG: Processando ODL {odl.id} - tool: {odl.tool.part_number_tool}, parte: {odl.parte.part_number}")
+                    
                     # Dati tool
                     tool_data = ToolDetailInfo(
                         id=odl.tool.id,
@@ -240,6 +296,11 @@ class NestingLayoutService:
                     )
                     
                     odl_data.append(odl_layout)
+                    logger.info(f"✅ DEBUG: ODL {odl.id} aggiunto a odl_data")
+                else:
+                    logger.warning(f"⚠️ DEBUG: ODL {odl.id} saltato - tool: {odl.tool is not None}, parte: {odl.parte is not None}")
+            
+            logger.info(f"🔧 DEBUG: Totale ODL processati: {len(odl_data)}")
             
             # Calcola posizioni tool
             posizioni_tool = NestingLayoutService.calculate_tool_positions(

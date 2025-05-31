@@ -7,6 +7,7 @@ Utilizza OR-Tools per ottimizzare il posizionamento degli ODL considerando:
 - Capacità delle autoclavi
 - Efficienza di utilizzo dello spazio
 - Parametri regolabili per distanze e margini di sicurezza
+- Posizionamento geometrico reale con coordinate x,y
 """
 
 from typing import List, Dict, Optional, Tuple
@@ -14,6 +15,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from datetime import datetime
 import logging
+import math
 
 # Importazioni dei modelli
 from models.odl import ODL
@@ -26,6 +28,169 @@ from models.ciclo_cura import CicloCura
 
 # Configurazione logging
 logger = logging.getLogger(__name__)
+
+
+class ToolPlacement:
+    """
+    Classe per rappresentare il posizionamento di un tool nel layout
+    """
+    def __init__(self, odl_id: int, x: float, y: float, width: float, height: float, rotated: bool = False, piano: int = 1):
+        self.odl_id = odl_id
+        self.x = x  # Posizione x in mm
+        self.y = y  # Posizione y in mm
+        self.width = width  # Larghezza in mm
+        self.height = height  # Altezza in mm
+        self.rotated = rotated  # Se il tool è ruotato
+        self.piano = piano  # Piano dell'autoclave
+    
+    def to_dict(self) -> Dict:
+        """Converte in dizionario per il database"""
+        return {
+            'odl_id': self.odl_id,
+            'x': self.x,
+            'y': self.y,
+            'width': self.width,
+            'height': self.height,
+            'rotated': self.rotated,
+            'piano': self.piano
+        }
+    
+    def overlaps_with(self, other: 'ToolPlacement') -> bool:
+        """Verifica se questo tool si sovrappone con un altro"""
+        if self.piano != other.piano:
+            return False
+        
+        return not (
+            self.x + self.width <= other.x or
+            other.x + other.width <= self.x or
+            self.y + self.height <= other.y or
+            other.y + other.height <= self.y
+        )
+
+
+class BinPackingOptimizer:
+    """
+    Implementa algoritmi di bin packing per il posizionamento ottimale dei tool
+    """
+    
+    def __init__(self, container_width: float, container_height: float, padding: float = 10.0):
+        self.container_width = container_width
+        self.container_height = container_height
+        self.padding = padding
+        self.placements: List[ToolPlacement] = []
+    
+    def can_place_at_position(self, x: float, y: float, width: float, height: float, odl_id: int, piano: int = 1) -> bool:
+        """
+        Verifica se un tool può essere posizionato in una specifica posizione
+        """
+        # Verifica se il tool resta dentro i confini del contenitore
+        if x + width > self.container_width or y + height > self.container_height:
+            return False
+        
+        # Verifica se si sovrappone con altri tool già posizionati
+        temp_placement = ToolPlacement(odl_id, x, y, width, height, piano=piano)
+        for placement in self.placements:
+            if temp_placement.overlaps_with(placement):
+                return False
+        
+        return True
+    
+    def find_best_position(self, width: float, height: float, odl_id: int, piano: int = 1) -> Optional[Tuple[float, float]]:
+        """
+        Trova la migliore posizione per un tool usando l'algoritmo Bottom-Left-Fill
+        """
+        best_x, best_y = None, None
+        best_waste = float('inf')
+        
+        # Prova tutte le posizioni possibili con un grid search ottimizzato
+        step = 5  # Step di 5mm per ottimizzare le performance
+        
+        for y in range(0, int(self.container_height - height) + 1, step):
+            for x in range(0, int(self.container_width - width) + 1, step):
+                if self.can_place_at_position(x, y, width, height, odl_id, piano):
+                    # Calcola il "waste" - preferisce posizioni più in basso a sinistra
+                    waste = y * self.container_width + x
+                    
+                    if waste < best_waste:
+                        best_waste = waste
+                        best_x, best_y = x, y
+        
+        return (best_x, best_y) if best_x is not None else None
+    
+    def try_rotated_placement(self, width: float, height: float, odl_id: int, piano: int = 1) -> Optional[Tuple[float, float, bool]]:
+        """
+        Prova il posizionamento normale e ruotato, restituisce il migliore
+        """
+        # Prova posizionamento normale
+        normal_pos = self.find_best_position(width, height, odl_id, piano)
+        
+        # Prova posizionamento ruotato (se le dimensioni sono diverse)
+        rotated_pos = None
+        if width != height:
+            rotated_pos = self.find_best_position(height, width, odl_id, piano)
+        
+        # Scegli il migliore (preferisci quello più in basso a sinistra)
+        if normal_pos and rotated_pos:
+            normal_waste = normal_pos[1] * self.container_width + normal_pos[0]
+            rotated_waste = rotated_pos[1] * self.container_width + rotated_pos[0]
+            
+            if rotated_waste < normal_waste:
+                return (rotated_pos[0], rotated_pos[1], True)
+            else:
+                return (normal_pos[0], normal_pos[1], False)
+        elif normal_pos:
+            return (normal_pos[0], normal_pos[1], False)
+        elif rotated_pos:
+            return (rotated_pos[0], rotated_pos[1], True)
+        
+        return None
+    
+    def place_tool(self, odl_id: int, width: float, height: float, piano: int = 1) -> bool:
+        """
+        Posiziona un tool nel contenitore
+        """
+        # Aggiungi padding alle dimensioni
+        padded_width = width + self.padding
+        padded_height = height + self.padding
+        
+        result = self.try_rotated_placement(padded_width, padded_height, odl_id, piano)
+        
+        if result:
+            x, y, rotated = result
+            final_width = padded_height if rotated else padded_width
+            final_height = padded_width if rotated else padded_height
+            
+            placement = ToolPlacement(
+                odl_id=odl_id,
+                x=x,
+                y=y,
+                width=final_width,
+                height=final_height,
+                rotated=rotated,
+                piano=piano
+            )
+            
+            self.placements.append(placement)
+            logger.debug(f"Tool ODL {odl_id} posizionato a ({x:.1f}, {y:.1f}) - {final_width:.1f}x{final_height:.1f}mm" + 
+                        (" (ruotato)" if rotated else ""))
+            return True
+        
+        logger.debug(f"Impossibile posizionare tool ODL {odl_id} - {padded_width:.1f}x{padded_height:.1f}mm")
+        return False
+    
+    def get_placements(self) -> List[ToolPlacement]:
+        """Restituisce tutti i posizionamenti"""
+        return self.placements
+    
+    def calculate_efficiency(self) -> float:
+        """Calcola l'efficienza di utilizzo dello spazio"""
+        if not self.placements:
+            return 0.0
+        
+        total_tool_area = sum(p.width * p.height for p in self.placements)
+        container_area = self.container_width * self.container_height
+        
+        return (total_tool_area / container_area) * 100 if container_area > 0 else 0.0
 
 
 class NestingParameters:
@@ -221,18 +386,37 @@ class NestingOptimizer:
     
     def optimize_single_plane_nesting(self, odl_group: List[ODL], autoclave: Autoclave) -> Optional[Dict]:
         """
-        Ottimizza il nesting per un singolo piano usando un algoritmo greedy.
-        Considera i parametri di efficienza minima e margini di sicurezza.
+        Ottimizza il nesting per un singolo piano usando bin packing geometrico reale.
+        Calcola le posizioni specifiche x,y per ogni tool.
         
         Args:
             odl_group: Lista degli ODL da ottimizzare
             autoclave: L'autoclave target
             
         Returns:
-            Optional[Dict]: Risultato dell'ottimizzazione o None se non possibile
+            Optional[Dict]: Risultato dell'ottimizzazione con posizioni reali o None se non possibile
         """
         if not odl_group or not autoclave:
             return None
+        
+        logger.info(f"Inizio ottimizzazione nesting per {len(odl_group)} ODL in autoclave {autoclave.nome}")
+        
+        # Calcola le dimensioni effettive dell'autoclave considerando i bordi
+        padding_bordo_mm = self.parameters.padding_bordo_autoclave_cm * 10
+        effective_width = autoclave.lunghezza - (2 * padding_bordo_mm)
+        effective_height = autoclave.larghezza_piano - (2 * padding_bordo_mm)
+        
+        if effective_width <= 0 or effective_height <= 0:
+            logger.error(f"Dimensioni effettive autoclave non valide: {effective_width}x{effective_height}mm")
+            return None
+        
+        # Inizializza il bin packing optimizer
+        padding_mm = self.parameters.distanza_minima_tool_cm * 10
+        bin_packer = BinPackingOptimizer(
+            container_width=effective_width,
+            container_height=effective_height,
+            padding=padding_mm
+        )
         
         # Ordina gli ODL per priorità decrescente e poi per area decrescente
         sorted_odl = sorted(odl_group, key=lambda x: (
@@ -241,59 +425,99 @@ class NestingOptimizer:
         ))
         
         selected_odl = []
-        total_area = 0.0
-        total_weight = 0.0
         excluded_odl = []
         exclusion_reasons = []
-        
-        # Usa l'area effettiva considerando il padding
-        effective_area = self.calculate_effective_autoclave_area(autoclave)
+        total_weight = 0.0
         
         # Calcola il peso massimo considerando il margine di sicurezza
         max_weight = autoclave.max_load_kg or float('inf')
         if autoclave.max_load_kg:
             max_weight = autoclave.max_load_kg * (1 - self.parameters.margine_sicurezza_peso_percent / 100)
         
+        # Prova a posizionare ogni ODL
         for odl in sorted_odl:
-            width, length, weight = self.calculate_tool_dimensions(odl)
-            area = (width * length) / 100  # Conversione in cm²
+            if not odl.tool:
+                excluded_odl.append(odl)
+                exclusion_reasons.append(f"ODL {odl.id}: Tool non trovato")
+                continue
             
-            # Verifica se l'ODL può essere aggiunto
-            if (total_area + area <= effective_area and 
-                total_weight + weight <= max_weight):
+            # Ottieni le dimensioni del tool
+            tool_width = odl.tool.lunghezza_piano or 100.0  # Lunghezza = larghezza nel piano
+            tool_height = odl.tool.larghezza_piano or 100.0  # Larghezza = altezza nel piano
+            
+            # Calcola il peso stimato
+            _, _, tool_weight = self.calculate_tool_dimensions(odl)
+            
+            # Verifica vincolo di peso
+            if total_weight + tool_weight > max_weight:
+                excluded_odl.append(odl)
+                exclusion_reasons.append(f"ODL {odl.id}: Peso eccessivo (richiesto: {tool_weight:.1f}kg, disponibile: {max_weight - total_weight:.1f}kg)")
+                continue
+            
+            # Prova a posizionare il tool
+            if bin_packer.place_tool(odl.id, tool_width, tool_height, piano=1):
                 selected_odl.append(odl)
-                total_area += area
-                total_weight += weight
+                total_weight += tool_weight
+                logger.debug(f"ODL {odl.id} posizionato con successo")
             else:
                 excluded_odl.append(odl)
-                if total_area + area > effective_area:
-                    exclusion_reasons.append(f"ODL {odl.id}: Area insufficiente (richiesta: {area:.1f}cm², disponibile: {effective_area - total_area:.1f}cm²)")
-                else:
-                    exclusion_reasons.append(f"ODL {odl.id}: Peso eccessivo (richiesto: {weight:.1f}kg, disponibile: {max_weight - total_weight:.1f}kg)")
+                exclusion_reasons.append(f"ODL {odl.id}: Spazio geometrico insufficiente ({tool_width:.1f}x{tool_height:.1f}mm)")
+                logger.debug(f"ODL {odl.id} escluso per mancanza di spazio geometrico")
         
         if not selected_odl:
+            logger.info("Nessun ODL selezionato per il nesting")
             return None
         
-        # Calcola efficienza rispetto all'area effettiva
-        efficiency = (total_area / effective_area) * 100 if effective_area > 0 else 0
+        # Calcola efficienza geometrica
+        geometric_efficiency = bin_packer.calculate_efficiency()
         
         # Verifica se l'efficienza soddisfa il requisito minimo
-        if efficiency < self.parameters.efficienza_minima_percent:
-            logger.debug(f"Efficienza {efficiency:.1f}% inferiore al minimo richiesto {self.parameters.efficienza_minima_percent}%")
+        if geometric_efficiency < self.parameters.efficienza_minima_percent:
+            logger.debug(f"Efficienza geometrica {geometric_efficiency:.1f}% inferiore al minimo richiesto {self.parameters.efficienza_minima_percent}%")
             return None
         
-        logger.info(f"Nesting ottimizzato: {len(selected_odl)} ODL, efficienza {efficiency:.1f}%, "
-                   f"area {total_area:.1f}/{effective_area:.1f}cm², peso {total_weight:.1f}/{max_weight:.1f}kg")
+        # Ottieni le posizioni calcolate
+        tool_positions = bin_packer.get_placements()
+        
+        # Aggiusta le posizioni considerando l'offset del bordo
+        adjusted_positions = []
+        for pos in tool_positions:
+            adjusted_pos = ToolPlacement(
+                odl_id=pos.odl_id,
+                x=pos.x + padding_bordo_mm,  # Aggiungi offset bordo
+                y=pos.y + padding_bordo_mm,  # Aggiungi offset bordo
+                width=pos.width - padding_mm,  # Rimuovi padding interno
+                height=pos.height - padding_mm,  # Rimuovi padding interno
+                rotated=pos.rotated,
+                piano=pos.piano
+            )
+            adjusted_positions.append(adjusted_pos)
+        
+        # Calcola statistiche finali
+        total_tool_area = sum(pos.width * pos.height for pos in adjusted_positions)
+        autoclave_area = autoclave.lunghezza * autoclave.larghezza_piano
+        overall_efficiency = (total_tool_area / autoclave_area) * 100 if autoclave_area > 0 else 0
+        
+        logger.info(f"Nesting completato: {len(selected_odl)} ODL posizionati, "
+                   f"efficienza geometrica {geometric_efficiency:.1f}%, "
+                   f"efficienza totale {overall_efficiency:.1f}%, "
+                   f"peso {total_weight:.1f}/{max_weight:.1f}kg")
         
         return {
             'selected_odl': selected_odl,
             'excluded_odl': excluded_odl,
             'exclusion_reasons': exclusion_reasons,
-            'total_area': total_area,
+            'tool_positions': [pos.to_dict() for pos in adjusted_positions],  # NUOVO: posizioni reali
             'total_weight': total_weight,
-            'efficiency': efficiency,
+            'geometric_efficiency': geometric_efficiency,  # Efficienza del bin packing
+            'overall_efficiency': overall_efficiency,      # Efficienza rispetto all'autoclave totale
             'autoclave': autoclave,
-            'effective_area': effective_area,
+            'effective_dimensions': {
+                'width': effective_width,
+                'height': effective_height,
+                'border_padding_mm': padding_bordo_mm,
+                'tool_padding_mm': padding_mm
+            },
             'max_weight_with_margin': max_weight,
             'parameters_used': {
                 'distanza_minima_tool_cm': self.parameters.distanza_minima_tool_cm,
@@ -315,7 +539,7 @@ def compute_nesting(db: Session, odl_ids: List[int], autoclave_id: int, paramete
         parameters: Parametri opzionali per l'algoritmo di nesting
         
     Returns:
-        Dict: Risultato del nesting
+        Dict: Risultato del nesting con posizioni reali
     """
     # Crea i parametri se forniti
     nesting_params = None
@@ -340,10 +564,19 @@ def compute_nesting(db: Session, odl_ids: List[int], autoclave_id: int, paramete
         'success': True,
         'selected_odl_ids': [odl.id for odl in result['selected_odl']],
         'excluded_odl_ids': [odl.id for odl in result['excluded_odl']],
-        'total_area': result['total_area'],
+        'exclusion_reasons': result['exclusion_reasons'],
+        'tool_positions': result['tool_positions'],  # NUOVO: posizioni reali
         'total_weight': result['total_weight'],
-        'efficiency': result['efficiency'],
-        'effective_area': result.get('effective_area'),
+        'geometric_efficiency': result['geometric_efficiency'],  # Efficienza geometrica
+        'overall_efficiency': result['overall_efficiency'],      # Efficienza totale
+        'effective_dimensions': result['effective_dimensions'],   # Dimensioni effettive
+        'autoclave_info': {
+            'id': autoclave.id,
+            'nome': autoclave.nome,
+            'lunghezza': autoclave.lunghezza,
+            'larghezza_piano': autoclave.larghezza_piano,
+            'area_piano': autoclave.area_piano
+        },
         'parameters_used': result.get('parameters_used')
     }
 
@@ -404,12 +637,26 @@ def generate_automatic_nesting(db: Session, parameters: Optional[Dict] = None) -
             for autoclave in available_autoclaves:
                 result = optimizer.optimize_single_plane_nesting(odl_list, autoclave)
                 
-                if result and result['efficiency'] > best_efficiency:
+                if result and result['overall_efficiency'] > best_efficiency:
                     best_result = result
-                    best_efficiency = result['efficiency']
+                    best_efficiency = result['overall_efficiency']
             
             # Se trovato un risultato valido, crea il NestingResult
             if best_result:
+                # Prepara le note con i metadati dell'algoritmo
+                algorithm_metadata = {
+                    'tool_positions': best_result['tool_positions'],
+                    'effective_dimensions': best_result['effective_dimensions'],
+                    'geometric_efficiency': best_result['geometric_efficiency'],
+                    'overall_efficiency': best_result['overall_efficiency'],
+                    'parameters_used': best_result['parameters_used']
+                }
+                
+                note_text = f"Nesting automatico generato per ciclo {ciclo_key} con parametri personalizzati\n"
+                note_text += f"Algoritmo: Bin Packing Bottom-Left-Fill\n"
+                note_text += f"Efficienza geometrica: {best_result['geometric_efficiency']:.1f}%\n"
+                note_text += f"Efficienza totale: {best_result['overall_efficiency']:.1f}%\n"
+                
                 # Crea il record nel database
                 nesting_result = NestingResult(
                     autoclave_id=best_result['autoclave'].id,
@@ -417,12 +664,13 @@ def generate_automatic_nesting(db: Session, parameters: Optional[Dict] = None) -
                     odl_esclusi_ids=[odl.id for odl in best_result['excluded_odl']],
                     motivi_esclusione=best_result['exclusion_reasons'],
                     stato="Bozza",  # Stato iniziale
-                    area_utilizzata=best_result['total_area'],
-                    area_totale=best_result.get('effective_area', best_result['autoclave'].area_piano),
+                    area_utilizzata=sum(pos['width'] * pos['height'] for pos in best_result['tool_positions']) / 10000,  # Converti mm² in cm²
+                    area_totale=best_result['autoclave'].area_piano or 0.0,
                     peso_totale_kg=best_result['total_weight'],
-                    area_piano_1=best_result['total_area'],
-                    area_piano_2=0.0,  # Piano singolo
-                    note=f"Nesting automatico generato per ciclo {ciclo_key} con parametri personalizzati",
+                    area_piano_1=sum(pos['width'] * pos['height'] for pos in best_result['tool_positions'] if pos['piano'] == 1) / 10000,
+                    area_piano_2=sum(pos['width'] * pos['height'] for pos in best_result['tool_positions'] if pos['piano'] == 2) / 10000,
+                    posizioni_tool=best_result['tool_positions'],  # NUOVO: salva le posizioni reali
+                    note=note_text,
                     created_at=datetime.now()
                 )
                 
@@ -444,11 +692,13 @@ def generate_automatic_nesting(db: Session, parameters: Optional[Dict] = None) -
                     'ciclo_cura': ciclo_key,
                     'odl_inclusi': len(best_result['selected_odl']),
                     'odl_esclusi': len(best_result['excluded_odl']),
-                    'efficienza': round(best_result['efficiency'], 2),
-                    'area_utilizzata': round(best_result['total_area'], 2),
-                    'area_effettiva': round(best_result.get('effective_area', 0), 2),
+                    'efficienza_geometrica': round(best_result['geometric_efficiency'], 2),  # NUOVO
+                    'efficienza_totale': round(best_result['overall_efficiency'], 2),         # NUOVO
+                    'area_utilizzata': round(nesting_result.area_utilizzata, 2),
+                    'area_totale': round(nesting_result.area_totale, 2),
                     'peso_totale': round(best_result['total_weight'], 2),
                     'peso_massimo_con_margine': round(best_result.get('max_weight_with_margin', 0), 2),
+                    'tool_positions_count': len(best_result['tool_positions']),  # NUOVO
                     'stato': 'Bozza',
                     'parameters_used': best_result.get('parameters_used')
                 })

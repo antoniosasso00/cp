@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { NestingParameters } from '@/components/nesting/NestingParametersPanel';
+import { NestingParameters } from '@/components/Nesting/NestingParametersPanel';
 
 /**
  * Interfaccia per la risposta dell'API dei parametri

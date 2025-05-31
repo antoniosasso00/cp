@@ -396,4 +396,64 @@ class NestingToolsResponse(BaseModel):
     nesting_id: int = Field(..., description="ID del nesting")
     autoclave_nome: Optional[str] = Field(None, description="Nome dell'autoclave assegnata")
     tools: List[NestingToolInfo] = Field(..., description="Lista dei tool inclusi")
-    statistiche_tools: Dict[str, Any] = Field(..., description="Statistiche sui tool") 
+    statistiche_tools: Dict[str, Any] = Field(..., description="Statistiche sui tool")
+
+
+# ✅ NUOVO: Schemi per l'enhanced nesting
+class EnhancedNestingRequest(BaseModel):
+    """Schema per la richiesta di nesting migliorato"""
+    odl_ids: List[int] = Field(..., description="Lista degli ID degli ODL da includere nel nesting")
+    autoclave_id: int = Field(..., description="ID dell'autoclave da utilizzare")
+    constraints: Optional[Dict[str, Any]] = Field(None, description="Vincoli opzionali per l'algoritmo")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "odl_ids": [1, 2, 3],
+                "autoclave_id": 1,
+                "constraints": {
+                    "distanza_minima_tool_mm": 20,
+                    "padding_bordo_mm": 15,
+                    "margine_sicurezza_peso_percent": 10,
+                    "efficienza_minima_percent": 60,
+                    "separa_cicli_cura": True,
+                    "abilita_rotazioni": True
+                }
+            }
+        }
+
+
+class ODLNestingInfoEnhanced(BaseModel):
+    """Informazioni complete su un ODL nel nesting migliorato"""
+    id: int = Field(..., description="ID dell'ODL")
+    parte_nome: str = Field(..., description="Nome della parte")
+    tool_nome: str = Field(..., description="Nome del tool")
+    priorita: int = Field(..., description="Priorità dell'ODL")
+    peso_kg: float = Field(..., description="Peso in kg")
+    area_cm2: float = Field(..., description="Area in cm²")
+    valvole_richieste: int = Field(..., description="Numero di valvole richieste")
+    ciclo_cura: str = Field(..., description="Nome del ciclo di cura")
+    motivo_esclusione: Optional[str] = Field(None, description="Motivo di esclusione se applicabile")
+
+
+class AutoclaveNestingInfoEnhanced(BaseModel):
+    """Informazioni complete su un'autoclave nel nesting migliorato"""
+    id: int = Field(..., description="ID dell'autoclave")
+    nome: str = Field(..., description="Nome dell'autoclave")
+    area_piano: float = Field(..., description="Area del piano in cm²")
+    capacita_peso: float = Field(..., description="Capacità di peso in kg")
+    num_linee_vuoto: int = Field(..., description="Numero di linee del vuoto")
+    stato: str = Field(..., description="Stato dell'autoclave")
+
+
+class EnhancedNestingPreviewResponse(BaseModel):
+    """Risposta della preview del nesting migliorato"""
+    success: bool = Field(..., description="Indica se l'operazione è riuscita")
+    message: str = Field(..., description="Messaggio descrittivo")
+    autoclave: AutoclaveNestingInfoEnhanced = Field(..., description="Informazioni dell'autoclave")
+    odl_inclusi: List[ODLNestingInfoEnhanced] = Field(..., description="ODL inclusi nel nesting")
+    odl_esclusi: List[ODLNestingInfoEnhanced] = Field(..., description="ODL esclusi dal nesting")
+    statistiche: Dict[str, Any] = Field(..., description="Statistiche del nesting")
+    tool_positions: List[ToolPosition] = Field(..., description="Posizioni precise dei tool")
+    effective_dimensions: Dict[str, Any] = Field(..., description="Dimensioni effettive dell'autoclave")
+    constraints_used: Dict[str, Any] = Field(..., description="Vincoli utilizzati nell'algoritmo") 

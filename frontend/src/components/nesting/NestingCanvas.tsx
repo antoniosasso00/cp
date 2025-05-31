@@ -102,6 +102,28 @@ export function NestingCanvas({
       if (response.success && response.layout_data) {
         setLayoutData(response.layout_data)
         
+        // ✅ DEBUG: Verifica dimensioni reali
+        console.log('🔧 NestingCanvas - Layout data caricato:', {
+          nesting_id: nestingId,
+          autoclave: {
+            nome: response.layout_data.autoclave.nome,
+            dimensioni: {
+              lunghezza: response.layout_data.autoclave.lunghezza,
+              larghezza_piano: response.layout_data.autoclave.larghezza_piano
+            }
+          },
+          odl_count: response.layout_data.odl_list.length,
+          posizioni_count: response.layout_data.posizioni_tool.length,
+          prime_posizioni: response.layout_data.posizioni_tool.slice(0, 3).map(pos => ({
+            odl_id: pos.odl_id,
+            x: pos.x,
+            y: pos.y,
+            width: pos.width,
+            height: pos.height,
+            rotated: pos.rotated
+          }))
+        });
+        
         // Reset viewport quando cambiano i dati
         setViewport(prev => ({
           ...prev,
@@ -113,6 +135,7 @@ export function NestingCanvas({
         throw new Error(response.message || 'Errore nel caricamento del layout')
       }
     } catch (error) {
+      console.error('❌ Errore caricamento layout:', error);
       toast({
         title: "Errore",
         description: "Impossibile caricare il layout del nesting",
@@ -137,31 +160,44 @@ export function NestingCanvas({
       autoclaveY: 50,
       autoclaveWidth: 700,
       autoclaveHeight: 500,
-      scale: 1
+      scale: 1,
+      gridSize: 50
     }
     
     const autoclave = layoutData.autoclave
-    const margin = 100 // Margine per le etichette e la legenda
+    const margin = 120 // Margine per le etichette, righelli e legenda
     
-    // Scala per convertire mm in pixel (adattiva)
-    const maxWidth = 1000
-    const maxHeight = height - 100
-    const scaleX = maxWidth / (autoclave.lunghezza + margin * 2)
-    const scaleY = maxHeight / (autoclave.larghezza_piano + margin * 2)
-    const scale = Math.min(scaleX, scaleY, 1) // Non ingrandire oltre 1:1
+    // Sistema di riferimento: 1mm = 1 unità SVG per accuratezza
+    // Scala per convertire mm in pixel per la visualizzazione
+    const maxDisplayWidth = 1200
+    const maxDisplayHeight = height - 100
+    const scaleX = maxDisplayWidth / (autoclave.lunghezza + margin * 2)
+    const scaleY = maxDisplayHeight / (autoclave.larghezza_piano + margin * 2)
+    const displayScale = Math.min(scaleX, scaleY, 0.8) // Max 0.8 per lasciare spazio ai controlli
     
-    const scaledWidth = (autoclave.lunghezza + margin * 2) * scale
-    const scaledHeight = (autoclave.larghezza_piano + margin * 2) * scale
+    const scaledWidth = (autoclave.lunghezza + margin * 2) * displayScale
+    const scaledHeight = (autoclave.larghezza_piano + margin * 2) * displayScale
+    
+    // Griglia: ogni 100mm (10cm) per il sistema di riferimento
+    const gridSizeMm = 100
+    const gridSizePixels = gridSizeMm * displayScale
     
     return {
-      width: Math.max(scaledWidth, 400),
-      height: Math.max(scaledHeight, 300),
+      width: Math.max(scaledWidth, 600),
+      height: Math.max(scaledHeight, 400),
       viewBox: `0 0 ${scaledWidth} ${scaledHeight}`,
-      autoclaveX: margin * scale,
-      autoclaveY: margin * scale,
-      autoclaveWidth: autoclave.lunghezza * scale,
-      autoclaveHeight: autoclave.larghezza_piano * scale,
-      scale
+      autoclaveX: margin * displayScale,
+      autoclaveY: margin * displayScale,
+      autoclaveWidth: autoclave.lunghezza * displayScale,
+      autoclaveHeight: autoclave.larghezza_piano * displayScale,
+      scale: displayScale,
+      gridSize: gridSizePixels,
+      gridSizeMm: gridSizeMm,
+      margin: margin * displayScale,
+      
+      // Dimensioni reali per il sistema di riferimento
+      realWidth: autoclave.lunghezza,
+      realHeight: autoclave.larghezza_piano
     }
   }, [layoutData, height])
 
@@ -505,18 +541,39 @@ export function NestingCanvas({
             >
               {/* Definizioni per pattern e filtri */}
               <defs>
-                {/* Pattern griglia */}
+                {/* Pattern griglia di riferimento */}
                 <pattern
-                  id="grid"
-                  width={50 * svgDimensions.scale}
-                  height={50 * svgDimensions.scale}
+                  id="reference-grid"
+                  width={svgDimensions.gridSize}
+                  height={svgDimensions.gridSize}
                   patternUnits="userSpaceOnUse"
                 >
                   <path
-                    d={`M ${50 * svgDimensions.scale} 0 L 0 0 0 ${50 * svgDimensions.scale}`}
+                    d={`M ${svgDimensions.gridSize} 0 L 0 0 0 ${svgDimensions.gridSize}`}
                     fill="none"
-                    stroke="#e5e7eb"
+                    stroke="#d1d5db"
                     strokeWidth="1"
+                  />
+                  <circle
+                    cx={svgDimensions.gridSize}
+                    cy={svgDimensions.gridSize}
+                    r="2"
+                    fill="#9ca3af"
+                  />
+                </pattern>
+                
+                {/* Pattern griglia fine per precisione */}
+                <pattern
+                  id="fine-grid"
+                  width={svgDimensions.gridSize / 5}
+                  height={svgDimensions.gridSize / 5}
+                  patternUnits="userSpaceOnUse"
+                >
+                  <path
+                    d={`M ${svgDimensions.gridSize / 5} 0 L 0 0 0 ${svgDimensions.gridSize / 5}`}
+                    fill="none"
+                    stroke="#f3f4f6"
+                    strokeWidth="0.5"
                   />
                 </pattern>
                 
@@ -532,15 +589,128 @@ export function NestingCanvas({
                 </pattern>
               </defs>
 
-              {/* Griglia di sfondo */}
+              {/* Sistema di riferimento - griglia di sfondo */}
               {showGrid && (
-                <rect
-                  x="0"
-                  y="0"
-                  width={svgDimensions.width}
-                  height={svgDimensions.height}
-                  fill="url(#grid)"
-                />
+                <g>
+                  {/* Griglia fine per precisione */}
+                  <rect
+                    x="0"
+                    y="0"
+                    width={svgDimensions.width}
+                    height={svgDimensions.height}
+                    fill="url(#fine-grid)"
+                  />
+                  
+                  {/* Griglia principale di riferimento */}
+                  <rect
+                    x="0"
+                    y="0"
+                    width={svgDimensions.width}
+                    height={svgDimensions.height}
+                    fill="url(#reference-grid)"
+                  />
+                </g>
+              )}
+
+              {/* Righelli e coordinate */}
+              {showDimensions && (
+                <g>
+                  {/* Righello orizzontale (asse X) */}
+                  <g>
+                    <line
+                      x1={svgDimensions.margin || 50}
+                      y1={(svgDimensions.margin || 50) - 30}
+                      x2={(svgDimensions.margin || 50) + (svgDimensions.realWidth || 1000) * svgDimensions.scale}
+                      y2={(svgDimensions.margin || 50) - 30}
+                      stroke="#374151"
+                      strokeWidth="2"
+                    />
+                    
+                    {/* Tacche e etichette righello X */}
+                    {Array.from({ length: Math.floor((svgDimensions.realWidth || 1000) / (svgDimensions.gridSizeMm || 100)) + 1 }, (_, i) => {
+                      const xPos = (svgDimensions.margin || 50) + (i * svgDimensions.gridSize)
+                      const mmValue = i * (svgDimensions.gridSizeMm || 100)
+                      return (
+                        <g key={`x-ruler-${i}`}>
+                          <line
+                            x1={xPos}
+                            y1={(svgDimensions.margin || 50) - 35}
+                            x2={xPos}
+                            y2={(svgDimensions.margin || 50) - 25}
+                            stroke="#374151"
+                            strokeWidth="1"
+                          />
+                          <text
+                            x={xPos}
+                            y={(svgDimensions.margin || 50) - 40}
+                            textAnchor="middle"
+                            className="fill-gray-700 text-xs font-mono"
+                          >
+                            {mmValue}mm
+                          </text>
+                        </g>
+                      )
+                    })}
+                  </g>
+                  
+                  {/* Righello verticale (asse Y) */}
+                  <g>
+                    <line
+                      x1={(svgDimensions.margin || 50) - 30}
+                      y1={svgDimensions.margin || 50}
+                      x2={(svgDimensions.margin || 50) - 30}
+                      y2={(svgDimensions.margin || 50) + (svgDimensions.realHeight || 800) * svgDimensions.scale}
+                      stroke="#374151"
+                      strokeWidth="2"
+                    />
+                    
+                    {/* Tacche e etichette righello Y */}
+                    {Array.from({ length: Math.floor((svgDimensions.realHeight || 800) / (svgDimensions.gridSizeMm || 100)) + 1 }, (_, i) => {
+                      const yPos = (svgDimensions.margin || 50) + (i * svgDimensions.gridSize)
+                      const mmValue = i * (svgDimensions.gridSizeMm || 100)
+                      return (
+                        <g key={`y-ruler-${i}`}>
+                          <line
+                            x1={(svgDimensions.margin || 50) - 35}
+                            y1={yPos}
+                            x2={(svgDimensions.margin || 50) - 25}
+                            y2={yPos}
+                            stroke="#374151"
+                            strokeWidth="1"
+                          />
+                          <text
+                            x={(svgDimensions.margin || 50) - 40}
+                            y={yPos + 4}
+                            textAnchor="middle"
+                            className="fill-gray-700 text-xs font-mono"
+                            transform={`rotate(-90, ${(svgDimensions.margin || 50) - 40}, ${yPos + 4})`}
+                          >
+                            {mmValue}mm
+                          </text>
+                        </g>
+                      )
+                    })}
+                  </g>
+                  
+                  {/* Origine del sistema di coordinate */}
+                  <g>
+                    <circle
+                      cx={svgDimensions.margin || 50}
+                      cy={svgDimensions.margin || 50}
+                      r="4"
+                      fill="#dc2626"
+                      stroke="white"
+                      strokeWidth="2"
+                    />
+                    <text
+                      x={(svgDimensions.margin || 50) + 10}
+                      y={(svgDimensions.margin || 50) - 10}
+                      className="fill-red-600 text-xs font-semibold"
+                    >
+                      (0,0)
+                    </text>
+                  </g>
+                </g>
               )}
 
               {/* Autoclave */}
@@ -576,7 +746,7 @@ export function NestingCanvas({
                         x1={svgDimensions.autoclaveX}
                         y1={svgDimensions.autoclaveY + svgDimensions.autoclaveHeight + 20}
                         x2={svgDimensions.autoclaveX + svgDimensions.autoclaveWidth}
-                        y2={svgDimensions.autoclaveY + svgDimensions.autoclaveHeight + 20}
+                        y2={svgDimensions.autoclaveX + svgDimensions.autoclaveHeight + 20}
                         stroke="#666"
                         strokeWidth="1"
                       />
@@ -614,15 +784,22 @@ export function NestingCanvas({
                 )}
               </g>
 
-              {/* Tool posizionati */}
+              {/* Tool posizionati con coordinate reali */}
               {layoutData.posizioni_tool.map((position) => {
                 const odl = layoutData.odl_list.find(o => o.id === position.odl_id)
                 if (!odl) return null
 
-                const x = svgDimensions.autoclaveX + (position.x * svgDimensions.scale)
-                const y = svgDimensions.autoclaveY + (position.y * svgDimensions.scale)
-                const width = position.width * svgDimensions.scale
-                const height = position.height * svgDimensions.scale
+                // Coordinate reali dal backend (già in mm)
+                const realX = position.x  // Posizione X reale in mm
+                const realY = position.y  // Posizione Y reale in mm
+                const realWidth = position.width   // Larghezza reale in mm
+                const realHeight = position.height // Altezza reale in mm
+
+                // Coordinate visualizzazione (convertite per l'SVG)
+                const displayX = (svgDimensions.margin || 50) + (realX * svgDimensions.scale)
+                const displayY = (svgDimensions.margin || 50) + (realY * svgDimensions.scale)
+                const displayWidth = realWidth * svgDimensions.scale
+                const displayHeight = realHeight * svgDimensions.scale
                 
                 const isSelected = selectedOdl === odl.id
                 const isHovered = hoveredOdl === odl.id
@@ -637,12 +814,12 @@ export function NestingCanvas({
                         onMouseEnter={() => setHoveredOdl(odl.id)}
                         onMouseLeave={() => setHoveredOdl(null)}
                       >
-                        {/* Rettangolo tool */}
+                        {/* Rettangolo tool con bordo di precisione */}
                         <rect
-                          x={x}
-                          y={y}
-                          width={width}
-                          height={height}
+                          x={displayX}
+                          y={displayY}
+                          width={displayWidth}
+                          height={displayHeight}
                           fill={toolColor}
                           stroke={isSelected ? "#1f2937" : "#374151"}
                           strokeWidth={isSelected ? "3" : "1"}
@@ -650,13 +827,28 @@ export function NestingCanvas({
                           opacity={isHovered ? 0.9 : 0.8}
                         />
                         
+                        {/* Bordo interno per visualizzare precisione */}
+                        {isSelected && (
+                          <rect
+                            x={displayX + 1}
+                            y={displayY + 1}
+                            width={displayWidth - 2}
+                            height={displayHeight - 2}
+                            fill="none"
+                            stroke="#3b82f6"
+                            strokeWidth="1"
+                            strokeDasharray="3,2"
+                            opacity="0.7"
+                          />
+                        )}
+                        
                         {/* Pattern per tool ruotati */}
                         {position.rotated && (
                           <rect
-                            x={x}
-                            y={y}
-                            width={width}
-                            height={height}
+                            x={displayX}
+                            y={displayY}
+                            width={displayWidth}
+                            height={displayHeight}
                             fill="url(#rotated-pattern)"
                             opacity="0.3"
                           />
@@ -664,17 +856,17 @@ export function NestingCanvas({
                         
                         {/* Icona rotazione */}
                         {position.rotated && (
-                          <g transform={`translate(${x + width - 15}, ${y + 5})`}>
+                          <g transform={`translate(${displayX + displayWidth - 15}, ${displayY + 5})`}>
                             <circle r="8" fill="white" opacity="0.9"/>
                             <RotateCw className="h-3 w-3" x="-6" y="-6" />
                           </g>
                         )}
                         
                         {/* Nome tool */}
-                        {showToolNames && width > 60 && height > 30 && (
+                        {showToolNames && displayWidth > 60 && displayHeight > 30 && (
                           <text
-                            x={x + width / 2}
-                            y={y + height / 2 - 5}
+                            x={displayX + displayWidth / 2}
+                            y={displayY + displayHeight / 2 - 5}
                             textAnchor="middle"
                             className="fill-white text-xs font-medium"
                             style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.7)' }}
@@ -686,8 +878,8 @@ export function NestingCanvas({
                         {/* Numero valvole */}
                         {showValves && (
                           <text
-                            x={x + width / 2}
-                            y={y + height / 2 + 10}
+                            x={displayX + displayWidth / 2}
+                            y={displayY + displayHeight / 2 + 10}
                             textAnchor="middle"
                             className="fill-white text-xs"
                             style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.7)' }}
@@ -698,7 +890,7 @@ export function NestingCanvas({
                         
                         {/* Badge priorità */}
                         {showPriorities && (
-                          <g transform={`translate(${x + 5}, ${y + 5})`}>
+                          <g transform={`translate(${displayX + 5}, ${displayY + 5})`}>
                             <circle r="10" fill="white" opacity="0.9"/>
                             <text
                               textAnchor="middle"
@@ -710,40 +902,65 @@ export function NestingCanvas({
                           </g>
                         )}
                         
-                        {/* Quote dimensioni */}
+                        {/* Quote dimensioni e coordinate */}
                         {showDimensions && isSelected && (
                           <>
+                            {/* Quota larghezza sopra */}
                             <text
-                              x={x + width / 2}
-                              y={y - 5}
+                              x={displayX + displayWidth / 2}
+                              y={displayY - 8}
                               textAnchor="middle"
-                              className="fill-blue-600 text-xs font-medium"
+                              className="fill-blue-600 text-xs font-medium bg-white"
                             >
-                              {Math.round(position.width)}mm
+                              {realWidth.toFixed(1)}mm
                             </text>
+                            
+                            {/* Quota altezza a sinistra */}
                             <text
-                              x={x - 5}
-                              y={y + height / 2}
+                              x={displayX - 8}
+                              y={displayY + displayHeight / 2}
                               textAnchor="middle"
                               className="fill-blue-600 text-xs font-medium"
-                              transform={`rotate(-90, ${x - 5}, ${y + height / 2})`}
+                              transform={`rotate(-90, ${displayX - 8}, ${displayY + displayHeight / 2})`}
                             >
-                              {Math.round(position.height)}mm
+                              {realHeight.toFixed(1)}mm
+                            </text>
+                            
+                            {/* Coordinate posizione */}
+                            <text
+                              x={displayX + 2}
+                              y={displayY + displayHeight - 2}
+                              className="fill-yellow-300 text-xs font-mono font-bold"
+                              style={{ textShadow: '1px 1px 1px rgba(0,0,0,0.8)' }}
+                            >
+                              ({realX.toFixed(0)},{realY.toFixed(0)})
                             </text>
                           </>
                         )}
                       </g>
                     </TooltipTrigger>
                     <TooltipContent side="top" className="max-w-xs">
-                      <div className="space-y-1">
+                      <div className="space-y-2">
                         <div className="font-semibold">{odl.tool.part_number_tool}</div>
                         <div className="text-sm text-muted-foreground">{odl.parte.part_number}</div>
-                        <div className="text-xs">
-                          Priorità: {odl.priorita} • Valvole: {odl.parte.num_valvole_richieste}
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div>Priorità: {odl.priorita}</div>
+                          <div>Valvole: {odl.parte.num_valvole_richieste}</div>
+                          <div>Piano: {position.piano}</div>
+                          <div>{position.rotated ? "Ruotato" : "Normale"}</div>
                         </div>
-                        <div className="text-xs">
-                          Dimensioni: {Math.round(position.width)}×{Math.round(position.height)}mm
-                          {position.rotated && " (ruotato)"}
+                        <div className="border-t pt-2 space-y-1">
+                          <div className="text-xs font-semibold text-blue-600">Dimensioni reali:</div>
+                          <div className="text-xs font-mono">
+                            {realWidth.toFixed(1)}mm × {realHeight.toFixed(1)}mm
+                          </div>
+                          <div className="text-xs font-semibold text-green-600">Posizione:</div>
+                          <div className="text-xs font-mono">
+                            X: {realX.toFixed(1)}mm, Y: {realY.toFixed(1)}mm
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Area: {(realWidth * realHeight / 100).toFixed(1)}cm²
+                          </div>
                         </div>
                       </div>
                     </TooltipContent>
@@ -756,6 +973,26 @@ export function NestingCanvas({
             <div className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm rounded px-2 py-1 text-xs text-gray-600">
               Zoom: {Math.round(viewport.zoom * 100)}% • Pan: {Math.round(viewport.panX)}, {Math.round(viewport.panY)}
             </div>
+            
+            {/* ✅ DEBUG: Pannello informazioni dimensioni reali */}
+            {layoutData && (
+              <div className="absolute top-2 right-2 bg-blue-50/95 backdrop-blur-sm rounded px-3 py-2 text-xs border border-blue-200">
+                <div className="font-semibold text-blue-800 mb-1">📏 Dimensioni Reali</div>
+                <div className="space-y-1 text-blue-700">
+                  <div><strong>Autoclave:</strong> {layoutData.autoclave.lunghezza}×{layoutData.autoclave.larghezza_piano}mm</div>
+                  <div><strong>Scala:</strong> 1:{Math.round(1/svgDimensions.scale)}</div>
+                  <div><strong>Tool:</strong> {layoutData.posizioni_tool.length} posizionati</div>
+                  {layoutData.posizioni_tool.length > 0 && (
+                    <div className="border-t border-blue-300 pt-1 mt-1">
+                      <div className="font-medium">Primo tool:</div>
+                      <div>Pos: ({layoutData.posizioni_tool[0].x.toFixed(0)}, {layoutData.posizioni_tool[0].y.toFixed(0)})mm</div>
+                      <div>Size: {layoutData.posizioni_tool[0].width.toFixed(0)}×{layoutData.posizioni_tool[0].height.toFixed(0)}mm</div>
+                      {layoutData.posizioni_tool[0].rotated && <div className="text-orange-600">🔄 Ruotato</div>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Legenda e statistiche */}

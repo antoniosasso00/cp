@@ -1,6 +1,8 @@
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, JSON, func, Enum, Text, Boolean
 from sqlalchemy.orm import relationship
 from .base import Base
+from sqlalchemy.orm import sessionmaker
+from .db import engine
 
 class NestingBatch(Base):
     """
@@ -91,12 +93,12 @@ class NestingBatch(Base):
         return [nr.autoclave for nr in self.nesting_results if nr.autoclave]
     
     @property
-    def odl_totali(self) -> list:
-        """Restituisce tutti gli ODL inclusi nel batch"""
-        odl_list = []
+    def odl_ids_totali(self) -> list:
+        """Restituisce tutti gli ID degli ODL inclusi nel batch"""
+        odl_ids = []
         for nr in self.nesting_results:
-            odl_list.extend(nr.odl_list)
-        return odl_list
+            odl_ids.extend(nr.odl_ids)
+        return odl_ids
     
     @property
     def is_completato(self) -> bool:
@@ -114,7 +116,7 @@ class NestingBatch(Base):
             return
         
         self.numero_autoclavi = len(set(nr.autoclave_id for nr in self.nesting_results if nr.autoclave_id))
-        self.numero_odl_totali = sum(len(nr.odl_list) for nr in self.nesting_results)
+        self.numero_odl_totali = sum(len(nr.odl_ids) for nr in self.nesting_results)
         self.peso_totale_kg = sum(nr.peso_totale_kg for nr in self.nesting_results)
         self.area_totale_utilizzata = sum(nr.area_piano_1 + nr.area_piano_2 for nr in self.nesting_results)
         

@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Layers, CheckCircle, Settings, Database, Play, Eye } from 'lucide-react'
-import { MultiBatchNesting } from '@/components/nesting/MultiBatchNesting'
+import { MultiBatchNesting } from '@/components/Nesting/MultiBatchNesting'
 import { useToast } from '@/hooks/use-toast'
 
 interface MultiAutoclaveTabProps {

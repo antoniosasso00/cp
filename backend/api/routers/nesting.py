@@ -10,7 +10,7 @@ Questo modulo contiene gli endpoint per:
 
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime
 import uuid
 import os
@@ -27,7 +27,9 @@ from schemas.nesting import (
     NestingStatusUpdate, AutoclaveSelectionSchema, ODLNestingInfo, AutoclaveNestingInfo, ODLGroupPreview,
     NestingParameters, NestingParametersResponse, AutomaticNestingRequestWithParams,
     NestingLayoutResponse, MultiNestingLayoutResponse, OrientationCalculationRequest,
-    OrientationCalculationResponse, NestingToolsResponse, NestingToolInfo, ToolPosition
+    OrientationCalculationResponse, NestingToolsResponse, NestingToolInfo, ToolPosition,
+    EnhancedNestingRequest, EnhancedNestingPreviewResponse, ODLNestingInfoEnhanced,
+    AutoclaveNestingInfoEnhanced
 )
 from models.nesting_result import NestingResult
 from models.odl import ODL
@@ -35,6 +37,8 @@ from models.autoclave import Autoclave, StatoAutoclaveEnum
 from models.parte import Parte
 from models.catalogo import Catalogo
 from nesting_optimizer.auto_nesting import generate_automatic_nesting, NestingOptimizer
+# ✅ NUOVO: Import dell'algoritmo migliorato
+from nesting_optimizer.enhanced_nesting import compute_enhanced_nesting, NestingConstraints
 from sqlalchemy.orm import joinedload
 from services.nesting_layout_service import NestingLayoutService
 from fastapi.responses import FileResponse
@@ -2203,3 +2207,310 @@ async def reset_tool_positions(
         logger.error(f"❌ Errore nel reset posizioni per nesting {nesting_id}: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Errore interno: {str(e)}")
+
+
+# ✅ NUOVO: Endpoint per nesting migliorato con vincoli completi
+@router.post("/enhanced-preview")
+async def get_enhanced_nesting_preview(
+    request: EnhancedNestingRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint per generare una preview del nesting utilizzando l'algoritmo migliorato.
+    
+    Considera tutti i vincoli:
+    - Compatibilità cicli di cura
+    - Dimensioni reali dei tool con rotazioni
+    - Valvole richieste vs disponibili
+    - Numero di linee del vuoto
+    - Posizionamento geometrico preciso
+    - Gestione completa degli ODL esclusi con motivi dettagliati
+    
+    Args:
+        request: Richiesta con ODL IDs, autoclave ID e vincoli opzionali
+        
+    Returns:
+        EnhancedNestingPreviewResponse: Preview dettagliata del nesting con posizioni precise
+    """
+    try:
+        logger.info(f"🔧 Generazione preview nesting migliorato per {len(request.odl_ids)} ODL in autoclave {request.autoclave_id}")
+        
+        # Valida input
+        if not request.odl_ids:
+            raise HTTPException(status_code=400, detail="Lista ODL vuota")
+        
+        # Verifica che l'autoclave esista
+        autoclave = db.query(Autoclave).filter(Autoclave.id == request.autoclave_id).first()
+        if not autoclave:
+            raise HTTPException(status_code=404, detail=f"Autoclave con ID {request.autoclave_id} non trovata")
+        
+        # Verifica che gli ODL esistano
+        odl_list = db.query(ODL).options(
+            joinedload(ODL.parte).joinedload(Parte.ciclo_cura),
+            joinedload(ODL.tool)
+        ).filter(ODL.id.in_(request.odl_ids)).all()
+        
+        if len(odl_list) != len(request.odl_ids):
+            found_ids = [odl.id for odl in odl_list]
+            missing_ids = [odl_id for odl_id in request.odl_ids if odl_id not in found_ids]
+            raise HTTPException(status_code=404, detail=f"ODL non trovati: {missing_ids}")
+        
+        # Esegui il nesting migliorato
+        result = compute_enhanced_nesting(
+            db=db,
+            odl_ids=request.odl_ids,
+            autoclave_id=request.autoclave_id,
+            constraints=request.constraints
+        )
+        
+        if not result['success']:
+            # Se il nesting fallisce, restituisci comunque una preview con tutti gli ODL esclusi
+            logger.warning(f"⚠️ Nesting migliorato fallito: {result.get('error', 'Errore sconosciuto')}")
+            
+            # Prepara dati per ODL esclusi
+            excluded_odl_info = []
+            for i, odl in enumerate(odl_list):
+                exclusion_reason = result.get('exclusion_reasons', [])[i] if i < len(result.get('exclusion_reasons', [])) else result.get('error', 'Motivo sconosciuto')
+                
+                excluded_odl_info.append(ODLNestingInfoEnhanced(
+                    id=odl.id,
+                    parte_nome=odl.parte.descrizione_breve if odl.parte else "Parte sconosciuta",
+                    tool_nome=odl.tool.part_number_tool if odl.tool else "Tool sconosciuto",
+                    priorita=odl.priorita,
+                    peso_kg=odl.tool.peso if odl.tool else 0.0,
+                    area_cm2=(odl.tool.lunghezza_piano * odl.tool.larghezza_piano / 100) if (odl.tool and odl.tool.lunghezza_piano and odl.tool.larghezza_piano) else 0.0,
+                    valvole_richieste=odl.parte.num_valvole_richieste if odl.parte else 0,
+                    ciclo_cura=odl.parte.ciclo_cura.nome if (odl.parte and odl.parte.ciclo_cura) else "Sconosciuto",
+                    motivo_esclusione=exclusion_reason
+                ))
+            
+            return EnhancedNestingPreviewResponse(
+                success=False,
+                message=f"Nesting non possibile: {result.get('error', 'Errore sconosciuto')}",
+                autoclave=AutoclaveNestingInfoEnhanced(
+                    id=autoclave.id,
+                    nome=autoclave.nome,
+                    area_piano=autoclave.area_piano or 0.0,
+                    capacita_peso=autoclave.max_load_kg or 0.0,
+                    num_linee_vuoto=autoclave.num_linee_vuoto or 0,
+                    stato=autoclave.stato.value if autoclave.stato else "Sconosciuto"
+                ),
+                odl_inclusi=[],
+                odl_esclusi=excluded_odl_info,
+                statistiche={
+                    "odl_totali": len(odl_list),
+                    "odl_inclusi": 0,
+                    "odl_esclusi": len(odl_list),
+                    "efficienza_percent": 0.0,
+                    "peso_totale_kg": 0.0,
+                    "peso_massimo_kg": autoclave.max_load_kg or 0.0,
+                    "valvole_utilizzate": 0,
+                    "valvole_totali": autoclave.num_linee_vuoto or 0,
+                    "area_utilizzata_cm2": 0.0,
+                    "area_totale_cm2": autoclave.area_piano or 0.0
+                },
+                tool_positions=[],
+                effective_dimensions=result.get('effective_dimensions', {}),
+                constraints_used=request.constraints or {}
+            )
+        
+        # Nesting riuscito - prepara la risposta
+        selected_odl = result['selected_odl']
+        excluded_odl = result['excluded_odl']
+        exclusion_reasons = result['exclusion_reasons']
+        
+        # Prepara informazioni ODL inclusi
+        included_odl_info = []
+        for odl in selected_odl:
+            included_odl_info.append(ODLNestingInfoEnhanced(
+                id=odl.id,
+                parte_nome=odl.parte.descrizione_breve if odl.parte else "Parte sconosciuta",
+                tool_nome=odl.tool.part_number_tool if odl.tool else "Tool sconosciuto",
+                priorita=odl.priorita,
+                peso_kg=odl.tool.peso if odl.tool else 0.0,
+                area_cm2=(odl.tool.lunghezza_piano * odl.tool.larghezza_piano / 100) if (odl.tool and odl.tool.lunghezza_piano and odl.tool.larghezza_piano) else 0.0,
+                valvole_richieste=odl.parte.num_valvole_richieste if odl.parte else 0,
+                ciclo_cura=odl.parte.ciclo_cura.nome if (odl.parte and odl.parte.ciclo_cura) else "Sconosciuto",
+                motivo_esclusione=None
+            ))
+        
+        # Prepara informazioni ODL esclusi
+        excluded_odl_info = []
+        for i, odl in enumerate(excluded_odl):
+            exclusion_reason = exclusion_reasons[i] if i < len(exclusion_reasons) else "Motivo sconosciuto"
+            
+            excluded_odl_info.append(ODLNestingInfoEnhanced(
+                id=odl.id,
+                parte_nome=odl.parte.descrizione_breve if odl.parte else "Parte sconosciuta",
+                tool_nome=odl.tool.part_number_tool if odl.tool else "Tool sconosciuto",
+                priorita=odl.priorita,
+                peso_kg=odl.tool.peso if odl.tool else 0.0,
+                area_cm2=(odl.tool.lunghezza_piano * odl.tool.larghezza_piano / 100) if (odl.tool and odl.tool.lunghezza_piano and odl.tool.larghezza_piano) else 0.0,
+                valvole_richieste=odl.parte.num_valvole_richieste if odl.parte else 0,
+                ciclo_cura=odl.parte.ciclo_cura.nome if (odl.parte and odl.parte.ciclo_cura) else "Sconosciuto",
+                motivo_esclusione=exclusion_reason
+            ))
+        
+        # Converti posizioni tool
+        tool_positions = []
+        for pos_dict in result['tool_positions']:
+            tool_positions.append(ToolPosition(
+                odl_id=pos_dict['odl_id'],
+                x=pos_dict['x'],
+                y=pos_dict['y'],
+                width=pos_dict['width'],
+                height=pos_dict['height'],
+                rotated=pos_dict.get('rotated', False),
+                piano=pos_dict.get('piano', 1)
+            ))
+        
+        # Calcola statistiche
+        statistiche = {
+            "odl_totali": len(odl_list),
+            "odl_inclusi": len(selected_odl),
+            "odl_esclusi": len(excluded_odl),
+            "efficienza_percent": result.get('overall_efficiency', 0.0),
+            "efficienza_geometrica_percent": result.get('geometric_efficiency', 0.0),
+            "peso_totale_kg": result.get('total_weight', 0.0),
+            "peso_massimo_kg": result.get('max_weight_with_margin', 0.0),
+            "valvole_utilizzate": result.get('total_valvole', 0),
+            "valvole_totali": result.get('max_valvole', 0),
+            "area_utilizzata_cm2": sum(pos.width * pos.height for pos in tool_positions) / 100,  # Converti mm² in cm²
+            "area_totale_cm2": autoclave.area_piano or 0.0,
+            "cycles_found": result.get('cycles_found', [])
+        }
+        
+        response = EnhancedNestingPreviewResponse(
+            success=True,
+            message=f"Preview nesting migliorato generata con successo: {len(selected_odl)} ODL inclusi, {len(excluded_odl)} esclusi",
+            autoclave=AutoclaveNestingInfoEnhanced(
+                id=autoclave.id,
+                nome=autoclave.nome,
+                area_piano=autoclave.area_piano or 0.0,
+                capacita_peso=autoclave.max_load_kg or 0.0,
+                num_linee_vuoto=autoclave.num_linee_vuoto or 0,
+                stato=autoclave.stato.value if autoclave.stato else "Sconosciuto"
+            ),
+            odl_inclusi=included_odl_info,
+            odl_esclusi=excluded_odl_info,
+            statistiche=statistiche,
+            tool_positions=tool_positions,
+            effective_dimensions=result.get('effective_dimensions', {}),
+            constraints_used=result.get('nesting_constraints').__dict__ if result.get('nesting_constraints') else {}
+        )
+        
+        logger.info(f"✅ Preview nesting migliorato generata: {len(selected_odl)} inclusi, {len(excluded_odl)} esclusi, efficienza {result.get('overall_efficiency', 0):.1f}%")
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Errore nella generazione preview nesting migliorato: {e}")
+        raise HTTPException(status_code=500, detail=f"Errore nella generazione preview migliorato: {str(e)}")
+
+
+@router.get("/active", response_model=List[NestingDetailResponse])
+async def get_active_nesting(db: Session = Depends(get_db)):
+    """
+    Ottiene tutti i nesting attualmente attivi (caricati) nelle autoclavi.
+    
+    Un nesting è considerato attivo se:
+    - Ha stato "Caricato"
+    - L'autoclave associata è in stato "IN_USO"
+    - Contiene ODL in stato "Cura"
+    
+    Returns:
+        List[NestingDetailResponse]: Lista dei nesting attivi
+    """
+    try:
+        # Recupera tutti i nesting in stato "Caricato"
+        active_nesting = db.query(NestingResult).filter(
+            NestingResult.stato == "Caricato"
+        ).order_by(NestingResult.created_at.desc()).all()
+        
+        response_list = []
+        
+        for nesting in active_nesting:
+            # Recupera l'autoclave associata
+            autoclave = db.query(Autoclave).filter(Autoclave.id == nesting.autoclave_id).first()
+            if not autoclave:
+                continue
+            
+            # Recupera gli ODL inclusi
+            odl_inclusi = []
+            if nesting.odl_ids:
+                odl_query = db.query(ODL).options(
+                    joinedload(ODL.parte),
+                    joinedload(ODL.tool)
+                ).filter(ODL.id.in_(nesting.odl_ids))
+                odl_inclusi = odl_query.all()
+            
+            # Recupera gli ODL esclusi
+            odl_esclusi = []
+            if nesting.odl_esclusi_ids:
+                odl_esclusi_query = db.query(ODL).options(
+                    joinedload(ODL.parte),
+                    joinedload(ODL.tool)
+                ).filter(ODL.id.in_(nesting.odl_esclusi_ids))
+                odl_esclusi = odl_esclusi_query.all()
+            
+            # Costruisci la risposta per questo nesting
+            nesting_response = NestingDetailResponse(
+                id=nesting.id,
+                autoclave=AutoclaveNestingInfo(
+                    id=autoclave.id,
+                    nome=autoclave.nome,
+                    area_piano=autoclave.lunghezza * autoclave.larghezza_piano / 100,
+                    max_load_kg=autoclave.max_load_kg,
+                    stato=autoclave.stato.value
+                ),
+                odl_inclusi=[
+                    ODLNestingInfo(
+                        id=odl.id,
+                        parte_codice=odl.parte.part_number if odl.parte else None,
+                        tool_nome=odl.tool.part_number_tool if odl.tool else None,
+                        priorita=odl.priorita,
+                        dimensioni={
+                            "larghezza": odl.tool.larghezza_piano if odl.tool else 0,
+                            "lunghezza": odl.tool.lunghezza_piano if odl.tool else 0,
+                            "peso": odl.tool.peso if odl.tool and odl.tool.peso else 0
+                        },
+                        ciclo_cura=odl.parte.ciclo_cura.nome if odl.parte and odl.parte.ciclo_cura else None,
+                        status=odl.status
+                    ) for odl in odl_inclusi
+                ],
+                odl_esclusi=[
+                    ODLNestingInfo(
+                        id=odl.id,
+                        parte_codice=odl.parte.part_number if odl.parte else None,
+                        tool_nome=odl.tool.part_number_tool if odl.tool else None,
+                        priorita=odl.priorita,
+                        dimensioni={
+                            "larghezza": odl.tool.larghezza_piano if odl.tool else 0,
+                            "lunghezza": odl.tool.lunghezza_piano if odl.tool else 0,
+                            "peso": odl.tool.peso if odl.tool and odl.tool.peso else 0
+                        },
+                        ciclo_cura=odl.parte.ciclo_cura.nome if odl.parte and odl.parte.ciclo_cura else None,
+                        status=odl.status
+                    ) for odl in odl_esclusi
+                ],
+                motivi_esclusione=nesting.motivi_esclusione or [],
+                statistiche={
+                    "area_utilizzata": nesting.area_utilizzata,
+                    "area_totale": nesting.area_totale,
+                    "efficienza": (nesting.area_utilizzata / nesting.area_totale * 100) if nesting.area_totale > 0 else 0,
+                    "peso_totale": nesting.peso_totale_kg,
+                    "valvole_utilizzate": nesting.valvole_utilizzate,
+                    "valvole_totali": nesting.valvole_totali
+                },
+                stato=nesting.stato,
+                note=nesting.note,
+                created_at=nesting.created_at
+            )
+            
+            response_list.append(nesting_response)
+        
+        return response_list
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore durante il recupero dei nesting attivi: {str(e)}")

@@ -42,6 +42,7 @@ import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { ExtractedNestingData } from '../manual/NestingStep1ODLSelection'
 import { AutoclaveSelectionData } from '../manual/NestingStep2AutoclaveSelection'
+import { odlApi } from '@/lib/api'
 
 // Tipi per drag and drop
 interface DragItem {
@@ -125,6 +126,9 @@ function DraggableToolItem({
       title={`ODL #${position.odl_id} - ${tool_info?.part_number_tool || 'N/A'} 
 ${position.rotated ? '🔄 Ruotato' : ''} 
 Piano ${position.piano}
+Dimensioni: ${position.width}x${position.height}mm
+${tool_info?.peso ? `Peso: ${tool_info.peso}kg` : ''}
+${tool_info?.materiale ? `Materiale: ${tool_info.materiale}` : ''}
 Doppio click: ruota
 Click destro: cambia piano`}
     >
@@ -392,6 +396,36 @@ export function NestingDragDropCanvas({
     }
   }
 
+  // ✅ NUOVO: Calcola scala ottimale per la visualizzazione
+  const calculateOptimalScale = useCallback(() => {
+    if (!layoutData?.autoclave || positions.length === 0) {
+      return 0.5 // Scala di default
+    }
+    
+    // Dimensioni dell'autoclave in mm
+    const autoclaveWidth = layoutData.autoclave.lunghezza
+    const autoclaveHeight = layoutData.autoclave.larghezza_piano
+    
+    // Dimensioni disponibili per il canvas (in pixel)
+    const maxCanvasWidth = 1200 // Larghezza massima del canvas
+    const maxCanvasHeight = 800 // Altezza massima del canvas
+    
+    // Calcola scala per adattare l'autoclave al canvas
+    const scaleX = maxCanvasWidth / autoclaveWidth
+    const scaleY = maxCanvasHeight / autoclaveHeight
+    
+    // Usa la scala più piccola per mantenere le proporzioni
+    const optimalScale = Math.min(scaleX, scaleY, 1.0) // Max 1:1
+    
+    return Math.max(0.1, optimalScale) // Minimo 0.1
+  }, [layoutData, positions])
+
+  // Aggiorna la scala quando cambiano i dati
+  useEffect(() => {
+    const newScale = calculateOptimalScale()
+    setScale(newScale)
+  }, [calculateOptimalScale])
+
   if (isLoading) {
     return (
       <Card>
@@ -629,14 +663,19 @@ export interface ODLLayoutGroup {
     tool_nome: string
     priorita: number
     dimensioni: {
-      larghezza: number
-      lunghezza: number
-      peso?: number
+      larghezza: number // mm
+      lunghezza: number // mm
+      peso: number // kg
     }
+    // ✅ NUOVI CAMPI: Dati aggiuntivi estratti
+    tool_materiale?: string
+    parte_valvole?: number
+    odl_status?: string
+    area_cm2?: number
     position?: ToolPosition
   }>
-  total_area: number
-  total_weight: number
+  total_area: number // cm²
+  total_weight: number // kg
 }
 
 interface NestingStep3LayoutCanvasProps {
@@ -734,7 +773,12 @@ function DraggableToolItemStep3({
       {...attributes}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleRightClick}
-      title={`ODL ${odl.id} - ${odl.parte_nome} | Tool: ${odl.tool_nome}${position.rotated ? ' (Ruotato)' : ''}${position.piano === 2 ? ' (Piano 2)' : ''}`}
+      title={`ODL ${odl.id} - ${odl.parte_nome} | Tool: ${odl.tool_nome}
+Dimensioni: ${position.width}x${position.height}mm
+${odl.dimensioni?.peso ? `Peso: ${odl.dimensioni.peso}kg` : ''}
+${odl.tool_materiale ? `Materiale: ${odl.tool_materiale}` : ''}
+${odl.parte_valvole ? `Valvole: ${odl.parte_valvole}` : ''}
+${position.rotated ? ' (Ruotato)' : ''}${position.piano === 2 ? ' (Piano 2)' : ''}`}
     >
       <div className="p-1 text-xs font-medium truncate">
         #{odl.id}
@@ -836,38 +880,100 @@ export function NestingStep3LayoutCanvas({
     }
   }
 
-  // ✅ CHIAVE: Raggruppa ODL per ciclo di cura
+  // ✅ CHIAVE: Raggruppa ODL per ciclo di cura CON DATI REALI
   const groupODLByCycle = async (): Promise<ODLLayoutGroup[]> => {
-    const groups: { [cycle: string]: any[] } = {}
-    
-    // Simula caricamento dettagli ODL (in realtà dovremmo chiamare API)
-    odlData.selected_odl_ids.forEach((odlId, index) => {
-      const cycle = odlData.cicli_cura_coinvolti[index % odlData.cicli_cura_coinvolti.length] || 'Sconosciuto'
-      
-      if (!groups[cycle]) {
-        groups[cycle] = []
-      }
-      
-      groups[cycle].push({
-        id: odlId,
-        parte_nome: `Parte-${odlId}`,
-        tool_nome: `Tool-${odlId}`,
-        priorita: Math.floor(Math.random() * 10) + 1,
-        dimensioni: {
-          larghezza: 50 + Math.random() * 100,
-          lunghezza: 50 + Math.random() * 100,
-          peso: 1 + Math.random() * 5
+    try {
+      // Carica i dati completi degli ODL selezionati
+      const odlDetailsPromises = odlData.selected_odl_ids.map(async (odlId) => {
+        try {
+          const odlDetail = await odlApi.getOne(odlId)
+          return odlDetail
+        } catch (error) {
+          console.error(`❌ Errore caricamento ODL ${odlId}:`, error)
+          return null
         }
       })
-    })
 
-    return Object.entries(groups).map(([cycle, odlList], index) => ({
-      ciclo_cura: cycle,
-      color: CYCLE_COLORS[index % CYCLE_COLORS.length],
-      odl_list: odlList,
-      total_area: odlList.reduce((sum, odl) => sum + (odl.dimensioni.larghezza * odl.dimensioni.lunghezza / 100), 0),
-      total_weight: odlList.reduce((sum, odl) => sum + (odl.dimensioni.peso || 0), 0)
-    }))
+      const odlDetails = (await Promise.all(odlDetailsPromises)).filter(Boolean)
+      
+      if (odlDetails.length === 0) {
+        throw new Error("Nessun ODL valido trovato")
+      }
+
+      // Raggruppa per ciclo di cura
+      const groups: { [cycle: string]: any[] } = {}
+      
+      odlDetails.forEach(odl => {
+        if (!odl) return
+        
+        // Estrai ciclo di cura dalla parte
+        const cicloCura = odl.parte?.ciclo_cura?.nome || 'Ciclo Sconosciuto'
+        
+        if (!groups[cicloCura]) {
+          groups[cicloCura] = []
+        }
+        
+        // Calcola dimensioni reali dal tool (in mm)
+        const toolLarghezza = odl.tool?.larghezza_piano || 100 // Default se mancante
+        const toolLunghezza = odl.tool?.lunghezza_piano || 100 // Default se mancante
+        const toolPeso = odl.tool?.peso || 0 // Default se mancante
+        
+        groups[cicloCura].push({
+          id: odl.id,
+          parte_nome: odl.parte?.part_number || `Parte-${odl.id}`,
+          tool_nome: odl.tool?.part_number_tool || `Tool-${odl.id}`,
+          priorita: odl.priorita,
+          dimensioni: {
+            larghezza: toolLarghezza, // mm
+            lunghezza: toolLunghezza, // mm
+            peso: toolPeso // kg
+          },
+          // Dati aggiuntivi per il nesting
+          tool_materiale: odl.tool?.materiale || 'N/A',
+          parte_valvole: odl.parte?.num_valvole_richieste || 0,
+          odl_status: odl.status,
+          // Calcola area in cm²
+          area_cm2: (toolLarghezza * toolLunghezza) / 100
+        })
+      })
+
+      // Converti in formato ODLLayoutGroup con statistiche reali
+      return Object.entries(groups).map(([cycle, odlList], index) => {
+        const totalArea = odlList.reduce((sum, odl) => sum + odl.area_cm2, 0)
+        const totalWeight = odlList.reduce((sum, odl) => sum + odl.dimensioni.peso, 0)
+        
+        return {
+          ciclo_cura: cycle,
+          color: CYCLE_COLORS[index % CYCLE_COLORS.length],
+          odl_list: odlList,
+          total_area: totalArea,
+          total_weight: totalWeight
+        }
+      })
+      
+    } catch (error) {
+      console.error('❌ Errore nel raggruppamento ODL:', error)
+      toast({
+        variant: "destructive",
+        title: "Errore caricamento dati",
+        description: "Non è stato possibile caricare i dettagli degli ODL selezionati"
+      })
+      
+      // Fallback con dati minimi
+      return [{
+        ciclo_cura: 'Errore Caricamento',
+        color: CYCLE_COLORS[0],
+        odl_list: odlData.selected_odl_ids.map(id => ({
+          id,
+          parte_nome: `Parte-${id}`,
+          tool_nome: `Tool-${id}`,
+          priorita: 5,
+          dimensioni: { larghezza: 100, lunghezza: 100, peso: 1 }
+        })),
+        total_area: 0,
+        total_weight: 0
+      }]
+    }
   }
 
   const generateInitialLayout = async (nestingId: number) => {
@@ -893,26 +999,38 @@ export function NestingStep3LayoutCanvas({
     const positions: ToolPosition[] = []
     let x = 20
     let y = 20
-    const rowHeight = 80
-    const colWidth = 80
+    const padding = 10 // Spazio tra i tool
+    let maxRowHeight = 0
     
-    odlData.selected_odl_ids.forEach((odlId, index) => {
-      if (x + colWidth > autoclaveData.autoclave_data.lunghezza - 20) {
+    // Usa le dimensioni reali dai gruppi caricati
+    const allODL = layoutGroups.flatMap(group => group.odl_list)
+    
+    allODL.forEach((odl, index) => {
+      // Dimensioni reali del tool in mm, convertite per la visualizzazione
+      const toolWidth = odl.dimensioni.larghezza || 100
+      const toolHeight = odl.dimensioni.lunghezza || 100
+      
+      // Controlla se il tool entra nella riga corrente
+      if (x + toolWidth > autoclaveData.autoclave_data.lunghezza - 20) {
+        // Vai alla riga successiva
         x = 20
-        y += rowHeight
+        y += maxRowHeight + padding
+        maxRowHeight = 0
       }
       
       positions.push({
-        odl_id: odlId,
+        odl_id: odl.id,
         x,
         y,
-        width: 60,
-        height: 40,
+        width: toolWidth,
+        height: toolHeight,
         rotated: false,
         piano: 1
       })
       
-      x += colWidth
+      // Aggiorna posizione per il prossimo tool
+      x += toolWidth + padding
+      maxRowHeight = Math.max(maxRowHeight, toolHeight)
     })
     
     return positions
@@ -1110,6 +1228,36 @@ export function NestingStep3LayoutCanvas({
     onNext(layoutData)
   }
 
+  // ✅ NUOVO: Calcola scala ottimale per Step3
+  const calculateOptimalScaleStep3 = useCallback(() => {
+    if (!autoclaveData?.autoclave_data || layoutGroups.length === 0) {
+      return 0.5 // Scala di default
+    }
+    
+    // Dimensioni dell'autoclave in mm
+    const autoclaveWidth = autoclaveData.autoclave_data.lunghezza
+    const autoclaveHeight = autoclaveData.autoclave_data.larghezza_piano
+    
+    // Dimensioni disponibili per il canvas (in pixel)
+    const maxCanvasWidth = 1200 // Larghezza massima del canvas
+    const maxCanvasHeight = 800 // Altezza massima del canvas
+    
+    // Calcola scala per adattare l'autoclave al canvas
+    const scaleX = maxCanvasWidth / autoclaveWidth
+    const scaleY = maxCanvasHeight / autoclaveHeight
+    
+    // Usa la scala più piccola per mantenere le proporzioni
+    const optimalScale = Math.min(scaleX, scaleY, 1.0) // Max 1:1
+    
+    return Math.max(0.1, optimalScale) // Minimo 0.1
+  }, [autoclaveData, layoutGroups])
+
+  // Aggiorna la scala quando cambiano i dati
+  useEffect(() => {
+    const newScale = calculateOptimalScaleStep3()
+    setScale(newScale)
+  }, [calculateOptimalScaleStep3])
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-96">
@@ -1211,6 +1359,16 @@ export function NestingStep3LayoutCanvas({
                   <div>ODL: {group.odl_list.length}</div>
                   <div>Area: {group.total_area.toFixed(0)} cm²</div>
                   <div>Peso: {group.total_weight.toFixed(1)} kg</div>
+                  <div className="text-xs text-gray-600 mt-2">
+                    <div>Valvole totali: {group.odl_list.reduce((sum, odl) => sum + (odl.parte_valvole || 0), 0)}</div>
+                    <div>Materiali: {
+                      group.odl_list
+                        .map(odl => odl.tool_materiale)
+                        .filter(Boolean)
+                        .filter((materiale, index, array) => array.indexOf(materiale) === index)
+                        .join(', ') || 'N/A'
+                    }</div>
+                  </div>
                 </div>
               </div>
             ))}

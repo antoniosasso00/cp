@@ -39,6 +39,10 @@ class Autoclave(Base, TimestampMixin):
     use_secondary_plane = Column(Boolean, nullable=False, default=False,
                                doc="Indica se l'autoclave può utilizzare un piano secondario per aumentare la capacità")
     
+    # ✅ NUOVO: Superficie massima del piano secondario
+    superficie_piano_2_max = Column(Float, nullable=True, 
+                                   doc="Superficie massima configurabile del piano 2 in cm²")
+    
     # Stato operativo
     stato = Column(
         PgEnum(StatoAutoclaveEnum, name="statoautoclave", create_type=True, validate_strings=True),

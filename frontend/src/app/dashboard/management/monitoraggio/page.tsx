@@ -89,8 +89,8 @@ export default function MonitoraggioPage() {
   
   // Stati per i filtri
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedPartNumber, setSelectedPartNumber] = useState<string>('')
-  const [selectedStatus, setSelectedStatus] = useState<string>('')
+  const [selectedPartNumber, setSelectedPartNumber] = useState<string>('all')
+  const [selectedStatus, setSelectedStatus] = useState<string>('all')
   const [selectedPeriod, setSelectedPeriod] = useState<string>('30') // giorni
   
   // Stati per i modali
@@ -131,7 +131,7 @@ export default function MonitoraggioPage() {
 
   const loadStatistiche = async () => {
     try {
-      if (!selectedPartNumber) {
+      if (selectedPartNumber === "all" || !selectedPartNumber) {
         // Se non c'è un part number selezionato, calcola statistiche generali
         const stats = calcolaStatisticheGenerali()
         setStatistiche(stats)
@@ -144,7 +144,7 @@ export default function MonitoraggioPage() {
       
       for (const fase of fasi) {
         try {
-          const previsione = await tempoFasiApi.getPrevisione(fase, selectedPartNumber)
+          const previsione = await tempoFasiApi.getPrevisione(fase, selectedPartNumber === "all" ? "" : selectedPartNumber)
           previsioni[fase] = previsione
         } catch (error) {
           console.warn(`Errore nel caricamento previsione per fase ${fase}:`, error)
@@ -157,7 +157,7 @@ export default function MonitoraggioPage() {
       }
       
       const totaleODL = odlList.filter(odl => 
-        !selectedPartNumber || odl.parte?.part_number === selectedPartNumber
+        selectedPartNumber === "all" || !selectedPartNumber || odl.parte?.part_number === selectedPartNumber
       ).length
       
       setStatistiche({
@@ -178,7 +178,7 @@ export default function MonitoraggioPage() {
       const tempiPerFase = tempiFasi.filter(t => 
         t.fase === fase && 
         t.durata_minuti !== null &&
-        (!selectedPartNumber || getOdlInfo(t.odl_id)?.parte?.part_number === selectedPartNumber)
+        (selectedPartNumber === "all" || !selectedPartNumber || getOdlInfo(t.odl_id)?.parte?.part_number === selectedPartNumber)
       )
       
       if (tempiPerFase.length > 0) {
@@ -198,7 +198,7 @@ export default function MonitoraggioPage() {
     })
     
     const totaleODL = odlList.filter(odl => 
-      !selectedPartNumber || odl.parte?.part_number === selectedPartNumber
+      selectedPartNumber === "all" || !selectedPartNumber || odl.parte?.part_number === selectedPartNumber
     ).length
     
     return {
@@ -375,11 +375,11 @@ export default function MonitoraggioPage() {
     )
     
     // Filtro per part number
-    const matchesPartNumber = !selectedPartNumber || 
+    const matchesPartNumber = selectedPartNumber === "all" || !selectedPartNumber ||
       odlInfo?.parte?.part_number === selectedPartNumber
     
     // Filtro per stato ODL
-    const matchesStatus = !selectedStatus || 
+    const matchesStatus = selectedStatus === "all" || !selectedStatus ||
       odlInfo?.status === selectedStatus
     
     return matchesSearch && matchesPartNumber && matchesStatus
@@ -472,7 +472,7 @@ export default function MonitoraggioPage() {
                   <SelectValue placeholder="Tutti i part number" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Tutti i part number</SelectItem>
+                  <SelectItem value="all">Tutti i part number</SelectItem>
                   {getUniquePartNumbers().map(pn => (
                     <SelectItem key={pn} value={pn}>{pn}</SelectItem>
                   ))}
@@ -487,7 +487,7 @@ export default function MonitoraggioPage() {
                   <SelectValue placeholder="Tutti gli stati" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Tutti gli stati</SelectItem>
+                  <SelectItem value="all">Tutti gli stati</SelectItem>
                   {getUniqueStatuses().map(status => (
                     <SelectItem key={status} value={status}>{status}</SelectItem>
                   ))}

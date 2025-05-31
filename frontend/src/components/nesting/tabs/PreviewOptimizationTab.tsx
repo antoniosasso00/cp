@@ -19,9 +19,9 @@ import {
   Gauge
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
-import { NestingParameters } from '@/components/nesting/NestingParametersPanel'
+import { NestingParameters } from '@/components/Nesting/NestingParametersPanel'
 import { nestingApi, odlApi, autoclaveApi, NestingResponse } from '@/lib/api'
-import { NestingCanvas } from '@/components/nesting/NestingCanvas'
+import { SimpleNestingCanvas } from '@/components/Nesting/SimpleNestingCanvas'
 
 interface PreviewOptimizationTabProps {
   onRefresh: () => Promise<void>
@@ -555,11 +555,44 @@ export function PreviewOptimizationTab({
             {/* Canvas di preview */}
             <div className="border rounded-lg p-4">
               <h4 className="font-medium mb-3">Layout Generato</h4>
-              <div className="bg-gray-50 rounded p-8 text-center">
-                <NestingCanvas 
-                  nestingId={generatedNesting.nesting_id}
-                  className="max-w-full"
-                />
+              <div className="bg-gray-50 rounded p-8">
+                {generatedNesting.layout_data && (
+                  <SimpleNestingCanvas 
+                    data={{
+                      autoclave: {
+                        id: generatedNesting.layout_data.autoclave?.id || 0,
+                        nome: generatedNesting.layout_data.autoclave?.nome || 'Autoclave',
+                        lunghezza: generatedNesting.layout_data.autoclave?.lunghezza || 2000,
+                        larghezza_piano: generatedNesting.layout_data.autoclave?.larghezza_piano || 1200,
+                        max_load_kg: generatedNesting.layout_data.autoclave?.max_load_kg || 1000
+                      },
+                      odl_list: (generatedNesting.layout_data.odl_list || []).map((odl: any) => ({
+                        id: odl.id,
+                        numero_odl: odl.numero_odl || `ODL-${odl.id}`,
+                        parte_nome: odl.parte?.part_number || 'N/A',
+                        tool_nome: odl.tool?.part_number_tool || 'N/A',
+                        peso_kg: odl.peso_kg || 0,
+                        valvole_richieste: odl.parte?.num_valvole_richieste || 1
+                      })),
+                      posizioni_tool: generatedNesting.layout_data.posizioni_tool || [],
+                      statistiche: {
+                        efficienza_piano_1: (generatedNesting.statistics.efficiency * 100) || 0,
+                        efficienza_piano_2: 0,
+                        peso_totale_kg: generatedNesting.statistics.weight_total,
+                        area_utilizzata_cm2: generatedNesting.statistics.area_used,
+                        area_totale_cm2: generatedNesting.statistics.area_total || generatedNesting.statistics.area_used
+                      }
+                    }}
+                    height={650}
+                    showControls={true}
+                  />
+                )}
+                {!generatedNesting.layout_data && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Package className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p>Caricamento layout in corso...</p>
+                  </div>
+                )}
               </div>
             </div>
 

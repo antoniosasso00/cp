@@ -3,13 +3,13 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { RefreshCw, ArrowLeft, AlertCircle, CheckCircle, Loader2 } from 'lucide-react'
+import { RefreshCw, ArrowLeft, AlertCircle, CheckCircle, Loader2, Zap, Play } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useRouter } from 'next/navigation'
 
 // Import dei componenti per il nesting
-import { NestingModeSelector } from '@/components/nesting/NestingModeSelector'
-import { NestingStepIndicator } from '@/components/nesting/NestingStepIndicator'
+import { NestingModeSelector } from '@/components/Nesting/NestingModeSelector'
+import { NestingStepIndicator } from '@/components/Nesting/NestingStepIndicator'
 import { useNestingWorkflow, NestingWorkflowMode } from '@/hooks/useNestingWorkflow'
 
 // Import dei componenti per le diverse modalità
@@ -19,23 +19,46 @@ import {
   ReportsTab,
   PreviewOptimizationTab,
   MultiAutoclaveTab
-} from '@/components/nesting/tabs'
+} from '@/components/Nesting/tabs'
 
 // Import delle API
 import { nestingApi, NestingResponse } from '@/lib/api'
-import { NestingParameters } from '@/components/nesting/NestingParametersPanel'
-import { ManualNestingOrchestrator } from '@/components/nesting/manual/ManualNestingOrchestrator'
-import { AutomaticNestingOrchestrator } from '@/components/nesting/automatic/AutomaticNestingOrchestrator'
-import { MultiAutoclaveNestingOrchestrator } from '@/components/nesting/multi-autoclave/MultiAutoclaveNestingOrchestrator'
+import { NestingParameters } from '@/components/Nesting/NestingParametersPanel'
+import { ManualNestingOrchestrator } from '@/components/Nesting/manual/ManualNestingOrchestrator'
+import { AutomaticNestingOrchestrator } from '@/components/Nesting/automatic/AutomaticNestingOrchestrator'
+import { MultiAutoclaveNestingOrchestrator } from '@/components/Nesting/multi-autoclave/MultiAutoclaveNestingOrchestrator'
 
 // Tab aggiuntivi per funzionalità complete
-import { ActiveNestingTable } from '@/components/nesting/ActiveNestingTable'
-import { NestingVisualizationPage } from '@/components/nesting/NestingVisualizationPage'
+import { ActiveNestingTable } from '@/components/Nesting/ActiveNestingTable'
+import { NestingVisualizationPage } from '@/components/Nesting/NestingVisualizationPage'
+
+// Nuovo componente per i batch automatici
+import { AutoMultiBatchTable } from '@/components/Nesting/auto-multi/AutoMultiBatchTable'
+
+// Interfacce per i batch automatici
+interface BatchAutomatico {
+  id: number;
+  nome: string;
+  stato: string;
+  numero_autoclavi: number;
+  numero_odl_totali: number;
+  peso_totale_kg: number;
+  efficienza_media: number;
+  data_inizio_pianificata: string | null;
+  autoclavi: Array<{
+    id: number;
+    nome: string;
+    efficienza: number;
+    stato_nesting: string;
+  }>;
+  created_at: string;
+}
 
 export default function NestingPage() {
   const [nestingList, setNestingList] = useState<NestingResponse[]>([])
+  const [batchAutomatici, setBatchAutomatici] = useState<BatchAutomatico[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'workflow' | 'confirmed' | 'active' | 'reports'>('workflow')
+  const [activeTab, setActiveTab] = useState<'workflow' | 'confirmed' | 'active' | 'auto-multi' | 'reports'>('workflow')
   
   // Parametri per il nesting
   const [nestingParameters, setNestingParameters] = useState<NestingParameters>({
@@ -70,9 +93,31 @@ export default function NestingPage() {
     }
   }
 
+  // Carica i batch automatici
+  const loadBatchAutomatici = async () => {
+    try {
+      const response = await fetch('/api/v1/nesting/auto-multi/batch-attivi')
+      if (!response.ok) throw new Error('Errore nel caricamento dei batch')
+      
+      const data = await response.json()
+      setBatchAutomatici(data.data || [])
+    } catch (error) {
+      setBatchAutomatici([])
+      console.error('Errore nel caricamento batch automatici:', error)
+    }
+  }
+
+  // Carica tutti i dati
+  const loadAllData = async () => {
+    await Promise.all([
+      loadNestingList(),
+      loadBatchAutomatici()
+    ])
+  }
+
   // Carica la lista al primo render
   useEffect(() => {
-    loadNestingList()
+    loadAllData()
   }, [])
 
   // Handler per la selezione della modalità
@@ -173,14 +218,95 @@ export default function NestingPage() {
     }
   }
 
+  // Funzione per terminare un batch automatico
+  const handleTerminateBatch = async (batchId: number) => {
+    try {
+      const response = await fetch(`/api/v1/nesting/auto-multi/termina-ciclo/${batchId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ruolo_utente: "Operatore"
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Errore nella terminazione del batch')
+      }
+
+      const result = await response.json()
+      
+      if (result.success) {
+        await loadBatchAutomatici()
+        toast({
+          title: "Batch terminato",
+          description: result.message,
+        })
+      } else {
+        throw new Error(result.error || 'Errore nella terminazione del batch')
+      }
+    } catch (error) {
+      toast({
+        title: "Errore",
+        description: error instanceof Error ? error.message : "Impossibile terminare il batch.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Funzione per navigare al nesting automatico
+  const handleCreateAutoMulti = () => {
+    router.push('/dashboard/curing/nesting/auto-multi')
+  }
+
   // Render del contenuto del workflow
   const renderWorkflowContent = () => {
     if (!workflow.mode) {
       return (
-        <NestingModeSelector 
-          onModeSelect={handleModeSelect}
-          className="max-w-6xl mx-auto"
-        />
+        <div className="space-y-6">
+          <NestingModeSelector 
+            onModeSelect={handleModeSelect}
+            className="max-w-6xl mx-auto"
+          />
+          
+          {/* Sezione Nesting Automatico Multi-Autoclave */}
+          <Card className="max-w-6xl mx-auto border-2 border-blue-200 bg-blue-50/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-blue-800">
+                <Zap className="h-6 w-6" />
+                Nesting Multi-Autoclave Automatico
+              </CardTitle>
+              <CardDescription className="text-blue-700">
+                Genera automaticamente il nesting ottimale distribuendo gli ODL su più autoclavi disponibili.
+                Ideale per grandi volumi di produzione e massimizzazione dell'efficienza.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-4 text-sm text-blue-700">
+                    <span>✓ Ottimizzazione automatica</span>
+                    <span>✓ Multi-autoclave</span>
+                    <span>✓ Separazione cicli di cura</span>
+                    <span>✓ Preview completo</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Seleziona gli ODL, configura i parametri e lascia che l'algoritmo generi il layout ottimale.
+                  </p>
+                </div>
+                <Button 
+                  onClick={handleCreateAutoMulti}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  <Play className="h-4 w-4 mr-2" />
+                  Avvia Nesting Automatico
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )
     }
 
@@ -213,37 +339,6 @@ export default function NestingPage() {
             onComplete={handleNestingConfirmed}
             onCancel={handleBackToModeSelection}
             className="max-w-7xl mx-auto"
-          />
-        )
-      
-      default:
-        return null
-    }
-  }
-
-  // Render step per nesting automatico
-  const renderAutomaticNestingStep = (stepId: string) => {
-    switch (stepId) {
-      case 'configure-parameters':
-        return (
-          <ParametersTab
-            parameters={nestingParameters}
-            onParametersChange={handleParametersUpdate}
-            isLoading={isLoading}
-            onPreview={() => handleStepComplete({ parameters: nestingParameters })}
-          />
-        )
-      
-      case 'generate-preview':
-      case 'review':
-      case 'confirm':
-        return (
-          <PreviewOptimizationTab
-            onRefresh={loadNestingList}
-            onViewDetails={handleViewDetails}
-            onNestingConfirmed={handleNestingConfirmed}
-            parameters={nestingParameters}
-            currentStep={stepId}
           />
         )
       
@@ -325,6 +420,17 @@ export default function NestingPage() {
       )
     }
 
+    if (activeTab === 'auto-multi') {
+      return (
+        <AutoMultiBatchTable
+          batches={batchAutomatici}
+          onRefresh={loadBatchAutomatici}
+          onTerminateBatch={handleTerminateBatch}
+          onCreateNew={handleCreateAutoMulti}
+        />
+      )
+    }
+
     if (activeTab === 'reports') {
       return (
         <ReportsTab
@@ -349,6 +455,7 @@ export default function NestingPage() {
                            'Multi-Autoclave'}`
               : activeTab === 'confirmed' ? 'Layout Confermati'
               : activeTab === 'active' ? 'Nesting Attivi'
+              : activeTab === 'auto-multi' ? 'Nesting Automatico Multi-Autoclave'
               : activeTab === 'reports' ? 'Report Nesting'
               : 'Seleziona una modalità di nesting'
             }
@@ -370,7 +477,7 @@ export default function NestingPage() {
           
           <Button
             variant="outline"
-            onClick={loadNestingList}
+            onClick={loadAllData}
             disabled={isLoading}
             className="flex items-center gap-2"
           >
@@ -424,6 +531,22 @@ export default function NestingPage() {
             )}
           </button>
           <button
+            onClick={() => setActiveTab('auto-multi')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'auto-multi'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted'
+            }`}
+          >
+            <Zap className="h-4 w-4 mr-1 inline" />
+            Automatico Multi
+            {batchAutomatici.filter(b => b.stato === 'Pronto' || b.stato === 'In Esecuzione').length > 0 && (
+              <span className="ml-2 bg-blue-600 text-white rounded-full px-2 py-0.5 text-xs">
+                {batchAutomatici.filter(b => b.stato === 'Pronto' || b.stato === 'In Esecuzione').length}
+              </span>
+            )}
+          </button>
+          <button
             onClick={() => setActiveTab('reports')}
             className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
               activeTab === 'reports'
@@ -451,12 +574,27 @@ export default function NestingPage() {
           <CardHeader>
             <CardTitle className="text-red-800 flex items-center gap-2">
               <AlertCircle className="h-5 w-5" />
-              Errori nel Workflow
+              Errore nel Workflow
             </CardTitle>
-            <CardDescription className="text-red-700">
-              Si sono verificati errori durante il processo. Verifica e riprova.
-            </CardDescription>
           </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {workflow.steps
+                .filter(step => step.status === 'error')
+                .map(step => (
+                  <p key={step.id} className="text-red-700 text-sm">
+                    <strong>{step.title}:</strong> {workflow.workflowData[`${step.id}_error`] || 'Errore sconosciuto'}
+                  </p>
+                ))}
+            </div>
+            <Button 
+              variant="outline" 
+              onClick={handleBackToModeSelection}
+              className="mt-4"
+            >
+              Ricomincia
+            </Button>
+          </CardContent>
         </Card>
       )}
     </div>

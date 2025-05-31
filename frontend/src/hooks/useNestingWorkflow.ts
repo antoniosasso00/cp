@@ -4,7 +4,7 @@ import {
   manualNestingSteps, 
   automaticNestingSteps, 
   multiAutoclaveSteps 
-} from '@/components/nesting/NestingStepIndicator'
+} from '@/components/Nesting/NestingStepIndicator'
 
 export type NestingWorkflowMode = 'manual' | 'automatic' | 'multi-autoclave'
 

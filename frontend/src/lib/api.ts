@@ -1978,4 +1978,20 @@ export const multiNestingApi = {
       message: string;
     }>(`/multi-nesting/batch/${batchId}`, 'DELETE');
   }
+};
+
+// ✅ NUOVO: Alias per compatibilità con il componente EnhancedNestingVisualization
+export const apiCall = async (endpoint: string, options?: RequestInit): Promise<any> => {
+  const method = options?.method || 'GET';
+  let data = undefined;
+  
+  if (options?.body) {
+    try {
+      data = JSON.parse(options.body as string);
+    } catch (e) {
+      data = options.body;
+    }
+  }
+  
+  return apiRequest(endpoint, method, data);
 }; 
