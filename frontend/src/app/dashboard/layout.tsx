@@ -84,6 +84,12 @@ const sidebarSections: SidebarSection[] = [
     title: "CURING",
     items: [
       {
+        title: "Nesting",
+        href: "/dashboard/curing/nesting",
+        icon: <LayoutGrid className="h-4 w-4" />,
+        roles: ['ADMIN', 'Curing']
+      },
+      {
         title: "Monitoraggio",
         href: "/dashboard/curing/produzione",
         icon: <Activity className="h-4 w-4" />,

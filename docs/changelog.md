@@ -13,6 +13,171 @@ Ogni entry segue il formato:
 
 ---
 
+### [2025-05-31 - Modello BatchNesting con Parametri Salvabili] ✅ COMPLETATO
+
+#### 🎯 Obiettivo
+Implementazione del modello `BatchNesting` per raggruppare i nesting con parametri salvati e configurazioni complete, permettendo di recuperare e analizzare i parametri utilizzati per ogni generazione di nesting.
+
+#### 🏗️ Implementazione Backend
+
+##### ✅ Modello Database
+**File**: `backend/models/batch_nesting.py`
+- **Tabella**: `batch_nesting` con UUID come chiave primaria
+- **Campi Principali**:
+  - `id`: String(36) UUID identificativo univoco
+  - `nome`: String(255) nome opzionale assegnabile dall'operatore
+  - `stato`: String(20) con enum (sospeso, confermato, terminato)
+  - `autoclave_id`: ForeignKey verso tabella autoclavi
+  - `odl_ids`: JSON array con lista ID degli ODL inclusi
+  - `configurazione_json`: JSON con layout nesting completo dal frontend
+  - `parametri`: JSON con parametri di generazione (padding, margini, vincoli)
+
+**Statistiche Aggregate**:
+- `numero_nesting`: Conteggio nesting results nel batch
+- `peso_totale_kg`: Peso aggregato di tutti i nesting
+- `area_totale_utilizzata`: Area totale utilizzata in cm²
+- `valvole_totali_utilizzate`: Numero totale valvole utilizzate
+
+**Tracciabilità Utenti**:
+- `creato_da_utente`, `creato_da_ruolo`: Chi ha creato il batch
+- `confermato_da_utente`, `confermato_da_ruolo`: Chi ha confermato
+- `data_conferma`: Timestamp di conferma
+
+##### ✅ Relazioni Database
+**File**: `backend/models/nesting_result.py`
+- **Nuovo Campo**: `batch_id` String(36) ForeignKey verso batch_nesting
+- **Relazione**: `batch = relationship("BatchNesting", back_populates="nesting_results")`
+
+**File**: `backend/models/autoclave.py`
+- **Nuova Relazione**: `batch_nesting = relationship("BatchNesting", back_populates="autoclave")`
+
+##### ✅ Schemi Pydantic
+**File**: `backend/schemas/batch_nesting.py`
+
+**Schema Parametri**:
+```python
+class ParametriNesting(BaseModel):
+    padding_mm: float = Field(default=20.0, ge=0, le=100)
+    min_distance_mm: float = Field(default=15.0, ge=0, le=50)
+    priorita_area: bool = Field(default=True)
+    accorpamento_odl: bool = Field(default=False)
+    max_weight_per_plane_kg: Optional[float] = Field(None, ge=0)
+    use_secondary_plane: bool = Field(default=False)
+```
+
+**Schema Configurazione**:
+```python
+class ConfigurazioneLayout(BaseModel):
+    piano_1: List[Dict[str, Any]] = Field(default_factory=list)
+    piano_2: List[Dict[str, Any]] = Field(default_factory=list)
+    dimensioni_autoclave: Dict[str, float] = Field(default_factory=dict)
+    statistiche: Dict[str, Any] = Field(default_factory=dict)
+```
+
+**CRUD Schemas**: `BatchNestingCreate`, `BatchNestingResponse`, `BatchNestingUpdate`, `BatchNestingList`
+
+##### ✅ API Router
+**File**: `backend/api/routers/batch_nesting.py`
+
+**Endpoint Implementati**:
+- `GET /batch_nesting/`: Lista completa con filtri opzionali
+- `POST /batch_nesting/`: Creazione nuovo batch con validazione
+- `GET /batch_nesting/{batch_id}`: Dettaglio singolo batch
+- `PUT /batch_nesting/{batch_id}`: Aggiornamento batch completo
+- `DELETE /batch_nesting/{batch_id}`: Eliminazione batch
+- `GET /batch_nesting/{batch_id}/statistics`: Statistiche aggregate
+
+**Validazioni**:
+- Verifica esistenza autoclave
+- Validazione ODL esistenti nel database
+- Controllo parametri nesting con range validi
+- Gestione errori con messaggi specifici
+
+##### ✅ Migrazione Database
+**Script**: `backend/create_batch_nesting_table.py`
+- Creazione tabella `batch_nesting` con tutti i campi
+- Aggiunta colonna `batch_id` a tabella `nesting_results`
+- Compatibilità SQLite (no enum PostgreSQL)
+- Verifica e logging delle operazioni
+
+#### 🔧 Struttura Dati
+
+##### ✅ Parametri Nesting Salvati
+```json
+{
+  "padding_mm": 20.0,
+  "min_distance_mm": 15.0,
+  "priorita_area": true,
+  "accorpamento_odl": false,
+  "max_weight_per_plane_kg": 1000.0,
+  "use_secondary_plane": false
+}
+```
+
+##### ✅ Configurazione Layout
+```json
+{
+  "piano_1": [
+    {
+      "odl_id": 123,
+      "x": 50.0,
+      "y": 100.0,
+      "width": 200.0,
+      "height": 150.0,
+      "rotation": 0
+    }
+  ],
+  "piano_2": [],
+  "dimensioni_autoclave": {
+    "lunghezza": 2000.0,
+    "larghezza": 1500.0
+  },
+  "statistiche": {
+    "area_utilizzata": 30000.0,
+    "efficienza": 85.5,
+    "peso_totale": 450.0
+  }
+}
+```
+
+#### 🎯 Benefici e Caratteristiche
+
+##### ✅ Funzionalità Principali
+- **Salvataggio Parametri**: Tutti i parametri di generazione nesting vengono salvati
+- **Configurazione Completa**: Layout 2D completo dal frontend (react-konva)
+- **Tracciabilità**: Chi ha creato/confermato ogni batch
+- **Statistiche**: Aggregazione automatica di peso, area, valvole
+- **Stati Workflow**: Sospeso → Confermato → Terminato
+
+##### ✅ API CRUD Complete
+- **Creazione**: Validazione parametri e ODL esistenti
+- **Lettura**: Lista con filtri e dettaglio singolo
+- **Aggiornamento**: Modifica parametri e configurazione
+- **Eliminazione**: Rimozione sicura con controlli
+- **Statistiche**: Endpoint dedicato per analytics
+
+##### ✅ Integrazione Sistema
+- **Swagger**: Documentazione API completa visibile
+- **Database**: Relazioni corrette con autoclave e nesting_results
+- **Logging**: Operazioni tracciate nei system logs
+- **Validazione**: Controlli backend per integrità dati
+
+#### 🧪 Test e Verifica
+
+##### ✅ Test API Completati
+- ✅ Server FastAPI attivo su http://localhost:8000
+- ✅ API BatchNesting visibili in Swagger
+- ✅ Creazione batch con parametri (Status: 201)
+- ✅ Lista batch esistenti (3 elementi trovati)
+- ✅ Validazione ODL esistenti (errore appropriato per ODL inesistenti)
+
+##### ✅ Documentazione
+- **SCHEMAS_CHANGES.md**: Documentazione completa delle modifiche schema
+- **Swagger UI**: API documentate e testabili
+- **Changelog**: Entry dettagliata con implementazione completa
+
+---
+
 ### [2025-01-28 - Modifica ed Eliminazione ODL anche se "Finito"] ✅ COMPLETATO
 
 #### 🎯 Obiettivo
