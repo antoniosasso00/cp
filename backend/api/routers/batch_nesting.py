@@ -9,6 +9,7 @@ from api.database import get_db
 from models.batch_nesting import BatchNesting, StatoBatchNestingEnum
 from models.autoclave import Autoclave
 from models.odl import ODL
+from models.nesting_result import NestingResult
 from schemas.batch_nesting import (
     BatchNestingCreate, 
     BatchNestingResponse, 
@@ -158,6 +159,67 @@ def read_batch_nesting(batch_id: str, db: Session = Depends(get_db)):
     response_data['stato_descrizione'] = db_batch.stato_descrizione
     
     return db_batch
+
+@router.get("/{batch_id}/full", summary="Ottiene un batch nesting con tutte le informazioni")
+def read_batch_nesting_full(batch_id: str, db: Session = Depends(get_db)):
+    """
+    Recupera un batch nesting con tutte le informazioni dettagliate,
+    inclusi autoclave, ODL esclusi e motivi di esclusione.
+    """
+    # Recupera il batch con le relazioni
+    db_batch = db.query(BatchNesting)\
+        .filter(BatchNesting.id == batch_id)\
+        .first()
+    
+    if db_batch is None:
+        logger.warning(f"Tentativo di accesso a batch nesting inesistente: {batch_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"Batch nesting con ID {batch_id} non trovato"
+        )
+    
+    # Recupera l'autoclave associata
+    autoclave = db.query(Autoclave).filter(Autoclave.id == db_batch.autoclave_id).first()
+    
+    # Recupera il NestingResult associato (se esiste) per gli ODL esclusi
+    nesting_result = db.query(NestingResult).filter(NestingResult.batch_id == batch_id).first()
+    
+    # Prepara la risposta completa
+    response = {
+        "id": db_batch.id,
+        "nome": db_batch.nome,
+        "stato": db_batch.stato,
+        "autoclave_id": db_batch.autoclave_id,
+        "odl_ids": db_batch.odl_ids,
+        "configurazione_json": db_batch.configurazione_json,
+        "parametri": db_batch.parametri,
+        "numero_nesting": db_batch.numero_nesting,
+        "peso_totale_kg": db_batch.peso_totale_kg,
+        "area_totale_utilizzata": db_batch.area_totale_utilizzata,
+        "valvole_totali_utilizzate": db_batch.valvole_totali_utilizzate,
+        "note": db_batch.note,
+        "creato_da_utente": db_batch.creato_da_utente,
+        "creato_da_ruolo": db_batch.creato_da_ruolo,
+        "confermato_da_utente": db_batch.confermato_da_utente,
+        "confermato_da_ruolo": db_batch.confermato_da_ruolo,
+        "data_conferma": db_batch.data_conferma,
+        "created_at": db_batch.created_at,
+        "updated_at": db_batch.updated_at,
+        "stato_descrizione": db_batch.stato_descrizione,
+        
+        # Informazioni autoclave
+        "autoclave": {
+            "nome": autoclave.nome if autoclave else None,
+            "larghezza_piano": autoclave.larghezza_piano if autoclave else None,
+            "lunghezza": autoclave.lunghezza if autoclave else None,
+            "produttore": autoclave.produttore if autoclave else None,
+        } if autoclave else None,
+        
+        # ODL esclusi dal nesting (se disponibili)
+        "odl_esclusi": nesting_result.motivi_esclusione if nesting_result and nesting_result.motivi_esclusione else []
+    }
+    
+    return response
 
 @router.put("/{batch_id}", response_model=BatchNestingResponse, 
             summary="Aggiorna un batch nesting")

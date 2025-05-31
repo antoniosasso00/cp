@@ -109,7 +109,8 @@ def genera_nesting_ortools(
                 'y': tool.y,
                 'width': tool.width,
                 'height': tool.height,
-                'peso': tool.peso
+                'peso': tool.peso,
+                'rotated': tool.rotated  # Informazione sulla rotazione
             }
             for tool in nesting_result.positioned_tools
         ]
@@ -188,7 +189,8 @@ def genera_nesting_ortools(
                 'y': tool.y,
                 'width': tool.width,
                 'height': tool.height,
-                'peso': tool.peso
+                'peso': tool.peso,
+                'rotated': tool.rotated
             }
             for tool in nesting_result.positioned_tools
         ]

@@ -39,6 +39,7 @@ class ToolPosition:
     width: float
     height: float
     peso: float
+    rotated: bool = False  # Indica se il tool è ruotato di 90°
     
 @dataclass
 class NestingResult:
@@ -216,13 +217,20 @@ class NestingService:
                 tool_height = odl['tool_height']
                 tool_weight = odl['tool_weight']
                 
-                # Verifica dimensioni (con margini)
-                if (tool_width + 2 * parameters.min_distance_mm > plane_width or 
-                    tool_height + 2 * parameters.min_distance_mm > plane_height):
+                # Verifica dimensioni (considera entrambe le orientazioni)
+                # Orientamento normale: width x height
+                fits_normal = (tool_width + 2 * parameters.min_distance_mm <= plane_width and 
+                              tool_height + 2 * parameters.min_distance_mm <= plane_height)
+                
+                # Orientamento ruotato: height x width
+                fits_rotated = (tool_height + 2 * parameters.min_distance_mm <= plane_width and 
+                               tool_width + 2 * parameters.min_distance_mm <= plane_height)
+                
+                if not fits_normal and not fits_rotated:
                     excluded_odls.append({
                         'odl_id': odl['odl_id'],
                         'motivo': 'Dimensioni eccessive',
-                        'dettagli': f"Tool {tool_width}x{tool_height}mm non entra nel piano {plane_width}x{plane_height}mm"
+                        'dettagli': f"Tool {tool_width}x{tool_height}mm non entra nel piano {plane_width}x{plane_height}mm in nessun orientamento"
                     })
                     continue
                     
@@ -235,6 +243,9 @@ class NestingService:
                     })
                     continue
                     
+                # Aggiungi informazioni su orientamenti possibili
+                odl['fits_normal'] = fits_normal
+                odl['fits_rotated'] = fits_rotated
                 valid_odls.append(odl)
             
             if not valid_odls:
@@ -255,48 +266,111 @@ class NestingService:
             # Crea il modello CP-SAT
             model = cp_model.CpModel()
             
-            # Variabili per posizioni (x, y) di ogni tool
+            # Variabili per posizioni (x, y) e rotazione di ogni tool
             positions = {}
             intervals_x = {}
             intervals_y = {}
             tool_included = {}
+            tool_rotated = {}
             
             for i, odl in enumerate(valid_odls):
                 odl_id = odl['odl_id']
-                width = int(odl['tool_width'])
-                height = int(odl['tool_height'])
+                original_width = int(odl['tool_width'])
+                original_height = int(odl['tool_height'])
                 
-                # Variabili booleane per inclusione
+                self.logger.info(f"📏 Processando ODL {odl_id}: {original_width}x{original_height}mm")
+                self.logger.info(f"   fits_normal: {odl['fits_normal']}, fits_rotated: {odl['fits_rotated']}")
+                
+                # Variabili booleane per inclusione e rotazione
                 tool_included[odl_id] = model.NewBoolVar(f'included_{odl_id}')
                 
+                # Variabile di rotazione solo se entrambe le orientazioni sono possibili
+                if odl['fits_normal'] and odl['fits_rotated']:
+                    tool_rotated[odl_id] = model.NewBoolVar(f'rotated_{odl_id}')
+                    self.logger.info(f"   Rotazione variabile: entrambi orientamenti possibili")
+                elif odl['fits_normal']:
+                    # Solo orientamento normale possibile
+                    tool_rotated[odl_id] = 0
+                    self.logger.info(f"   Rotazione fissa: solo orientamento normale")
+                else:
+                    # Solo orientamento ruotato possibile
+                    tool_rotated[odl_id] = 1
+                    self.logger.info(f"   Rotazione fissa: solo orientamento ruotato")
+                
+                # Posizioni per entrambe le configurazioni
+                if odl['fits_normal']:
+                    max_x_normal = int(plane_width - original_width - parameters.min_distance_mm)
+                    max_y_normal = int(plane_height - original_height - parameters.min_distance_mm)
+                    self.logger.info(f"   Orientamento normale: max_pos ({max_x_normal}, {max_y_normal})")
+                else:
+                    max_x_normal = 0
+                    max_y_normal = 0
+                
+                if odl['fits_rotated']:
+                    max_x_rotated = int(plane_width - original_height - parameters.min_distance_mm)
+                    max_y_rotated = int(plane_height - original_width - parameters.min_distance_mm)
+                    self.logger.info(f"   Orientamento ruotato: max_pos ({max_x_rotated}, {max_y_rotated})")
+                else:
+                    max_x_rotated = 0
+                    max_y_rotated = 0
+                
                 # Posizioni (solo se incluso)
-                max_x = int(plane_width - width - parameters.min_distance_mm)
-                max_y = int(plane_height - height - parameters.min_distance_mm)
-                
-                if max_x < parameters.min_distance_mm or max_y < parameters.min_distance_mm:
-                    # Non può essere posizionato
-                    model.Add(tool_included[odl_id] == 0)
-                    continue
-                
                 x = model.NewIntVar(
                     parameters.min_distance_mm, 
-                    max_x, 
+                    int(plane_width), 
                     f'x_{odl_id}'
                 )
                 y = model.NewIntVar(
                     parameters.min_distance_mm, 
-                    max_y, 
+                    int(plane_height), 
                     f'y_{odl_id}'
                 )
                 
-                positions[odl_id] = (x, y, width, height)
+                # Vincoli di posizione in base alla rotazione
+                if isinstance(tool_rotated[odl_id], int):
+                    # Rotazione fissa
+                    if tool_rotated[odl_id] == 0:  # Non ruotato
+                        if max_x_normal >= parameters.min_distance_mm:
+                            model.Add(x <= max_x_normal).OnlyEnforceIf(tool_included[odl_id])
+                        if max_y_normal >= parameters.min_distance_mm:
+                            model.Add(y <= max_y_normal).OnlyEnforceIf(tool_included[odl_id])
+                        effective_width = original_width
+                        effective_height = original_height
+                    else:  # Ruotato
+                        if max_x_rotated >= parameters.min_distance_mm:
+                            model.Add(x <= max_x_rotated).OnlyEnforceIf(tool_included[odl_id])
+                        if max_y_rotated >= parameters.min_distance_mm:
+                            model.Add(y <= max_y_rotated).OnlyEnforceIf(tool_included[odl_id])
+                        effective_width = original_height  # Larghezza diventa l'altezza originale
+                        effective_height = original_width  # Altezza diventa la larghezza originale
+                else:
+                    # Rotazione variabile
+                    # Vincoli per orientamento normale
+                    if max_x_normal >= parameters.min_distance_mm:
+                        model.Add(x <= max_x_normal).OnlyEnforceIf([tool_included[odl_id], tool_rotated[odl_id].Not()])
+                    if max_y_normal >= parameters.min_distance_mm:
+                        model.Add(y <= max_y_normal).OnlyEnforceIf([tool_included[odl_id], tool_rotated[odl_id].Not()])
+                    
+                    # Vincoli per orientamento ruotato
+                    if max_x_rotated >= parameters.min_distance_mm:
+                        model.Add(x <= max_x_rotated).OnlyEnforceIf([tool_included[odl_id], tool_rotated[odl_id]])
+                    if max_y_rotated >= parameters.min_distance_mm:
+                        model.Add(y <= max_y_rotated).OnlyEnforceIf([tool_included[odl_id], tool_rotated[odl_id]])
+                    
+                    # Per gli intervalli, useremo le dimensioni massime possibili
+                    effective_width = max(original_width, original_height)
+                    effective_height = max(original_width, original_height)
                 
-                # Intervalli per non sovrapposizione
+                self.logger.info(f"   Dimensioni effective: {effective_width}x{effective_height}mm")
+                
+                positions[odl_id] = (x, y, effective_width, effective_height, original_width, original_height)
+                
+                # Intervalli per non sovrapposizione (usiamo dimensioni massime per sicurezza)
                 intervals_x[odl_id] = model.NewOptionalIntervalVar(
-                    x, width, x + width, tool_included[odl_id], f'interval_x_{odl_id}'
+                    x, effective_width, x + effective_width, tool_included[odl_id], f'interval_x_{odl_id}'
                 )
                 intervals_y[odl_id] = model.NewOptionalIntervalVar(
-                    y, height, y + height, tool_included[odl_id], f'interval_y_{odl_id}'
+                    y, effective_height, y + effective_height, tool_included[odl_id], f'interval_y_{odl_id}'
                 )
             
             # Vincolo di non sovrapposizione 2D
@@ -332,8 +406,8 @@ class NestingService:
                     if odl_id1 not in positions or odl_id2 not in positions:
                         continue
                     
-                    x1, y1, w1, h1 = positions[odl_id1]
-                    x2, y2, w2, h2 = positions[odl_id2]
+                    x1, y1, w1, h1, w1_orig, h1_orig = positions[odl_id1]
+                    x2, y2, w2, h2, w2_orig, h2_orig = positions[odl_id2]
                     
                     # Se entrambi inclusi, mantieni distanza
                     both_included = model.NewBoolVar(f'both_{odl_id1}_{odl_id2}')
@@ -342,26 +416,26 @@ class NestingService:
                     model.Add(both_included >= tool_included[odl_id1] + tool_included[odl_id2] - 1)
                     
                     # Quattro possibili direzioni di separazione
-                    sep_left = model.NewBoolVar(f'sep_left_{odl_id1}_{odl_id2}')    # tool1 a sinistra di tool2
-                    sep_right = model.NewBoolVar(f'sep_right_{odl_id1}_{odl_id2}')   # tool1 a destra di tool2  
-                    sep_below = model.NewBoolVar(f'sep_below_{odl_id1}_{odl_id2}')   # tool1 sotto tool2
-                    sep_above = model.NewBoolVar(f'sep_above_{odl_id1}_{odl_id2}')   # tool1 sopra tool2
+                    sep_left = model.NewBoolVar(f'sep_left_{odl_id1}_{odl_id2}')    
+                    sep_right = model.NewBoolVar(f'sep_right_{odl_id1}_{odl_id2}')   
+                    sep_below = model.NewBoolVar(f'sep_below_{odl_id1}_{odl_id2}')   
+                    sep_above = model.NewBoolVar(f'sep_above_{odl_id1}_{odl_id2}')   
                     
                     # Almeno una separazione deve essere vera se entrambi inclusi
                     model.Add(sep_left + sep_right + sep_below + sep_above >= both_included)
                     
+                    # Per semplicità nei vincoli di distanza, usiamo le dimensioni massime
+                    # Questo garantisce la distanza minima indipendentemente dalla rotazione
+                    max_w1 = max(w1_orig, h1_orig)
+                    max_h1 = max(w1_orig, h1_orig)
+                    max_w2 = max(w2_orig, h2_orig)
+                    max_h2 = max(w2_orig, h2_orig)
+                    
                     # Definisci i vincoli per ogni direzione
-                    # tool1 a sinistra di tool2: x1 + w1 + padding <= x2
-                    model.Add(x1 + w1 + parameters.padding_mm <= x2).OnlyEnforceIf([sep_left, both_included])
-                    
-                    # tool1 a destra di tool2: x2 + w2 + padding <= x1
-                    model.Add(x2 + w2 + parameters.padding_mm <= x1).OnlyEnforceIf([sep_right, both_included])
-                    
-                    # tool1 sotto tool2: y1 + h1 + padding <= y2
-                    model.Add(y1 + h1 + parameters.padding_mm <= y2).OnlyEnforceIf([sep_below, both_included])
-                    
-                    # tool1 sopra tool2: y2 + h2 + padding <= y1
-                    model.Add(y2 + h2 + parameters.padding_mm <= y1).OnlyEnforceIf([sep_above, both_included])
+                    model.Add(x1 + max_w1 + parameters.padding_mm <= x2).OnlyEnforceIf([sep_left, both_included])
+                    model.Add(x2 + max_w2 + parameters.padding_mm <= x1).OnlyEnforceIf([sep_right, both_included])
+                    model.Add(y1 + max_h1 + parameters.padding_mm <= y2).OnlyEnforceIf([sep_below, both_included])
+                    model.Add(y2 + max_h2 + parameters.padding_mm <= y1).OnlyEnforceIf([sep_above, both_included])
             
             # Funzione obiettivo
             if parameters.priorita_area:
@@ -372,7 +446,7 @@ class NestingService:
                 for odl in valid_odls:
                     odl_id = odl['odl_id']
                     if odl_id in positions:
-                        x, y, w, h = positions[odl_id]
+                        x, y, w, h, w_orig, h_orig = positions[odl_id]
                         model.Add(max_x_var >= x + w).OnlyEnforceIf(tool_included[odl_id])
                         model.Add(max_y_var >= y + h).OnlyEnforceIf(tool_included[odl_id])
                 
@@ -399,18 +473,35 @@ class NestingService:
                 for odl in valid_odls:
                     odl_id = odl['odl_id']
                     if odl_id in tool_included and solver.Value(tool_included[odl_id]):
-                        x, y, w, h = positions[odl_id]
+                        x, y, w, h, w_orig, h_orig = positions[odl_id]
+                        
+                        # Determina se il tool è ruotato
+                        is_rotated = False
+                        if isinstance(tool_rotated[odl_id], int):
+                            is_rotated = bool(tool_rotated[odl_id])
+                        else:
+                            is_rotated = bool(solver.Value(tool_rotated[odl_id]))
+                        
+                        # Calcola dimensioni finali in base alla rotazione
+                        if is_rotated:
+                            final_width = float(h_orig)  # Larghezza diventa altezza originale
+                            final_height = float(w_orig)  # Altezza diventa larghezza originale
+                        else:
+                            final_width = float(w_orig)  # Dimensioni originali
+                            final_height = float(h_orig)
+                        
                         pos = ToolPosition(
                             odl_id=odl_id,
                             x=float(solver.Value(x)),
                             y=float(solver.Value(y)),
-                            width=float(w),
-                            height=float(h),
-                            peso=float(odl['tool_weight'])
+                            width=final_width,
+                            height=final_height,
+                            peso=float(odl['tool_weight']),
+                            rotated=is_rotated
                         )
                         positioned_tools.append(pos)
                         total_weight += odl['tool_weight']
-                        used_area += w * h
+                        used_area += final_width * final_height
                     else:
                         final_excluded.append({
                             'odl_id': odl_id,
@@ -439,6 +530,11 @@ class NestingService:
             
             self.logger.info(f"Nesting completato: {len(positioned_tools)} ODL posizionati, {len(final_excluded)} esclusi")
             self.logger.info(f"Efficienza: {efficiency:.1f}%, Peso totale: {total_weight:.1f}kg")
+            
+            # Log info sulle rotazioni
+            if positioned_tools:
+                rotated_count = sum(1 for tool in positioned_tools if tool.rotated)
+                self.logger.info(f"Tool ruotati: {rotated_count}/{len(positioned_tools)} ({rotated_count/len(positioned_tools)*100:.1f}%)")
             
             return NestingResult(
                 positioned_tools=positioned_tools,

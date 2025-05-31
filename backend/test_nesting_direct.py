@@ -28,7 +28,7 @@ def test_nesting_direct():
         parameters = NestingParameters(
             padding_mm=20,
             min_distance_mm=15,
-            priorita_area=True,
+            priorita_area=False,
             accorpamento_odl=False
         )
         
@@ -48,6 +48,30 @@ def test_nesting_direct():
         
         # Esegui l'algoritmo di nesting
         print("🚀 Avvio algoritmo di nesting...")
+        
+        # Prima controlla i dati dell'autoclave e degli ODL
+        print("🔍 Dettagli dati:")
+        autoclave_data = nesting_service.get_autoclave_data(db, autoclave_id)
+        print(f"   Autoclave {autoclave_id}: {autoclave_data['larghezza_piano']}x{autoclave_data['lunghezza']}mm")
+        
+        odl_data = nesting_service.get_odl_data(db, odl_ids)
+        for odl in odl_data:
+            print(f"   ODL {odl['odl_id']}: tool {odl['tool_width']}x{odl['tool_height']}mm, peso {odl['tool_weight']}kg")
+            
+            # Verifica orientamenti
+            plane_width = autoclave_data['larghezza_piano']
+            plane_height = autoclave_data['lunghezza']
+            
+            fits_normal = (odl['tool_width'] + 2 * parameters.min_distance_mm <= plane_width and 
+                          odl['tool_height'] + 2 * parameters.min_distance_mm <= plane_height)
+            fits_rotated = (odl['tool_height'] + 2 * parameters.min_distance_mm <= plane_width and 
+                           odl['tool_width'] + 2 * parameters.min_distance_mm <= plane_height)
+            
+            print(f"     Orientamento normale ({odl['tool_width']}x{odl['tool_height']}): {'✅' if fits_normal else '❌'}")
+            print(f"     Orientamento ruotato ({odl['tool_height']}x{odl['tool_width']}): {'✅' if fits_rotated else '❌'}")
+        
+        print()
+        
         result = nesting_service.generate_nesting(
             db=db,
             odl_ids=odl_ids,
@@ -72,7 +96,8 @@ def test_nesting_direct():
         if result.positioned_tools:
             print("🔧 Tool posizionati:")
             for i, tool in enumerate(result.positioned_tools, 1):
-                print(f"   {i}. ODL {tool.odl_id}: posizione ({tool.x:.1f}, {tool.y:.1f}), dimensioni {tool.width:.1f}x{tool.height:.1f}mm, peso {tool.peso:.1f}kg")
+                rotation_info = " (🔄 RUOTATO)" if tool.rotated else " (➡️ NORMALE)"
+                print(f"   {i}. ODL {tool.odl_id}: posizione ({tool.x:.1f}, {tool.y:.1f}), dimensioni {tool.width:.1f}x{tool.height:.1f}mm, peso {tool.peso:.1f}kg{rotation_info}")
         
         # Dettagli esclusioni
         if result.excluded_odls:

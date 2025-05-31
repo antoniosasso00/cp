@@ -26,7 +26,7 @@ def test_nesting_algorithm():
         "parametri": {
             "padding_mm": 20,
             "min_distance_mm": 15,
-            "priorita_area": True,
+            "priorita_area": False,  # Massimizza numero ODL invece dell'area
             "accorpamento_odl": False
         }
     }
@@ -70,7 +70,8 @@ def test_nesting_algorithm():
             if result['positioned_tools']:
                 print("🔧 Tool posizionati:")
                 for i, tool in enumerate(result['positioned_tools'], 1):
-                    print(f"   {i}. ODL {tool['odl_id']}: posizione ({tool['x']:.1f}, {tool['y']:.1f}), dimensioni {tool['width']:.1f}x{tool['height']:.1f}mm, peso {tool['peso']:.1f}kg")
+                    rotation_info = " (🔄 RUOTATO)" if tool.get('rotated', False) else " (➡️ NORMALE)"
+                    print(f"   {i}. ODL {tool['odl_id']}: posizione ({tool['x']:.1f}, {tool['y']:.1f}), dimensioni {tool['width']:.1f}x{tool['height']:.1f}mm, peso {tool['peso']:.1f}kg{rotation_info}")
             
             # Dettagli esclusioni
             if result['excluded_odls']:

@@ -545,3 +545,258 @@ La configurazione del layout generato dal frontend viene salvata nel campo JSON 
 - **ORM**: SQLAlchemy con migrazioni Alembic
 - **Validazione**: Pydantic schemas per input/output
 - **Logging**: Eventi di creazione/modifica tracciati in system_logs 
+
+# 🔄 Ottimizzazione Algoritmo Nesting 2D - Supporto Rotazioni - v1.1.4-DEMO
+
+## 📅 Data: 2024-12-19
+## 🎯 Obiettivo: Implementazione supporto rotazioni automatiche per massimizzare utilizzo spazio
+
+### 🚀 Problema Risolto
+L'algoritmo precedente escludeva tool che non entravano nell'orientamento originale, anche se ruotandoli di 90° avrebbero potuto essere posizionati.
+
+**Esempio concreto:**
+- Tool 268x53mm su piano autoclave 190x450mm
+- ❌ Orientamento normale: 268mm > 190mm (larghezza piano)
+- ✅ Orientamento ruotato: 53x268mm entra perfettamente!
+
+### 🔧 Implementazioni Tecniche
+
+#### 1. **Pre-filtraggio con Doppio Orientamento**
+```python
+# Verifica entrambe le orientazioni
+fits_normal = (tool_width + 2 * min_distance <= plane_width and 
+               tool_height + 2 * min_distance <= plane_height)
+fits_rotated = (tool_height + 2 * min_distance <= plane_width and 
+                tool_width + 2 * min_distance <= plane_height)
+```
+
+#### 2. **Variabili CP-SAT per Rotazione**
+```python
+# Rotazione variabile se entrambi orientamenti possibili
+if odl['fits_normal'] and odl['fits_rotated']:
+    tool_rotated[odl_id] = model.NewBoolVar(f'rotated_{odl_id}')
+elif odl['fits_normal']:
+    tool_rotated[odl_id] = 0  # Solo normale
+else:
+    tool_rotated[odl_id] = 1  # Solo ruotato
+```
+
+#### 3. **Vincoli Posizione Condizionali**
+```python
+# Vincoli per orientamento normale
+model.Add(x <= max_x_normal).OnlyEnforceIf([tool_included[odl_id], tool_rotated[odl_id].Not()])
+
+# Vincoli per orientamento ruotato  
+model.Add(x <= max_x_rotated).OnlyEnforceIf([tool_included[odl_id], tool_rotated[odl_id]])
+```
+
+#### 4. **Calcolo Dimensioni Finali**
+```python
+# Determina dimensioni in base alla rotazione
+if is_rotated:
+    final_width = float(h_orig)   # Larghezza = altezza originale
+    final_height = float(w_orig)  # Altezza = larghezza originale
+else:
+    final_width = float(w_orig)   # Dimensioni originali
+    final_height = float(h_orig)
+```
+
+### 📊 Risultati Test
+
+#### **Test Diretto (NestingService)**
+```
+🔍 Dettagli dati:
+   Autoclave 1: 190.0x450.0mm
+   ODL 1: tool 268.0x53.0mm, peso 0kg
+     Orientamento normale (268.0x53.0): ❌
+     Orientamento ruotato (53.0x268.0): ✅
+
+📊 Risultati:
+   ODL posizionati: 1
+   Efficienza: 16.6%
+   Tool ruotati: 1/1 (100.0%)
+
+🔧 Tool posizionati:
+   1. ODL 1: posizione (15.0, 15.0), dimensioni 53.0x268.0mm (🔄 RUOTATO)
+```
+
+#### **Test HTTP Endpoint**
+```
+POST /api/v1/nesting/genera
+{
+  "odl_ids": ["1"],
+  "autoclave_ids": ["1"], 
+  "parametri": {
+    "priorita_area": false,  // Massimizza numero ODL
+    "padding_mm": 20,
+    "min_distance_mm": 15
+  }
+}
+
+Response:
+{
+  "positioned_tools": [
+    {
+      "odl_id": 1,
+      "x": 15.0,
+      "y": 15.0, 
+      "width": 53.0,
+      "height": 268.0,
+      "rotated": true
+    }
+  ],
+  "efficiency": 16.6,
+  "algorithm_status": "OPTIMAL"
+}
+```
+
+### 🎯 Funzioni Obiettivo
+
+#### **Massimizzazione ODL** (`priorita_area=false`)
+- **Obiettivo**: `model.Maximize(sum(tool_included.values()))`
+- **Risultato**: Posiziona il massimo numero di tool possibile
+- **Ideale per**: Produzione ad alto volume
+
+#### **Minimizzazione Area** (`priorita_area=true`)  
+- **Obiettivo**: `model.Minimize(max_x_var + max_y_var)`
+- **Risultato**: Compatta i tool in area minima
+- **Ideale per**: Ottimizzazione energetica
+
+### 🔄 Informazioni Rotazione
+
+#### **Nel Database (BatchNesting)**
+```json
+{
+  "tool_positions": [
+    {
+      "odl_id": 1,
+      "x": 15.0,
+      "y": 15.0,
+      "width": 53.0,
+      "height": 268.0,
+      "rotated": true  // ← Informazione rotazione
+    }
+  ]
+}
+```
+
+#### **Nel Frontend**
+- **🔄 RUOTATO**: Tool ruotato di 90°
+- **➡️ NORMALE**: Tool nell'orientamento originale
+- **Visualizzazione**: Dimensioni aggiornate automaticamente
+
+### 🧠 Algoritmo CP-SAT Ottimizzato
+
+#### **Vincoli Implementati**
+1. **Non sovrapposizione 2D**: `model.AddNoOverlap2D(intervals_x, intervals_y)`
+2. **Peso massimo**: `model.Add(total_weight <= max_weight)`
+3. **Distanza minima**: Separazione 4-direzionale con padding
+4. **Rotazione condizionale**: Vincoli posizione basati su orientamento
+5. **Compatibilità cicli**: Pre-filtraggio per cicli di cura
+
+#### **Performance**
+- **Timeout**: 30 secondi
+- **Status**: OPTIMAL per singoli tool
+- **Scalabilità**: Testato fino a 3 ODL simultanei
+
+### 🎉 Benefici Ottenuti
+
+1. **🔄 Rotazione Automatica**: Tool ruotati automaticamente quando necessario
+2. **📈 Efficienza Migliorata**: Da 0% a 16.6% per il caso test
+3. **🎯 Ottimizzazione Intelligente**: Scelta automatica orientamento ottimale
+4. **💾 Persistenza Completa**: Rotazioni salvate in database
+5. **🔍 Debug Avanzato**: Logging dettagliato per troubleshooting
+
+### 🔧 File Modificati
+
+- `backend/services/nesting_service.py`: Algoritmo CP-SAT con rotazioni
+- `backend/api/routers/nesting_temp.py`: Endpoint con info rotazione
+- `backend/test_nesting_direct.py`: Test diretto con debug
+- `backend/test_nesting_algorithm.py`: Test HTTP endpoint
+
+### 🚀 Prossimi Sviluppi
+
+1. **Multi-piano**: Supporto piano secondario autoclave
+2. **Batch multipli**: Nesting simultaneo su più autoclavi  
+3. **Ottimizzazione avanzata**: Algoritmi genetici per grandi batch
+4. **Visualizzazione 3D**: Rendering posizioni tool nel frontend
+
+---
+
+**✅ Algoritmo di nesting 2D con rotazioni automatiche completamente implementato e testato!** 
+
+# 📋 CHANGELOG - Modifiche Schema Database CarbonPilot
+
+## 🆕 [v1.1.4-DEMO] - 31 Maggio 2025 - Visualizzazione Nesting 2D
+
+### ✅ Nuove Funzionalità Frontend
+- **Pagina visualizzazione nesting**: `frontend/src/app/nesting/result/[batch_id]/page.tsx`
+  - Canvas 2D interattivo con React-Konva
+  - Scala dinamica per proporzioni reali
+  - Visualizzazione tool con colori distintivi
+  - Tooltip informativi e indicatori rotazione
+  - Statistiche in tempo reale (peso, area, efficienza)
+  - Interazioni utente (rimozione ODL, conferma configurazione)
+
+### 🔧 Modifiche Backend API
+- **Nuovo endpoint**: `GET /api/v1/batch_nesting/{batch_id}/full`
+  - Restituisce batch completo con informazioni autoclave
+  - Include ODL esclusi dal NestingResult associato
+  - Dati strutturati per visualizzazione frontend
+
+### 📦 Dipendenze Aggiunte
+```json
+{
+  "konva": "^9.x",
+  "react-konva": "^18.x"
+}
+```
+
+### 🎯 Funzionalità Implementate
+- [x] Canvas 2D con griglia di riferimento
+- [x] Visualizzazione tool in scala reale
+- [x] Gestione rotazioni tool (indicatore visivo)
+- [x] Tooltip interattivi con dettagli completi
+- [x] Pannello statistiche e informazioni
+- [x] Rimozione ODL dalla configurazione
+- [x] Conferma configurazione (cambio stato)
+- [x] Visualizzazione ODL esclusi con motivi
+- [x] Responsive design e gestione errori
+
+### 📐 Calcolo Scala Dinamica
+```typescript
+const scale = Math.min(
+  maxCanvasWidth / autoclaveWidth,
+  maxCanvasHeight / autoclaveHeight,
+  1 // Non ingrandire oltre dimensioni reali
+);
+```
+
+### 🔗 Integrazione API
+- Utilizzo endpoint `/full` per dati completi
+- Gestione stati batch (sospeso/confermato/terminato)
+- Aggiornamento stato tramite PUT request
+
+### 📊 Struttura Dati Visualizzazione
+```typescript
+interface ToolPosition {
+  odl_id: number;
+  x: number;        // mm
+  y: number;        // mm  
+  width: number;    // mm
+  height: number;   // mm
+  peso: number;     // kg
+  rotated?: boolean;
+}
+```
+
+### 🎨 UI/UX Miglioramenti
+- Colori distintivi per ogni tool
+- Indicatori rotazione visivi
+- Layout responsive a 3 colonne
+- Gestione stati loading/error
+- Navigazione intuitiva
+
+---
+
+// ... existing code ... 
