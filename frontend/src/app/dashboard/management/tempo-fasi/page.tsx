@@ -1,18 +1,22 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Loader2, TrendingUp, Clock, Activity } from 'lucide-react'
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer
-} from 'recharts'
+
+// 🚀 LAZY LOADING: Carica il grafico solo quando necessario
+const LazyLineChart = dynamic(() => import('@/components/charts/LazyLineChart'), { 
+  ssr: false,
+  loading: () => (
+    <div className="h-[400px] w-full flex items-center justify-center">
+      <div className="flex items-center space-x-2">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <span className="text-muted-foreground">Caricamento grafico...</span>
+      </div>
+    </div>
+  )
+})
 
 interface TempoFaseStatistiche {
   fase: string
@@ -75,6 +79,33 @@ export default function TempoFasiPage() {
     min: stat.tempo_minimo_minuti ? Math.round(stat.tempo_minimo_minuti * 100) / 100 : 0,
     max: stat.tempo_massimo_minuti ? Math.round(stat.tempo_massimo_minuti * 100) / 100 : 0
   }))
+
+  // Configurazione linee per il grafico lazy
+  const lineConfigs = [
+    {
+      dataKey: 'tempo_medio',
+      stroke: '#2563eb',
+      strokeWidth: 3,
+      name: 'Tempo Medio',
+      dot: { fill: '#2563eb', strokeWidth: 2, r: 6 }
+    },
+    {
+      dataKey: 'min',
+      stroke: '#10b981',
+      strokeWidth: 2,
+      name: 'Minimo',
+      type: 'monotone' as const,
+      dot: { fill: '#10b981', strokeWidth: 1, r: 4 }
+    },
+    {
+      dataKey: 'max',
+      stroke: '#ef4444',
+      strokeWidth: 2,
+      name: 'Massimo',
+      type: 'monotone' as const,
+      dot: { fill: '#ef4444', strokeWidth: 1, r: 4 }
+    }
+  ]
 
   if (loading) {
     return (
@@ -153,7 +184,7 @@ export default function TempoFasiPage() {
         ))}
       </div>
 
-      {/* Grafico principale */}
+      {/* Grafico principale con lazy loading */}
       {chartData.length > 0 ? (
         <Card>
           <CardHeader>
@@ -166,73 +197,76 @@ export default function TempoFasiPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-[400px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis 
-                    dataKey="fase" 
-                    tick={{ fontSize: 12 }}
-                    interval={0}
-                  />
-                  <YAxis 
-                    label={{ value: 'Tempo (minuti)', angle: -90, position: 'insideLeft' }}
-                    tick={{ fontSize: 12 }}
-                  />
-                  <Tooltip 
-                    formatter={(value: any, name: any) => {
-                      const nameStr = String(name)
-                      if (nameStr === 'tempo_medio') return [`${value} min`, 'Tempo Medio']
-                      if (nameStr === 'min') return [`${value} min`, 'Minimo']
-                      if (nameStr === 'max') return [`${value} min`, 'Massimo']
-                      return [value, nameStr]
-                    }}
-                    labelFormatter={(label) => `Fase: ${label}`}
-                  />
-                  <Legend />
-                  <Line 
-                    type="monotone" 
-                    dataKey="tempo_medio" 
-                    stroke="#2563eb" 
-                    strokeWidth={3}
-                    dot={{ fill: '#2563eb', strokeWidth: 2, r: 6 }}
-                    name="Tempo Medio"
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="min" 
-                    stroke="#10b981" 
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                    dot={{ fill: '#10b981', strokeWidth: 1, r: 4 }}
-                    name="Tempo Minimo"
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="max" 
-                    stroke="#ef4444" 
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                    dot={{ fill: '#ef4444', strokeWidth: 1, r: 4 }}
-                    name="Tempo Massimo"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+            <LazyLineChart
+              data={chartData}
+              lines={lineConfigs}
+              height={400}
+              xAxisDataKey="fase"
+              yAxisLabel="Tempo (minuti)"
+              showGrid={true}
+              showTooltip={true}
+              showLegend={true}
+              className="mt-4"
+            />
           </CardContent>
         </Card>
       ) : (
         <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground">
+              Nessun dato disponibile per le fasi di produzione
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Dettagli fasi */}
+      {statistiche.length > 0 && (
+        <Card>
           <CardHeader>
-            <CardTitle>Nessun dato disponibile</CardTitle>
+            <CardTitle>Dettagli Statistiche</CardTitle>
             <CardDescription>
-              Non sono ancora disponibili dati sui tempi delle fasi di produzione.
+              Informazioni dettagliate sui tempi di ogni fase
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">
-              I dati saranno disponibili dopo aver registrato alcuni tempi di fase negli ODL.
-            </p>
+            <div className="space-y-4">
+              {statistiche.map((stat) => (
+                <div key={stat.fase} className="border rounded-lg p-4">
+                  <h3 className="font-semibold mb-2">
+                    {FASE_LABELS[stat.fase] || stat.fase}
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Tempo Medio:</span>
+                      <div className="font-medium">
+                        {Math.round(stat.media_minuti * 100) / 100} min
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Osservazioni:</span>
+                      <div className="font-medium">{stat.numero_osservazioni}</div>
+                    </div>
+                    {stat.tempo_minimo_minuti && (
+                      <div>
+                        <span className="text-muted-foreground">Minimo:</span>
+                        <div className="font-medium text-green-600">
+                          {Math.round(stat.tempo_minimo_minuti * 100) / 100} min
+                        </div>
+                      </div>
+                    )}
+                    {stat.tempo_massimo_minuti && (
+                      <div>
+                        <span className="text-muted-foreground">Massimo:</span>
+                        <div className="font-medium text-red-600">
+                          {Math.round(stat.tempo_massimo_minuti * 100) / 100} min
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}

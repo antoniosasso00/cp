@@ -6,6 +6,7 @@ import { ThemeProvider } from '@/components/theme-provider'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { ApiErrorProvider } from '@/components/ApiErrorProvider'
 import { RoleGuard } from '@/components/RoleGuard'
+import { SWRProvider } from '@/components/providers/SWRProvider'
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -32,15 +33,17 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <div className="flex justify-end p-4">
-            <ThemeToggle />
-          </div>
-          <ApiErrorProvider>
-            <RoleGuard>
-              {children}
-            </RoleGuard>
-            <Toaster />
-          </ApiErrorProvider>
+          <SWRProvider>
+            <div className="flex justify-end p-4">
+              <ThemeToggle />
+            </div>
+            <ApiErrorProvider>
+              <RoleGuard>
+                {children}
+              </RoleGuard>
+              <Toaster />
+            </ApiErrorProvider>
+          </SWRProvider>
         </ThemeProvider>
       </body>
     </html>
