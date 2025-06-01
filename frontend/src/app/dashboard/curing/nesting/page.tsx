@@ -103,16 +103,16 @@ export default function NestingPage() {
       console.log('🔄 Caricamento dati per nesting...')
 
       // ✅ RISOLTO: Usa l'endpoint specializzato per i dati di nesting
-      const [nestingDataResponse, batchesResponse] = await Promise.all([
-        fetch('/api/v1/nesting/data'),
+      const [dataNesting, batchesNesting] = await Promise.all([
+        fetch('/api/v1/batch_nesting/data'),
         fetch('/api/v1/batch_nesting?limit=10&order_by=created_at&order=desc')
       ])
 
       let odlInAttesaCura: ODLData[] = []
       let autoclaveDisponibili: AutoclaveData[] = []
 
-      if (nestingDataResponse.ok) {
-        const nestingData = await nestingDataResponse.json()
+      if (dataNesting.ok) {
+        const nestingData = await dataNesting.json()
         console.log('📊 Dati nesting ricevuti:', nestingData)
         
         // I dati sono già filtrati lato server
@@ -122,12 +122,12 @@ export default function NestingPage() {
         setOdlList(odlInAttesaCura)
         setAutoclaveList(autoclaveDisponibili)
       } else {
-        throw new Error(`Errore nel caricamento dati nesting: ${nestingDataResponse.status}`)
+        throw new Error(`Errore nel caricamento dati nesting: ${dataNesting.status}`)
       }
 
       // ✅ NUOVO: Carica batch recenti
-      if (batchesResponse.ok) {
-        const batchesData = await batchesResponse.json()
+      if (batchesNesting.ok) {
+        const batchesData = await batchesNesting.json()
         setRecentBatches(batchesData.slice(0, 5))
       }
 
@@ -224,7 +224,7 @@ export default function NestingPage() {
 
       console.log('📤 Payload inviato:', payload)
 
-      const response = await fetch('/api/v1/nesting/genera', {
+      const response = await fetch('/api/v1/batch_nesting/genera', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

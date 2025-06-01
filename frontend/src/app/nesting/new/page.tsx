@@ -142,7 +142,7 @@ export default function NewNestingPage() {
       });
 
       // Chiamata API per generare il nesting
-      const response = await axios.post('/api/v1/nesting/genera', {
+      const response = await axios.post('/api/v1/batch_nesting/genera', {
         odl_ids: selectedOdl,
         autoclave_ids: [selectedAutoclave],
         parametri

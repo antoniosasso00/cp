@@ -20,7 +20,8 @@ import {
   Cog,
   UserCog,
   Activity,
-  Timer
+  Timer,
+  ScrollText
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useUserRole, type UserRole } from '@/hooks/useUserRole'
@@ -172,6 +173,12 @@ const sidebarSections: SidebarSection[] = [
         href: "/dashboard/monitoraggio",
         icon: <BarChart3 className="h-4 w-4" />,
         roles: ['ADMIN', 'Management']
+      },
+      {
+        title: "System Logs",
+        href: "/dashboard/admin/system-logs",
+        icon: <ScrollText className="h-4 w-4" />,
+        roles: ['ADMIN']
       }
     ],
     roles: ['ADMIN', 'Management']

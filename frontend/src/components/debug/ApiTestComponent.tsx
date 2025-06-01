@@ -24,7 +24,7 @@ export function ApiTestComponent() {
     { name: 'Health Check', url: 'http://localhost:8000/health' },
     { name: 'ODL List', url: `${API_BASE_URL}/odl` },
     { name: 'Tools List', url: `${API_BASE_URL}/tools` },
-    { name: 'Nesting Preview', url: `${API_BASE_URL}/nesting/preview` },
+    { name: 'Nesting Preview', url: `${API_BASE_URL}/batch_nesting/preview` },
   ]
 
   const testEndpoint = async (endpoint: { name: string; url: string }): Promise<ApiTestResult> => {

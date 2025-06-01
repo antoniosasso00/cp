@@ -1266,4 +1266,125 @@ export const produzioneApi = {
 
   getHealth: (): Promise<ProduzioneHealthCheck> => 
     apiRequest<ProduzioneHealthCheck>('/produzione/health'),
+};
+
+// ✅ NUOVO: API per i System Logs
+export interface SystemLogResponse {
+  id: number;
+  timestamp: string;
+  level: 'INFO' | 'WARNING' | 'ERROR' | 'CRITICAL';
+  event_type: string;
+  user_role: string;
+  user_id?: string;
+  action: string;
+  entity_type?: string;
+  entity_id?: number;
+  details?: string;
+  old_value?: string;
+  new_value?: string;
+  ip_address?: string;
+}
+
+export interface SystemLogFilter {
+  event_type?: string;
+  user_role?: string;
+  level?: 'INFO' | 'WARNING' | 'ERROR' | 'CRITICAL';
+  entity_type?: string;
+  entity_id?: number;
+  start_date?: string;
+  end_date?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface SystemLogStats {
+  total_logs: number;
+  logs_by_type: Record<string, number>;
+  logs_by_role: Record<string, number>;
+  logs_by_level: Record<string, number>;
+  recent_errors: SystemLogResponse[];
+}
+
+// API System Logs
+export const systemLogsApi = {
+  /**
+   * Ottiene i log di sistema con filtri opzionali
+   */
+  getAll: (filters?: SystemLogFilter): Promise<SystemLogResponse[]> => {
+    const queryParams = new URLSearchParams();
+    
+    if (filters?.event_type) queryParams.append('event_type', filters.event_type);
+    if (filters?.user_role) queryParams.append('user_role', filters.user_role);
+    if (filters?.level) queryParams.append('level', filters.level);
+    if (filters?.entity_type) queryParams.append('entity_type', filters.entity_type);
+    if (filters?.entity_id) queryParams.append('entity_id', filters.entity_id.toString());
+    if (filters?.start_date) queryParams.append('start_date', filters.start_date);
+    if (filters?.end_date) queryParams.append('end_date', filters.end_date);
+    if (filters?.limit) queryParams.append('limit', filters.limit.toString());
+    if (filters?.offset) queryParams.append('offset', filters.offset.toString());
+    
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    return apiRequest<SystemLogResponse[]>(`/system-logs${query}`);
+  },
+
+  /**
+   * Ottiene statistiche sui log di sistema
+   */
+  getStats: (days: number = 30): Promise<SystemLogStats> => {
+    return apiRequest<SystemLogStats>(`/system-logs/stats?days=${days}`);
+  },
+
+  /**
+   * Ottiene gli errori più recenti
+   */
+  getRecentErrors: (limit: number = 20): Promise<SystemLogResponse[]> => {
+    return apiRequest<SystemLogResponse[]>(`/system-logs/recent-errors?limit=${limit}`);
+  },
+
+  /**
+   * Ottiene i log relativi a una specifica entità
+   */
+  getByEntity: (entityType: string, entityId: number, limit: number = 50): Promise<SystemLogResponse[]> => {
+    return apiRequest<SystemLogResponse[]>(`/system-logs/by-entity/${entityType}/${entityId}?limit=${limit}`);
+  },
+
+  /**
+   * Esporta i log in formato CSV
+   */
+  exportCsv: async (filters?: SystemLogFilter): Promise<void> => {
+    const queryParams = new URLSearchParams();
+    
+    if (filters?.event_type) queryParams.append('event_type', filters.event_type);
+    if (filters?.user_role) queryParams.append('user_role', filters.user_role);
+    if (filters?.start_date) queryParams.append('start_date', filters.start_date);
+    if (filters?.end_date) queryParams.append('end_date', filters.end_date);
+    
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/system-logs/export${query}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Errore nell'esportazione: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `system_logs_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Errore nell\'esportazione CSV:', error);
+      throw error;
+    }
+  }
 }; 
