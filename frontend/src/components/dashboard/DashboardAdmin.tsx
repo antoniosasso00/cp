@@ -49,7 +49,7 @@ export default function DashboardAdmin() {
       description: 'Impostazioni globali e configurazioni avanzate',
       icon: Settings,
       color: 'bg-purple-500',
-      href: '/dashboard/impostazioni',
+      href: '/dashboard/admin/impostazioni',
       actions: ['Parametri globali', 'Configurazioni', 'Backup']
     },
     {

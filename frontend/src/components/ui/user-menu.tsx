@@ -69,7 +69,7 @@ export function UserMenu({ className }: UserMenuProps) {
         
         {/* Impostazioni - accessibile a tutti i ruoli */}
         <DropdownMenuItem asChild>
-          <Link href="/dashboard/impostazioni" className="cursor-pointer">
+          <Link href="/dashboard/admin/impostazioni" className="cursor-pointer">
             <Settings className="mr-2 h-4 w-4" />
             <span>Impostazioni</span>
           </Link>

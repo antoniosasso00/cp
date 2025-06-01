@@ -54,8 +54,7 @@ function Calendar({
         ...classNames,
       }}
       components={{
-        IconLeft: ({ ...props }) => <ChevronLeft className="h-4 w-4" />,
-        IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" />,
+        // Rimosso IconLeft e IconRight per compatibilità con react-day-picker
       }}
       {...props}
     />
