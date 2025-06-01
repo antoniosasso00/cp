@@ -336,14 +336,15 @@ const BatchCRUD: React.FC<BatchCRUDProps> = ({
           <div className="space-y-2">
             <Label htmlFor="autoclave">Autoclave *</Label>
             <Select
-              value={formData.autoclave_id?.toString() || ''}
-              onValueChange={(value) => handleFieldChange('autoclave_id', parseInt(value))}
+              value={formData.autoclave_id?.toString() || 'none'}
+              onValueChange={(value) => handleFieldChange('autoclave_id', value === 'none' ? 0 : parseInt(value))}
               disabled={mode === 'view'}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Seleziona un'autoclave..." />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="none">Seleziona un'autoclave...</SelectItem>
                 {autoclavi.map((autoclave) => (
                   <SelectItem key={autoclave.id} value={autoclave.id.toString()}>
                     {autoclave.nome} ({autoclave.codice}) - {autoclave.lunghezza}x{autoclave.larghezza_piano}mm

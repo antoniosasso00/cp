@@ -791,6 +791,38 @@ export const odlApi = {
     const response = await api.get(`/odl-monitoring/monitoring/${id}`);
     return response.data;
   },
+
+  // Nuovi endpoint per il monitoraggio ODL
+  getMonitoringStats: async () => {
+    const response = await api.get('/odl-monitoring/monitoring/stats');
+    return response.data;
+  },
+
+  getMonitoringList: async (params?: {
+    skip?: number;
+    limit?: number;
+    status_filter?: string;
+    priorita_min?: number;
+    solo_attivi?: boolean;
+  }) => {
+    const queryParams = new URLSearchParams();
+    
+    if (params?.skip !== undefined) queryParams.append('skip', params.skip.toString());
+    if (params?.limit !== undefined) queryParams.append('limit', params.limit.toString());
+    if (params?.status_filter) queryParams.append('status_filter', params.status_filter);
+    if (params?.priorita_min !== undefined) queryParams.append('priorita_min', params.priorita_min.toString());
+    if (params?.solo_attivi !== undefined) queryParams.append('solo_attivi', params.solo_attivi.toString());
+    
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    const response = await api.get(`/odl-monitoring/monitoring${query}`);
+    return response.data;
+  },
+
+  getLogs: async (id: number, limit?: number) => {
+    const query = limit ? `?limit=${limit}` : '';
+    const response = await api.get(`/odl-monitoring/monitoring/${id}/logs${query}`);
+    return response.data;
+  }
 };
 
 // Tipi base per TempoFase
@@ -1125,6 +1157,24 @@ export interface BatchNestingList {
 
 // API Batch Nesting
 export const batchNestingApi = {
+  getData: async () => {
+    const response = await api.get('/batch_nesting/data');
+    return response.data;
+  },
+
+  genera: async (request: {
+    odl_ids: string[];
+    autoclave_ids: string[];
+    parametri: {
+      padding_mm: number;
+      min_distance_mm: number;
+      priorita_area: boolean;
+    };
+  }) => {
+    const response = await api.post('/batch_nesting/genera', request);
+    return response.data;
+  },
+
   getAll: (params?: {
     skip?: number;
     limit?: number;
@@ -1266,6 +1316,27 @@ export const produzioneApi = {
 
   getHealth: (): Promise<ProduzioneHealthCheck> => 
     apiRequest<ProduzioneHealthCheck>('/produzione/health'),
+};
+
+// API Nesting
+export const nestingApi = {
+  getData: async () => {
+    const response = await api.get('/nesting/data');
+    return response.data;
+  },
+
+  genera: async (request: {
+    odl_ids: string[];
+    autoclave_ids: string[];
+    parametri?: {
+      padding_mm?: number;
+      min_distance_mm?: number;
+      priorita_area?: boolean;
+    };
+  }) => {
+    const response = await api.post('/nesting/genera', request);
+    return response.data;
+  }
 };
 
 // ✅ NUOVO: API per i System Logs

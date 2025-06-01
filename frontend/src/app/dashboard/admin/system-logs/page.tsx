@@ -183,11 +183,10 @@ export default function SystemLogsPage() {
   /**
    * 🔄 Funzione per aggiornare i filtri
    */
-  const updateFilter = (key: keyof SystemLogFilter, value: any) => {
+  const updateFilter = (key: keyof SystemLogFilter, value: string) => {
     setFilters(prev => ({
       ...prev,
-      [key]: value || undefined, // Rimuove valori vuoti
-      offset: 0 // Reset paginazione quando cambiano i filtri
+      [key]: value === 'all' ? undefined : value // Gestisco "all" come undefined
     }))
   }
 
@@ -275,14 +274,14 @@ export default function SystemLogsPage() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Tipo Evento</label>
               <Select
-                value={filters.event_type || ''}
+                value={filters.event_type || 'all'}
                 onValueChange={(value) => updateFilter('event_type', value)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Tutti i tipi" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Tutti i tipi</SelectItem>
+                  <SelectItem value="all">Tutti i tipi</SelectItem>
                   <SelectItem value="odl_state_change">Cambio stato ODL</SelectItem>
                   <SelectItem value="user_login">Login utente</SelectItem>
                   <SelectItem value="data_modification">Modifica dati</SelectItem>
@@ -296,14 +295,14 @@ export default function SystemLogsPage() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Ruolo Utente</label>
               <Select
-                value={filters.user_role || ''}
+                value={filters.user_role || 'all'}
                 onValueChange={(value) => updateFilter('user_role', value)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Tutti i ruoli" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Tutti i ruoli</SelectItem>
+                  <SelectItem value="all">Tutti i ruoli</SelectItem>
                   <SelectItem value="ADMIN">Admin</SelectItem>
                   <SelectItem value="Management">Management</SelectItem>
                   <SelectItem value="Curing">Curing</SelectItem>
@@ -316,14 +315,14 @@ export default function SystemLogsPage() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Livello</label>
               <Select
-                value={filters.level || ''}
+                value={filters.level || 'all'}
                 onValueChange={(value) => updateFilter('level', value)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Tutti i livelli" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Tutti i livelli</SelectItem>
+                  <SelectItem value="all">Tutti i livelli</SelectItem>
                   <SelectItem value="INFO">Info</SelectItem>
                   <SelectItem value="WARNING">Warning</SelectItem>
                   <SelectItem value="ERROR">Error</SelectItem>

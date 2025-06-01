@@ -211,14 +211,15 @@ const RecurringScheduleForm: React.FC<RecurringScheduleFormProps> = ({
                 Categoria
               </Label>
               <Select
-                value={formData.categoria || ''}
-                onValueChange={(value) => handleFieldChange('categoria', value)}
+                value={formData.categoria || 'none'}
+                onValueChange={(value) => handleFieldChange('categoria', value === 'none' ? '' : value)}
                 required
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Seleziona una categoria" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">Seleziona una categoria</SelectItem>
                   {categorieList && categorieList.length > 0 ? (
                     categorieList
                       .filter(categoria => categoria && categoria.trim())
@@ -238,20 +239,21 @@ const RecurringScheduleForm: React.FC<RecurringScheduleFormProps> = ({
           )}
 
           {/* Selezione Sotto-categoria */}
-          {formData.schedule_type === ScheduleEntryType.SOTTO_CATEGORIA && (
+          {(formData.schedule_type === ScheduleEntryType.CATEGORIA || formData.schedule_type === ScheduleEntryType.SOTTO_CATEGORIA) && (
             <div>
               <Label className="block text-sm font-medium mb-2">
                 Sotto-categoria
               </Label>
               <Select
-                value={formData.sotto_categoria || ''}
-                onValueChange={(value) => handleFieldChange('sotto_categoria', value)}
+                value={formData.sotto_categoria || 'none'}
+                onValueChange={(value) => handleFieldChange('sotto_categoria', value === 'none' ? '' : value)}
                 required
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Seleziona una sotto-categoria" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">Seleziona una sotto-categoria</SelectItem>
                   {sottoCategorieList && sottoCategorieList.length > 0 ? (
                     sottoCategorieList
                       .filter(sottoCategoria => sottoCategoria && sottoCategoria.trim())
@@ -276,14 +278,15 @@ const RecurringScheduleForm: React.FC<RecurringScheduleFormProps> = ({
               Autoclave
             </Label>
             <Select
-              value={formData.autoclave_id?.toString() || ''}
-              onValueChange={(value) => handleFieldChange('autoclave_id', value ? Number(value) : 0)}
+              value={formData.autoclave_id?.toString() || 'none'}
+              onValueChange={(value) => handleFieldChange('autoclave_id', value === 'none' ? 0 : Number(value))}
               required
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Seleziona un'autoclave" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="none">Seleziona un'autoclave</SelectItem>
                 {autoclavi && autoclavi.length > 0 ? (
                   autoclavi
                     .filter(autoclave => autoclave.stato === 'DISPONIBILE')

@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import BatchListWithControls from '@/components/batch-nesting/BatchListWithControls'
+import { batchNestingApi } from '@/lib/api'
 
 interface ODLData {
   id: number
@@ -102,34 +103,23 @@ export default function NestingPage() {
       
       console.log('🔄 Caricamento dati per nesting...')
 
-      // ✅ RISOLTO: Usa l'endpoint specializzato per i dati di nesting
-      const [dataNesting, batchesNesting] = await Promise.all([
-        fetch('/api/v1/batch_nesting/data'),
-        fetch('/api/v1/batch_nesting?limit=10&order_by=created_at&order=desc')
+      // ✅ RISOLTO: Usa la libreria API invece di fetch diretto
+      const [nestingData, batchesData] = await Promise.all([
+        batchNestingApi.getData(),
+        batchNestingApi.getAll({ limit: 10 })
       ])
 
-      let odlInAttesaCura: ODLData[] = []
-      let autoclaveDisponibili: AutoclaveData[] = []
-
-      if (dataNesting.ok) {
-        const nestingData = await dataNesting.json()
-        console.log('📊 Dati nesting ricevuti:', nestingData)
-        
-        // I dati sono già filtrati lato server
-        odlInAttesaCura = nestingData.odl_in_attesa_cura || []
-        autoclaveDisponibili = nestingData.autoclavi_disponibili || []
-        
-        setOdlList(odlInAttesaCura)
-        setAutoclaveList(autoclaveDisponibili)
-      } else {
-        throw new Error(`Errore nel caricamento dati nesting: ${dataNesting.status}`)
-      }
+      console.log('📊 Dati nesting ricevuti:', nestingData)
+      
+      // I dati sono già filtrati lato server
+      const odlInAttesaCura = nestingData.odl_in_attesa_cura || []
+      const autoclaveDisponibili = nestingData.autoclavi_disponibili || []
+      
+      setOdlList(odlInAttesaCura)
+      setAutoclaveList(autoclaveDisponibili)
 
       // ✅ NUOVO: Carica batch recenti
-      if (batchesNesting.ok) {
-        const batchesData = await batchesNesting.json()
-        setRecentBatches(batchesData.slice(0, 5))
-      }
+      setRecentBatches(batchesData.slice(0, 5))
 
       toast({
         title: 'Dati caricati',
@@ -224,21 +214,8 @@ export default function NestingPage() {
 
       console.log('📤 Payload inviato:', payload)
 
-      const response = await fetch('/api/v1/batch_nesting/genera', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        const errorDetail = errorData.detail || errorData.message || `Errore HTTP ${response.status}`
-        throw new Error(errorDetail)
-      }
-
-      const result = await response.json()
+      // ✅ RISOLTO: Usa la libreria API invece di fetch diretto
+      const result = await batchNestingApi.genera(payload)
       console.log('✅ Nesting generato:', result)
 
       if (result.success && result.batch_id) {
@@ -249,11 +226,8 @@ export default function NestingPage() {
         
         // ✅ AGGIORNA: Ricarica batch recenti prima del redirect
         try {
-          const batchesResponse = await fetch('/api/v1/batch_nesting?limit=10&order_by=created_at&order=desc')
-          if (batchesResponse.ok) {
-            const batchesData = await batchesResponse.json()
-            setRecentBatches(batchesData.slice(0, 5))
-          }
+          const batchesData = await batchNestingApi.getAll({ limit: 10 })
+          setRecentBatches(batchesData.slice(0, 5))
         } catch (error) {
           console.error('Errore nel ricaricamento batch:', error)
         }

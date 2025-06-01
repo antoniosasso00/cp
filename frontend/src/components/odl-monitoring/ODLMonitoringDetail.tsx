@@ -23,6 +23,7 @@ import {
   FileText
 } from 'lucide-react';
 import { ODLTimelineEnhanced } from './ODLTimelineEnhanced';
+import { odlApi } from '@/lib/api';
 
 interface ODLLog {
   id: number;
@@ -78,9 +79,7 @@ export function ODLMonitoringDetail({ odlId, onBack }: ODLMonitoringDetailProps)
 
   const fetchOdlDetail = async () => {
     try {
-      const response = await fetch(`/api/v1/odl-monitoring/monitoring/${odlId}`);
-      if (!response.ok) throw new Error('Errore nel caricamento dei dettagli ODL');
-      const data = await response.json();
+      const data = await odlApi.getMonitoringDetail(odlId);
       setOdlDetail(data);
     } catch (err) {
       console.error('Errore nel caricamento dei dettagli ODL:', err);
@@ -90,9 +89,7 @@ export function ODLMonitoringDetail({ odlId, onBack }: ODLMonitoringDetailProps)
 
   const fetchTimeline = async () => {
     try {
-      const response = await fetch(`/api/v1/odl-monitoring/monitoring/${odlId}/timeline`);
-      if (!response.ok) throw new Error('Errore nel caricamento della timeline');
-      const data = await response.json();
+      const data = await odlApi.getTimeline(odlId);
       setTimeline(data.timeline || []);
     } catch (err) {
       console.error('Errore nel caricamento della timeline:', err);

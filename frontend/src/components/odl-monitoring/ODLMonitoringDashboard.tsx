@@ -21,6 +21,7 @@ import { ODLMonitoringStats } from './ODLMonitoringStats';
 import { ODLMonitoringList } from './ODLMonitoringList';
 import { ODLMonitoringDetail } from './ODLMonitoringDetail';
 import { ODLAlertsPanel } from './ODLAlertsPanel';
+import { odlApi } from '@/lib/api';
 
 interface ODLMonitoringSummary {
   id: number;
@@ -65,9 +66,7 @@ export function ODLMonitoringDashboard() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('/api/v1/odl-monitoring/monitoring/stats');
-      if (!response.ok) throw new Error('Errore nel caricamento delle statistiche');
-      const data = await response.json();
+      const data = await odlApi.getMonitoringStats();
       setStats(data);
     } catch (err) {
       console.error('Errore nel caricamento delle statistiche:', err);
@@ -77,18 +76,15 @@ export function ODLMonitoringDashboard() {
 
   const fetchOdlList = async () => {
     try {
-      const params = new URLSearchParams({
-        skip: (currentPage * limit).toString(),
-        limit: limit.toString(),
-        solo_attivi: soloAttivi.toString()
-      });
+      const params = {
+        skip: currentPage * limit,
+        limit: limit,
+        solo_attivi: soloAttivi,
+        ...(statusFilter && { status_filter: statusFilter }),
+        ...(prioritaMin && { priorita_min: parseInt(prioritaMin) })
+      };
       
-      if (statusFilter !== '') params.append('status_filter', statusFilter);
-      if (prioritaMin !== '') params.append('priorita_min', prioritaMin);
-      
-      const response = await fetch(`/api/v1/odl-monitoring/monitoring?${params}`);
-      if (!response.ok) throw new Error('Errore nel caricamento della lista ODL');
-      const data = await response.json();
+      const data = await odlApi.getMonitoringList(params);
       
       // Filtra per termine di ricerca se presente
       let filteredData = data;
