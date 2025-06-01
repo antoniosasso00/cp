@@ -1,0 +1,314 @@
+{
+  "timestamp": "2025-05-31T21:05:28.855730",
+  "structure_ok": true,
+  "data_integrity_ok": true,
+  "admin_endpoints_ok": true,
+  "table_info": {
+    "alembic_version": {
+      "columns": 1,
+      "column_names": [
+        "version_num"
+      ]
+    },
+    "autoclavi": {
+      "columns": 16,
+      "column_names": [
+        "id",
+        "nome",
+        "codice",
+        "lunghezza",
+        "larghezza_piano",
+        "num_linee_vuoto",
+        "temperatura_max",
+        "pressione_max",
+        "stato",
+        "produttore",
+        "anno_produzione",
+        "note",
+        "created_at",
+        "updated_at",
+        "max_load_kg",
+        "use_secondary_plane"
+      ]
+    },
+    "batch_nesting": {
+      "columns": 21,
+      "column_names": [
+        "id",
+        "nome",
+        "stato",
+        "autoclave_id",
+        "odl_ids",
+        "configurazione_json",
+        "parametri",
+        "numero_nesting",
+        "peso_totale_kg",
+        "area_totale_utilizzata",
+        "valvole_totali_utilizzate",
+        "note",
+        "creato_da_utente",
+        "creato_da_ruolo",
+        "confermato_da_utente",
+        "confermato_da_ruolo",
+        "data_conferma",
+        "created_at",
+        "updated_at",
+        "data_completamento",
+        "durata_ciclo_minuti"
+      ]
+    },
+    "cataloghi": {
+      "columns": 11,
+      "column_names": [
+        "part_number",
+        "descrizione",
+        "categoria",
+        "sotto_categoria",
+        "attivo",
+        "note",
+        "created_at",
+        "updated_at",
+        "lunghezza",
+        "larghezza",
+        "altezza"
+      ]
+    },
+    "cicli_cura": {
+      "columns": 12,
+      "column_names": [
+        "id",
+        "nome",
+        "temperatura_stasi1",
+        "pressione_stasi1",
+        "durata_stasi1",
+        "attiva_stasi2",
+        "temperatura_stasi2",
+        "pressione_stasi2",
+        "durata_stasi2",
+        "descrizione",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "nesting_result_odl": {
+      "columns": 2,
+      "column_names": [
+        "nesting_result_id",
+        "odl_id"
+      ]
+    },
+    "nesting_results": {
+      "columns": 22,
+      "column_names": [
+        "id",
+        "autoclave_id",
+        "odl_ids",
+        "area_utilizzata",
+        "area_totale",
+        "valvole_utilizzate",
+        "valvole_totali",
+        "created_at",
+        "odl_esclusi_ids",
+        "motivi_esclusione",
+        "stato",
+        "note",
+        "updated_at",
+        "confermato_da_ruolo",
+        "ciclo_cura_id",
+        "posizioni_tool",
+        "report_id",
+        "peso_totale_kg",
+        "area_piano_1",
+        "area_piano_2",
+        "superficie_piano_2_max",
+        "batch_id"
+      ]
+    },
+    "odl": {
+      "columns": 9,
+      "column_names": [
+        "id",
+        "parte_id",
+        "tool_id",
+        "priorita",
+        "status",
+        "note",
+        "created_at",
+        "updated_at",
+        "motivo_blocco"
+      ]
+    },
+    "odl_logs": {
+      "columns": 11,
+      "column_names": [
+        "id",
+        "odl_id",
+        "evento",
+        "stato_precedente",
+        "stato_nuovo",
+        "descrizione",
+        "responsabile",
+        "nesting_id",
+        "autoclave_id",
+        "schedule_entry_id",
+        "timestamp"
+      ]
+    },
+    "parte_tool_association": {
+      "columns": 2,
+      "column_names": [
+        "parte_id",
+        "tool_id"
+      ]
+    },
+    "parti": {
+      "columns": 8,
+      "column_names": [
+        "id",
+        "part_number",
+        "descrizione_breve",
+        "num_valvole_richieste",
+        "ciclo_cura_id",
+        "note_produzione",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "reports": {
+      "columns": 11,
+      "column_names": [
+        "id",
+        "filename",
+        "file_path",
+        "report_type",
+        "generated_for_user_id",
+        "period_start",
+        "period_end",
+        "include_sections",
+        "file_size_bytes",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "schedule_entries": {
+      "columns": 19,
+      "column_names": [
+        "id",
+        "schedule_type",
+        "odl_id",
+        "autoclave_id",
+        "categoria",
+        "sotto_categoria",
+        "start_datetime",
+        "end_datetime",
+        "status",
+        "created_by",
+        "priority_override",
+        "is_recurring",
+        "recurring_frequency",
+        "pieces_per_month",
+        "parent_schedule_id",
+        "note",
+        "estimated_duration_minutes",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "state_logs": {
+      "columns": 8,
+      "column_names": [
+        "id",
+        "odl_id",
+        "stato_precedente",
+        "stato_nuovo",
+        "timestamp",
+        "responsabile",
+        "ruolo_responsabile",
+        "note"
+      ]
+    },
+    "system_logs": {
+      "columns": 13,
+      "column_names": [
+        "id",
+        "timestamp",
+        "level",
+        "event_type",
+        "user_role",
+        "user_id",
+        "action",
+        "entity_type",
+        "entity_id",
+        "details",
+        "old_value",
+        "new_value",
+        "ip_address"
+      ]
+    },
+    "tempi_produzione": {
+      "columns": 12,
+      "column_names": [
+        "id",
+        "part_number",
+        "categoria",
+        "sotto_categoria",
+        "tempo_medio_minuti",
+        "tempo_minimo_minuti",
+        "tempo_massimo_minuti",
+        "numero_osservazioni",
+        "ultima_osservazione",
+        "note",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "tempo_fasi": {
+      "columns": 9,
+      "column_names": [
+        "id",
+        "odl_id",
+        "fase",
+        "inizio_fase",
+        "fine_fase",
+        "durata_minuti",
+        "note",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "tools": {
+      "columns": 11,
+      "column_names": [
+        "id",
+        "part_number_tool",
+        "descrizione",
+        "lunghezza_piano",
+        "larghezza_piano",
+        "disponibile",
+        "note",
+        "created_at",
+        "updated_at",
+        "peso",
+        "materiale"
+      ]
+    },
+    "users": {
+      "columns": 3,
+      "column_names": [
+        "id",
+        "created_at",
+        "updated_at"
+      ]
+    }
+  },
+  "data_integrity": {
+    "autoclavi": 3,
+    "cataloghi": 6,
+    "cicli_cura": 4,
+    "parti": 6,
+    "tools": 8,
+    "odl": 4,
+    "nesting_results": 15,
+    "system_logs": 15
+  }
+}

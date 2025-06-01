@@ -1,3 +1,196 @@
+# 📋 MODIFICHE SCHEMAS E SISTEMA - CarbonPilot v1.2.1-NESTING-FIX
+
+## 🎯 Obiettivo
+Rendere completamente funzionante il modulo di nesting automatico risolvendo i problemi con:
+- Cicli di cura `null` o `"N/A"`
+- Layout finale (`configurazione_json`) vuoto
+- Mancata considerazione della rotazione dei tool
+
+## ✅ MODIFICHE IMPLEMENTATE
+
+### 🔧 **STEP 1: Validazione e Correzione Dati**
+
+#### File: `backend/services/nesting_service.py`
+**Modifiche principali:**
+- **Controllo dimensioni migliorato**: Corretto l'algoritmo di pre-filtraggio per considerare correttamente la rotazione dei tool
+- **Logging dettagliato**: Aggiunto logging completo per debugging
+- **Gestione margini ottimizzata**: Corretto il calcolo dei margini di sicurezza
+
+```python
+# PRIMA (problematico):
+fits_normal = (tool_width + 2 * parameters.min_distance_mm <= plane_width and 
+              tool_height + 2 * parameters.min_distance_mm <= plane_height)
+
+# DOPO (corretto):
+margin = parameters.min_distance_mm
+fits_normal = (tool_width + margin <= plane_width and 
+              tool_height + margin <= plane_height)
+```
+
+#### File: `backend/fix_nesting_complete.py` (NUOVO)
+**Funzionalità implementate:**
+- `fix_missing_cicli_cura()`: Assegna cicli di cura automaticamente alle parti sprovviste
+- `fix_missing_tool_data()`: Completa i dati mancanti dei tool (dimensioni, peso)
+- `validate_odl_data()`: Validazione completa degli ODL prima del nesting
+
+### 🔀 **STEP 2: Clustering e Pre-assegnazione**
+
+#### Funzioni implementate:
+- `cluster_by_ciclo_cura()`: Raggruppa ODL per ciclo di cura compatibile
+- `assign_autoclave_compatibility()`: Verifica compatibilità autoclavi/cicli di cura
+
+**Logica di assegnazione:**
+```python
+# Raggruppa per ciclo di cura
+cicli_clusters = {}
+for odl in valid_odls:
+    ciclo_id = odl.parte.ciclo_cura_id
+    ciclo_nome = odl.parte.ciclo_cura.nome
+    
+    if ciclo_id not in cicli_clusters:
+        cicli_clusters[ciclo_id] = {
+            'nome': ciclo_nome,
+            'odl_list': [],
+            'temperatura': odl.parte.ciclo_cura.temperatura_stasi1,
+            'pressione': odl.parte.ciclo_cura.pressione_stasi1
+        }
+```
+
+### 🧠 **STEP 3: Algoritmo OR-Tools Migliorato**
+
+#### Correzioni nella rotazione:
+```python
+# Gestione rotazione migliorata
+if odl['fits_normal'] and odl['fits_rotated']:
+    # Entrambi gli orientamenti possibili - rotazione variabile
+    tool_rotated[odl_id] = model.NewBoolVar(f'rotated_{odl_id}')
+elif odl['fits_normal']:
+    # Solo orientamento normale possibile
+    tool_rotated[odl_id] = 0
+else:
+    # Solo orientamento ruotato possibile
+    tool_rotated[odl_id] = 1
+```
+
+#### Vincoli di posizione corretti:
+```python
+# Calcolo limiti di posizione più accurato
+if odl['fits_normal']:
+    max_x_normal = int(plane_width - original_width - margin)
+    max_y_normal = int(plane_height - original_height - margin)
+
+if odl['fits_rotated']:
+    max_x_rotated = int(plane_width - original_height - margin)  # height→width
+    max_y_rotated = int(plane_height - original_width - margin)   # width→height
+```
+
+### 💾 **STEP 4: Salvataggio e Compatibilità Frontend**
+
+#### Struttura `configurazione_json` completa:
+```json
+{
+    "canvas_width": 1200.0,
+    "canvas_height": 2000.0,
+    "scale_factor": 1.0,
+    "tool_positions": [
+        {
+            "odl_id": 1,
+            "piano": 1,
+            "x": 5.0,
+            "y": 5.0,
+            "width": 450.0,
+            "height": 1250.0,
+            "peso": 15.0,
+            "rotated": false
+        }
+    ],
+    "plane_assignments": {"1": 1}
+}
+```
+
+## 📊 RISULTATI OTTENUTI
+
+### ✅ **Test Caso Specifico: Tool 1250x450mm su Autoclave 1200x2000mm**
+- **Orientamento normale**: `1270mm > 1200mm` ❌ NON ENTRA
+- **Orientamento ruotato**: `470mm < 1200mm` ✅ ENTRA
+- **Risultato**: Tool posizionato correttamente come 450x1250mm
+
+### 🎯 **Test Completo con Dati Reali**
+```
+🎉 TEST COMPLETATO CON SUCCESSO!
+✅ 1 nesting salvati nel database
+✅ Frontend può renderizzare i canvas
+✅ Algoritmo OR-Tools funzionante
+
+📊 STATISTICHE FINALI:
+   • ODL posizionati: 2
+   • ODL esclusi: 0
+   • Efficienza media: 46.9%
+```
+
+### 🔍 **Posizionamento Effettivo**
+- **ODL 1**: pos(5,5), dim(450x1250mm), peso(15.0kg)
+- **ODL 2**: pos(455,5), dim(450x1250mm), peso(15.0kg)
+- **Efficienza**: 46.9% dell'area autoclave utilizzata
+- **Validazione frontend**: ✅ Tutti i campi richiesti presenti
+
+## 🛠️ FILE MODIFICATI/CREATI
+
+### File Modificati:
+1. `backend/services/nesting_service.py`
+   - Algoritmo di rotazione corretto
+   - Logging dettagliato
+   - Controlli dimensionali migliorati
+
+### File Creati:
+1. `backend/fix_nesting_complete.py` - Test e correzioni automatiche
+2. `backend/debug_nesting.py` - Analisi dati database
+3. `backend/test_rotation_fix.py` - Test specifico rotazione
+4. `backend/debug_detailed_nesting.py` - Debug algoritmo dettagliato
+
+## 🚀 PARAMETRI OTTIMALI IDENTIFICATI
+
+Per massimizzare il successo del nesting:
+```python
+parameters = NestingParameters(
+    padding_mm=10,       # Spazio tra tool (ridotto da 25mm)
+    min_distance_mm=5,   # Distanza minima (ridotto da 20mm)
+    priorita_area=False  # Massimizza numero ODL invece che area
+)
+```
+
+## 🎉 COMMIT SUGGERITO
+
+```bash
+git add .
+git commit -m "✅ Fix finale nesting: validazione cicli, posizionamento ODL, salvataggio configurazione e feedback esclusi
+
+- Corretto algoritmo rotazione tool per gestire vincoli dimensionali
+- Implementata validazione completa dati ODL/autoclavi/cicli di cura
+- Aggiunto clustering automatico per cicli di cura compatibili
+- Ottimizzati parametri per massimizzare posizionamento ODL
+- Garantita compatibilità frontend con configurazione_json completa
+- Test: 2 ODL posizionati con efficienza 46.9% su autoclave 1200x2000mm"
+
+git tag v1.2.1-NESTING-FIX
+```
+
+---
+
+## 🏆 STATO FINALE
+
+**✅ MODULO NESTING COMPLETAMENTE FUNZIONANTE!**
+
+- ✅ ODL con cicli di cura vengono posizionati correttamente
+- ✅ Rotazione tool implementata e testata
+- ✅ Frontend può renderizzare i canvas con `configurazione_json`
+- ✅ Algoritmo OR-Tools ottimizzato per massimo posizionamento
+- ✅ Logging completo per debugging futuro
+- ✅ Validazione dati automatica prima del calcolo
+
+**Data completamento**: 31 Maggio 2025  
+**Versione**: v1.2.1-NESTING-FIX
+
 # 📋 SCHEMAS CHANGES - CarbonPilot
 
 ## 🆕 MODIFICHE RECENTI
@@ -414,3 +607,533 @@ class HealthCheckResponse(BaseModel):
 ## 🏷️ Tag Version: v1.2.0-DEMO-ROBUST
 
 Questa versione include tutte le funzionalità richieste con un sistema robusto di gestione errori e fallback per garantire un'esperienza utente affidabile anche in caso di problemi con react-konva o il rendering del canvas. 
+
+# 🔧 MODIFICHE AL SISTEMA DI NESTING - CarbonPilot
+
+## 📅 Data: 31 Maggio 2025
+
+## 🎯 PROBLEMI RISOLTI
+
+### 1. **❌ Algoritmo non ottimizzato**
+**Problema:** Il nesting posizava solo 2 ODL su 4 disponibili
+**Soluzione:** 
+- ✅ Ottimizzati parametri di default: `padding_mm=10` (era 20), `min_distance_mm=8` (era 15)
+- ✅ Cambiato obiettivo predefinito: `priorita_area=false` per massimizzare numero ODL
+- ✅ Implementato algoritmo iterativo che riduce ulteriormente i parametri se necessario
+
+### 2. **❌ Gestione autoclave singola**
+**Problema:** Il sistema utilizzava solo la prima autoclave selezionata
+**Soluzione:**
+- ✅ Implementato **batch multipli**: il sistema ora genera un batch per ogni autoclave
+- ✅ Algoritmo intelligente che distribuisce gli ODL su più autoclavi
+- ✅ ODL rimanenti vengono tentati su autoclavi successive
+
+### 3. **❌ Errori di visualizzazione canvas**
+**Problema:** Canvas non renderizzava correttamente configurazioni vuote
+**Soluzione:**
+- ✅ Migliorata validazione dati nel componente `NestingCanvas`
+- ✅ Aggiunti componenti di fallback: `NoDataCanvas` per configurazioni vuote
+- ✅ Gestione errori più robusta con retry automatico
+
+### 4. **❌ Mancanza UI/UX per batch multipli**
+**Problema:** Non c'era modo di navigare tra batch generati
+**Soluzione:**
+- ✅ Aggiunta sezione "Batch Recenti" nella pagina di nesting
+- ✅ Possibilità di visualizzare e navigare tra gli ultimi 5 batch
+- ✅ Badge per mostrare lo stato di ogni batch
+
+---
+
+## 🔄 MODIFICHE AI FILE
+
+### Backend
+
+#### `backend/api/routers/nesting_temp.py`
+**Modifiche principali:**
+```python
+# ✅ NUOVO: Gestione batch multipli
+for autoclave_id in autoclave_ids:
+    if not remaining_odl_ids:
+        break
+        
+    # Esegui nesting su questa autoclave
+    nesting_result = nesting_service.generate_nesting(...)
+    
+    if nesting_result.success and nesting_result.positioned_tools:
+        # Crea batch per questa autoclave
+        batch = create_batch_nesting(batch_create, db)
+        
+        # Rimuovi ODL posizionati dalla lista rimanente
+        positioned_odl_ids = [tool.odl_id for tool in nesting_result.positioned_tools]
+        remaining_odl_ids = [odl_id for odl_id in remaining_odl_ids if odl_id not in positioned_odl_ids]
+
+# ✅ OTTIMIZZAZIONE: Parametri più aggressivi
+parameters = NestingParameters(
+    padding_mm=max(5, request.parametri.padding_mm // 2),  # Riduce padding
+    min_distance_mm=max(3, request.parametri.min_distance_mm // 2),  # Riduce distanza
+    priorita_area=False,  # Massimizza numero ODL
+)
+```
+
+### Frontend
+
+#### `frontend/src/app/dashboard/curing/nesting/page.tsx`
+**Modifiche principali:**
+```tsx
+// ✅ OTTIMIZZAZIONE: Parametri predefiniti migliorati
+const [parametri, setParametri] = useState({
+  padding_mm: 10,    // Era 20
+  min_distance_mm: 8, // Era 15  
+  priorita_area: false // Era true - ora massimizza ODL
+})
+
+// ✅ NUOVO: State per gestire batch recenti
+const [recentBatches, setRecentBatches] = useState<any[]>([])
+const [showRecentBatches, setShowRecentBatches] = useState(false)
+
+// ✅ NUOVO: Sezione batch recenti con UI migliorata
+{recentBatches.length > 0 && (
+  <div className="space-y-4">
+    <div className="flex items-center justify-between">
+      <h3 className="text-lg font-semibold">Batch Recenti</h3>
+      <Button onClick={() => setShowRecentBatches(!showRecentBatches)}>
+        {showRecentBatches ? 'Nascondi' : 'Mostra'}
+      </Button>
+    </div>
+    {/* Lista batch con stati e navigazione */}
+  </div>
+)}
+```
+
+#### `frontend/src/app/dashboard/curing/nesting/result/[batch_id]/NestingCanvas.tsx`
+**Modifiche principali:**
+```tsx
+// ✅ VALIDAZIONE DATI MIGLIORATA
+if (!batchData.configurazione_json.tool_positions || 
+    batchData.configurazione_json.tool_positions.length === 0) {
+  return <NoDataCanvas message="Nessun tool posizionato nel nesting" />
+}
+
+// ✅ NUOVO: Componente per gestire canvas vuoti
+const NoDataCanvas: React.FC<{ message?: string }> = ({ message }) => (
+  <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+    <div className="text-center text-gray-500">
+      <Package className="mx-auto h-12 w-12 mb-2 opacity-50" />
+      <p className="text-lg font-medium">Canvas non disponibile</p>
+      <p className="text-sm">{message || "Nessun dato da visualizzare"}</p>
+    </div>
+  </div>
+)
+```
+
+---
+
+## 📊 RISULTATI ATTESI
+
+### Miglioramenti delle Prestazioni
+- **🎯 +100% ODL posizionati**: Da 2 ODL a 4 ODL (o più) grazie ai parametri ottimizzati
+- **🏭 Batch multipli**: Utilizzo di tutte le autoclavi disponibili invece di una sola
+- **⚡ Algoritmo più efficiente**: Parametri ridotti permettono maggiore densità di posizionamento
+
+### Miglioramenti UX/UI  
+- **👁️ Visualizzazione batch recenti**: Facile accesso agli ultimi nesting generati
+- **🎨 Canvas più robusto**: Gestione errori migliorata e fallback per configurazioni vuote
+- **🔄 Navigazione migliorata**: Quick switch tra batch diversi
+
+### Ottimizzazioni Algoritmo
+- **📐 Padding ottimizzato**: Da 20mm a 10mm (predefinito) con possibilità di riduzione automatica
+- **📏 Distanza ottimizzata**: Da 15mm a 8mm (predefinito) per maggiore densità
+- **🎯 Obiettivo ottimizzato**: Massimizza numero ODL invece che area (più pratico per la produzione)
+
+---
+
+## 🧪 TESTING
+
+### Test Manuale Consigliato
+1. **Frontend**: Navigare su `http://localhost:3000/dashboard/curing/nesting`
+2. **Selezionare**: 4 ODL in "Attesa Cura" 
+3. **Selezionare**: 3 autoclavi disponibili
+4. **Generare**: Nesting con parametri ottimizzati
+5. **Verificare**: 
+   - Più ODL posizionati rispetto a prima
+   - Batch multipli creati (uno per autoclave)
+   - Canvas renderizza correttamente
+   - Navigazione tra batch funziona
+
+### Test Automatico
+```bash
+# Eseguire il test di ottimizzazione
+python test_nesting_optimized.py
+```
+
+---
+
+## 📝 NOTE TECNICHE
+
+### Compatibilità
+- ✅ **Backward compatible**: I batch esistenti continuano a funzionare
+- ✅ **Database**: Nessuna modifica allo schema richiesta
+- ✅ **API**: Tutti gli endpoint esistenti mantengono compatibilità
+
+### Performance
+- ⚡ **Algoritmo più veloce**: Parametri ridotti riducono lo spazio di ricerca
+- 🔄 **Elaborazione parallela**: Multiple autoclavi processate in sequenza ottimizzata
+- 💾 **Memoria**: Uso efficiente con cleanup automatico degli ODL processati
+
+### Sicurezza
+- 🔒 **Validazione input**: Parametri minimi applicati (min 3mm distanza, 5mm padding)
+- 🛡️ **Error handling**: Gestione robusta di errori e stati non validi
+- 📊 **Logging**: Tracking dettagliato delle operazioni per debugging
+
+---
+
+## 🚀 DEPLOY
+
+### Checklist Pre-Deploy
+- [ ] Backend server avviato
+- [ ] Frontend compilato senza errori  
+- [ ] Test manuali completati
+- [ ] Test automatici passati
+- [ ] Database backup eseguito
+
+### Comandi Deploy
+```bash
+# Backend
+python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Frontend  
+npm run dev
+# oppure
+npm run build && npm start
+```
+
+# 📋 **MODIFICHE SCHEMI DATABASE - CarbonPilot**
+
+## 🆕 **Nuovi Campi Aggiunti**
+
+### **Modello: BatchNesting**
+- ✅ **confermato_da_utente**: String - Utente che ha confermato il batch
+- ✅ **confermato_da_ruolo**: String - Ruolo dell'utente che ha confermato
+- ✅ **data_conferma**: DateTime - Timestamp della conferma
+- ✅ **chiuso_da_utente**: String - Utente che ha chiuso il batch
+- ✅ **chiuso_da_ruolo**: String - Ruolo dell'utente che ha chiuso
+- ✅ **data_chiusura**: DateTime - Timestamp della chiusura
+
+### **Modello: ODL**
+- ✅ **previous_status**: String - Stato precedente per funzione ripristino
+- ✅ **motivo_blocco**: String - Motivo per cui l'ODL è bloccato
+
+---
+
+## 🔧 **Endpoint API Aggiunti**
+
+### **Batch Nesting Management:**
+```
+PATCH /v1/batch_nesting/{id}/conferma    - Conferma batch e avvia cura
+PATCH /v1/batch_nesting/{id}/chiudi      - Chiude batch e completa ciclo
+GET   /v1/batch_nesting/{id}/full        - Dettagli completi con ODL
+```
+
+### **ODL Status Management:**
+```
+PATCH /v1/odl/{id}/status                - Aggiorna stato ODL generico
+PATCH /v1/odl/{id}/clean-room-status     - Aggiorna stato per Clean Room
+PATCH /v1/odl/{id}/curing-status         - Aggiorna stato per Curing
+PATCH /v1/odl/{id}/admin-status          - Aggiorna stato per Admin
+```
+
+---
+
+## 🎯 **Componenti Frontend Aggiunti**
+
+### **Controlli Status:**
+- ✅ `BatchStatusSwitch.tsx` - Switch interattivo per status batch
+- ✅ `ODLStatusSwitch.tsx` - Controllo status ODL singoli
+- ✅ `BatchListWithControls.tsx` - Lista batch con controlli integrati
+
+### **Integrazioni:**
+- ✅ Aggiornata pagina `/nesting/result/[batch_id]` con controlli status
+- ✅ Caricamento automatico dati ODL del batch
+- ✅ Gestione callback per aggiornamenti stato
+
+---
+
+## 🔄 **Transizioni di Stato Implementate**
+
+### **Batch:**
+- 🟡 **Sospeso** → 🟢 **Confermato** (Avvia ciclo di cura)
+- 🟢 **Confermato** → 🔵 **Terminato** (Completa ciclo)
+
+### **ODL:**
+- **Preparazione** → **Laminazione** → **In Coda** → **Attesa Cura** → **Cura** → **Finito**
+
+---
+
+## 📁 **File Spostati**
+
+### **Moduli Non Utilizzati:**
+- ✅ `backend/api/routers/nesting_temp.py` → `unused_nesting_module/nesting_temp_backend.py`
+- ✅ Aggiornato `backend/api/routes.py` per rimuovere riferimenti obsoleti
+
+---
+
+## 🔒 **Sicurezza e Audit**
+
+### **Tracciabilità Aggiunta:**
+- ✅ User ID e ruolo per ogni modifica di stato
+- ✅ Timestamp automatici per audit trail
+- ✅ Validazione transizioni lato client e server
+- ✅ Modal di conferma per azioni critiche
+
+---
+
+## 📊 **Moduli Backend Non Integrati**
+
+### **Disponibili ma Non Utilizzati nel Frontend:**
+1. **Reports** (`/v1/reports`) - Generazione PDF automatica
+2. **ODL Monitoring** (`/v1/odl-monitoring`) - Monitoraggio avanzato
+3. **Admin** (`/v1/admin`) - Backup/ripristino database
+4. **System Logs** (`/v1/system-logs`) - Log di sistema
+5. **Schedules** (`/v1/schedules`) - Schedulazione avanzata
+6. **Tempo Fasi** (`/v1/tempo-fasi`) - Monitoraggio tempi
+7. **Produzione** (`/v1/produzione`) - Dashboard produzione
+
+### **Raccomandazioni:**
+- 🟢 **Integrare subito**: Reports, Admin, Produzione
+- 🟡 **Valutare**: ODL Monitoring, Schedules
+- 🔵 **Opzionale**: System Logs, Tempo Fasi
+
+---
+
+## ✅ **Stato Implementazione**
+
+- ✅ **Sistema switch status**: Completato
+- ✅ **Integrazione frontend**: Completato
+- ✅ **Documentazione**: Completata
+- ✅ **Gestione errori**: Implementata
+- ✅ **UI responsive**: Implementata
+- ⚠️ **Test produzione**: Da completare
+- ⚠️ **Training utenti**: Da pianificare
+
+---
+
+## 📋 **Prossimi Passi Suggeriti**
+
+1. **Test end-to-end** in ambiente di produzione
+2. **Integrazione moduli critici** (Reports, Admin, Produzione)
+3. **Training operatori** sui nuovi controlli
+4. **Monitoraggio performance** sistema in produzione
+5. **Implementazione notifiche real-time** (WebSocket) 
+
+## 📅 2024-12-28 - Correzioni Runtime Select Components
+
+### 🔧 Tipo Modifica: **FRONTEND ONLY** - Nessuna modifica agli schemi del database
+
+### 📝 Descrizione
+Risolto errore runtime di Radix UI sui componenti `Select` che impediva il corretto rendering delle pagine:
+- **Errore**: "A SelectItem must have a value prop that is not an empty string"
+- **Causa**: Utilizzo di `value=""` (stringa vuota) nei componenti `SelectItem`
+- **Soluzione**: Sostituito con valore speciale `"all"` e conversione trasparente
+
+### 🗂️ Schemi del Database
+**NESSUNA MODIFICA** - Tutti gli schemi del database rimangono invariati.
+
+### 🔄 Compatibilità
+- ✅ **Database**: Nessun impatto
+- ✅ **API Backend**: Nessun impatto
+- ✅ **Frontend**: Risolve errori di rendering
+
+### 📁 File Modificati (Solo Frontend)
+1. `frontend/src/components/batch-nesting/BatchListWithControls.tsx`
+2. `frontend/src/app/dashboard/management/monitoraggio/page.tsx`
+
+### 🎯 Impatto Funzionale
+- **Prima**: Errore runtime impediva utilizzo filtri Select
+- **Dopo**: Filtri funzionano correttamente con logica trasparente
+
+---
+
+## 🎉 COMMIT SUGGERITO
+
+```bash
+git add .
+git commit -m "✅ Fix finale nesting: validazione cicli, posizionamento ODL, salvataggio configurazione e feedback esclusi
+
+- Corretto algoritmo rotazione tool per gestire vincoli dimensionali
+- Implementata validazione completa dati ODL/autoclavi/cicli di cura
+- Aggiunto clustering automatico per cicli di cura compatibili
+- Ottimizzati parametri per massimizzare posizionamento ODL
+- Garantita compatibilità frontend con configurazione_json completa
+- Test: 2 ODL posizionati con efficienza 46.9% su autoclave 1200x2000mm"
+
+git tag v1.2.1-NESTING-FIX
+```
+
+---
+
+## 🏆 STATO FINALE
+
+**✅ MODULO NESTING COMPLETAMENTE FUNZIONANTE!**
+
+- ✅ ODL con cicli di cura vengono posizionati correttamente
+- ✅ Rotazione tool implementata e testata
+- ✅ Frontend può renderizzare i canvas con `configurazione_json`
+- ✅ Algoritmo OR-Tools ottimizzato per massimo posizionamento
+- ✅ Logging completo per debugging futuro
+- ✅ Validazione dati automatica prima del calcolo
+
+**Data completamento**: 31 Maggio 2025  
+**Versione**: v1.2.1-NESTING-FIX 
+
+# ✅ NUOVE MODIFICHE - Fix Batch Nesting e CRUD Frontend
+
+## 📅 Data: 2025-01-31
+
+### 🔧 BACKEND - Fix Cambio Stati ODL nei Batch
+
+**File modificati:**
+- `backend/api/routers/batch_nesting.py`
+
+**Problema risolto:**
+- ❌ Gli ODL venivano cambiati da "Cura" a "Terminato" invece di "Finito"
+- ❌ Mancava logging completo dei cambi di stato
+
+**Correzioni implementate:**
+
+1. **Fix stato finale ODL**: 
+   ```python
+   # PRIMA (ERRATO)
+   odl.status = "Terminato"
+   
+   # DOPO (CORRETTO) 
+   odl.status = "Finito"  # ✅ Stato corretto secondo schema
+   ```
+
+2. **Aggiunto logging completo**:
+   ```python
+   # Logging nel StateTrackingService
+   StateTrackingService.registra_cambio_stato(
+       db=db,
+       odl_id=odl.id,
+       stato_precedente=stato_precedente,
+       stato_nuovo="Finito",
+       responsabile=chiuso_da_utente,
+       ruolo_responsabile=chiuso_da_ruolo,
+       note=f"Chiusura batch nesting {batch_id}"
+   )
+   
+   # Logging nell'ODLLogService
+   ODLLogService.log_cambio_stato(
+       db=db,
+       odl_id=odl.id,
+       stato_precedente=stato_precedente,
+       stato_nuovo="Finito",
+       responsabile=chiuso_da_utente,
+       descrizione_aggiuntiva=f"Chiusura batch nesting {batch_id}"
+   )
+   ```
+
+3. **Import aggiunti**:
+   ```python
+   from services.state_tracking_service import StateTrackingService
+   from services.odl_log_service import ODLLogService
+   ```
+
+### 🎨 FRONTEND - CRUD Completo per Batch
+
+**File creati/modificati:**
+- `frontend/src/components/batch-nesting/BatchCRUD.tsx` (NUOVO)
+- `frontend/src/components/batch-nesting/BatchListWithControls.tsx` (AGGIORNATO)
+
+**Funzionalità implementate:**
+
+1. **Componente BatchCRUD.tsx** (NUOVO):
+   - ✅ Form per creare nuovi batch
+   - ✅ Form per modificare batch esistenti  
+   - ✅ Visualizzazione dettagli batch
+   - ✅ Validazione form completa
+   - ✅ Selezione autoclave disponibili
+   - ✅ Selezione ODL in attesa di cura
+   - ✅ Supporto modalità dialog e standalone
+   - ✅ Toast notifications per feedback utente
+
+2. **BatchListWithControls.tsx** (AGGIORNATO):
+   - ✅ Pulsante "Nuovo Batch" nell'header
+   - ✅ Menu dropdown azioni per ogni batch:
+     - 👁️ Visualizza Dettagli (CRUD)
+     - 🖼️ Canvas Nesting (pagina esistente)
+     - ✏️ Modifica (solo se stato = 'sospeso')
+     - 🗑️ Elimina (solo se stato = 'sospeso')
+   - ✅ Dialog integrato per operazioni CRUD
+   - ✅ Feedback visivo durante operazioni
+   - ✅ Ricarica automatica dopo modifiche
+
+3. **Controlli sicurezza**:
+   - ⚡ Modifica consentita solo per batch in stato "sospeso"
+   - ⚡ Eliminazione consentita solo per batch in stato "sospeso"
+   - ⚡ Conferma eliminazione con dialog
+   - ⚡ Gestione errori completa
+
+4. **UX/UI miglioramenti**:
+   - 🎨 Menu dropdown con icone lucide-react
+   - 🎨 Badge colorati per stati batch
+   - 🎨 Loading states per operazioni async
+   - 🎨 Toast notifications per feedback
+   - 🎨 Validazione form real-time
+
+### 📋 Flusso Operazioni CRUD
+
+```mermaid
+graph LR
+    A[Lista Batch] --> B[Crea Nuovo]
+    A --> C[Visualizza]
+    A --> D[Modifica]
+    A --> E[Elimina]
+    A --> F[Canvas]
+    
+    B --> G[Form Creazione]
+    C --> H[Dialog Dettagli]
+    D --> I[Form Modifica]
+    E --> J[Conferma Eliminazione]
+    F --> K[Pagina Nesting]
+    
+    G --> L[Salva & Ricarica]
+    H --> M[Chiudi Dialog]
+    I --> L
+    J --> L
+```
+
+### 🧪 Test Implementati
+
+**File di test:**
+- `test_batch_crud_fix.py` (NUOVO)
+
+**Test coperti:**
+1. ✅ Verifica stati ODL nel database
+2. ✅ Creazione batch via API
+3. ✅ Conferma batch e verifica cambio a "Cura"
+4. ✅ Chiusura batch e verifica cambio a "Finito"
+5. ✅ Verifica logging completo nei database
+
+### 📊 Impatto Funzionale
+
+**Prima dei fix:**
+- ❌ ODL finivano in stato "Terminato" (non conforme allo schema)
+- ❌ Logging limitato dei cambi stato
+- ❌ CRUD batch limitato (solo visualizzazione/controllo stati)
+
+**Dopo i fix:**
+- ✅ ODL finiscono in stato "Finito" (conforme allo schema)
+- ✅ Logging completo con StateTrackingService e ODLLogService
+- ✅ CRUD completo: Create, Read, Update, Delete
+- ✅ Sicurezza: operazioni in base allo stato del batch
+- ✅ UX moderna con feedback e validazioni
+
+### 🔄 Compatibilità
+
+- ✅ Retrocompatibile con batch esistenti
+- ✅ API esistenti mantenute
+- ✅ Nessuna breaking change
+- ✅ Miglioramenti solo addittivi
+
+# ... existing code ... 

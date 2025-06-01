@@ -84,31 +84,43 @@ const sidebarSections: SidebarSection[] = [
     title: "CURING",
     items: [
       {
-        title: "Nesting",
+        title: "🎯 Nesting & Batch",
         href: "/dashboard/curing/nesting",
         icon: <LayoutGrid className="h-4 w-4" />,
         roles: ['ADMIN', 'Curing']
       },
       {
-        title: "Monitoraggio",
+        title: "📦 Gestione Batch",
+        href: "/dashboard/curing/batch-monitoring",
+        icon: <Package className="h-4 w-4" />,
+        roles: ['ADMIN', 'Curing']
+      },
+      {
+        title: "🔄 Monitoraggio ODL",
         href: "/dashboard/curing/produzione",
         icon: <Activity className="h-4 w-4" />,
         roles: ['ADMIN', 'Curing']
       },
       {
-        title: "Autoclavi",
+        title: "🔥 Autoclavi",
         href: "/dashboard/curing/autoclavi",
         icon: <Flame className="h-4 w-4" />,
         roles: ['ADMIN', 'Curing']
       },
       {
-        title: "Statistiche",
+        title: "⚙️ Cicli di Cura",
+        href: "/dashboard/curing/cicli-cura",
+        icon: <Clock className="h-4 w-4" />,
+        roles: ['ADMIN', 'Curing']
+      },
+      {
+        title: "📊 Statistiche",
         href: "/dashboard/curing/statistics",
         icon: <TrendingUp className="h-4 w-4" />,
         roles: ['ADMIN', 'Curing', 'Management']
       },
       {
-        title: "Reports",
+        title: "📋 Reports",
         href: "/dashboard/management/reports",
         icon: <FileText className="h-4 w-4" />,
         roles: ['ADMIN', 'Curing']
@@ -142,12 +154,6 @@ const sidebarSections: SidebarSection[] = [
         href: "/dashboard/management/tools",
         icon: <Cog className="h-4 w-4" />,
         roles: ['ADMIN', 'Management']
-      },
-      {
-        title: "Cicli di Cura",
-        href: "/dashboard/curing/cicli-cura",
-        icon: <Clock className="h-4 w-4" />,
-        roles: ['ADMIN']
       },
       {
         title: "Parti",

@@ -400,4 +400,145 @@ async def get_database_info(db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=500,
             detail=f"Errore nell'ottenere informazioni sul database: {str(e)}"
+        )
+
+@router.get("/database/status")
+async def get_database_status(db: Session = Depends(get_db)):
+    """
+    Ottieni lo stato di salute del database
+    
+    Returns:
+        Dict: Stato di salute del database
+    """
+    try:
+        # Test connessione database
+        db.execute(text("SELECT 1"))
+        
+        # Ottieni informazioni sulle tabelle
+        tables_query = text("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name NOT LIKE 'sqlite_%'
+        """)
+        
+        tables_result = db.execute(tables_query)
+        tables = [row[0] for row in tables_result]
+        
+        # Verifica tabelle critiche
+        critical_tables = ['odl', 'autoclavi', 'parti', 'tools', 'cicli_cura']
+        missing_tables = [table for table in critical_tables if table not in tables]
+        
+        # Conta record nelle tabelle principali
+        table_counts = {}
+        for table in critical_tables:
+            if table in tables:
+                try:
+                    count_query = text(f"SELECT COUNT(*) FROM {table}")
+                    count_result = db.execute(count_query)
+                    table_counts[table] = count_result.scalar()
+                except Exception as e:
+                    table_counts[table] = f"Error: {str(e)}"
+            else:
+                table_counts[table] = "Missing"
+        
+        # Determina stato generale
+        if missing_tables:
+            status = "CRITICAL"
+            message = f"Tabelle critiche mancanti: {', '.join(missing_tables)}"
+        elif table_counts.get('odl', 0) == 0:
+            status = "WARNING"
+            message = "Nessun ODL presente nel database"
+        elif table_counts.get('autoclavi', 0) == 0:
+            status = "WARNING"
+            message = "Nessuna autoclave presente nel database"
+        else:
+            status = "HEALTHY"
+            message = "Database in buono stato"
+        
+        return {
+            "status": status,
+            "message": message,
+            "database_type": "SQLite",
+            "total_tables": len(tables),
+            "critical_tables_status": table_counts,
+            "missing_tables": missing_tables,
+            "timestamp": datetime.now().isoformat(),
+            "connection": "OK"
+        }
+        
+    except Exception as e:
+        logger.error(f"Errore nel controllo stato database: {str(e)}")
+        return {
+            "status": "ERROR",
+            "message": f"Errore di connessione: {str(e)}",
+            "database_type": "SQLite",
+            "connection": "FAILED",
+            "timestamp": datetime.now().isoformat()
+        }
+
+@router.get("/database/export-structure")
+async def export_database_structure(db: Session = Depends(get_db)):
+    """
+    Esporta la struttura del database (schema delle tabelle)
+    
+    Returns:
+        Dict: Struttura del database
+    """
+    try:
+        # Ottieni informazioni sulle tabelle
+        tables_query = text("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name NOT LIKE 'sqlite_%'
+        """)
+        
+        tables_result = db.execute(tables_query)
+        tables = [row[0] for row in tables_result]
+        
+        structure = {
+            "database_type": "SQLite",
+            "export_timestamp": datetime.now().isoformat(),
+            "total_tables": len(tables),
+            "tables": {}
+        }
+        
+        # Per ogni tabella, ottieni la struttura
+        for table in tables:
+            try:
+                # Ottieni schema della tabella
+                schema_query = text(f"PRAGMA table_info({table})")
+                schema_result = db.execute(schema_query)
+                
+                columns = []
+                for row in schema_result:
+                    columns.append({
+                        "name": row[1],
+                        "type": row[2],
+                        "not_null": bool(row[3]),
+                        "default_value": row[4],
+                        "primary_key": bool(row[5])
+                    })
+                
+                # Conta i record
+                count_query = text(f"SELECT COUNT(*) FROM {table}")
+                count_result = db.execute(count_query)
+                record_count = count_result.scalar()
+                
+                structure["tables"][table] = {
+                    "columns": columns,
+                    "record_count": record_count
+                }
+                
+            except Exception as e:
+                structure["tables"][table] = {
+                    "error": str(e),
+                    "columns": [],
+                    "record_count": 0
+                }
+        
+        return structure
+        
+    except Exception as e:
+        logger.error(f"Errore nell'esportazione struttura database: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Errore nell'esportazione struttura database: {str(e)}"
         ) 

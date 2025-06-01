@@ -450,12 +450,12 @@ export default function MonitoraggioPage() {
             
             <div className="space-y-2">
               <Label htmlFor="part-number">Part Number</Label>
-              <Select value={selectedPartNumber} onValueChange={setSelectedPartNumber}>
+              <Select value={selectedPartNumber || "all"} onValueChange={(value) => setSelectedPartNumber(value === "all" ? "" : value)}>
                 <SelectTrigger id="part-number">
                   <SelectValue placeholder="Tutti i part number" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Tutti i part number</SelectItem>
+                  <SelectItem value="all">Tutti i part number</SelectItem>
                   {getUniquePartNumbers().map(pn => (
                     <SelectItem key={pn} value={pn}>{pn}</SelectItem>
                   ))}
@@ -465,12 +465,12 @@ export default function MonitoraggioPage() {
             
             <div className="space-y-2">
               <Label htmlFor="status">Stato ODL</Label>
-              <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+              <Select value={selectedStatus || "all"} onValueChange={(value) => setSelectedStatus(value === "all" ? "" : value)}>
                 <SelectTrigger id="status">
                   <SelectValue placeholder="Tutti gli stati" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Tutti gli stati</SelectItem>
+                  <SelectItem value="all">Tutti gli stati</SelectItem>
                   {getUniqueStatuses().map(status => (
                     <SelectItem key={status} value={status}>{status}</SelectItem>
                   ))}

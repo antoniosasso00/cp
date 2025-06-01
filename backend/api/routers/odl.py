@@ -1,7 +1,8 @@
 import logging
 from typing import List, Optional, Literal
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
-from sqlalchemy.orm import Session, joinedload, joinedload
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from fastapi import status as http_status
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import desc
 from datetime import datetime
@@ -49,7 +50,7 @@ router = APIRouter(
     responses={404: {"description": "ODL non trovato"}}
 )
 
-@router.post("/", response_model=ODLRead, status_code=status.HTTP_201_CREATED,
+@router.post("/", response_model=ODLRead, status_code=http_status.HTTP_201_CREATED,
              summary="Crea un nuovo ordine di lavoro")
 def create_odl(odl: ODLCreate, db: Session = Depends(get_db)):
     """
@@ -64,7 +65,7 @@ def create_odl(odl: ODLCreate, db: Session = Depends(get_db)):
     parte = db.query(Parte).filter(Parte.id == odl.parte_id).first()
     if not parte:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail=f"Parte con ID {odl.parte_id} non trovata"
         )
     
@@ -72,7 +73,7 @@ def create_odl(odl: ODLCreate, db: Session = Depends(get_db)):
     tool = db.query(Tool).filter(Tool.id == odl.tool_id).first()
     if not tool:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail=f"Tool con ID {odl.tool_id} non trovato"
         )
     
@@ -102,14 +103,14 @@ def create_odl(odl: ODLCreate, db: Session = Depends(get_db)):
         db.rollback()
         logger.error(f"Errore durante la creazione dell'ODL: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="Vincolo di integrità violato. Verifica che i riferimenti a parte e tool siano corretti."
         )
     except Exception as e:
         db.rollback()
         logger.error(f"Errore imprevisto durante la creazione dell'ODL: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante la creazione dell'ODL."
         )
 
@@ -132,7 +133,11 @@ def read_odl(
     - **status**: filtro opzionale per stato (supporta alias come 'Attesa%20Cura', 'In Cura', etc.)
     """
     try:
-        query = db.query(ODL)
+        # ✅ AGGIUNTO: Caricamento eager delle relazioni parte e tool
+        query = db.query(ODL).options(
+            joinedload(ODL.parte),
+            joinedload(ODL.tool)
+        )
         
         # Applicazione filtri
         if parte_id:
@@ -156,7 +161,7 @@ def read_odl(
     except Exception as e:
         logger.error(f"Errore durante il recupero degli ODL: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Errore durante il recupero degli ODL: {str(e)}"
         )
 
@@ -188,7 +193,7 @@ async def get_odl_pending_nesting(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Errore durante il recupero degli ODL in attesa di nesting: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante il recupero degli ODL in attesa di nesting."
         )
 
@@ -202,7 +207,7 @@ def read_one_odl(odl_id: int, db: Session = Depends(get_db)):
     if db_odl is None:
         logger.warning(f"Tentativo di accesso a ODL inesistente: {odl_id}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
+            status_code=http_status.HTTP_404_NOT_FOUND, 
             detail=f"ODL con ID {odl_id} non trovato"
         )
     return db_odl
@@ -219,7 +224,7 @@ def update_odl(odl_id: int, odl: ODLUpdate, db: Session = Depends(get_db)):
     if db_odl is None:
         logger.warning(f"Tentativo di aggiornamento di ODL inesistente: {odl_id}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
+            status_code=http_status.HTTP_404_NOT_FOUND, 
             detail=f"ODL con ID {odl_id} non trovato"
         )
     
@@ -229,7 +234,7 @@ def update_odl(odl_id: int, odl: ODLUpdate, db: Session = Depends(get_db)):
             parte = db.query(Parte).filter(Parte.id == odl.parte_id).first()
             if not parte:
                 raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
+                    status_code=http_status.HTTP_404_NOT_FOUND,
                     detail=f"Parte con ID {odl.parte_id} non trovata"
                 )
         
@@ -238,7 +243,7 @@ def update_odl(odl_id: int, odl: ODLUpdate, db: Session = Depends(get_db)):
             tool = db.query(Tool).filter(Tool.id == odl.tool_id).first()
             if not tool:
                 raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
+                    status_code=http_status.HTTP_404_NOT_FOUND,
                     detail=f"Tool con ID {odl.tool_id} non trovato"
                 )
         
@@ -318,18 +323,18 @@ def update_odl(odl_id: int, odl: ODLUpdate, db: Session = Depends(get_db)):
         db.rollback()
         logger.error(f"Errore durante l'aggiornamento dell'ODL {odl_id}: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="Vincolo di integrità violato. Verifica che i riferimenti a parte e tool siano corretti."
         )
     except Exception as e:
         db.rollback()
         logger.error(f"Errore durante l'aggiornamento dell'ODL {odl_id}: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante l'aggiornamento dell'ODL."
         )
 
-@router.delete("/{odl_id}", status_code=status.HTTP_204_NO_CONTENT, 
+@router.delete("/{odl_id}", status_code=http_status.HTTP_204_NO_CONTENT, 
                summary="Elimina un ordine di lavoro")
 def delete_odl(
     odl_id: int, 
@@ -346,7 +351,7 @@ def delete_odl(
     if db_odl is None:
         logger.warning(f"Tentativo di cancellazione di ODL inesistente: {odl_id}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
+            status_code=http_status.HTTP_404_NOT_FOUND, 
             detail=f"ODL con ID {odl_id} non trovato"
         )
     
@@ -354,7 +359,7 @@ def delete_odl(
     if db_odl.status == "Finito" and not confirm:
         logger.warning(f"Tentativo di eliminazione ODL finito {odl_id} senza conferma")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="Per eliminare un ODL in stato 'Finito' è richiesta la conferma esplicita. Aggiungi il parametro 'confirm=true' alla richiesta."
         )
     
@@ -384,7 +389,7 @@ def delete_odl(
         db.rollback()
         logger.error(f"Errore durante l'eliminazione dell'ODL {odl_id}: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante l'eliminazione dell'ODL."
         )
 
@@ -407,7 +412,7 @@ def check_odl_queue(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Errore durante il controllo della coda ODL: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante il controllo della coda ODL."
         )
 
@@ -434,7 +439,7 @@ def check_single_odl_status(odl_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Errore durante il controllo dello stato ODL {odl_id}: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante il controllo dello stato ODL."
         )
 
@@ -457,7 +462,7 @@ def update_odl_status_clean_room(
     if db_odl is None:
         logger.warning(f"Tentativo di aggiornamento di ODL inesistente: {odl_id}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
+            status_code=http_status.HTTP_404_NOT_FOUND, 
             detail=f"ODL con ID {odl_id} non trovato"
         )
     
@@ -472,13 +477,13 @@ def update_odl_status_clean_room(
     
     if current_status not in allowed_transitions:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=f"ODL in stato '{current_status}' non può essere gestito dal Clean Room"
         )
     
     if new_status not in allowed_transitions[current_status]:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=f"Transizione da '{current_status}' a '{new_status}' non consentita per il Clean Room"
         )
     
@@ -564,7 +569,7 @@ def update_odl_status_clean_room(
         db.rollback()
         logger.error(f"Errore durante l'aggiornamento stato ODL {odl_id} da Clean Room: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante l'aggiornamento dello stato ODL."
         )
 
@@ -587,7 +592,7 @@ def update_odl_status_curing(
     if db_odl is None:
         logger.warning(f"Tentativo di aggiornamento di ODL inesistente: {odl_id}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
+            status_code=http_status.HTTP_404_NOT_FOUND, 
             detail=f"ODL con ID {odl_id} non trovato"
         )
     
@@ -602,13 +607,13 @@ def update_odl_status_curing(
     
     if current_status not in allowed_transitions:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=f"ODL in stato '{current_status}' non può essere gestito dal Curing"
         )
     
     if new_status not in allowed_transitions[current_status]:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=f"Transizione da '{current_status}' a '{new_status}' non consentita per il Curing"
         )
     
@@ -763,7 +768,7 @@ def update_odl_status_curing(
         db.rollback()
         logger.error(f"Errore durante l'aggiornamento stato ODL {odl_id} da Curing: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante l'aggiornamento dello stato ODL."
         )
 
@@ -785,7 +790,7 @@ def update_odl_status_admin(
     if db_odl is None:
         logger.warning(f"Tentativo di aggiornamento di ODL inesistente: {odl_id}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
+            status_code=http_status.HTTP_404_NOT_FOUND, 
             detail=f"ODL con ID {odl_id} non trovato"
         )
     
@@ -871,7 +876,7 @@ def update_odl_status_admin(
         db.rollback()
         logger.error(f"Errore durante l'aggiornamento stato ODL {odl_id} da admin: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante l'aggiornamento dello stato ODL."
         )
 
@@ -899,7 +904,7 @@ def update_odl_status_generic(
     
     if not new_status:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="Campo 'new_status' richiesto nel body della richiesta"
         )
     
@@ -930,7 +935,7 @@ def update_odl_status_generic(
     valid_statuses = ["Preparazione", "Laminazione", "In Coda", "Attesa Cura", "Cura", "Finito"]
     if normalized_status not in valid_statuses:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=f"Stato '{new_status}' non valido. Stati validi: {', '.join(valid_statuses)}"
         )
     
@@ -942,7 +947,7 @@ def update_odl_status_generic(
     if db_odl is None:
         logger.warning(f"Tentativo di aggiornamento di ODL inesistente: {odl_id}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
+            status_code=http_status.HTTP_404_NOT_FOUND, 
             detail=f"ODL con ID {odl_id} non trovato"
         )
     
@@ -1032,7 +1037,7 @@ def update_odl_status_generic(
         db.rollback()
         logger.error(f"❌ Errore durante l'aggiornamento stato ODL {odl_id}: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante l'aggiornamento dello stato ODL."
         )
 
@@ -1068,7 +1073,7 @@ def restore_previous_status(odl_id: int, db: Session = Depends(get_db)):
     if db_odl is None:
         logger.warning(f"Tentativo di ripristino di ODL inesistente: {odl_id}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
+            status_code=http_status.HTTP_404_NOT_FOUND, 
             detail=f"ODL con ID {odl_id} non trovato"
         )
     
@@ -1076,7 +1081,7 @@ def restore_previous_status(odl_id: int, db: Session = Depends(get_db)):
     if not db_odl.previous_status:
         logger.warning(f"Tentativo di ripristino ODL {odl_id} senza stato precedente")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=f"ODL {odl_id} non ha uno stato precedente da ripristinare"
         )
     
@@ -1165,7 +1170,7 @@ def restore_previous_status(odl_id: int, db: Session = Depends(get_db)):
         db.rollback()
         logger.error(f"❌ Errore durante il ripristino stato ODL {odl_id}: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante il ripristino dello stato ODL."
         )
 
@@ -1185,7 +1190,7 @@ def get_odl_state_timeline(odl_id: int, db: Session = Depends(get_db)):
     db_odl = db.query(ODL).filter(ODL.id == odl_id).first()
     if not db_odl:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail=f"ODL con ID {odl_id} non trovato"
         )
     
@@ -1215,7 +1220,7 @@ def get_odl_state_timeline(odl_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"❌ Errore durante il recupero timeline ODL {odl_id}: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante il recupero della timeline."
         )
 
@@ -1241,7 +1246,7 @@ def validate_odl_for_nesting(odl_id: int, db: Session = Depends(get_db)):
     
     if not db_odl:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail=f"ODL con ID {odl_id} non trovato"
         )
     
@@ -1314,7 +1319,7 @@ def validate_odl_for_nesting(odl_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"❌ Errore durante la validazione ODL {odl_id}: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante la validazione dell'ODL."
         )
 

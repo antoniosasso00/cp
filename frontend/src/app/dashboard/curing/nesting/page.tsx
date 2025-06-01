@@ -10,8 +10,11 @@ import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/use-toast'
-import { Loader2, Package, Flame, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react'
+import { Loader2, Package, Flame, AlertCircle, CheckCircle2, RefreshCw, Info, ChevronUp, ChevronDown, Eye, Zap, PlayCircle, Clock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import BatchListWithControls from '@/components/batch-nesting/BatchListWithControls'
 
 interface ODLData {
   id: number
@@ -77,11 +80,15 @@ export default function NestingPage() {
   const [selectedAutoclavi, setSelectedAutoclavi] = useState<number[]>([])
   
   // Stati per i parametri
-  const [parametri, setParametri] = useState<NestingParams>({
-    padding_mm: 20,
-    min_distance_mm: 15,
-    priorita_area: true
+  const [parametri, setParametri] = useState({
+    padding_mm: 10,
+    min_distance_mm: 8,
+    priorita_area: false
   })
+
+  // ✅ NUOVO: State per gestire batch recenti
+  const [recentBatches, setRecentBatches] = useState<any[]>([])
+  const [showRecentBatches, setShowRecentBatches] = useState(false)
 
   // Caricamento dati iniziali
   useEffect(() => {
@@ -95,29 +102,38 @@ export default function NestingPage() {
       
       console.log('🔄 Caricamento dati per nesting...')
 
-      // Carica ODL in attesa di cura - URL corretto con encoding
-      const statusParam = encodeURIComponent('Attesa Cura')
-      const odlResponse = await fetch(`/api/odl?status=${statusParam}`)
-      
-      if (!odlResponse.ok) {
-        throw new Error(`Errore nel caricamento degli ODL: ${odlResponse.status} ${odlResponse.statusText}`)
-      }
-      const odlData = await odlResponse.json()
-      console.log('✅ ODL caricati:', odlData.length)
-      setOdlList(odlData)
+      // ✅ RISOLTO: Usa l'endpoint specializzato per i dati di nesting
+      const [nestingDataResponse, batchesResponse] = await Promise.all([
+        fetch('/api/v1/nesting/data'),
+        fetch('/api/v1/batch_nesting?limit=10&order_by=created_at&order=desc')
+      ])
 
-      // Carica autoclavi disponibili - utilizzando l'enum corretto
-      const autoclaveResponse = await fetch('/api/autoclavi?stato=DISPONIBILE')
-      if (!autoclaveResponse.ok) {
-        throw new Error(`Errore nel caricamento delle autoclavi: ${autoclaveResponse.status} ${autoclaveResponse.statusText}`)
+      let odlInAttesaCura: ODLData[] = []
+      let autoclaveDisponibili: AutoclaveData[] = []
+
+      if (nestingDataResponse.ok) {
+        const nestingData = await nestingDataResponse.json()
+        console.log('📊 Dati nesting ricevuti:', nestingData)
+        
+        // I dati sono già filtrati lato server
+        odlInAttesaCura = nestingData.odl_in_attesa_cura || []
+        autoclaveDisponibili = nestingData.autoclavi_disponibili || []
+        
+        setOdlList(odlInAttesaCura)
+        setAutoclaveList(autoclaveDisponibili)
+      } else {
+        throw new Error(`Errore nel caricamento dati nesting: ${nestingDataResponse.status}`)
       }
-      const autoclaveData = await autoclaveResponse.json()
-      console.log('✅ Autoclavi caricate:', autoclaveData.length)
-      setAutoclaveList(autoclaveData)
+
+      // ✅ NUOVO: Carica batch recenti
+      if (batchesResponse.ok) {
+        const batchesData = await batchesResponse.json()
+        setRecentBatches(batchesData.slice(0, 5))
+      }
 
       toast({
         title: 'Dati caricati',
-        description: `Trovati ${odlData.length} ODL e ${autoclaveData.length} autoclavi disponibili.`,
+        description: `Trovati ${odlInAttesaCura.length} ODL in attesa cura e ${autoclaveDisponibili.length} autoclavi disponibili.`,
       })
 
     } catch (error) {
@@ -208,7 +224,7 @@ export default function NestingPage() {
 
       console.log('📤 Payload inviato:', payload)
 
-      const response = await fetch('/api/nesting/genera', {
+      const response = await fetch('/api/v1/nesting/genera', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -230,6 +246,17 @@ export default function NestingPage() {
           title: 'Nesting generato con successo!',
           description: `${result.message || 'Il nesting è stato creato correttamente.'} Reindirizzamento in corso...`,
         })
+        
+        // ✅ AGGIORNA: Ricarica batch recenti prima del redirect
+        try {
+          const batchesResponse = await fetch('/api/v1/batch_nesting?limit=10&order_by=created_at&order=desc')
+          if (batchesResponse.ok) {
+            const batchesData = await batchesResponse.json()
+            setRecentBatches(batchesData.slice(0, 5))
+          }
+        } catch (error) {
+          console.error('Errore nel ricaricamento batch:', error)
+        }
         
         router.push(`/dashboard/curing/nesting/result/${result.batch_id}`)
       } else {
@@ -420,87 +447,182 @@ export default function NestingPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="padding">Padding (mm)</Label>
-              <Input
-                id="padding"
-                type="number"
-                value={parametri.padding_mm}
-                onChange={(e) => setParametri(prev => ({ 
-                  ...prev, 
-                  padding_mm: Number(e.target.value) 
-                }))}
-                min={0}
-                max={100}
-              />
-              <p className="text-xs text-muted-foreground">
-                Spazio aggiuntivo attorno a ciascun tool
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="distance">Distanza minima (mm)</Label>
-              <Input
-                id="distance"
-                type="number"
-                value={parametri.min_distance_mm}
-                onChange={(e) => setParametri(prev => ({ 
-                  ...prev, 
-                  min_distance_mm: Number(e.target.value) 
-                }))}
-                min={0}
-                max={100}
-              />
-              <p className="text-xs text-muted-foreground">
-                Distanza minima tra i tool nell'autoclave
-              </p>
-            </div>
-          </div>
-
-          <Separator />
-
+          {/* Parametri di nesting */}
           <div className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <Switch
-                checked={parametri.priorita_area}
-                onCheckedChange={(checked) => setParametri(prev => ({ 
-                  ...prev, 
-                  priorita_area: checked 
-                }))}
-              />
-              <Label>Priorità per area utilizzata</Label>
+            <h3 className="text-lg font-semibold">Parametri di Nesting</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="padding">
+                  Padding (mm)
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="inline h-4 w-4 ml-1 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Spazio di sicurezza attorno a ogni tool. Valori bassi massimizzano il numero di ODL.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </Label>
+                <Input
+                  id="padding"
+                  type="number"
+                  min="3"
+                  max="50"
+                  value={parametri.padding_mm}
+                  onChange={(e) => setParametri(prev => ({ ...prev, padding_mm: parseInt(e.target.value) || 10 }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="distance">
+                  Distanza Minima (mm)
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="inline h-4 w-4 ml-1 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Distanza minima tra tool adiacenti. Valori bassi permettono maggiore densità.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </Label>
+                <Input
+                  id="distance"
+                  type="number"
+                  min="3"
+                  max="30"
+                  value={parametri.min_distance_mm}
+                  onChange={(e) => setParametri(prev => ({ ...prev, min_distance_mm: parseInt(e.target.value) || 8 }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="priority">
+                  Obiettivo Ottimizzazione
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="inline h-4 w-4 ml-1 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Massimizza ODL: posiziona più pezzi possibile. Massimizza Area: ottimizza copertura piano.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </Label>
+                <Select 
+                  value={parametri.priorita_area ? "area" : "odl"}
+                  onValueChange={(value) => setParametri(prev => ({ ...prev, priorita_area: value === "area" }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="odl">🎯 Massimizza ODL (Raccomandato)</SelectItem>
+                    <SelectItem value="area">📐 Massimizza Area</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground">
-              Se attivo, l'algoritmo privilegia l'utilizzo ottimale dello spazio. 
-              Se disattivo, privilegia il numero massimo di ODL posizionati.
-            </p>
           </div>
 
-          <Separator />
+          {/* ✅ NUOVO: Sezione batch recenti */}
+          {recentBatches.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Batch Recenti</h3>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowRecentBatches(!showRecentBatches)}
+                >
+                  {showRecentBatches ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  {showRecentBatches ? 'Nascondi' : 'Mostra'}
+                </Button>
+              </div>
+              
+              {showRecentBatches && (
+                <div className="space-y-2">
+                  {recentBatches.map((batch) => (
+                    <div key={batch.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
+                      <div className="flex-1">
+                        <div className="font-medium">{batch.nome}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {new Date(batch.created_at).toLocaleDateString('it-IT', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })} • {batch.numero_nesting || 0} ODL
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={batch.stato === 'confermato' ? 'default' : 'secondary'}>
+                          {batch.stato}
+                        </Badge>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => router.push(`/dashboard/curing/nesting/result/${batch.id}`)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
-          <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-            <CheckCircle2 className="h-5 w-5 text-green-600" />
-            <span className="text-sm text-green-800">
-              Pronto per generare nesting con {selectedOdl.length} ODL e {selectedAutoclavi.length} autoclave/i
-            </span>
+          {/* Pulsante di generazione */}
+          <div className="flex justify-end">
+            <Button 
+              onClick={handleGenerateNesting}
+              disabled={generating || selectedOdl.length === 0 || selectedAutoclavi.length === 0}
+              className="min-w-[200px]"
+              size="lg"
+            >
+              {generating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Generazione in corso...
+                </>
+              ) : (
+                <>
+                  <Zap className="h-4 w-4 mr-2" />
+                  Genera Nesting
+                </>
+              )}
+            </Button>
           </div>
+        </CardContent>
+      </Card>
 
-          <Button 
-            onClick={handleGenerateNesting} 
-            disabled={generating || selectedOdl.length === 0 || selectedAutoclavi.length === 0}
-            className="w-full"
-            size="lg"
-          >
-            {generating ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generazione in corso...
-              </>
-            ) : (
-              'Genera Nesting'
-            )}
-          </Button>
+      {/* ✅ NUOVO: Sezione Gestione Batch Esistenti */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Package className="h-5 w-5" />
+            Gestione Batch Esistenti
+          </CardTitle>
+          <CardDescription>
+            Controlla e gestisci i batch di nesting già creati
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <BatchListWithControls
+            title="Batch di Nesting"
+            editableOnly={false}
+            onBatchUpdated={(batchId, newData) => {
+              console.log(`✅ Batch ${batchId} aggiornato:`, newData)
+              // Ricarica la lista dei batch recenti
+              loadData()
+            }}
+            userInfo={{ userId: 'utente_frontend', userRole: 'Curing' }}
+          />
         </CardContent>
       </Card>
     </div>

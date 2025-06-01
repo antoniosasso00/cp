@@ -10,6 +10,8 @@ import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, CheckCircle, X, RotateCw, PlayCircle } from 'lucide-react';
 import { batchNestingApi } from '@/lib/api';
+import BatchStatusSwitch from '@/components/batch-nesting/BatchStatusSwitch';
+import ODLStatusSwitch from '@/components/batch-nesting/ODLStatusSwitch';
 import axios from 'axios';
 
 // Interfacce TypeScript per i dati
@@ -88,6 +90,8 @@ export default function NestingResultPage() {
   const [canvasHeight, setCanvasHeight] = useState(600);
   const [selectedTool, setSelectedTool] = useState<ToolPosition | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [showStatusControls, setShowStatusControls] = useState(false);
+  const [odlData, setOdlData] = useState<any[]>([]);
 
   // Recupera i dati del batch dal backend
   useEffect(() => {
@@ -103,6 +107,22 @@ export default function NestingResultPage() {
         // Imposta gli ODL esclusi se presenti
         if (data.odl_esclusi && Array.isArray(data.odl_esclusi)) {
           setOdlEsclusi(data.odl_esclusi);
+        }
+        
+        // Carica i dati degli ODL del batch se presenti
+        if (data.odl_ids && Array.isArray(data.odl_ids) && data.odl_ids.length > 0) {
+          try {
+            const odlRequests = data.odl_ids.map((id: number) => 
+              axios.get(`/api/v1/odl/${id}`)
+            );
+            const odlResponses = await Promise.all(odlRequests);
+            const odlList = odlResponses.map(response => response.data);
+            setOdlData(odlList);
+            console.log('📋 Dati ODL caricati:', odlList);
+          } catch (odlError) {
+            console.warn('⚠️ Errore nel caricamento dati ODL:', odlError);
+            setOdlData([]);
+          }
         }
         
         // Calcola la scala dinamica basata sulle dimensioni dell'autoclave
@@ -208,6 +228,25 @@ export default function NestingResultPage() {
     } finally {
       setIsConfirming(false);
     }
+  };
+
+  // Funzione per aggiornare lo stato del batch
+  const handleBatchStatusChanged = (newStatus: string) => {
+    if (batchData) {
+      setBatchData({
+        ...batchData,
+        stato: newStatus
+      });
+    }
+  };
+
+  // Funzione per aggiornare lo stato di un ODL
+  const handleODLStatusChanged = (odlId: number, newStatus: string) => {
+    setOdlData(prevOdlData => 
+      prevOdlData.map(odl => 
+        odl.id === odlId ? { ...odl, status: newStatus } : odl
+      )
+    );
   };
 
   // Loading state
@@ -533,6 +572,30 @@ export default function NestingResultPage() {
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      {/* Controlli Status */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        {/* Controllo Status Batch */}
+        <BatchStatusSwitch
+          batchId={batchData.id}
+          currentStatus={batchData.stato as any}
+          batchName={batchData.nome}
+          odlCount={odlData.length}
+          totalWeight={batchData.peso_totale_kg}
+          onStatusChanged={handleBatchStatusChanged}
+          userInfo={{ userId: 'utente_frontend', userRole: 'Curing' }}
+        />
+
+        {/* Controllo Status ODL */}
+        {odlData.length > 0 && (
+          <ODLStatusSwitch
+            odlList={odlData}
+            onStatusChanged={handleODLStatusChanged}
+            userInfo={{ userId: 'utente_frontend', userRole: 'Curing' }}
+            showAll={true}
+          />
+        )}
       </div>
 
       {/* ODL Esclusi */}

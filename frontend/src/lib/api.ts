@@ -17,6 +17,67 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/a
 
 console.log('🔗 API Base URL configurata:', API_BASE_URL); // Log per debug
 
+// ✅ Funzioni helper per gestione errori
+const isRetryableError = (error: any): boolean => {
+  if (!error) return false;
+  
+  // Errori di rete
+  if (error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK') return true;
+  if (error.name === 'AbortError') return true; // Timeout
+  
+  // Errori HTTP temporanei
+  const status = error.response?.status;
+  if (status === 408 || status === 429 || (status >= 500 && status <= 599)) return true;
+  
+  // Errori specifici
+  if (error.message?.includes('timeout')) return true;
+  if (error.message?.includes('connessione')) return true;
+  if (error.message?.includes('network')) return true;
+  
+  return false;
+};
+
+const getErrorMessage = (error: any): string => {
+  if (!error) return 'Errore sconosciuto';
+  
+  // Errori di rete
+  if (error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK') {
+    return 'Errore di connessione al server. Verifica che il backend sia attivo.';
+  }
+  
+  if (error.name === 'AbortError') {
+    return 'Richiesta interrotta per timeout. Il server potrebbe essere sovraccarico.';
+  }
+  
+  // Errori HTTP con messaggi specifici
+  if (error.response?.data?.detail) {
+    return `Errore server: ${error.response.data.detail}`;
+  }
+  
+  if (error.response?.status) {
+    const status = error.response.status;
+    switch (status) {
+      case 404:
+        return 'Risorsa non trovata. Verifica che l\'endpoint esista.';
+      case 422:
+        return 'Dati non validi inviati al server.';
+      case 500:
+        return 'Errore interno del server. Riprova più tardi.';
+      case 503:
+        return 'Servizio temporaneamente non disponibile.';
+      default:
+        return `Errore HTTP ${status}: ${error.response.statusText || 'Errore del server'}`;
+    }
+  }
+  
+  // Errori generici
+  if (error.message) {
+    return error.message;
+  }
+  
+  return 'Errore sconosciuto durante la comunicazione con il server';
+};
+
 // Configurazione axios con interceptors per logging e gestione errori
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -543,37 +604,102 @@ export interface ODLResponse extends ODLBase {
   updated_at: string;
 }
 
-// API ODL
+// API ODL con gestione errori migliorata
 export const odlApi = {
-  getAll: async (params?: { parte_id?: number; tool_id?: number; status?: string }): Promise<ODLResponse[]> => {
+  getAll: async (params?: { parte_id?: number; tool_id?: number; status?: string }, options?: { retries?: number; timeout?: number }): Promise<ODLResponse[]> => {
+    const { retries = 3, timeout = 10000 } = options || {};
+    
     const queryParams = new URLSearchParams();
     if (params?.parte_id) queryParams.append('parte_id', params.parte_id.toString());
     if (params?.tool_id) queryParams.append('tool_id', params.tool_id.toString());
     if (params?.status) queryParams.append('status', params.status);
     
     const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
-    const response = await api.get<ODLResponse[]>(`/odl/${query}`);
-    return response.data;
+    const endpoint = `/odl${query}`;
+    
+    console.log(`🔄 Richiesta ODL: ${endpoint}`);
+    
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const response = await api.get<ODLResponse[]>(endpoint, {
+          timeout: timeout
+        });
+        
+        console.log(`✅ ODL caricati con successo: ${response.data.length} elementi (tentativo ${attempt}/${retries})`);
+        return response.data;
+        
+      } catch (error) {
+        console.error(`❌ Errore tentativo ${attempt}/${retries}:`, {
+          endpoint,
+          error: error instanceof Error ? error.message : 'Errore sconosciuto',
+          code: (error as any)?.code,
+          status: (error as any)?.response?.status
+        });
+
+        // Se non è l'ultimo tentativo e l'errore è recuperabile, riprova
+        if (attempt < retries && isRetryableError(error)) {
+          const delayMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Exponential backoff, max 5s
+          console.log(`🔄 Nuovo tentativo in ${delayMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          continue;
+        }
+        
+        // Ultimo tentativo o errore non recuperabile
+        const errorMessage = getErrorMessage(error);
+        console.error(`🚫 Richiesta ODL fallita definitivamente: ${errorMessage}`);
+        throw new Error(errorMessage);
+      }
+    }
+    
+    throw new Error('Impossibile caricare gli ODL dopo tutti i tentativi');
   },
   
   getOne: async (id: number): Promise<ODLResponse> => {
-    const response = await api.get<ODLResponse>(`/odl/${id}`);
-    return response.data;
+    try {
+      console.log(`🔍 Richiesta ODL singolo: ${id}`);
+      const response = await api.get<ODLResponse>(`/odl/${id}`);
+      console.log(`✅ ODL ${id} caricato con successo`);
+      return response.data;
+    } catch (error) {
+      console.error(`❌ Errore caricamento ODL ${id}:`, error);
+      throw error;
+    }
   },
   
   create: async (data: ODLCreate): Promise<ODLResponse> => {
-    const response = await api.post<ODLResponse>('/odl', data);
-    return response.data;
+    try {
+      console.log('🆕 Creazione nuovo ODL:', data);
+      const response = await api.post<ODLResponse>('/odl', data);
+      console.log(`✅ ODL creato con successo: ID ${response.data.id}`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Errore creazione ODL:', error);
+      throw error;
+    }
   },
   
   update: async (id: number, data: ODLUpdate): Promise<ODLResponse> => {
-    const response = await api.put<ODLResponse>(`/odl/${id}`, data);
-    return response.data;
+    try {
+      console.log(`📝 Aggiornamento ODL ${id}:`, data);
+      const response = await api.put<ODLResponse>(`/odl/${id}`, data);
+      console.log(`✅ ODL ${id} aggiornato con successo`);
+      return response.data;
+    } catch (error) {
+      console.error(`❌ Errore aggiornamento ODL ${id}:`, error);
+      throw error;
+    }
   },
   
   delete: async (id: number, confirm: boolean = false): Promise<void> => {
-    const queryParam = confirm ? '?confirm=true' : '';
-    await api.delete(`/odl/${id}${queryParam}`);
+    try {
+      console.log(`🗑️ Eliminazione ODL ${id} (confirm: ${confirm})`);
+      const queryParam = confirm ? '?confirm=true' : '';
+      await api.delete(`/odl/${id}${queryParam}`);
+      console.log(`✅ ODL ${id} eliminato con successo`);
+    } catch (error) {
+      console.error(`❌ Errore eliminazione ODL ${id}:`, error);
+      throw error;
+    }
   },
 
   checkQueue: async (): Promise<{

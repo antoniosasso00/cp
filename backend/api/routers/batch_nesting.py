@@ -17,6 +17,8 @@ from schemas.batch_nesting import (
     BatchNestingList,
     StatoBatchNestingEnum as StatoBatchNestingEnumSchema
 )
+from services.state_tracking_service import StateTrackingService
+from services.odl_log_service import ODLLogService
 
 # Configurazione logger
 logger = logging.getLogger(__name__)
@@ -470,9 +472,31 @@ def conferma_batch_nesting(
         # 3. Aggiorna tutti gli ODL da "Attesa Cura" a "Cura"
         odl_aggiornati = []
         for odl in odl_list:
+            stato_precedente = odl.status
             odl.status = "Cura"
             odl.previous_status = "Attesa Cura"  # Salva stato precedente per eventuale ripristino
             odl_aggiornati.append(odl.id)
+            
+            # ✅ AGGIUNGO: Log del cambio di stato
+            StateTrackingService.registra_cambio_stato(
+                db=db,
+                odl_id=odl.id,
+                stato_precedente=stato_precedente,
+                stato_nuovo="Cura",
+                responsabile=confermato_da_utente,
+                ruolo_responsabile=confermato_da_ruolo,
+                note=f"Conferma batch nesting {batch_id}"
+            )
+            
+            # ✅ AGGIUNGO: Log nell'ODLLogService
+            ODLLogService.log_cambio_stato(
+                db=db,
+                odl_id=odl.id,
+                stato_precedente=stato_precedente,
+                stato_nuovo="Cura",
+                responsabile=confermato_da_utente,
+                descrizione_aggiuntiva=f"Conferma batch nesting {batch_id}"
+            )
         
         logger.info(f"✅ {len(odl_aggiornati)} ODL aggiornati a stato 'Cura': {odl_aggiornati}")
         
@@ -511,7 +535,7 @@ def chiudi_batch_nesting(
     Effettua le seguenti operazioni in transazione:
     1. Aggiorna il batch da "confermato" a "terminato"  
     2. Aggiorna l'autoclave a disponibile
-    3. Aggiorna tutti gli ODL da "Cura" a "Terminato"
+    3. Aggiorna tutti gli ODL da "Cura" a "Finito"
     4. Registra timestamp di completamento
     
     **Prerequisiti:**
@@ -603,14 +627,36 @@ def chiudi_batch_nesting(
         
         logger.info(f"✅ Autoclave {autoclave.id} ({autoclave.nome}) aggiornata a stato 'disponibile'")
         
-        # 3. Aggiorna tutti gli ODL da "Cura" a "Terminato"
+        # 3. Aggiorna tutti gli ODL da "Cura" a "Finito"
         odl_aggiornati = []
         for odl in odl_list:
+            stato_precedente = odl.status
             odl.previous_status = odl.status  # Salva stato precedente per eventuale ripristino
-            odl.status = "Terminato"
+            odl.status = "Finito"  # ✅ CORRETTO: "Finito" invece di "Terminato"
             odl_aggiornati.append(odl.id)
+            
+            # ✅ AGGIUNGO: Log del cambio di stato
+            StateTrackingService.registra_cambio_stato(
+                db=db,
+                odl_id=odl.id,
+                stato_precedente=stato_precedente,
+                stato_nuovo="Finito",
+                responsabile=chiuso_da_utente,
+                ruolo_responsabile=chiuso_da_ruolo,
+                note=f"Chiusura batch nesting {batch_id}"
+            )
+            
+            # ✅ AGGIUNGO: Log nell'ODLLogService
+            ODLLogService.log_cambio_stato(
+                db=db,
+                odl_id=odl.id,
+                stato_precedente=stato_precedente,
+                stato_nuovo="Finito",
+                responsabile=chiuso_da_utente,
+                descrizione_aggiuntiva=f"Chiusura batch nesting {batch_id}"
+            )
         
-        logger.info(f"✅ {len(odl_aggiornati)} ODL aggiornati a stato 'Terminato': {odl_aggiornati}")
+        logger.info(f"✅ {len(odl_aggiornati)} ODL aggiornati a stato 'Finito': {odl_aggiornati}")
         
         # Commit della transazione
         db.commit()

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,6 +10,7 @@ import { ODLResponse, odlApi } from '@/lib/api'
 import ODLModal from './components/odl-modal'
 import { BarraAvanzamentoODL, getPriorityInfo } from '@/components/BarraAvanzamentoODL'
 import { OdlProgressWrapper } from '@/components/ui/OdlProgressWrapper'
+// import { ConnectionHealthChecker } from '@/components/ui/ConnectionHealthChecker'
 import { 
   Loader2, 
   MoreHorizontal, 
@@ -18,7 +19,9 @@ import {
   ListFilter,
   Activity,
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  RefreshCw,
+  WifiOff
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -59,17 +62,48 @@ const getPriorityBadgeVariant = (priorita: number) => {
 export default function ODLPage() {
   const [odls, setODLs] = useState<ODLResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
   const [filter, setFilter] = useState<{parte_id?: number, tool_id?: number, status?: string}>({})
   const [modalOpen, setModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<ODLResponse | null>(null)
   const { toast } = useToast()
+  
+  // Ref per prevenire chiamate multiple simultanee
+  const fetchingRef = useRef(false)
+  const componentMountedRef = useRef(true)
 
-  const fetchODLs = async () => {
-    try {
+  const fetchODLs = useCallback(async (showLoadingState = true) => {
+    // Previeni chiamate multiple simultanee
+    if (fetchingRef.current) {
+      console.log('⏭️ Fetch già in corso, salto questa chiamata')
+      return
+    }
+
+    fetchingRef.current = true
+    
+    if (showLoadingState) {
       setIsLoading(true)
-      const data = await odlApi.getAll(filter)
+    }
+    setError(null)
+
+    try {
+      console.log('🔄 Inizio caricamento ODL...')
       
+      // Timeout personalizzato per il caricamento
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 15000) // 15 secondi
+
+      const data = await odlApi.getAll(filter)
+      clearTimeout(timeoutId)
+      
+      // Verifica se il componente è ancora montato
+      if (!componentMountedRef.current) {
+        console.log('⚠️ Componente non montato, ignoro la risposta')
+        return
+      }
+
       // Mostra solo gli ODL attivi (non finiti) e ordina cronologicamente
       const odlAttivi = data
         .filter(odl => odl.status !== "Finito")
@@ -82,21 +116,67 @@ export default function ODLPage() {
         })
       
       setODLs(odlAttivi)
+      setRetryCount(0) // Reset retry count on success
+      
+      console.log(`✅ Caricati ${odlAttivi.length} ODL attivi (totali: ${data.length})`)
+      
     } catch (error) {
-      console.error('Errore nel caricamento degli ODL:', error)
-      toast({
-        variant: 'destructive',
-        title: 'Errore',
-        description: 'Impossibile caricare gli ordini di lavoro. Riprova più tardi.',
-      })
+      console.error('❌ Errore nel caricamento degli ODL:', error)
+      
+      // Verifica se il componente è ancora montato
+      if (!componentMountedRef.current) {
+        return
+      }
+      
+      const errorMessage = error instanceof Error ? error.message : 'Errore sconosciuto'
+      setError(errorMessage)
+      
+      // Retry automatico per errori di rete (max 3 tentativi)
+      if (retryCount < 3 && (
+        errorMessage.includes('connessione') || 
+        errorMessage.includes('network') || 
+        errorMessage.includes('timeout')
+      )) {
+        console.log(`🔄 Tentativo di retry ${retryCount + 1}/3 in 3 secondi...`)
+        setTimeout(() => {
+          if (componentMountedRef.current) {
+            setRetryCount(prev => prev + 1)
+            fetchODLs(false) // Non mostrare lo stato di loading per i retry
+          }
+        }, 3000)
+      } else {
+        // Solo un toast per errori definitivi
+        toast({
+          variant: 'destructive',
+          title: 'Errore nel caricamento',
+          description: 'Impossibile caricare gli ordini di lavoro. Verifica la connessione di rete.',
+        })
+      }
     } finally {
-      setIsLoading(false)
+      fetchingRef.current = false
+      if (showLoadingState) {
+        setIsLoading(false)
+      }
     }
-  }
+  }, [filter, retryCount, toast])
 
+  // Effect per il caricamento iniziale e quando cambia il filtro
   useEffect(() => {
+    componentMountedRef.current = true
     fetchODLs()
-  }, [filter])
+    
+    // Cleanup function
+    return () => {
+      componentMountedRef.current = false
+    }
+  }, [fetchODLs])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      componentMountedRef.current = false
+    }
+  }, [])
 
   const handleCreateClick = () => {
     setEditingItem(null)
@@ -131,6 +211,11 @@ export default function ODLPage() {
     }
   }
 
+  const handleRetry = () => {
+    setRetryCount(0)
+    fetchODLs()
+  }
+
   const filterODLs = (items: ODLResponse[], query: string) => {
     if (!query) return items
     
@@ -145,6 +230,42 @@ export default function ODLPage() {
   
   const filteredODLs = filterODLs(odls, searchQuery)
 
+  // Render dello stato di errore
+  if (error && !isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Ordini di Lavoro</h1>
+            <p className="text-muted-foreground">
+              Gestisci gli ordini di lavoro attivi in produzione
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-center justify-center py-12 space-y-4">
+          <WifiOff className="h-16 w-16 text-muted-foreground" />
+          <div className="text-center space-y-2">
+            <h3 className="text-lg font-semibold">Errore di connessione</h3>
+            <p className="text-muted-foreground max-w-md">
+              Non è possibile caricare gli ordini di lavoro. 
+              Verifica la connessione di rete e riprova.
+            </p>
+            {retryCount > 0 && (
+              <p className="text-sm text-muted-foreground">
+                Tentativi effettuati: {retryCount}/3
+              </p>
+            )}
+          </div>
+          <Button onClick={handleRetry} className="flex items-center gap-2">
+            <RefreshCw className="h-4 w-4" />
+            Riprova
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -155,13 +276,15 @@ export default function ODLPage() {
           </p>
         </div>
         <div className="flex gap-3">
-                        <Link href="/dashboard/management/odl-monitoring">
+          <Link href="/dashboard/management/odl-monitoring">
             <Button variant="outline" className="flex items-center gap-2">
               <Activity className="h-4 w-4" />
               Monitoraggio ODL
             </Button>
           </Link>
-          <Button onClick={handleCreateClick}>Nuovo ODL</Button>
+          <Button onClick={handleCreateClick} disabled={isLoading}>
+            Nuovo ODL
+          </Button>
         </div>
       </div>
 
@@ -173,11 +296,26 @@ export default function ODLPage() {
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="pl-8"
+            disabled={isLoading}
           />
         </div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <AlertCircle className="h-4 w-4" />
-          <span>Mostrando solo ODL attivi</span>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <AlertCircle className="h-4 w-4" />
+            <span>Mostrando solo ODL attivi</span>
+          </div>
+          {/* <ConnectionHealthChecker showLabel={true} className="ml-2" /> */}
+          {!isLoading && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => fetchODLs()}
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Aggiorna
+            </Button>
+          )}
         </div>
       </div>
 
@@ -239,13 +377,13 @@ export default function ODLPage() {
                         </Badge>
                       </div>
                     </TableCell>
-                                          <TableCell className="w-64">
-                        <OdlProgressWrapper 
-                          odlId={item.id}
-                          showDetails={false}
-                          className="min-h-[40px]"
-                        />
-                      </TableCell>
+                    <TableCell className="w-64">
+                      <OdlProgressWrapper 
+                        odlId={item.id}
+                        showDetails={false}
+                        className="min-h-[40px]"
+                      />
+                    </TableCell>
                     <TableCell className="max-w-[200px] truncate">
                       {item.note || '-'}
                     </TableCell>
