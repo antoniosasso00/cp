@@ -19,15 +19,18 @@ const config = {
     },
     extend: {
       colors: {
+        // Design Tokens Colors - CarbonPilot v1.4.1
+        primary: "#2660ff",
+        danger: "#ef4444",
+        grayBg: "#f5f6fa",
+        surface: "#ffffff",
+        
+        // Existing shadcn/ui colors
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
-        primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
-        },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",
@@ -74,8 +77,12 @@ const config = {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
-        "2xl": "1rem",
-        "3xl": "1.5rem",
+        xl: "1rem",       // Design Token
+        "2xl": "1.5rem",  // Design Token
+        "3xl": "1.5rem",  // Existing
+      },
+      spacing: {
+        72: "18rem",      // Design Token
       },
       keyframes: {
         "accordion-down": {
