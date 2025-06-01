@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from 'react'
 export type UserRole = 'ADMIN' | 'Management' | 'Clean Room' | 'Curing'
 
 // Chiave per localStorage
-const STORAGE_KEY = 'userRole'
+const STORAGE_KEY = 'role'
 
 /**
  * Hook personalizzato per gestire il ruolo dell'utente

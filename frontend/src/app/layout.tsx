@@ -7,6 +7,7 @@ import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { ApiErrorProvider } from '@/components/ApiErrorProvider'
 import { RoleGuard } from '@/components/RoleGuard'
 import { SWRProvider } from '@/components/providers/SWRProvider'
+import { RoleBadge } from '@/components/RoleBadge'
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -34,7 +35,8 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <SWRProvider>
-            <div className="flex justify-end p-4">
+            <div className="flex justify-between items-center p-4">
+              <RoleBadge />
               <ThemeToggle />
             </div>
             <ApiErrorProvider>

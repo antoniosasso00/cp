@@ -19,7 +19,7 @@ export default function Home() {
           
           <div className="space-y-4">
             <div className="flex flex-col space-y-2">
-              <Link href="/role" className="w-full">
+              <Link href="/select-role" className="w-full">
                 <Button className="w-full text-lg py-6">
                   Accedi al Sistema
                 </Button>
@@ -27,7 +27,7 @@ export default function Home() {
             </div>
             
             <p className="text-center text-sm text-gray-500 mt-8">
-              Manta Group v0.4.0 &copy; {new Date().getFullYear()} - Sistema Gestione Compositi
+              Manta Group v1.4.2 &copy; {new Date().getFullYear()} - Sistema Gestione Compositi
             </p>
           </div>
         </div>
