@@ -1,0 +1,262 @@
+@startuml CarbonPilot_Architecture
+!theme plain
+skinparam backgroundColor white
+skinparam shadowing false
+
+title CarbonPilot - Architettura e Flussi
+
+' Definizione dei partecipanti
+participant "Clean Room\nOperator" as CR
+participant "Curing\nOperator" as CURING
+participant "Management" as MGMT
+participant "Admin" as ADMIN
+
+box "Frontend (NextJS)" #LightBlue
+participant "Dashboard UI" as UI
+participant "API Client" as API_CLIENT
+end box
+
+box "Backend (FastAPI)" #LightGreen
+participant "API Router" as ROUTER
+participant "Business Logic" as SERVICE
+participant "Database" as DB
+end box
+
+' === FLUSSO CLEAN ROOM ===
+group Clean Room Process
+    CR -> UI: Login con ruolo Clean Room
+    CR -> UI: Crea nuovo ODL
+    UI -> API_CLIENT: createODL()
+    API_CLIENT -> ROUTER: POST /api/v1/odl
+    ROUTER -> SERVICE: ODL Service
+    SERVICE -> DB: Salva ODL (status: Preparazione)
+    
+    CR -> UI: Avvia Laminazione
+    UI -> API_CLIENT: updateODLStatus()
+    API_CLIENT -> ROUTER: PATCH /api/v1/odl/{id}/clean-room-status
+    ROUTER -> SERVICE: State Tracking Service
+    SERVICE -> DB: Update status → Laminazione
+    
+    CR -> UI: Completa Laminazione
+    UI -> API_CLIENT: updateODLStatus()
+    API_CLIENT -> ROUTER: PATCH /api/v1/odl/{id}/clean-room-status
+    ROUTER -> SERVICE: State Tracking Service
+    SERVICE -> DB: Update status → In Coda → Attesa Cura
+end
+
+' === FLUSSO CURING ===
+group Curing Process
+    CURING -> UI: Login con ruolo Curing
+    CURING -> UI: Accesso Nesting & Batch
+    UI -> API_CLIENT: getODLPendingNesting()
+    API_CLIENT -> ROUTER: GET /api/v1/odl/pending-nesting
+    ROUTER -> SERVICE: ODL Service
+    SERVICE -> DB: Query ODL in Attesa Cura
+    
+    CURING -> UI: Genera Nesting
+    UI -> API_CLIENT: generateNesting()
+    API_CLIENT -> ROUTER: POST /api/v1/batch-nesting
+    ROUTER -> SERVICE: Nesting Service
+    SERVICE -> SERVICE: Algoritmo Ottimizzazione
+    SERVICE -> DB: Salva Batch (status: sospeso)
+    
+    CURING -> UI: Conferma Batch
+    UI -> API_CLIENT: confirmBatch()
+    API_CLIENT -> ROUTER: POST /api/v1/batch-nesting/{id}/conferma
+    ROUTER -> SERVICE: Nesting Service
+    SERVICE -> DB: Update Batch → confermato
+    SERVICE -> DB: Update ODL → Cura
+    
+    CURING -> UI: Avvia Autoclave
+    UI -> API_CLIENT: updateAutoclaveStatus()
+    API_CLIENT -> ROUTER: PUT /api/v1/autoclavi/{id}
+    ROUTER -> SERVICE: Autoclave Service
+    SERVICE -> DB: Update Autoclave → IN_USO
+    
+    CURING -> UI: Completa Cura
+    UI -> API_CLIENT: completeCuring()
+    API_CLIENT -> ROUTER: PATCH /api/v1/odl/{id}/curing-status
+    ROUTER -> SERVICE: State Tracking Service
+    SERVICE -> DB: Update ODL → Finito
+    SERVICE -> DB: Update Autoclave → DISPONIBILE
+    SERVICE -> DB: Update Batch → terminato
+end
+
+' === FLUSSO MONITORING ===
+group Monitoring & Reports
+    MGMT -> UI: Accesso Dashboard Monitoring
+    UI -> API_CLIENT: getODLMonitoringStats()
+    API_CLIENT -> ROUTER: GET /api/v1/odl-monitoring/stats
+    ROUTER -> SERVICE: ODL Monitoring Service
+    SERVICE -> DB: Calcola statistiche real-time
+    
+    MGMT -> UI: Genera Report
+    UI -> API_CLIENT: generateReport()
+    API_CLIENT -> ROUTER: POST /api/v1/reports/generate
+    ROUTER -> SERVICE: Report Service
+    SERVICE -> DB: Query dati produzione
+    SERVICE -> SERVICE: Genera PDF
+    SERVICE -> DB: Salva report metadata
+end
+
+' === AMMINISTRAZIONE ===
+group Admin Functions
+    ADMIN -> UI: Gestione Catalogo
+    UI -> API_CLIENT: manageCatalog()
+    API_CLIENT -> ROUTER: CRUD /api/v1/catalogo
+    ROUTER -> SERVICE: Catalog Service
+    SERVICE -> DB: Operazioni CRUD
+    
+    ADMIN -> UI: Gestione Tools & Autoclavi
+    UI -> API_CLIENT: manageTools()
+    API_CLIENT -> ROUTER: CRUD /api/v1/tools, /api/v1/autoclavi
+    ROUTER -> SERVICE: Tool/Autoclave Service
+    SERVICE -> DB: Operazioni CRUD
+end
+
+@enduml
+
+@startuml CarbonPilot_Database_Schema
+!theme plain
+
+' Entità principali
+entity "Catalogo" as CAT {
+  * part_number : String(50) [PK]
+  --
+  descrizione : String
+  categoria : String(100)
+  sotto_categoria : String(100)
+  attivo : Boolean
+  note : String
+}
+
+entity "Parte" as PARTE {
+  * id : Integer [PK]
+  --
+  * part_number : String(50) [FK]
+  * descrizione_breve : String(255)
+  * num_valvole_richieste : Integer
+  ciclo_cura_id : Integer [FK]
+  note_produzione : String
+}
+
+entity "Tool" as TOOL {
+  * id : Integer [PK]
+  --
+  * part_number_tool : String(50) [UNIQUE]
+  * lunghezza_piano : Float
+  * larghezza_piano : Float
+  peso : Float
+  materiale : String(100)
+  disponibile : Boolean
+}
+
+entity "ODL" as ODL {
+  * id : Integer [PK]
+  --
+  * parte_id : Integer [FK]
+  * tool_id : Integer [FK]
+  * status : String(12)
+  priorita : Integer
+  note : String
+  motivo_blocco : String
+}
+
+entity "Autoclave" as AUTO {
+  * id : Integer [PK]
+  --
+  * nome : String(100) [UNIQUE]
+  * codice : String(50) [UNIQUE]
+  * lunghezza : Float
+  * larghezza_piano : Float
+  * num_linee_vuoto : Integer
+  stato : String(12)
+  temperatura_max : Float
+  pressione_max : Float
+  max_load_kg : Float
+}
+
+entity "CicloCura" as CICLO {
+  * id : Integer [PK]
+  --
+  * nome : String(100) [UNIQUE]
+  * temperatura_stasi1 : Float
+  * pressione_stasi1 : Float
+  * durata_stasi1 : Integer
+  attiva_stasi2 : Boolean
+  temperatura_stasi2 : Float
+  pressione_stasi2 : Float
+  durata_stasi2 : Integer
+}
+
+entity "BatchNesting" as BATCH {
+  * id : String [PK]
+  --
+  nome : String
+  * stato : String(10)
+  * autoclave_id : Integer [FK]
+  * odl_ids : JSON
+  peso_totale_kg : Float
+  area_totale_utilizzata : Float
+  valvole_totali_utilizzate : Integer
+  creato_da_utente : String
+  confermato_da_utente : String
+}
+
+entity "NestingResult" as NESTING {
+  * id : Integer [PK]
+  --
+  autoclave_id : Integer [FK]
+  batch_id : Integer [FK]
+  report_id : Integer [FK]
+  * stato : String(50)
+  area_utilizzata : Float
+  peso_totale_kg : Float
+  posizioni_tool : JSON
+  valvole_utilizzate : Integer
+}
+
+' Relazioni
+CAT ||--o{ PARTE : "categorizza"
+PARTE ||--o{ ODL : "ordina"
+TOOL ||--o{ ODL : "utilizza"
+CICLO ||--o{ PARTE : "definisce_cura"
+AUTO ||--o{ BATCH : "assegnata_a"
+AUTO ||--o{ NESTING : "utilizza"
+BATCH ||--o{ NESTING : "genera"
+ODL }o--o{ BATCH : "incluso_in"
+
+@enduml
+
+@startuml CarbonPilot_State_Machines
+!theme plain
+
+state "ODL State Machine" as ODL_SM {
+  [*] --> Preparazione
+  Preparazione --> Laminazione : Clean Room avvia
+  Laminazione --> InCoda : Laminazione completata
+  InCoda --> AttesaCura : Sistema automatico
+  AttesaCura --> Cura : Batch confermato
+  Cura --> Finito : Cura completata
+  Finito --> [*]
+}
+
+state "Batch State Machine" as BATCH_SM {
+  [*] --> sospeso
+  sospeso --> confermato : Operatore conferma
+  confermato --> terminato : Cura completata
+  terminato --> [*]
+}
+
+state "Autoclave State Machine" as AUTO_SM {
+  [*] --> DISPONIBILE
+  DISPONIBILE --> IN_USO : Batch assegnato
+  IN_USO --> DISPONIBILE : Cura completata
+  DISPONIBILE --> GUASTO : Malfunzionamento
+  GUASTO --> MANUTENZIONE : Riparazione
+  MANUTENZIONE --> DISPONIBILE : Test OK
+  DISPONIBILE --> SPENTA : Spegnimento programma
+  SPENTA --> DISPONIBILE : Accensione
+}
+
+@enduml 

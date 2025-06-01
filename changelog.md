@@ -1,5 +1,325 @@
 # 📋 Changelog - CarbonPilot
 
+## 🚀 v1.3.4-tempo-fasi-ui - Visualizzazione Tempi Fasi Produzione
+**Data**: 2024-12-19  
+**Tipo**: Nuova Funzionalità - Dashboard Analisi Tempi
+
+### ✨ **Nuove Funzionalità**
+
+#### 📊 **Pagina Tempo Fasi**
+- **Nuova pagina**: `/dashboard/management/tempo-fasi` per analisi tempi fasi produzione
+- **Grafico interattivo**: LineChart con Recharts per visualizzazione trend tempi medi
+- **Statistiche aggregate**: Card riassuntive con tempi medi, min/max per ogni fase
+- **Caricamento lazy**: Import dinamico di Recharts per ottimizzazione performance
+
+#### 📈 **Grafico Tempi Medi**
+- **Visualizzazione multi-linea**:
+  - Linea principale: Tempo medio (blu, spessa)
+  - Linea min: Tempo minimo (verde, tratteggiata)  
+  - Linea max: Tempo massimo (rosso, tratteggiata)
+- **Tooltip interattivo**: Dettagli tempo al hover con unità "min"
+- **Assi personalizzati**: Etichetta Y-axis "Tempo (minuti)", X-axis con nomi fasi
+- **Grid e legend**: Griglia tratteggiata e legenda per chiarezza
+
+#### 🎯 **Fasi Monitorate**
+- **Laminazione**: Tempo processo di laminazione parti
+- **Attesa Cura**: Tempo di attesa prima del processo di cura
+- **Cura**: Tempo effettivo di cura in autoclave
+- **Range temporali**: Visualizzazione min/max per identificare variabilità
+
+### 🔧 **Backend API Implementation**
+
+#### 📡 **Nuovo Endpoint Statistiche**
+- **Endpoint**: `GET /api/v1/tempo-fasi/tempo-fasi`
+- **Response Model**: `List[TempoFaseStatistiche]`
+- **Query aggregata**: SQL con `GROUP BY fase` per statistiche per fase
+- **Calcoli automatici**:
+  - Media aritmetica (`AVG(durata_minuti)`)
+  - Conteggio osservazioni (`COUNT(id)`)
+  - Valori min/max (`MIN/MAX(durata_minuti)`)
+
+#### 🎨 **Schema Dati Esteso**
+```python
+class TempoFaseStatistiche(BaseModel):
+    fase: TipoFase                    # Enum: laminazione, attesa_cura, cura
+    media_minuti: float               # Tempo medio in minuti
+    numero_osservazioni: int          # Numero di campioni per calcolo
+    tempo_minimo_minuti: Optional[float]  # Tempo minimo registrato
+    tempo_massimo_minuti: Optional[float] # Tempo massimo registrato
+```
+
+#### 🔍 **Filtri Dati Intelligenti**
+- **Solo fasi completate**: Filtro `durata_minuti != None` per evitare fasi incomplete
+- **Aggregazione per tipo**: Raggrupamento automatico per `TipoFase` enum
+- **Conversione tipi**: Cast automatico `float()` per compatibilità JSON
+
+### 🎨 **Frontend UI Components**
+
+#### 🧩 **Componenti Riutilizzabili**
+- **Cards statistiche**: Grid responsive 3 colonne con metriche chiave
+- **Gestione stati**: Loading spinner, error handling, empty state
+- **Responsive design**: Layout ottimizzato per desktop e mobile
+- **Toast feedback**: Pulsante riprova in caso di errori di caricamento
+
+#### 🎯 **UX/UI Features**
+- **Loading state**: Spinner con messaggio "Caricamento statistiche tempi fasi..."
+- **Error handling**: Card errore con pulsante "Riprova" e dettagli tecnici
+- **Empty state**: Messaggio informativo quando non ci sono dati
+- **Icone semantiche**: Clock, TrendingUp, Activity per visual hierarchy
+
+#### 🌐 **Import Dinamico Recharts**
+```typescript
+// Lazy loading per ottimizzazione bundle
+const LineChart = dynamic(() => import('recharts').then(mod => mod.LineChart), { ssr: false })
+const ResponsiveContainer = dynamic(() => import('recharts').then(mod => mod.ResponsiveContainer), { ssr: false })
+```
+
+### 🔗 **Sidebar Navigation**
+
+#### 📂 **Nuova Voce Menu**
+- **Posizione**: Sezione "Amministrazione" del sidebar
+- **Titolo**: "Tempo Fasi"
+- **Icona**: Timer (Lucide React)
+- **Permessi**: Ruoli ADMIN e Management
+- **URL**: `/dashboard/management/tempo-fasi`
+
+### 📊 **Data Visualization**
+
+#### 📈 **Configurazione Grafico**
+- **Tipo**: LineChart con 3 linee sovrapposte
+- **Dimensioni**: Container responsive 100% width, 400px height
+- **Colori tema**:
+  - Tempo medio: `#2563eb` (blu primary)
+  - Tempo minimo: `#10b981` (verde success)  
+  - Tempo massimo: `#ef4444` (rosso warning)
+- **Dots**: Punti visibili sui nodi dati con raggi differenziati
+
+#### 🎨 **Styling e Accessibility**
+- **CartesianGrid**: Griglia tratteggiata per lettura valori
+- **Tooltip personalizzato**: Formatter che aggiunge unità "min"
+- **Legend interattiva**: Possibilità hide/show linee
+- **Font sizing**: Text 12px per etichette assi per leggibilità
+
+### 📚 **Mappature Dati**
+
+#### 🏷️ **Labels User-Friendly**
+```typescript
+const FASE_LABELS: Record<string, string> = {
+  'laminazione': 'Laminazione',
+  'attesa_cura': 'Attesa Cura', 
+  'cura': 'Cura'
+}
+```
+
+#### 🔢 **Arrotondamento Intelligente**
+- **Tempo medio**: Arrotondamento a 2 decimali per precisione
+- **Min/Max**: Arrotondamento per display cards
+- **Conversione**: `Math.round(value * 100) / 100` per evitare float precision
+
+### 🧪 **Error Handling e Resilienza**
+
+#### 🚨 **Gestione Errori Completa**
+- **Network errors**: Catch e display errore HTTP status
+- **Empty responses**: Handling graceful array vuoto
+- **Tipo errors**: Validazione TypeScript strict
+- **User feedback**: Error card con possibilità retry
+
+#### 🔄 **Retry Logic**
+- **Pulsante riprova**: Re-esegue fetch con stato loading
+- **Reset errori**: Pulisce stato errore prima del retry
+- **Loading states**: Indica all'utente che l'operazione è in corso
+
+### 🎯 **Business Value**
+
+#### 📊 **Analisi Performance**
+- **Identificazione colli di bottiglia**: Fasi con tempi medi alti
+- **Variabilità processi**: Range min/max per identificare inconsistenze
+- **Trend temporali**: Base per analisi storiche future
+- **Ottimizzazione**: Dati per miglioramento efficiency produttiva
+
+#### 🎯 **Benefici Management**
+- **Visibilità processi**: Dashboard tempo reale performance fasi
+- **Decision making**: Dati per decisioni ottimizzazione
+- **Benchmark**: Comparazione tempi tra diverse fasi
+- **Reporting**: Export data per report e analisi esterne
+
+### 🔮 **Prossimi Sviluppi**
+- **Filtri temporali**: Analisi tempi per periodo specifico
+- **Drill-down**: Click su fase per dettagli ODL specifici
+- **Export dati**: CSV/Excel dei dati grafico
+- **Alerting**: Notifiche per tempi anomali
+- **Comparazioni**: Grafici comparativi per ottimizzazione
+
+---
+
+## 🚀 v1.3.3-system-logs-ui - Interfaccia System Logs per Amministratori
+**Data**: 2024-12-19  
+**Tipo**: Nuova Funzionalità - UI per Monitoraggio Sistema
+
+### ✨ **Nuove Funzionalità**
+
+#### 📊 **Pagina System Logs Admin**
+- **Nuova pagina**: `/dashboard/admin/system-logs` per visualizzazione log di sistema
+- **Tabella interattiva**: Visualizzazione completa dei log con colonne:
+  - Timestamp (formato italiano dd/MM/yyyy HH:mm:ss)
+  - Livello (INFO, WARNING, ERROR, CRITICAL) con badge colorati e icone
+  - Tipo Evento (odl_state_change, user_login, data_modification, etc.)
+  - Ruolo Utente (ADMIN, Management, Curing, Clean Room)
+  - Azione (descrizione dell'operazione)
+  - Entità (tipo e ID dell'entità coinvolta)
+  - Dettagli (JSON espandibile con old_value, new_value, IP)
+
+#### 🔍 **Sistema di Filtri Avanzato**
+- **Filtri disponibili**:
+  - Tipo Evento (dropdown con opzioni predefinite)
+  - Ruolo Utente (dropdown con tutti i ruoli sistema)
+  - Livello Log (INFO, WARNING, ERROR, CRITICAL)
+  - Tipo Entità (input libero per odl, tool, autoclave, etc.)
+  - Data Inizio/Fine (DatePicker con calendario italiano)
+- **Funzionalità filtri**:
+  - Applicazione in tempo reale
+  - Reset completo con un click
+  - Persistenza durante la sessione
+  - Query parameters per URL condivisibili
+
+#### 📤 **Esportazione Dati**
+- **Export CSV**: Funzionalità completa di esportazione
+  - Rispetta i filtri applicati
+  - Nome file automatico con timestamp
+  - Download diretto nel browser
+  - Gestione errori con feedback utente
+
+#### 📈 **Dashboard Statistiche**
+- **Metriche rapide**: Card con statistiche principali
+  - Totale log nel sistema
+  - Errori recenti (ultimi 30 giorni)
+- **Aggiornamento automatico**: Refresh periodico delle statistiche
+
+### 🔧 **Componenti UI Implementati**
+
+#### 🗓️ **DatePicker Component**
+- **Componente personalizzato**: Basato su shadcn/ui + react-day-picker
+- **Localizzazione italiana**: Formato date e lingua italiana
+- **Integrazione Popover**: UI elegante con calendario dropdown
+- **Props configurabili**: Placeholder, disabled state, callback onChange
+
+#### 📋 **Table Component**
+- **Tabella responsive**: Ottimizzata per desktop e mobile
+- **Colonne fisse**: Larghezze ottimizzate per contenuto
+- **Dettagli espandibili**: Sistema `<details>` per JSON e metadati
+- **Loading states**: Indicatori di caricamento eleganti
+- **Empty states**: Messaggi informativi quando non ci sono dati
+
+#### 🎨 **Badge System**
+- **Livelli colorati**: Sistema di badge per livelli log
+  - INFO: Badge default (blu)
+  - WARNING: Badge secondary (giallo)
+  - ERROR/CRITICAL: Badge destructive (rosso)
+- **Icone integrate**: Lucide React icons per ogni livello
+- **Ruoli utente**: Badge outline per identificazione ruoli
+
+### 🔗 **Integrazione API**
+
+#### 📡 **SystemLogs API Client**
+- **Funzioni implementate**:
+  - `getAll(filters)`: Recupero log con filtri opzionali
+  - `getStats(days)`: Statistiche aggregate
+  - `getRecentErrors(limit)`: Errori più recenti
+  - `getByEntity(type, id)`: Log per entità specifica
+  - `exportCsv(filters)`: Esportazione CSV
+- **Gestione errori**: Try-catch con toast notifications
+- **TypeScript**: Interfacce complete per type safety
+
+#### 🔌 **Endpoint Backend Utilizzati**
+- `GET /api/v1/system-logs/`: Lista log con filtri
+- `GET /api/v1/system-logs/stats`: Statistiche sistema
+- `GET /api/v1/system-logs/recent-errors`: Errori recenti
+- `GET /api/v1/system-logs/export`: Export CSV
+
+### 🎯 **Sidebar Navigation**
+
+#### 📂 **Nuova Voce Menu**
+- **Posizione**: Sezione "Amministrazione" del sidebar
+- **Titolo**: "System Logs"
+- **Icona**: ScrollText (Lucide React)
+- **Permessi**: Solo ruolo ADMIN
+- **URL**: `/dashboard/admin/system-logs`
+
+### 🛠️ **Dipendenze Aggiunte**
+
+#### 📦 **Nuovi Package NPM**
+```json
+{
+  "@radix-ui/react-popover": "^1.0.7",
+  "react-day-picker": "^8.10.0"
+}
+```
+
+#### 🎨 **Componenti shadcn/ui Creati**
+- `components/ui/popover.tsx`: Componente Popover per DatePicker
+- `components/ui/calendar.tsx`: Componente Calendar con localizzazione
+- `components/ui/date-picker.tsx`: DatePicker completo e riutilizzabile
+
+### 🔄 **User Experience**
+
+#### 💫 **Interazioni Fluide**
+- **Loading states**: Spinner e skeleton durante caricamento
+- **Toast notifications**: Feedback per azioni utente
+- **Responsive design**: Ottimizzato per tutti i dispositivi
+- **Keyboard navigation**: Accessibilità completa
+
+#### 🎨 **Design System**
+- **Coerenza visiva**: Allineato con il design esistente
+- **Colori semantici**: Sistema colori per livelli di gravità
+- **Typography**: Font mono per timestamp e dati tecnici
+- **Spacing**: Grid system consistente
+
+### 📚 **Documentazione**
+
+#### 📖 **Commenti Codice**
+- **JSDoc completo**: Documentazione inline per tutte le funzioni
+- **Spiegazioni dettagliate**: Commenti per logica complessa
+- **Esempi d'uso**: Template per future implementazioni
+
+#### 🔍 **Debug e Logging**
+- **Console logging**: Log dettagliati per debugging
+- **Error tracking**: Gestione errori con stack trace
+- **Performance monitoring**: Log per tempi di caricamento
+
+### 🧪 **Testing e Qualità**
+
+#### ✅ **Validazioni Implementate**
+- **Input validation**: Controlli su filtri e date
+- **API error handling**: Gestione errori di rete
+- **Type safety**: TypeScript strict mode
+- **Fallback graceful**: Comportamento sicuro in caso di errori
+
+### 🎯 **Benefici per gli Amministratori**
+
+#### 🔍 **Monitoraggio Completo**
+- **Visibilità totale**: Tutti gli eventi sistema in un'unica vista
+- **Ricerca avanzata**: Filtri multipli per trovare eventi specifici
+- **Analisi temporale**: Filtri data per analisi storiche
+- **Export dati**: Possibilità di analisi offline
+
+#### 🚨 **Gestione Errori**
+- **Identificazione rapida**: Errori evidenziati con colori
+- **Dettagli completi**: Stack trace e contesto negli errori
+- **Trend analysis**: Statistiche per identificare pattern
+
+#### 📊 **Audit Trail**
+- **Tracciabilità completa**: Chi ha fatto cosa e quando
+- **Compliance**: Log per audit e conformità
+- **Sicurezza**: Monitoraggio accessi e modifiche
+
+### 🔮 **Prossimi Sviluppi**
+- **Filtri salvati**: Possibilità di salvare combinazioni di filtri
+- **Alerting**: Notifiche per errori critici
+- **Dashboard real-time**: Aggiornamento automatico log
+- **Grafici temporali**: Visualizzazione trend nel tempo
+
+---
+
 ## 🔧 v1.1.8-HOTFIX - Risoluzione Errore 404 ODL Endpoints
 **Data**: 2024-12-19  
 **Tipo**: Bugfix Critico - Risoluzione Errori API
@@ -538,124 +858,6 @@ ALTER TABLE batch_nesting ADD COLUMN durata_ciclo_minuti INTEGER;
 
 ---
 
-## [2024-12-18] - Implementazione algoritmo di nesting 2D 
-
-## 🔄 [v1.2.0-DEMO] - 2025-05-31
-
-### ✨ Nuove Funzionalità
-- **📐 Pagina Risultato Nesting Completata**: Implementata visualizzazione completa dei risultati di nesting
-  - Canvas 2D interattivo con react-konva per layout nesting
-  - Tabella dettagliata degli ODL posizionati con coordinate e dimensioni
-  - Visualizzazione proporzioni reali dell'autoclave
-  - Legenda colori per identificazione tool
-
-### 🔧 Miglioramenti Backend
-- **API Endpoint `/batch_nesting/{id}/full`**: Aggiunto supporto completo per dati autoclave
-  - Inclusi campi `id` e `codice` nell'oggetto autoclave
-  - Risposta strutturata per supportare visualizzazione frontend
-
-### 🎨 Miglioramenti Frontend
-- **Interfacce TypeScript**: Aggiornate per riflettere struttura dati reale
-  - `ODLDettaglio`: Nuova interfaccia per dati ODL posizionati
-  - `AutoclaveInfo`: Interfaccia per dati autoclave
-  - `BatchNestingResult`: Aggiornata con `configurazione_json` e `autoclave`
-
-- **Componente NestingCanvas**: Nuovo componente per visualizzazione 2D
-  - Scala automatica per adattare autoclave al canvas (max 800×600px)
-  - Colori diversi per ogni tool con sistema di legenda
-  - Etichette informative con Part Number e nome tool
-  - Bordo tratteggiato per delimitazione autoclave
-
-- **UI Pulita e Migliorata**:
-  - Rimosso campo obsoleto "Accorpamento ODL"
-  - Rinominato "Numero Nesting" in "ODL Posizionati"
-  - Aggiunta tabella dettagliata con posizioni e dimensioni
-  - Messaggi informativi per dati mancanti
-
-### 📦 Dipendenze
-- **Aggiunte**: `react-konva`, `konva` per canvas 2D interattivo
-
-### 🔄 Modifiche Tecniche
-- Endpoint dati cambiato da `/api/batch_nesting/{id}` a `/api/batch_nesting/{id}/full`
-- Gestione robusta dei dati mancanti con fallback appropriati
-- Visualizzazione condizionale basata sulla disponibilità dei dati
-
-### 🎯 Funzionalità Implementate
-- ✅ Canvas 2D con proporzioni reali
-- ✅ Visualizzazione posizioni e dimensioni tool
-- ✅ Tabella dettagliata ODL posizionati
-- ✅ Gestione fallback per dati mancanti
-- ✅ UI pulita senza campi obsoleti
-- ✅ Legenda colori per identificazione tool
-
----
-
-## 🚀 [v1.8.0] - 2025-05-31 - Risoluzione Problemi Produzione Curing e API Robusta
-
-### ✅ **Problemi Risolti**
-- **🔧 Serializzazione API**: Risolto errore "Unable to serialize unknown type: ODL" negli endpoint di produzione
-- **🏗️ Modelli Pydantic**: Creati modelli dedicati per l'API di produzione (`schemas/produzione.py`)
-- **🔍 Health Check**: Corretto errore SQL raw con `text()` per SQLAlchemy 2.0
-- **📊 Endpoint Robusti**: Tutti gli endpoint `/api/v1/produzione/*` ora funzionano correttamente
-
-### 🆕 **Nuove Funzionalità**
-- **📋 Schema Produzione**: Nuovi modelli Pydantic per risposte strutturate:
-  - `ODLProduzioneRead`: ODL con relazioni parte/tool
-  - `ProduzioneODLResponse`: Risposta completa con statistiche
-  - `StatisticheGeneraliResponse`: Statistiche di produzione
-  - `HealthCheckResponse`: Stato del sistema
-- **🔄 Serializzazione Automatica**: Utilizzo di `from_orm()` per conversione automatica da SQLAlchemy
-- **📈 API Endpoints Testati**:
-  - `GET /api/v1/produzione/odl` - ODL separati per stato ✅
-  - `GET /api/v1/produzione/statistiche` - Statistiche generali ✅  
-  - `GET /api/v1/produzione/health` - Health check sistema ✅
-
-### 🛠️ **Miglioramenti Tecnici**
-- **🎯 Gestione Errori**: Logging dettagliato per debugging
-- **⚡ Performance**: Query ottimizzate con `joinedload()` per relazioni
-- **🔒 Type Safety**: Tipizzazione completa con TypeScript/Pydantic
-- **📝 Documentazione**: Docstring dettagliate per tutti gli endpoint
-
-### 🧪 **Test Completati**
-- ✅ Endpoint `/api/v1/produzione/odl`: Restituisce 2 ODL in attesa cura, 1 in cura
-- ✅ Endpoint `/api/v1/produzione/statistiche`: Conteggi per stato, autoclavi, produzione giornaliera
-- ✅ Endpoint `/api/v1/produzione/health`: Sistema healthy, 6 ODL totali, 2 autoclavi
-- ✅ Serializzazione JSON: Struttura corretta con relazioni annidate
-
-### 📁 **File Modificati**
-- `backend/schemas/produzione.py` - **NUOVO**: Modelli Pydantic per produzione
-- `backend/api/routers/produzione.py` - Aggiornato con modelli Pydantic e correzioni
-- `frontend/src/lib/api.ts` - API di produzione già configurata
-- `frontend/src/app/dashboard/curing/produzione/page.tsx` - Gestione errori robusta
-
-### 🔄 **Stato Attuale**
-- **Backend**: ✅ Completamente funzionale con API robuste
-- **Database**: ✅ Stati ODL corretti e test data disponibili  
-- **Frontend**: ⏳ In fase di test (server in avvio)
-- **Integrazione**: 🔄 Pronta per test end-to-end 
-
-## 🔧 [HOTFIX] - 2025-05-31 - Risoluzione errore fetch nesting results
-
-### 🐛 Bug Risolti
-- **Frontend**: Risolto errore 404 nella visualizzazione dei risultati di nesting
-  - **Problema**: La chiamata API mancava del prefisso `/v1` richiesto dal backend
-  - **Soluzione**: Aggiornato endpoint da `/api/batch_nesting/{id}/full` a `/api/v1/batch_nesting/{id}/full`
-  - **File modificato**: `frontend/src/app/dashboard/curing/nesting/result/[batch_id]/page.tsx`
-  - **Impatto**: Ora la pagina dei risultati di nesting carica correttamente i dati
-
-### 🔍 Dettagli Tecnici
-- L'endpoint backend era correttamente registrato sotto `/api/v1/batch_nesting/{batch_id}/full`
-- Il frontend faceva la chiamata a `/api/batch_nesting/{batch_id}/full` (senza `/v1`)
-- Il proxy di Next.js funziona correttamente, il problema era solo nel percorso dell'endpoint
-- Verificato che tutti gli altri endpoint nel frontend utilizzano già il prefisso `/v1` corretto
-
-### ✅ Test Effettuati
-- ✅ Endpoint backend funzionante: `GET /api/v1/batch_nesting/{id}/full`
-- ✅ Proxy frontend funzionante: `http://localhost:3002/api/v1/batch_nesting/{id}/full`
-- ✅ Risposta JSON corretta con tutti i dati del batch nesting inclusa l'autoclave
-
----
-
 ## [2025-06-01] - RISOLUZIONE ERRORE "NOT FOUND" NEL NESTING 🔧
 
 ### 🐛 Bug Fix
@@ -684,7 +886,7 @@ ALTER TABLE batch_nesting ADD COLUMN durata_ciclo_minuti INTEGER;
   - `frontend/src/app/dashboard/curing/nesting/page.tsx` (API endpoint call)
 - **Effetto**: Il nesting ora carica correttamente i dati e può essere generato senza errori
 
-### 📊 Stato Sistema
+### 📊 Sistato Sistema
 - **ODL disponibili**: 6 in attesa di cura
 - **Autoclavi disponibili**: 3 (AUTOCLAVE-A1-LARGE, AUTOCLAVE-B2-MEDIUM, AUTOCLAVE-C3-PRECISION)
 - **Status sistema**: READY per generazione nesting

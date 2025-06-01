@@ -56,3 +56,14 @@ class PrevisioneTempo(BaseModel):
     fase: TipoFase
     media_minuti: float
     numero_osservazioni: int 
+
+# Schema per le statistiche aggregate per la UI
+class TempoFaseStatistiche(BaseModel):
+    fase: TipoFase
+    media_minuti: float
+    numero_osservazioni: int
+    tempo_minimo_minuti: Optional[float] = None
+    tempo_massimo_minuti: Optional[float] = None
+    
+    class Config:
+        from_attributes = True 

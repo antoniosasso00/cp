@@ -141,6 +141,278 @@ def read_batch_nesting_list(
     
     return query.offset(skip).limit(limit).all()
 
+# ========== ENDPOINT LEGACY DA NESTING_TEMP ==========
+# Aggiunti per compatibilità con il frontend esistente
+
+from typing import Dict, Any
+from pydantic import BaseModel
+from services.nesting_service import NestingService, NestingParameters
+from services.nesting_robustness_improvement import RobustNestingService
+
+class NestingParametri(BaseModel):
+    padding_mm: int = 20
+    min_distance_mm: int = 15
+    priorita_area: bool = True
+
+class NestingRequest(BaseModel):
+    odl_ids: List[str]
+    autoclave_ids: List[str]
+    parametri: NestingParametri = NestingParametri()
+
+class NestingResponse(BaseModel):
+    batch_id: str
+    message: str
+    odl_count: int
+    autoclave_count: int
+    positioned_tools: List[Dict[str, Any]]
+    excluded_odls: List[Dict[str, Any]]
+    efficiency: float
+    total_weight: float
+    algorithm_status: str
+    success: bool
+    validation_report: Dict[str, Any] = None
+    fixes_applied: List[str] = []
+
+class NestingDataResponse(BaseModel):
+    """Risposta per l'endpoint /data con ODL e autoclavi disponibili"""
+    odl_in_attesa_cura: List[Dict[str, Any]]
+    autoclavi_disponibili: List[Dict[str, Any]]
+    statistiche: Dict[str, Any]
+    status: str
+
+@router.get("/data", response_model=NestingDataResponse,
+            summary="Ottiene dati per il nesting (ODL e autoclavi disponibili)")
+def get_nesting_data(db: Session = Depends(get_db)):
+    """
+    🔍 ENDPOINT DATI NESTING
+    =========================
+    
+    Recupera tutti i dati necessari per l'interfaccia di nesting:
+    - ODL in attesa di cura con dettagli tool e parte
+    - Autoclavi disponibili con specifiche tecniche
+    - Statistiche generali del sistema
+    
+    **Ritorna:**
+    - Lista ODL pronti per il nesting
+    - Lista autoclavi operative
+    - Statistiche di sistema
+    """
+    try:
+        logger.info("📊 Recupero dati per interfaccia nesting...")
+        
+        # Recupera ODL in attesa di cura
+        odl_in_attesa = db.query(ODL).filter(
+            ODL.status == "Attesa cura"
+        ).all()
+        
+        # Costruisce lista ODL con dettagli
+        odl_list = []
+        for odl in odl_in_attesa:
+            # Lazy loading delle relazioni
+            if odl.parte:
+                parte_data = {
+                    "id": odl.parte.id,
+                    "part_number": odl.parte.part_number,
+                    "descrizione_breve": odl.parte.descrizione_breve,
+                    "num_valvole_richieste": odl.parte.num_valvole_richieste,
+                    "ciclo_cura": {
+                        "nome": odl.parte.ciclo_cura.nome if odl.parte.ciclo_cura else None,
+                        "durata_stasi1": odl.parte.ciclo_cura.durata_stasi1 if odl.parte.ciclo_cura else None,
+                        "temperatura_stasi1": odl.parte.ciclo_cura.temperatura_stasi1 if odl.parte.ciclo_cura else None,
+                        "pressione_stasi1": odl.parte.ciclo_cura.pressione_stasi1 if odl.parte.ciclo_cura else None
+                    } if odl.parte.ciclo_cura else None
+                }
+            else:
+                parte_data = None
+            
+            if odl.tool:
+                tool_data = {
+                    "id": odl.tool.id,
+                    "part_number_tool": odl.tool.part_number_tool,
+                    "descrizione": odl.tool.descrizione,
+                    "larghezza_piano": odl.tool.larghezza_piano,
+                    "lunghezza_piano": odl.tool.lunghezza_piano,
+                    "peso": odl.tool.peso,
+                    "disponibile": odl.tool.disponibile
+                }
+            else:
+                tool_data = None
+            
+            odl_list.append({
+                "id": odl.id,
+                "status": odl.status,
+                "priorita": odl.priorita,
+                "created_at": odl.created_at.isoformat() if odl.created_at else None,
+                "note": odl.note,
+                "parte": parte_data,
+                "tool": tool_data
+            })
+        
+        # Recupera autoclavi disponibili
+        autoclavi_disponibili = db.query(Autoclave).filter(
+            Autoclave.stato == StatoAutoclaveEnum.DISPONIBILE
+        ).all()
+        
+        autoclavi_list = []
+        for autoclave in autoclavi_disponibili:
+            autoclavi_list.append({
+                "id": autoclave.id,
+                "nome": autoclave.nome,
+                "codice": autoclave.codice,
+                "stato": autoclave.stato,
+                "lunghezza": autoclave.lunghezza,
+                "larghezza_piano": autoclave.larghezza_piano,
+                "temperatura_max": autoclave.temperatura_max,
+                "pressione_max": autoclave.pressione_max,
+                "max_load_kg": autoclave.max_load_kg,
+                "num_linee_vuoto": autoclave.num_linee_vuoto,
+                "use_secondary_plane": autoclave.use_secondary_plane,
+                "produttore": autoclave.produttore,
+                "anno_produzione": autoclave.anno_produzione
+            })
+        
+        # Calcola statistiche
+        total_odl = db.query(ODL).count()
+        total_autoclavi = db.query(Autoclave).count()
+        
+        statistiche = {
+            "total_odl_in_attesa": len(odl_list),
+            "total_autoclavi_disponibili": len(autoclavi_list),
+            "total_odl_sistema": total_odl,
+            "total_autoclavi_sistema": total_autoclavi,
+            "last_update": datetime.now().isoformat()
+        }
+        
+        # Prepara risposta
+        response = NestingDataResponse(
+            odl_in_attesa_cura=odl_list,
+            autoclavi_disponibili=autoclavi_list,
+            statistiche=statistiche,
+            status="success"
+        )
+        
+        logger.info(f"✅ Dati nesting recuperati: {len(odl_list)} ODL, {len(autoclavi_list)} autoclavi")
+        return response
+        
+    except Exception as e:
+        logger.error(f"❌ Errore nel recupero dati nesting: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore nel recupero dati per nesting: {str(e)}"
+        )
+
+@router.post("/genera", response_model=NestingResponse,
+             summary="Genera un nuovo nesting robusto utilizzando OR-Tools")
+def genera_nesting_robusto(
+    request: NestingRequest, 
+    db: Session = Depends(get_db)
+):
+    """
+    🔧 ENDPOINT NESTING ROBUSTO CON OR-TOOLS
+    ========================================
+    
+    Genera un nesting ottimizzato con gestione errori avanzata e strategie di fallback:
+    
+    - **Validazione automatica** dei prerequisiti di sistema
+    - **Auto-correzione** dei problemi comuni (es. stato autoclavi)
+    - **Algoritmo di fallback** per situazioni critiche
+    - **Gestione errori robusta** con messaggi dettagliati
+    - **Creazione batch garantita** anche in caso di problemi parziali
+    
+    **Parametri:**
+    - odl_ids: Lista degli ID degli ODL da processare
+    - autoclave_ids: Lista degli ID delle autoclavi da utilizzare
+    - parametri: Configurazione algoritmo nesting
+    
+    **Ritorna:**
+    - Batch ID principale generato
+    - Lista tool posizionati e ODL esclusi
+    - Report di validazione e fix applicati
+    - Statistiche di efficienza e peso
+    """
+    
+    try:
+        logger.info(f"🚀 Avvio nesting robusto: {len(request.odl_ids)} ODL, {len(request.autoclave_ids)} autoclavi")
+        
+        # Validazione input base
+        if not request.odl_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Lista ODL non può essere vuota"
+            )
+        
+        if not request.autoclave_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Lista autoclavi non può essere vuota"
+            )
+        
+        # Conversione IDs da string a int
+        try:
+            odl_ids = [int(id_str) for id_str in request.odl_ids]
+            autoclave_ids = [int(id_str) for id_str in request.autoclave_ids]
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"IDs non validi forniti: {str(e)}"
+            )
+        
+        # Parametri nesting
+        parameters = NestingParameters(
+            padding_mm=request.parametri.padding_mm,
+            min_distance_mm=request.parametri.min_distance_mm,
+            priorita_area=request.parametri.priorita_area
+        )
+        
+        # Inizializza servizio robusto
+        robust_service = RobustNestingService()
+        
+        # Genera nesting con robustezza
+        result = robust_service.generate_robust_nesting(
+            db=db,
+            odl_ids=odl_ids,
+            autoclave_ids=autoclave_ids,
+            parameters=parameters
+        )
+        
+        # Log del risultato
+        if result['success']:
+            logger.info(f"✅ Nesting robusto completato: batch {result['batch_id']}")
+        else:
+            logger.warning(f"⚠️ Nesting con problemi: {result['message']}")
+        
+        # Prepara risposta
+        return NestingResponse(
+            batch_id=result.get('batch_id', ''),
+            message=result['message'],
+            odl_count=len(request.odl_ids),
+            autoclave_count=len(request.autoclave_ids),
+            positioned_tools=result['positioned_tools'],
+            excluded_odls=result['excluded_odls'],
+            efficiency=result['efficiency'],
+            total_weight=result['total_weight'],
+            algorithm_status=result['algorithm_status'],
+            success=result['success'],
+            validation_report=result.get('validation_report'),
+            fixes_applied=result.get('fixes_applied', [])
+        )
+        
+    except HTTPException:
+        # Re-raise HTTPException as is
+        raise
+    except ValueError as e:
+        logger.error(f"❌ Errore di validazione dati: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Dati non validi: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"❌ Errore imprevisto nella generazione nesting robusto: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore interno del server: {str(e)}"
+        )
+
 @router.get("/{batch_id}", response_model=BatchNestingResponse, 
             summary="Ottiene un batch nesting specifico")
 def read_batch_nesting(batch_id: str, db: Session = Depends(get_db)):
@@ -531,151 +803,83 @@ def chiudi_batch_nesting(
 ):
     """
     Chiude il batch nesting e completa il ciclo di cura.
-    
-    Effettua le seguenti operazioni in transazione:
-    1. Aggiorna il batch da "confermato" a "terminato"  
-    2. Aggiorna l'autoclave a disponibile
-    3. Aggiorna tutti gli ODL da "Cura" a "Finito"
-    4. Registra timestamp di completamento
-    
-    **Prerequisiti:**
-    - Il batch deve essere in stato "confermato"
-    - L'autoclave deve essere in uso
-    - Gli ODL devono essere in stato "Cura"
+    Aggiorna lo stato di tutti gli ODL da "In cura" a "Completato".
     """
-    # Recupera il batch con le relazioni
-    db_batch = db.query(BatchNesting).filter(BatchNesting.id == batch_id).first()
-    if db_batch is None:
-        logger.warning(f"Tentativo di chiusura di batch inesistente: {batch_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Batch nesting con ID {batch_id} non trovato"
-        )
-    
-    # Verifica che il batch sia in stato "confermato"
-    if db_batch.stato != StatoBatchNestingEnum.CONFERMATO.value:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Il batch è in stato '{db_batch.stato}' e non può essere chiuso. Solo i batch in stato 'confermato' possono essere chiusi."
-        )
-    
-    # Recupera l'autoclave associata
-    autoclave = db.query(Autoclave).filter(Autoclave.id == db_batch.autoclave_id).first()
-    if not autoclave:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Autoclave con ID {db_batch.autoclave_id} non trovata"
-        )
-    
-    # Verifica che l'autoclave sia in uso
-    if autoclave.stato != StatoAutoclaveEnum.IN_USO:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"L'autoclave '{autoclave.nome}' non è in uso (stato: {autoclave.stato.value}). Non può essere liberata."
-        )
-    
-    # Recupera gli ODL associati al batch
-    if not db_batch.odl_ids:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Il batch non contiene ODL da processare"
-        )
-    
-    odl_list = db.query(ODL).filter(ODL.id.in_(db_batch.odl_ids)).all()
-    
-    if len(odl_list) != len(db_batch.odl_ids):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Uno o più ODL del batch non esistono nel database"
-        )
-    
-    # Verifica che tutti gli ODL siano in stato "Cura"
-    odl_non_validi = [odl for odl in odl_list if odl.status != "Cura"]
-    if odl_non_validi:
-        stati_non_validi = [f"ODL {odl.id}: {odl.status}" for odl in odl_non_validi]
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"I seguenti ODL non sono in stato 'Cura': {', '.join(stati_non_validi)}"
-        )
-    
     try:
-        # Inizia la transazione
-        ora_chiusura = datetime.now()
-        
-        logger.info(f"🏁 Avvio chiusura batch {batch_id} con {len(odl_list)} ODL")
-        
-        # 1. Aggiorna il batch nesting
-        db_batch.stato = StatoBatchNestingEnum.TERMINATO.value
-        # Aggiungi campo ended_at se non esiste (compatibilità)
-        if hasattr(db_batch, 'ended_at'):
-            db_batch.ended_at = ora_chiusura
-        
-        # Salva data di completamento e calcola durata
-        db_batch.data_completamento = ora_chiusura
-        durata_cura_minuti = None
-        if db_batch.data_conferma:
-            durata_cura = ora_chiusura - db_batch.data_conferma
-            durata_cura_minuti = int(durata_cura.total_seconds() / 60)
-            db_batch.durata_ciclo_minuti = durata_cura_minuti
-        
-        logger.info(f"✅ Batch {batch_id} aggiornato a stato 'terminato'")
-        if durata_cura_minuti:
-            logger.info(f"📊 Durata ciclo di cura: {durata_cura_minuti} minuti")
-        
-        # 2. Aggiorna l'autoclave (rende disponibile)
-        autoclave.stato = StatoAutoclaveEnum.DISPONIBILE
-        
-        logger.info(f"✅ Autoclave {autoclave.id} ({autoclave.nome}) aggiornata a stato 'disponibile'")
-        
-        # 3. Aggiorna tutti gli ODL da "Cura" a "Finito"
-        odl_aggiornati = []
-        for odl in odl_list:
-            stato_precedente = odl.status
-            odl.previous_status = odl.status  # Salva stato precedente per eventuale ripristino
-            odl.status = "Finito"  # ✅ CORRETTO: "Finito" invece di "Terminato"
-            odl_aggiornati.append(odl.id)
-            
-            # ✅ AGGIUNGO: Log del cambio di stato
-            StateTrackingService.registra_cambio_stato(
-                db=db,
-                odl_id=odl.id,
-                stato_precedente=stato_precedente,
-                stato_nuovo="Finito",
-                responsabile=chiuso_da_utente,
-                ruolo_responsabile=chiuso_da_ruolo,
-                note=f"Chiusura batch nesting {batch_id}"
-            )
-            
-            # ✅ AGGIUNGO: Log nell'ODLLogService
-            ODLLogService.log_cambio_stato(
-                db=db,
-                odl_id=odl.id,
-                stato_precedente=stato_precedente,
-                stato_nuovo="Finito",
-                responsabile=chiuso_da_utente,
-                descrizione_aggiuntiva=f"Chiusura batch nesting {batch_id}"
+        # Verifica che il batch esista e sia nello stato corretto
+        db_batch = db.query(BatchNesting).filter(BatchNesting.id == batch_id).first()
+        if not db_batch:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Batch nesting con ID {batch_id} non trovato"
             )
         
-        logger.info(f"✅ {len(odl_aggiornati)} ODL aggiornati a stato 'Finito': {odl_aggiornati}")
+        if db_batch.stato != StatoBatchNestingEnum.IN_CURA:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Il batch deve essere in stato 'In cura' per essere chiuso. Stato attuale: {db_batch.stato}"
+            )
         
-        # Commit della transazione
+        # Aggiorna il batch nesting
+        db_batch.stato = StatoBatchNestingEnum.COMPLETATO
+        db_batch.chiuso_da_utente = chiuso_da_utente
+        db_batch.chiuso_da_ruolo = chiuso_da_ruolo
+        db_batch.data_chiusura = datetime.now()
+        db_batch.updated_at = datetime.now()
+        
+        # Aggiorna gli ODL associati
+        state_service = StateTrackingService()
+        odl_log_service = ODLLogService()
+        
+        # Gestisce tutti gli ODL nel batch
+        for odl_id in db_batch.odl_ids:
+            odl = db.query(ODL).filter(ODL.id == odl_id).first()
+            if odl and odl.status == "In cura":
+                # Aggiorna lo stato dell'ODL
+                previous_status = odl.status
+                odl.status = "Completato"
+                odl.updated_at = datetime.now()
+                
+                # Registra il cambio di stato
+                state_service.log_state_change(
+                    db=db,
+                    odl_id=odl_id,
+                    stato_precedente=previous_status,
+                    stato_nuovo="Completato",
+                    responsabile=chiuso_da_utente,
+                    ruolo_responsabile=chiuso_da_ruolo,
+                    note=f"Completamento automatico tramite chiusura batch {batch_id}"
+                )
+                
+                # Log dell'operazione
+                odl_log_service.log_odl_event(
+                    db=db,
+                    odl_id=odl_id,
+                    evento="batch_chiuso",
+                    stato_precedente=previous_status,
+                    stato_nuovo="Completato",
+                    responsabile=chiuso_da_utente,
+                    descrizione=f"ODL completato tramite chiusura batch nesting {batch_id}"
+                )
+        
+        # Aggiorna eventuale autoclave
+        if db_batch.autoclave_id:
+            autoclave = db.query(Autoclave).filter(Autoclave.id == db_batch.autoclave_id).first()
+            if autoclave and autoclave.stato == StatoAutoclaveEnum.OCCUPATA:
+                autoclave.stato = StatoAutoclaveEnum.DISPONIBILE
+                autoclave.updated_at = datetime.now()
+        
         db.commit()
         db.refresh(db_batch)
         
-        logger.info(f"🎉 Chiusura batch {batch_id} completata con successo!")
-        logger.info(f"📊 Riepilogo:")
-        logger.info(f"   - Batch: {db_batch.stato}")
-        logger.info(f"   - Autoclave: {autoclave.stato.value}")
-        logger.info(f"   - ODL processati: {len(odl_aggiornati)}")
-        logger.info(f"   - Chiuso da: {chiuso_da_utente} ({chiuso_da_ruolo})")
-        if durata_cura_minuti:
-            logger.info(f"   - Durata ciclo: {durata_cura_minuti} minuti")
-        
+        logger.info(f"Batch nesting {batch_id} chiuso con successo da {chiuso_da_utente}")
         return db_batch
         
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
-        logger.error(f"❌ Errore durante la chiusura del batch {batch_id}: {str(e)}")
+        logger.error(f"Errore durante la chiusura del batch nesting {batch_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Si è verificato un errore durante la chiusura del batch nesting: {str(e)}"

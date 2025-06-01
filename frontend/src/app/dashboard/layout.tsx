@@ -175,6 +175,12 @@ const sidebarSections: SidebarSection[] = [
         roles: ['ADMIN', 'Management']
       },
       {
+        title: "Tempo Fasi",
+        href: "/dashboard/management/tempo-fasi",
+        icon: <Timer className="h-4 w-4" />,
+        roles: ['ADMIN', 'Management']
+      },
+      {
         title: "System Logs",
         href: "/dashboard/admin/system-logs",
         icon: <ScrollText className="h-4 w-4" />,

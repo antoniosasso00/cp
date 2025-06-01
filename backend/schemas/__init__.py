@@ -14,7 +14,7 @@ from .tool import ToolCreate, ToolUpdate, ToolResponse
 from .ciclo_cura import CicloCuraCreate, CicloCuraUpdate, CicloCuraResponse
 from .autoclave import AutoclaveCreate, AutoclaveUpdate, AutoclaveResponse, StatoAutoclaveEnum
 from .odl import ODLCreate, ODLUpdate, ODLRead, ODLReadBasic
-from .tempo_fase import TempoFaseCreate, TempoFaseUpdate, TempoFaseInDB, PrevisioneTempo, TipoFase
+from .tempo_fase import TempoFaseCreate, TempoFaseUpdate, TempoFaseInDB, PrevisioneTempo, TipoFase, TempoFaseStatistiche
 from .schedule import (
     ScheduleEntryCreate, ScheduleEntryUpdate, ScheduleEntryRead, 
     ScheduleEntryAutoCreate, AutoScheduleResponse, ScheduleEntryStatusEnum
@@ -36,7 +36,7 @@ __all__ = [
     'CicloCuraCreate', 'CicloCuraUpdate', 'CicloCuraResponse',
     'AutoclaveCreate', 'AutoclaveUpdate', 'AutoclaveResponse', 'StatoAutoclaveEnum',
     'ODLCreate', 'ODLUpdate', 'ODLRead', 'ODLReadBasic',
-    'TempoFaseCreate', 'TempoFaseUpdate', 'TempoFaseInDB', 'PrevisioneTempo', 'TipoFase',
+    'TempoFaseCreate', 'TempoFaseUpdate', 'TempoFaseInDB', 'PrevisioneTempo', 'TipoFase', 'TempoFaseStatistiche',
     'ScheduleEntryCreate', 'ScheduleEntryUpdate', 'ScheduleEntryRead', 
     'ScheduleEntryAutoCreate', 'AutoScheduleResponse', 'ScheduleEntryStatusEnum',
     'BatchNestingCreate', 'BatchNestingResponse', 'BatchNestingUpdate', 'BatchNestingList',

@@ -5,10 +5,40 @@ from sqlalchemy import func, and_
 from datetime import datetime
 
 from models import TempoFase, ODL, Parte, Catalogo
-from schemas import TempoFaseCreate, TempoFaseUpdate, TempoFaseInDB, PrevisioneTempo, TipoFase
+from schemas import TempoFaseCreate, TempoFaseUpdate, TempoFaseInDB, PrevisioneTempo, TipoFase, TempoFaseStatistiche
 from api.database import get_db
 
 router = APIRouter()
+
+@router.get("/tempo-fasi", response_model=List[TempoFaseStatistiche])
+def get_tempo_fasi_statistiche(db: Session = Depends(get_db)):
+    """
+    Ottiene le statistiche aggregate dei tempi medi per ogni fase di produzione.
+    Questo endpoint è utilizzato per visualizzare i grafici dei tempi per fase nella UI.
+    """
+    # Query per ottenere le statistiche aggregate per ogni fase
+    risultati = db.query(
+        TempoFase.fase,
+        func.avg(TempoFase.durata_minuti).label("media_minuti"),
+        func.count(TempoFase.id).label("numero_osservazioni"),
+        func.min(TempoFase.durata_minuti).label("tempo_minimo_minuti"),
+        func.max(TempoFase.durata_minuti).label("tempo_massimo_minuti")
+    ).filter(
+        TempoFase.durata_minuti != None  # Solo fasi completate con durata calcolata
+    ).group_by(TempoFase.fase).all()
+    
+    # Converto i risultati in lista di oggetti TempoFaseStatistiche
+    statistiche = []
+    for risultato in risultati:
+        statistiche.append(TempoFaseStatistiche(
+            fase=risultato.fase,
+            media_minuti=float(risultato.media_minuti) if risultato.media_minuti else 0.0,
+            numero_osservazioni=risultato.numero_osservazioni,
+            tempo_minimo_minuti=float(risultato.tempo_minimo_minuti) if risultato.tempo_minimo_minuti else None,
+            tempo_massimo_minuti=float(risultato.tempo_massimo_minuti) if risultato.tempo_massimo_minuti else None
+        ))
+    
+    return statistiche
 
 @router.post("/", response_model=TempoFaseInDB)
 def create_tempo_fase(tempo_fase: TempoFaseCreate, db: Session = Depends(get_db)):
