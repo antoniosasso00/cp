@@ -25,6 +25,7 @@ class EventType(enum.Enum):
     USER_LOGIN = "user_login"
     USER_LOGOUT = "user_logout"
     SYSTEM_ERROR = "system_error"
+    CALCULATION = "calculation"
 
 class UserRole(enum.Enum):
     """Ruoli utente"""
@@ -33,6 +34,7 @@ class UserRole(enum.Enum):
     CLEAN_ROOM = "clean_room"
     CURING = "curing"
     SISTEMA = "sistema"
+    RESPONSABILE = "responsabile"
 
 class SystemLog(Base):
     """Modello per tracciare tutti gli eventi del sistema"""

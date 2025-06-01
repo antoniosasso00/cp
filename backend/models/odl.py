@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Text, Enum, DateTime, func
+from sqlalchemy import Column, Integer, String, ForeignKey, Text, Enum, DateTime, func, Boolean
 from sqlalchemy.orm import relationship
 from .base import Base, TimestampMixin
 
@@ -28,6 +28,10 @@ class ODL(Base, TimestampMixin):
         nullable=False,
         doc="Stato corrente dell'ordine di lavoro"
     )
+    
+    # Campo per includere nei tempi standard
+    include_in_std = Column(Boolean, default=True, nullable=False,
+                          doc="Indica se includere questo ODL nel calcolo dei tempi standard")
     
     note = Column(Text, nullable=True,
                  doc="Note aggiuntive sull'ordine di lavoro")

@@ -13,6 +13,7 @@ from api.routers.admin import router as admin_router
 from api.routers.system_logs import router as system_logs_router
 from api.routers.batch_nesting import router as batch_nesting_router
 from api.routers.produzione import router as produzione_router
+from api.routers.standard_time import router as standard_time_router
 
 router = APIRouter()
 
@@ -30,3 +31,4 @@ router.include_router(batch_nesting_router, prefix="/v1")
 router.include_router(admin_router, prefix="/v1")
 router.include_router(system_logs_router, prefix="/v1")
 router.include_router(produzione_router, prefix="/v1")
+router.include_router(standard_time_router, prefix="/v1/standard-times")

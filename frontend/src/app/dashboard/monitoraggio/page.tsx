@@ -15,6 +15,8 @@ import { Label } from '@/components/ui/label'
 import PerformanceGenerale from './components/performance-generale'
 import StatisticheCatalogo from './components/statistiche-catalogo'
 import TempiODL from './components/tempi-odl'
+// ✅ NUOVO: Componente Top Delta per v1.4.6-DEMO
+import TopDeltaPanel from '@/components/TopDeltaPanel'
 
 // Tipi per i filtri globali
 interface FiltriGlobali {
@@ -238,6 +240,9 @@ export default function MonitoraggioPage() {
           />
         </TabsContent>
       </Tabs>
+
+      {/* Top Delta Panel */}
+      <TopDeltaPanel />
     </div>
   )
 } 

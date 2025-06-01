@@ -23,6 +23,7 @@ from .schedule_entry import ScheduleEntry, ScheduleEntryStatus, ScheduleEntryTyp
 from .tempo_produzione import TempoProduzione
 from .report import Report, ReportTypeEnum
 from .system_log import SystemLog, LogLevel, EventType, UserRole
+from .standard_time import StandardTime
 
 # Lista completa di tutti i modelli per le migrazioni
 __all__ = [
@@ -51,5 +52,6 @@ __all__ = [
     "SystemLog",
     "LogLevel",
     "EventType",
-    "UserRole"
+    "UserRole",
+    "StandardTime"
 ] 

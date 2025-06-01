@@ -474,3 +474,404 @@ const handleFilterChange = (value: string) => {
   // Applica il filtro...
 }
 ``` 
+
+## 🚀 v1.4.2-DEMO - Standard Times Implementation
+**Data**: 2025-01-27  
+**Tipo**: Nuova tabella + campo aggiuntivo
+
+### 📊 **Modifiche Schema Database**
+
+#### 🆕 **NUOVA TABELLA: standard_times**
+```sql
+CREATE TABLE standard_times (
+    id INTEGER PRIMARY KEY,
+    part_number VARCHAR(50) NOT NULL REFERENCES cataloghi(part_number),
+    phase VARCHAR(50) NOT NULL,
+    minutes FLOAT NOT NULL,
+    note VARCHAR(500),
+    created_at DATETIME NOT NULL DEFAULT now(),
+    updated_at DATETIME NOT NULL DEFAULT now()
+);
+
+-- Indici
+CREATE INDEX ix_standard_times_id ON standard_times(id);
+CREATE INDEX ix_standard_times_part_number ON standard_times(part_number);
+CREATE INDEX ix_standard_times_phase ON standard_times(phase);
+```
+
+#### 🔄 **MODIFICA TABELLA: odl**
+```sql
+-- Aggiunto campo per tracciamento tempi standard
+ALTER TABLE odl ADD COLUMN include_in_std BOOLEAN NOT NULL DEFAULT true;
+```
+
+### 🔧 **Modifiche Modelli Python**
+
+#### 📄 **Nuovo Modello: StandardTime**
+```python
+class StandardTime(Base, TimestampMixin):
+    __tablename__ = "standard_times"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    part_number = Column(String(50), ForeignKey('cataloghi.part_number'), nullable=False, index=True)
+    phase = Column(String(50), nullable=False, index=True)
+    minutes = Column(Float, nullable=False)
+    note = Column(String(500), nullable=True)
+    
+    # Relazione verso il catalogo
+    catalogo = relationship("Catalogo", back_populates="standard_times")
+```
+
+#### 🔄 **Modello ODL Aggiornato**
+```python
+class ODL(Base, TimestampMixin):
+    # ... campi esistenti ...
+    
+    # 🆕 NUOVO CAMPO
+    include_in_std = Column(Boolean, default=True, nullable=False,
+                          doc="Indica se includere questo ODL nel calcolo dei tempi standard")
+```
+
+#### 🔄 **Modello Catalogo Aggiornato**
+```python
+class Catalogo(Base, TimestampMixin):
+    # ... campi esistenti ...
+    
+    # 🆕 NUOVA RELAZIONE
+    standard_times = relationship("StandardTime", back_populates="catalogo", cascade="all, delete-orphan")
+```
+
+### 🌐 **Nuovi Endpoint API**
+
+#### 📋 **Standard Times API**
+- `GET /api/v1/standard-times/` - Lista tempi standard (con filtri)
+- `GET /api/v1/standard-times/{id}` - Dettaglio tempo standard
+- `GET /api/v1/standard-times/by-part-number/{part_number}` - Tempi per part number
+
+**Parametri di filtro:**
+- `part_number` - Filtra per part number
+- `phase` - Filtra per fase
+- `skip` / `limit` - Paginazione
+
+### 🗂️ **File Modificati/Creati**
+
+#### 🆕 **Nuovi File**
+- `backend/models/standard_time.py` - Modello StandardTime
+- `backend/api/routers/standard_time.py` - Router API
+- `backend/alembic/versions/add_standard_times_and_odl_flag.py` - Migrazione
+- `tools/seed_test_data.py` - Script seed dati test
+
+#### 🔄 **File Modificati**
+- `backend/models/odl.py` - Aggiunto campo include_in_std
+- `backend/models/catalogo.py` - Aggiunta relazione standard_times
+- `backend/models/__init__.py` - Import StandardTime
+- `backend/api/routes.py` - Inclusione router standard_time
+
+### 🎯 **Dati di Test Inseriti**
+```python
+# Part number: TEST-E2E-001
+[
+    {
+        "phase": "Laminazione",
+        "minutes": 45.0,
+        "note": "Tempo standard per fase di laminazione - dato di test"
+    },
+    {
+        "phase": "Cura", 
+        "minutes": 120.0,
+        "note": "Tempo standard per fase di cura - dato di test"
+    }
+]
+```
+
+### 🔮 **Utilizzo Futuro**
+- **Benchmarking**: Confronto tempi reali vs standard
+- **Performance Monitoring**: Identificazione inefficienze
+- **Pianificazione**: Stima durata ODL basata su tempi standard
+- **Reporting**: Analisi deviazioni dai tempi standard
+
+---
+
+# 📋 MODIFICHE SCHEMA DATABASE - v1.4.3-DEMO
+
+## 🎯 Obiettivo Implementato
+Sistema automatico per il calcolo dei tempi standard di produzione basato sui dati storici delle fasi completate.
+
+## 🔧 Modifiche Apportate
+
+### 1. **Modello SystemLog** (`backend/models/system_log.py`)
+**Aggiunte:**
+- `EventType.CALCULATION = "calculation"` - Nuovo tipo di evento per tracciare i calcoli
+- `UserRole.RESPONSABILE = "responsabile"` - Nuovo ruolo utente
+
+### 2. **Servizio StandardTimeService** (`backend/services/standard_time_service.py`)
+**Nuovo servizio completo per:**
+- Calcolo automatico di media, mediana e percentile 90
+- Raggruppamento dati per part_number + fase
+- Aggiornamento/creazione record nella tabella `standard_times`
+- Logging completo delle operazioni
+- Gestione errori e rollback
+
+**Funzioni principali:**
+- `recalc_std_times()` - Ricalcolo completo dei tempi standard
+- `_get_historical_phase_data()` - Raccolta dati storici
+- `_calculate_and_save_standard_time()` - Calcolo e salvataggio statistiche
+- `get_statistics()` - Statistiche generali del sistema
+
+### 3. **Router API** (`backend/api/routers/standard_time.py`)
+**Nuovi endpoint:**
+- `POST /api/v1/standard-times/recalc` - Ricalcolo automatico (solo ADMIN/responsabile)
+- `GET /api/v1/standard-times/statistics` - Statistiche generali
+
+**Endpoint esistenti mantenuti:**
+- `GET /api/v1/standard-times/` - Lista tempi standard
+- `GET /api/v1/standard-times/{id}` - Tempo standard specifico
+- `GET /api/v1/standard-times/by-part-number/{part_number}` - Per part number
+
+### 4. **Script Notturno** (`backend/tools/nightly_std_update.py`)
+**Nuovo script per automazione:**
+- Esecuzione automatica via cron job
+- Modalità verbose per debugging
+- Modalità dry-run per test
+- Logging su file e console
+- Gestione errori e exit codes
+
+## 📊 Logica di Calcolo
+
+### Criteri di Selezione Dati
+Gli ODL vengono inclusi nel calcolo solo se:
+- `include_in_std = True`
+- `status = "Finito"`
+- Hanno fasi con `durata_minuti > 0`
+
+### Statistiche Calcolate
+Per ogni combinazione `part_number + fase`:
+- **Media** (usata come tempo standard)
+- **Mediana**
+- **Percentile 90**
+
+### Formato Note Auto-generate
+```
+Auto-calcolato da {N} osservazioni. Media: {X}min, Mediana: {Y}min, P90: {Z}min
+```
+
+## 🧪 Test Implementati
+
+### Dati di Test Creati
+- Part number: `TEST-STD-001`
+- Fasi: `laminazione`, `cura`
+- 3 osservazioni per fase con durate variabili
+- ODL con status `Finito` e `include_in_std=True`
+
+### Risultati Test
+**Laminazione** (osservazioni: [30, 41, 49]):
+- Media: 40.0 min
+- Mediana: 41.0 min
+- P90: 49.0 min
+
+**Cura** (osservazioni: [60, 85, 100]):
+- Media: 81.7 min
+- Mediana: 85.0 min
+- P90: 100.0 min
+
+## 🔄 Flusso di Utilizzo
+
+### 1. Via API (Manuale)
+```bash
+curl -X POST "http://localhost:8000/api/v1/standard-times/recalc"
+```
+
+### 2. Via Script Notturno (Automatico)
+```bash
+python tools/nightly_std_update.py --verbose
+```
+
+### 3. Verifica Risultati
+```bash
+curl "http://localhost:8000/api/v1/standard-times/statistics"
+curl "http://localhost:8000/api/v1/standard-times/"
+```
+
+## 📈 Statistiche Sistema
+- **Total records**: 4 tempi standard
+- **Unique part numbers**: 2
+- **Unique phases**: 4
+- **Last update**: Tracciato automaticamente
+
+## 🔐 Sicurezza e Autorizzazioni
+- Endpoint `/recalc` limitato a ruoli `ADMIN` e `responsabile`
+- Logging completo di tutte le operazioni
+- Tracciamento utente e timestamp per audit
+
+## ✅ Stato Implementazione
+- [x] Servizio di calcolo automatico
+- [x] Endpoint API per ricalcolo manuale
+- [x] Endpoint API per statistiche
+- [x] Script notturno per automazione
+- [x] Logging e audit trail
+- [x] Test con dati reali
+- [x] Documentazione completa
+
+**Tag versione**: `v1.4.3-DEMO`
+**Data implementazione**: 2025-06-01
+**Stato**: ✅ COMPLETATO E TESTATO
+
+---
+
+# 📋 MODIFICHE SCHEMA DATABASE - CarbonPilot
+
+## 🎯 v1.4.5-DEMO - Confronto Tempi Standard (2025-06-01)
+
+### 🔧 **Modifiche API**
+
+#### 📄 **Standard Times API - Aggiornamenti**
+```python
+# ✅ NUOVO: Filtro part_id aggiunto
+@router.get("/", summary="Ottiene la lista dei tempi standard")
+def read_standard_times(
+    part_id: Optional[int] = Query(None, description="Filtra per ID parte"),  # 🆕 NUOVO
+    # ... altri parametri esistenti
+):
+```
+
+#### 🆕 **Nuovo Endpoint: Confronto Tempi**
+```python
+@router.get("/comparison/{part_number}", summary="Confronto tra tempi osservati e standard")
+def get_times_comparison(
+    part_number: str, 
+    giorni: Optional[int] = Query(30, description="Numero di giorni da considerare"),
+    db: Session = Depends(get_db)
+):
+    """
+    🎯 ENDPOINT PRINCIPALE v1.4.5-DEMO
+    
+    Ottiene un confronto completo tra tempi osservati e tempi standard:
+    - Tempi osservati (media delle fasi completate negli ultimi giorni)
+    - Tempi standard (dal database standard_times)
+    - Delta percentuale con logica colore
+    - Flag "dati limitati" se < 5 ODL
+    - Scostamento medio calcolato automaticamente
+    """
+```
+
+#### 📊 **Struttura Risposta API**
+```json
+{
+  "part_number": "TEST-E2E-001",
+  "periodo_giorni": 30,
+  "fasi": {
+    "laminazione": {
+      "fase": "laminazione",
+      "tempo_osservato_minuti": 45.2,
+      "tempo_standard_minuti": 45.0,
+      "numero_osservazioni": 12,
+      "delta_percentuale": 0.4,
+      "dati_limitati": false,
+      "colore_delta": "verde",
+      "note_standard": "Tempo standard per fase di laminazione"
+    },
+    "cura": {
+      "fase": "cura", 
+      "tempo_osservato_minuti": 125.8,
+      "tempo_standard_minuti": 120.0,
+      "numero_osservazioni": 8,
+      "delta_percentuale": 4.8,
+      "dati_limitati": false,
+      "colore_delta": "verde",
+      "note_standard": "Tempo standard per fase di cura"
+    }
+  },
+  "scostamento_medio_percentuale": 2.6,
+  "odl_totali_periodo": 12,
+  "dati_limitati_globale": false,
+  "ultima_analisi": "2025-06-01T23:09:13.295519"
+}
+```
+
+### 🎨 **Logica Colore Delta**
+```python
+# Determina il colore del delta
+colore_delta = "verde"  # default
+if abs(delta_percentuale) > 20:
+    colore_delta = "rosso"    # Scostamento critico
+elif abs(delta_percentuale) > 10:
+    colore_delta = "giallo"   # Scostamento moderato
+# else: verde (scostamento accettabile)
+```
+
+### 🔍 **Query SQL Ottimizzata**
+```sql
+-- Query per tempi osservati raggruppati per fase
+SELECT 
+    tempo_fasi.fase,
+    AVG(tempo_fasi.durata_minuti) AS media_minuti,
+    COUNT(tempo_fasi.id) AS numero_osservazioni
+FROM tempo_fasi 
+JOIN odl ON tempo_fasi.odl_id = odl.id 
+JOIN parti ON odl.parte_id = parti.id
+WHERE 
+    parti.part_number = ? 
+    AND tempo_fasi.durata_minuti IS NOT NULL 
+    AND tempo_fasi.durata_minuti > 0
+    AND odl.include_in_std = TRUE     -- 🎯 Filtro chiave
+    AND odl.status = 'Finito'
+    AND tempo_fasi.created_at >= ?    -- Periodo configurabile
+GROUP BY tempo_fasi.fase
+```
+
+### 🌐 **Frontend API Client**
+```typescript
+// ✅ NUOVO: API per i tempi standard v1.4.5-DEMO
+export interface FaseConfronto {
+  fase: string;
+  tempo_osservato_minuti: number;
+  tempo_standard_minuti: number;
+  numero_osservazioni: number;
+  delta_percentuale: number;
+  dati_limitati: boolean;
+  colore_delta: "verde" | "giallo" | "rosso";
+  note_standard?: string;
+}
+
+export interface TimesComparisonResponse {
+  part_number: string;
+  periodo_giorni: number;
+  fasi: Record<string, FaseConfronto>;
+  scostamento_medio_percentuale: number;
+  odl_totali_periodo: number;
+  dati_limitati_globale: boolean;
+  ultima_analisi: string;
+}
+
+// API Standard Times
+export const standardTimesApi = {
+  getComparison: (partNumber: string, giorni: number = 30): Promise<TimesComparisonResponse>
+}
+```
+
+### 🧪 **Test di Validazione**
+```bash
+# Test endpoint comparison
+curl -X GET "http://127.0.0.1:8001/api/v1/standard-times/comparison/TEST-E2E-001?giorni=30"
+
+# Risposta attesa
+{
+  "part_number": "TEST-E2E-001",
+  "fasi": {
+    "laminazione": {"colore_delta": "verde", "dati_limitati": true},
+    "cura": {"colore_delta": "verde", "dati_limitati": true}
+  },
+  "dati_limitati_globale": true
+}
+```
+
+### 📈 **Benefici Tecnici**
+1. **Performance**: Query ottimizzata con JOIN e filtri appropriati
+2. **Scalabilità**: Periodo di analisi configurabile
+3. **Robustezza**: Gestione fasi senza dati standard/osservati
+4. **UX**: Logica colore intuitiva per identificazione rapida deviazioni
+5. **Qualità**: Flag "dati limitati" per dataset con poche osservazioni
+
+---
+
+## 🎯 v1.4.4-DEMO - Controllo Manuale ODL per Tempi Standard (2025-05-27)

@@ -10,6 +10,7 @@ class ODLBase(BaseModel):
     status: Literal["Preparazione", "Laminazione", "In Coda", "Attesa Cura", "Cura", "Finito"] = Field(
         "Preparazione", description="Stato corrente dell'ordine di lavoro"
     )
+    include_in_std: bool = Field(True, description="Indica se includere questo ODL nel calcolo dei tempi standard")
     note: Optional[str] = Field(None, description="Note aggiuntive sull'ordine di lavoro")
     motivo_blocco: Optional[str] = Field(None, description="Motivo per cui l'ODL è bloccato")
 
@@ -25,6 +26,7 @@ class ODLUpdate(BaseModel):
     status: Optional[Literal["Preparazione", "Laminazione", "In Coda", "Attesa Cura", "Cura", "Finito"]] = Field(
         None, description="Stato corrente dell'ordine di lavoro"
     )
+    include_in_std: Optional[bool] = Field(None, description="Indica se includere questo ODL nel calcolo dei tempi standard")
     note: Optional[str] = Field(None, description="Note aggiuntive sull'ordine di lavoro")
     motivo_blocco: Optional[str] = Field(None, description="Motivo per cui l'ODL è bloccato")
 

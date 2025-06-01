@@ -16,6 +16,8 @@ import { useToast } from '@/components/ui/use-toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Switch } from '@/components/ui/switch'
 
 interface FiltriGlobali {
   periodo: string;
@@ -69,6 +71,7 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
   const [odlList, setOdlList] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const [showOnlyValidODL, setShowOnlyValidODL] = useState(false)
   
   // Stati per il dialogo di modifica ODL
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -86,8 +89,9 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
       // Carica i dati dei tempi di fase
       const tempiData = await tempoFasiApi.getAll();
       
-      // Carica i dati degli ODL per riferimento
-      const odlData = await odlApi.getAll();
+      // Carica i dati degli ODL per riferimento con filtro opzionale
+      const odlParams = showOnlyValidODL ? { include_in_std: true } : {};
+      const odlData = await odlApi.getAll(odlParams);
       
       // Applica i filtri globali
       let tempiFiltrati = tempiData;
@@ -135,7 +139,7 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
 
   useEffect(() => {
     fetchData()
-  }, [filtri]) // Ricarica quando cambiano i filtri
+  }, [filtri, showOnlyValidODL]) // Ricarica quando cambiano i filtri o il toggle
 
   // Filtra i dati in base alla ricerca locale
   const filteredItems = tempiFasi.filter(item => {
@@ -241,6 +245,31 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
     }
   }
 
+  // Funzione per aggiornare il campo include_in_std di un ODL
+  const handleToggleIncludeInStd = async (odlId: number, currentValue: boolean) => {
+    try {
+      await odlApi.update(odlId, {
+        include_in_std: !currentValue
+      });
+      
+      toast({
+        title: "✅ ODL aggiornato",
+        description: `ODL ${odlId} ${!currentValue ? 'incluso nei' : 'escluso dai'} tempi standard`,
+      });
+      
+      // Ricarica i dati per mostrare le modifiche
+      await fetchData();
+      
+    } catch (error) {
+      console.error('Errore durante l\'aggiornamento ODL:', error);
+      toast({
+        title: "❌ Errore",
+        description: "Impossibile aggiornare l'ODL. Riprova più tardi.",
+        variant: "destructive",
+      });
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex justify-center py-8">
@@ -260,8 +289,21 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
           className="max-w-sm"
         />
         
-        <div className="text-sm text-muted-foreground">
-          {filteredItems.length} record{filteredItems.length !== 1 ? 'i' : ''} trovati
+        <div className="flex items-center gap-4">
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="show-only-valid"
+              checked={showOnlyValidODL}
+              onCheckedChange={setShowOnlyValidODL}
+            />
+            <Label htmlFor="show-only-valid" className="text-sm">
+              Mostra solo ODL validi
+            </Label>
+          </div>
+          
+          <div className="text-sm text-muted-foreground">
+            {filteredItems.length} record{filteredItems.length !== 1 ? 'i' : ''} trovati
+          </div>
         </div>
       </div>
 
@@ -291,6 +333,7 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
                   <TableHead>Fine</TableHead>
                   <TableHead>Durata</TableHead>
                   <TableHead>Note</TableHead>
+                  <TableHead className="text-center">✔ Valido</TableHead>
                   <TableHead>Azioni</TableHead>
                 </TableRow>
               </TableHeader>
@@ -326,6 +369,16 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
                       </TableCell>
                       <TableCell className="max-w-[200px] truncate">
                         {item.note || '-'}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Checkbox
+                          checked={odlInfo?.include_in_std ?? true}
+                          onCheckedChange={() => handleToggleIncludeInStd(
+                            item.odl_id, 
+                            odlInfo?.include_in_std ?? true
+                          )}
+                          title={`${odlInfo?.include_in_std ? 'Escludi' : 'Includi'} ODL ${item.odl_id} dai tempi standard`}
+                        />
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">

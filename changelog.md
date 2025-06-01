@@ -1366,3 +1366,437 @@ ALTER TABLE batch_nesting ADD COLUMN durata_ciclo_minuti INTEGER;
 ---
 
 # Previous Changelog entries
+
+---
+
+## ✨ [v1.4.4-DEMO] - 27/01/2025
+### 🔧 Controllo Manuale ODL per Tempi Standard
+
+**OBIETTIVO**: Permettere all'utente di selezionare manualmente quali ODL includere nel calcolo dei tempi standard.
+
+#### 🆕 Nuove Funzionalità
+- **Colonna checkbox "✔ Valido"** nella tab "Tempi ODL"
+  - Permette di includere/escludere singoli ODL dal calcolo dei tempi standard
+  - Bindata al campo `include_in_std` del database
+  - Aggiorna automaticamente tramite API PATCH
+  
+- **Toggle "Mostra solo ODL validi"**
+  - Filtro sopra la tabella per visualizzare solo ODL con `include_in_std=true`
+  - Aggiorna dinamicamente la lista senza ricaricare la pagina
+
+#### 🔧 Modifiche Backend
+- Aggiunto campo `include_in_std` agli schema ODL (ODLBase, ODLUpdate)
+- Esteso endpoint `GET /api/v1/odl` con parametro `include_in_std` per filtraggio
+- Supporto completo per aggiornamento tramite endpoint `PUT /api/v1/odl/{id}`
+
+#### 🎨 Modifiche Frontend
+- Aggiornati tipi TypeScript per includere `include_in_std`
+- Esteso `odlApi.getAll()` con supporto per parametro `include_in_std`
+- Implementata funzione `handleToggleIncludeInStd` per aggiornamenti real-time
+- Aggiunta notifica toast su salvataggio successful/errore
+
+#### ⚙️ Implementazione Tecnica
+- **API**: `PATCH /api/v1/odl/{id}` con payload `{include_in_std: boolean}`
+- **Filtro**: `GET /api/v1/odl?include_in_std=true` per ODL validi
+- **UI**: Switch toggle + checkbox per controllo granulare
+- **UX**: Toast notifications per feedback immediato
+
+#### 🧪 Test
+- Modifica di un ODL → viene aggiornato immediatamente in UI
+- Toggle filtro → aggiorna lista senza ricaricare pagina
+- Ricarica pagina → mantiene stato corretto del database
+
+---
+
+## 🎯 v1.4.5-DEMO - Confronto Tempi Standard (2025-06-01)
+
+### ✨ **Nuove Funzionalità**
+
+#### 🔄 **Integrazione Tempi Standard nella UI**
+- **Nuovo endpoint API**: `GET /api/v1/standard-times/comparison/{part_number}`
+  - Confronto automatico tra tempi osservati e tempi standard
+  - Calcolo delta percentuale per ogni fase
+  - Logica colore: verde (<10%), giallo (10-20%), rosso (>20%)
+  - Badge "Dati limitati" per < 5 ODL completati
+
+#### 📊 **Aggiornamento Scheda "Statistiche Catalogo"**
+- **Summary Cards rinnovate**:
+  - ODL Analizzati (nel periodo selezionato)
+  - Tempo Totale Osservato (somma medie osservate)
+  - Tempo Totale Standard (somma tempi standard)
+  - Scostamento Medio (calcolato dal backend)
+
+- **Dettaglio Fasi con Confronto**:
+  - Tempo osservato vs tempo standard per ogni fase
+  - Delta percentuale con icone trend (↑↓→)
+  - Colori dinamici basati su soglie di scostamento
+  - Badge "< 5 ODL" per dati con poche osservazioni
+  - Note sui tempi standard
+
+#### 🔧 **Miglioramenti Backend**
+- **Filtro `part_id`** aggiunto a `GET /api/v1/standard-times`
+- **Logica di confronto avanzata**:
+  - Analisi automatica degli ODL con `include_in_std=True`
+  - Calcolo scostamento medio ponderato
+  - Gestione fasi senza dati standard o osservati
+  - Periodo di analisi configurabile (default 30 giorni)
+
+### 🛠️ **Modifiche Tecniche**
+
+#### 📄 **Backend**
+```python
+# Nuovo endpoint di confronto
+@router.get("/comparison/{part_number}")
+def get_times_comparison(part_number: str, giorni: int = 30, db: Session = Depends(get_db))
+
+# Struttura risposta
+{
+  "part_number": "TEST-E2E-001",
+  "periodo_giorni": 30,
+  "fasi": {
+    "laminazione": {
+      "tempo_osservato_minuti": 45.2,
+      "tempo_standard_minuti": 45.0,
+      "delta_percentuale": 0.4,
+      "colore_delta": "verde",
+      "dati_limitati": false,
+      "numero_osservazioni": 12
+    }
+  },
+  "scostamento_medio_percentuale": 8.5,
+  "dati_limitati_globale": false
+}
+```
+
+#### 🎨 **Frontend**
+```typescript
+// Nuova API client
+export const standardTimesApi = {
+  getComparison: (partNumber: string, giorni: number = 30): Promise<TimesComparisonResponse>
+}
+
+// Componente aggiornato
+<StatisticheCatalogo 
+  filtri={filtri} 
+  catalogo={catalogo} 
+  onError={onError} 
+/>
+```
+
+### 🧪 **Test e Validazione**
+- ✅ **Test API**: Endpoint `/comparison/{part_number}` funzionante
+- ✅ **Test UI**: Visualizzazione corretta dei confronti
+- ✅ **Test Logica Colori**: Verde/Giallo/Rosso basato su delta%
+- ✅ **Test Badge**: "Dati limitati" per < 5 ODL
+- ✅ **Test Integrazione**: Frontend ↔ Backend completa
+
+### 📈 **Benefici Implementati**
+1. **Monitoraggio Performance**: Confronto real-time vs standard
+2. **Identificazione Deviazioni**: Alert visivi per scostamenti significativi
+3. **Qualità Dati**: Indicatori per dataset con poche osservazioni
+4. **UX Migliorata**: Informazioni chiare e actionable per gli operatori
+
+### 🔄 **Compatibilità**
+- ✅ **Backward Compatible**: Nessuna breaking change
+- ✅ **Database**: Schema aggiornato automaticamente
+- ✅ **API Esistenti**: Tutte funzionanti
+- ✅ **Frontend**: Componenti esistenti non modificati
+
+---
+
+## 🎯 v1.4.4-DEMO - Controllo Manuale ODL per Tempi Standard (2025-05-27)
+
+### 🔧 Controllo Manuale ODL per Tempi Standard
+
+**OBIETTIVO**: Permettere all'utente di selezionare manualmente quali ODL includere nel calcolo dei tempi standard.
+
+#### 🆕 Nuove Funzionalità
+- **Colonna checkbox "✔ Valido"** nella tab "Tempi ODL"
+  - Permette di includere/escludere singoli ODL dal calcolo dei tempi standard
+  - Bindata al campo `include_in_std` del database
+  - Aggiorna automaticamente tramite API PATCH
+  
+- **Toggle "Mostra solo ODL validi"**
+  - Filtro sopra la tabella per visualizzare solo ODL con `include_in_std=true`
+  - Aggiorna dinamicamente la lista senza ricaricare la pagina
+
+#### 🔧 Modifiche Backend
+- Aggiunto campo `include_in_std` agli schema ODL (ODLBase, ODLUpdate)
+- Esteso endpoint `GET /api/v1/odl` con parametro `include_in_std` per filtraggio
+- Supporto completo per aggiornamento tramite endpoint `PUT /api/v1/odl/{id}`
+
+#### 🎨 Modifiche Frontend
+- Aggiornati tipi TypeScript per includere `include_in_std`
+- Esteso `odlApi.getAll()` con supporto per parametro `include_in_std`
+- Implementata funzione `handleToggleIncludeInStd` per aggiornamenti real-time
+- Aggiunta notifica toast su salvataggio successful/errore
+
+#### ⚙️ Implementazione Tecnica
+- **API**: `PATCH /api/v1/odl/{id}` con payload `{include_in_std: boolean}`
+- **Filtro**: `GET /api/v1/odl?include_in_std=true` per ODL validi
+- **UI**: Switch toggle + checkbox per controllo granulare
+- **UX**: Toast notifications per feedback immediato
+
+#### 🧪 Test
+- Modifica di un ODL → viene aggiornato immediatamente in UI
+- Toggle filtro → aggiorna lista senza ricaricare pagina
+- Ricarica pagina → mantiene stato corretto del database
+
+---
+
+## 🎯 v1.4.6-DEMO - Top Delta Panel Implementation
+**Data**: 2024-12-19  
+**Tipo**: Feature Implementation - Pannello Scostamenti Tempi Standard
+
+### 🚀 **Obiettivo Completato**
+Implementazione del pannello "Top 5 Part con maggiore scostamento (%)" per il monitoraggio delle varianze tra tempi osservati e tempi standard di produzione.
+
+### ✨ **Nuove Funzionalità**
+
+#### 📊 **Backend Service - Standard Time Variance**
+- **File**: `backend/services/standard_time_service.py`
+- **Metodo**: `get_top_variances(limit=5, days=30)`
+- **Funzionalità**:
+  - Query SQLAlchemy con join tra `TempoFase`, `ODL`, e `Parte`
+  - Filtro per ODL completati con `include_in_std=True`
+  - Raggruppamento per part_number e fase
+  - Calcolo varianza: `((osservato - standard) / standard) * 100`
+  - Controllo significatività statistica (minimo 3 osservazioni)
+  - Ordinamento per varianza assoluta decrescente
+  - Color coding automatico (verde ≤10%, giallo 10-20%, rosso >20%)
+
+#### 🔌 **API Endpoint - Top Delta**
+- **File**: `backend/api/routers/standard_time.py`
+- **Endpoint**: `GET /api/v1/standard-times/top-delta`
+- **Parametri query**:
+  - `limit`: Numero massimo risultati (default: 5)
+  - `days`: Giorni di lookback (default: 30)
+- **Fix critico**: Risolto conflitto routing spostando endpoint prima di `/{standard_time_id}`
+- **Response**: JSON con flag success, array dati, e parametri analisi
+
+#### 🎨 **Frontend Component - TopDeltaPanel**
+- **File**: `frontend/src/components/TopDeltaPanel.tsx`
+- **Features**:
+  - Tabella con colonne: Part Number, Fase, Scostamento %, Tempo Oss., Tempo Std., Oss.
+  - Badge colorati per varianza (verde/giallo/rosso)
+  - Stati loading, error, e empty state
+  - Legenda esplicativa per color coding
+  - Gestione errori con retry automatico
+  - Refresh automatico ogni 30 secondi
+
+#### 🔗 **API Integration Frontend**
+- **File**: `frontend/src/lib/api.ts`
+- **Interfaces TypeScript**:
+  - `TopDeltaVariance`: Struttura dati varianza
+  - `TopDeltaResponse`: Response API tipizzata
+- **Metodo**: `getTopDelta(limit, days)` in `standardTimesApi`
+
+#### 📱 **Dashboard Integration**
+- **File**: `frontend/src/app/dashboard/monitoraggio/page.tsx`
+- **Integrazione**: Pannello aggiunto in fondo alla pagina monitoraggio
+- **Layout**: Responsive e consistente con design esistente
+
+### 🧪 **Test Data e Validazione**
+
+#### 📋 **Script Test Data**
+- **File**: `backend/seed_test_data_v1_4_6.py`
+- **Dati creati**:
+  - Part numbers: "TEST-HIGH-DELTA" (varianza +20%) e "TEST-MED-DELTA" (varianza +8%)
+  - Tool test: "TOOL-TEST-DELTA"
+  - Ciclo test: "CICLO-TEST-DELTA"
+  - Tempi standard: 100min (laminazione), 60min (cura)
+  - 5 ODL completati per ogni part con `include_in_std=True`
+  - Tempi osservati calibrati per dimostrare varianze target
+
+#### ✅ **Testing e Validazione**
+- **Script eseguito**: Dati test creati con successo
+- **Backend testato**: Server avviato e endpoint verificato
+- **Fix applicati**: Risolto conflitto routing API
+- **Database popolato**: Verificata presenza dati test
+
+### 🔧 **Dettagli Tecnici**
+
+#### 🗄️ **Database Query Optimization**
+```sql
+-- Query ottimizzata con join e aggregazioni
+SELECT 
+    p.part_number,
+    tf.fase,
+    AVG(tf.durata_minuti) as tempo_osservato_medio,
+    st.tempo_medio_minuti as tempo_standard,
+    COUNT(*) as numero_osservazioni,
+    ((AVG(tf.durata_minuti) - st.tempo_medio_minuti) / st.tempo_medio_minuti * 100) as varianza_percentuale
+FROM tempo_fasi tf
+JOIN odl o ON tf.odl_id = o.id
+JOIN parti p ON o.parte_id = p.id
+JOIN standard_times st ON p.part_number = st.part_number AND tf.fase = st.fase
+WHERE o.status = 'Finito' 
+    AND tf.include_in_std = true
+    AND tf.created_at >= NOW() - INTERVAL days DAY
+GROUP BY p.part_number, tf.fase
+HAVING COUNT(*) >= 3
+ORDER BY ABS(varianza_percentuale) DESC
+LIMIT limit;
+```
+
+#### 🎨 **Color Coding Logic**
+```typescript
+const getVarianceColor = (variance: number): string => {
+  const absVariance = Math.abs(variance);
+  if (absVariance <= 10) return 'verde';
+  if (absVariance <= 20) return 'giallo';
+  return 'rosso';
+};
+```
+
+### 📈 **Benefici Implementazione**
+- **Monitoraggio proattivo**: Identificazione rapida part con performance anomale
+- **Analisi statistica**: Controllo significatività per evitare falsi positivi
+- **Visual feedback**: Color coding immediato per prioritizzazione interventi
+- **Flessibilità**: Parametri configurabili per diversi scenari analisi
+- **Integrazione seamless**: Componente integrato nel dashboard esistente
+
+### 🚀 **Prossimi Sviluppi**
+- Drill-down dettagliato per analisi cause scostamenti
+- Alert automatici per varianze critiche
+- Trend analysis storico delle varianze
+- Export dati per analisi esterne
+
+---
+
+## ✨ [v1.4.4-DEMO] - 27/01/2025
+### 🔧 Controllo Manuale ODL per Tempi Standard
+
+**OBIETTIVO**: Permettere all'utente di selezionare manualmente quali ODL includere nel calcolo dei tempi standard.
+
+#### 🆕 Nuove Funzionalità
+- **Colonna checkbox "✔ Valido"** nella tab "Tempi ODL"
+  - Permette di includere/escludere singoli ODL dal calcolo dei tempi standard
+  - Bindata al campo `include_in_std` del database
+  - Aggiorna automaticamente tramite API PATCH
+  
+- **Toggle "Mostra solo ODL validi"**
+  - Filtro sopra la tabella per visualizzare solo ODL con `include_in_std=true`
+  - Aggiorna dinamicamente la lista senza ricaricare la pagina
+
+#### 🔧 Modifiche Backend
+- Aggiunto campo `include_in_std` agli schema ODL (ODLBase, ODLUpdate)
+- Esteso endpoint `GET /api/v1/odl` con parametro `include_in_std` per filtraggio
+- Supporto completo per aggiornamento tramite endpoint `PUT /api/v1/odl/{id}`
+
+#### 🎨 Modifiche Frontend
+- Aggiornati tipi TypeScript per includere `include_in_std`
+- Esteso `odlApi.getAll()` con supporto per parametro `include_in_std`
+- Implementata funzione `handleToggleIncludeInStd` per aggiornamenti real-time
+- Aggiunta notifica toast su salvataggio successful/errore
+
+#### ⚙️ Implementazione Tecnica
+- **API**: `PATCH /api/v1/odl/{id}` con payload `{include_in_std: boolean}`
+- **Filtro**: `GET /api/v1/odl?include_in_std=true` per ODL validi
+- **UI**: Switch toggle + checkbox per controllo granulare
+- **UX**: Toast notifications per feedback immediato
+
+#### 🧪 Test
+- Modifica di un ODL → viene aggiornato immediatamente in UI
+- Toggle filtro → aggiorna lista senza ricaricare pagina
+- Ricarica pagina → mantiene stato corretto del database
+
+---
+
+## 🎯 v1.4.5-DEMO - Confronto Tempi Standard (2025-06-01)
+
+### ✨ **Nuove Funzionalità**
+
+#### 🔄 **Integrazione Tempi Standard nella UI**
+- **Nuovo endpoint API**: `GET /api/v1/standard-times/comparison/{part_number}`
+  - Confronto automatico tra tempi osservati e tempi standard
+  - Calcolo delta percentuale per ogni fase
+  - Logica colore: verde (<10%), giallo (10-20%), rosso (>20%)
+  - Badge "Dati limitati" per < 5 ODL completati
+
+#### 📊 **Aggiornamento Scheda "Statistiche Catalogo"**
+- **Summary Cards rinnovate**:
+  - ODL Analizzati (nel periodo selezionato)
+  - Tempo Totale Osservato (somma medie osservate)
+  - Tempo Totale Standard (somma tempi standard)
+  - Scostamento Medio (calcolato dal backend)
+
+- **Dettaglio Fasi con Confronto**:
+  - Tempo osservato vs tempo standard per ogni fase
+  - Delta percentuale con icone trend (↑↓→)
+  - Colori dinamici basati su soglie di scostamento
+  - Badge "< 5 ODL" per dati con poche osservazioni
+  - Note sui tempi standard
+
+#### 🔧 **Miglioramenti Backend**
+- **Filtro `part_id`** aggiunto a `GET /api/v1/standard-times`
+- **Logica di confronto avanzata**:
+  - Analisi automatica degli ODL con `include_in_std=True`
+  - Calcolo scostamento medio ponderato
+  - Gestione fasi senza dati standard o osservati
+  - Periodo di analisi configurabile (default 30 giorni)
+
+### 🛠️ **Modifiche Tecniche**
+
+#### 📄 **Backend**
+```python
+# Nuovo endpoint di confronto
+@router.get("/comparison/{part_number}")
+def get_times_comparison(part_number: str, giorni: int = 30, db: Session = Depends(get_db))
+
+# Struttura risposta
+{
+  "part_number": "TEST-E2E-001",
+  "periodo_giorni": 30,
+  "fasi": {
+    "laminazione": {
+      "tempo_osservato_minuti": 45.2,
+      "tempo_standard_minuti": 45.0,
+      "delta_percentuale": 0.4,
+      "colore_delta": "verde",
+      "dati_limitati": false,
+      "numero_osservazioni": 12
+    }
+  },
+  "scostamento_medio_percentuale": 8.5,
+  "dati_limitati_globale": false
+}
+```
+
+#### 🎨 **Frontend**
+```typescript
+// Nuova API client
+export const standardTimesApi = {
+  getComparison: (partNumber: string, giorni: number = 30): Promise<TimesComparisonResponse>
+}
+
+// Componente aggiornato
+<StatisticheCatalogo 
+  filtri={filtri} 
+  catalogo={catalogo} 
+  onError={onError} 
+/>
+```
+
+### 🧪 **Test e Validazione**
+- ✅ **Test API**: Endpoint `/comparison/{part_number}` funzionante
+- ✅ **Test UI**: Visualizzazione corretta dei confronti
+- ✅ **Test Logica Colori**: Verde/Giallo/Rosso basato su delta%
+- ✅ **Test Badge**: "Dati limitati" per < 5 ODL
+- ✅ **Test Integrazione**: Frontend ↔ Backend completa
+
+### 📈 **Benefici Implementati**
+1. **Monitoraggio Performance**: Confronto real-time vs standard
+2. **Identificazione Deviazioni**: Alert visivi per scostamenti significativi
+3. **Qualità Dati**: Indicatori per dataset con poche osservazioni
+4. **UX Migliorata**: Informazioni chiare e actionable per gli operatori
+
+### 🔄 **Compatibilità**
+- ✅ **Backward Compatible**: Nessuna breaking change
+- ✅ **Database**: Schema aggiornato automaticamente
+- ✅ **API Esistenti**: Tutte funzionanti
+- ✅ **Frontend**: Componenti esistenti non modificati
+
+---
+
+## 🎯 v1.4.4-DEMO - Controllo Manuale ODL per Tempi Standard (2025-05-27)

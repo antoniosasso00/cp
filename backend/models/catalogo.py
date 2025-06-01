@@ -22,6 +22,9 @@ class Catalogo(Base, TimestampMixin):
     # Relazione con le parti
     parti = relationship("Parte", back_populates="catalogo")
     
+    # Relazione con i tempi standard
+    standard_times = relationship("StandardTime", back_populates="catalogo", cascade="all, delete-orphan")
+    
     @property
     def area_cm2(self) -> float:
         """

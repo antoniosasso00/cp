@@ -575,6 +575,7 @@ export interface ODLBase {
   tool_id: number;
   priorita: number;
   status: "Preparazione" | "Laminazione" | "In Coda" | "Attesa Cura" | "Cura" | "Finito";
+  include_in_std: boolean;
   note?: string;
   motivo_blocco?: string;
 }
@@ -606,13 +607,14 @@ export interface ODLResponse extends ODLBase {
 
 // API ODL con gestione errori migliorata
 export const odlApi = {
-  getAll: async (params?: { parte_id?: number; tool_id?: number; status?: string }, options?: { retries?: number; timeout?: number }): Promise<ODLResponse[]> => {
+  getAll: async (params?: { parte_id?: number; tool_id?: number; status?: string; include_in_std?: boolean }, options?: { retries?: number; timeout?: number }): Promise<ODLResponse[]> => {
     const { retries = 3, timeout = 10000 } = options || {};
     
     const queryParams = new URLSearchParams();
     if (params?.parte_id) queryParams.append('parte_id', params.parte_id.toString());
     if (params?.tool_id) queryParams.append('tool_id', params.tool_id.toString());
     if (params?.status) queryParams.append('status', params.status);
+    if (params?.include_in_std !== undefined) queryParams.append('include_in_std', params.include_in_std.toString());
     
     const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
     const endpoint = `/odl${query}`;
@@ -1458,4 +1460,127 @@ export const systemLogsApi = {
       throw error;
     }
   }
-}; 
+};
+
+// ✅ NUOVO: API per i tempi standard v1.4.5-DEMO
+export interface StandardTime {
+  id: number;
+  part_number: string;
+  phase: string;
+  minutes: number;
+  note?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FaseConfronto {
+  fase: string;
+  tempo_osservato_minuti: number;
+  tempo_standard_minuti: number;
+  numero_osservazioni: number;
+  delta_percentuale: number;
+  dati_limitati: boolean;
+  colore_delta: "verde" | "giallo" | "rosso";
+  note_standard?: string;
+}
+
+export interface TimesComparisonResponse {
+  part_number: string;
+  periodo_giorni: number;
+  fasi: Record<string, FaseConfronto>;
+  scostamento_medio_percentuale: number;
+  odl_totali_periodo: number;
+  dati_limitati_globale: boolean;
+  ultima_analisi: string;
+}
+
+// API Standard Times
+export const standardTimesApi = {
+  /**
+   * Ottiene tutti i tempi standard con filtri opzionali
+   */
+  getAll: (params?: {
+    skip?: number;
+    limit?: number;
+    part_number?: string;
+    part_id?: number;
+    phase?: string;
+  }): Promise<StandardTime[]> => {
+    const queryParams = new URLSearchParams();
+    
+    if (params?.skip) queryParams.append('skip', params.skip.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.part_number) queryParams.append('part_number', params.part_number);
+    if (params?.part_id) queryParams.append('part_id', params.part_id.toString());
+    if (params?.phase) queryParams.append('phase', params.phase);
+    
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    return apiRequest<StandardTime[]>(`/standard-times${query}`);
+  },
+
+  /**
+   * Ottiene un tempo standard specifico per ID
+   */
+  getById: (id: number): Promise<StandardTime> => {
+    return apiRequest<StandardTime>(`/standard-times/${id}`);
+  },
+
+  /**
+   * Ottiene tutti i tempi standard per un part number
+   */
+  getByPartNumber: (partNumber: string): Promise<StandardTime[]> => {
+    return apiRequest<StandardTime[]>(`/standard-times/by-part-number/${partNumber}`);
+  },
+
+  /**
+   * Confronto tra tempi osservati e standard per un part number
+   * 🎯 FUNZIONE PRINCIPALE per v1.4.5-DEMO
+   */
+  getComparison: (partNumber: string, giorni: number = 30): Promise<TimesComparisonResponse> => {
+    return apiRequest<TimesComparisonResponse>(`/standard-times/comparison/${partNumber}?giorni=${giorni}`);
+  },
+
+  /**
+   * Ottiene i part-number con maggiore scostamento percentuale
+   * 🎯 FUNZIONE PRINCIPALE per v1.4.6-DEMO
+   */
+  getTopDelta: (limit: number = 5, days: number = 30): Promise<TopDeltaResponse> => {
+    return apiRequest<TopDeltaResponse>(`/standard-times/top-delta?limit=${limit}&days=${days}`);
+  },
+
+  /**
+   * Ricalcola tutti i tempi standard
+   */
+  recalculate: (userId: string = "admin", userRole: string = "ADMIN"): Promise<any> => {
+    return apiRequest<any>(`/standard-times/recalc?user_id=${userId}&user_role=${userRole}`, 'POST');
+  },
+
+  /**
+   * Ottiene statistiche sui tempi standard
+   */
+  getStatistics: (): Promise<any> => {
+    return apiRequest<any>('/standard-times/statistics');
+  }
+};
+
+// ✅ NUOVO: Tipi per Top Delta Variances (v1.4.6-DEMO)
+export interface TopDeltaVariance {
+  part_number: string;
+  fase: string;
+  delta_percent: number;
+  abs_delta_percent: number;
+  tempo_osservato: number;
+  tempo_standard: number;
+  numero_osservazioni: number;
+  colore_delta: "verde" | "giallo" | "rosso";
+}
+
+export interface TopDeltaResponse {
+  success: boolean;
+  data: TopDeltaVariance[];
+  parameters: {
+    limit: number;
+    days: number;
+    data_analisi: string;
+  };
+} 

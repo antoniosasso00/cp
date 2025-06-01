@@ -122,6 +122,7 @@ def read_odl(
     parte_id: Optional[int] = Query(None, description="Filtra per ID parte"),
     tool_id: Optional[int] = Query(None, description="Filtra per ID tool"),
     status: Optional[str] = Query(None, description="Filtra per stato"),
+    include_in_std: Optional[bool] = Query(None, description="Filtra per ODL inclusi nei tempi standard"),
     db: Session = Depends(get_db)
 ):
     """
@@ -131,6 +132,7 @@ def read_odl(
     - **parte_id**: filtro opzionale per ID parte
     - **tool_id**: filtro opzionale per ID tool
     - **status**: filtro opzionale per stato (supporta alias come 'Attesa%20Cura', 'In Cura', etc.)
+    - **include_in_std**: filtro opzionale per ODL inclusi nei tempi standard
     """
     try:
         # ✅ AGGIUNTO: Caricamento eager delle relazioni parte e tool
@@ -149,12 +151,14 @@ def read_odl(
             actual_status = ALIAS_STATI.get(status, status)
             logger.info(f"Filtro stato: '{status}' -> '{actual_status}'")
             query = query.filter(ODL.status == actual_status)
+        if include_in_std is not None:
+            query = query.filter(ODL.include_in_std == include_in_std)
         
         # Ordina per priorità decrescente
         query = query.order_by(desc(ODL.priorita))
         
         result = query.offset(skip).limit(limit).all()
-        logger.info(f"Recuperati {len(result)} ODL con filtri: parte_id={parte_id}, tool_id={tool_id}, status={status}")
+        logger.info(f"Recuperati {len(result)} ODL con filtri: parte_id={parte_id}, tool_id={tool_id}, status={status}, include_in_std={include_in_std}")
         
         return result
         

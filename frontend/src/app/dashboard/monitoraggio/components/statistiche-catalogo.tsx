@@ -1,14 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Loader2, AlertCircle } from 'lucide-react'
-import { tempoFasiApi, CatalogoResponse } from '@/lib/api'
+import { AlertCircle, Loader2, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { CatalogoResponse, standardTimesApi, TimesComparisonResponse } from '@/lib/api'
 import { formatDuration } from '@/lib/utils'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 
 interface FiltriGlobali {
   periodo: string;
@@ -39,36 +40,39 @@ interface StatistichePartNumber {
   totale_odl: number;
 }
 
+// ✅ NUOVO: Tipi per il confronto tempi standard v1.4.5-DEMO
+interface TimesComparisonData extends TimesComparisonResponse {}
+
 export default function StatisticheCatalogo({ filtri, catalogo, onError }: StatisticheCatalogoProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedPartNumber, setSelectedPartNumber] = useState<string>('')
-  const [statistiche, setStatistiche] = useState<StatistichePartNumber | null>(null)
+  const [comparisonData, setComparisonData] = useState<TimesComparisonData | null>(null)
   const [loadingStats, setLoadingStats] = useState(false)
 
   // Carica le statistiche quando cambia il part number selezionato o i filtri
   useEffect(() => {
     let isMounted = true;
 
-    const fetchStatistiche = async () => {
+    const fetchComparison = async () => {
       if (!selectedPartNumber) {
-        setStatistiche(null)
+        setComparisonData(null)
         return
       }
       
       try {
         setLoadingStats(true)
         
-        // Chiamata all'API per recuperare le statistiche
+        // ✅ NUOVO: Utilizza la nuova API standardTimesApi.getComparison
         const giorni = parseInt(filtri.periodo)
-        const result = await tempoFasiApi.getStatisticheByPartNumber(selectedPartNumber, giorni)
+        const result = await standardTimesApi.getComparison(selectedPartNumber, giorni)
         
         if (isMounted) {
-          setStatistiche(result)
+          setComparisonData(result)
         }
       } catch (err) {
-        console.error('Errore nel caricamento delle statistiche:', err)
+        console.error('Errore nel caricamento del confronto tempi:', err)
         if (isMounted) {
-          onError('Impossibile caricare le statistiche del catalogo. Riprova più tardi.')
+          onError('Impossibile caricare il confronto con i tempi standard. Riprova più tardi.')
         }
       } finally {
         if (isMounted) {
@@ -78,7 +82,7 @@ export default function StatisticheCatalogo({ filtri, catalogo, onError }: Stati
     }
     
     if (selectedPartNumber) {
-      fetchStatistiche()
+      fetchComparison()
     }
 
     return () => {
@@ -115,90 +119,87 @@ export default function StatisticheCatalogo({ filtri, catalogo, onError }: Stati
     return translations[fase] || fase;
   }
 
-  // Calcola il totale delle medie per tutte le fasi
-  const calcolaTotaleMedie = (): number => {
-    if (!statistiche || !statistiche.previsioni) return 0;
+  // ✅ NUOVO: Calcola il totale delle medie osservate
+  const calcolaTotaleMedieOsservate = (): number => {
+    if (!comparisonData || !comparisonData.fasi) return 0;
     
     let totale = 0;
     
     try {
-      Object.values(statistiche.previsioni).forEach(fase => {
-        if (fase && typeof fase === 'object' && 'media_minuti' in fase) {
-          totale += typeof fase.media_minuti === 'number' ? fase.media_minuti : 0;
+      Object.values(comparisonData.fasi).forEach(fase => {
+        if (fase && fase.tempo_osservato_minuti > 0) {
+          totale += fase.tempo_osservato_minuti;
         }
       });
     } catch (err) {
-      console.error('Errore nel calcolo del totale medie:', err);
+      console.error('Errore nel calcolo del totale medie osservate:', err);
     }
     
     return totale;
   }
 
-  // Calcola il numero di fasi attive
-  const calcolaFasiAttive = (): number => {
-    if (!statistiche || !statistiche.previsioni) return 0;
+  // ✅ NUOVO: Calcola il totale delle medie standard
+  const calcolaTotaleMedieStandard = (): number => {
+    if (!comparisonData || !comparisonData.fasi) return 0;
     
-    let fasiAttive = 0;
+    let totale = 0;
     
     try {
-      Object.values(statistiche.previsioni).forEach(fase => {
-        if (fase && typeof fase === 'object' && 'media_minuti' in fase) {
-          if (typeof fase.media_minuti === 'number' && fase.media_minuti > 0) {
-            fasiAttive++;
-          }
+      Object.values(comparisonData.fasi).forEach(fase => {
+        if (fase && fase.tempo_standard_minuti > 0) {
+          totale += fase.tempo_standard_minuti;
         }
       });
     } catch (err) {
-      console.error('Errore nel calcolo delle fasi attive:', err);
+      console.error('Errore nel calcolo del totale medie standard:', err);
     }
     
-    return fasiAttive;
+    return totale;
   }
 
-  // Calcola lo scostamento medio rispetto ai tempi standard
-  const calcolaScostamentoMedio = (): number => {
-    if (!statistiche || !statistiche.previsioni) return 0;
+  // Calcola il numero di fasi con dati
+  const calcolaFasiConDati = (): number => {
+    if (!comparisonData || !comparisonData.fasi) return 0;
     
-    // Tempi standard di riferimento (in minuti)
-    const tempiStandard = {
-      'laminazione': 120,    // 2 ore
-      'attesa_cura': 60,     // 1 ora
-      'cura': 300            // 5 ore
-    };
-    
-    let scostamentoTotale = 0;
     let fasiConDati = 0;
     
     try {
-      Object.entries(statistiche.previsioni).forEach(([fase, dati]) => {
-        if (dati && typeof dati === 'object' && 'media_minuti' in dati) {
-          const mediaReale = dati.media_minuti || 0;
-          const tempoStandard = tempiStandard[fase as keyof typeof tempiStandard] || 0;
-          
-          if (mediaReale > 0 && tempoStandard > 0) {
-            const scostamento = ((mediaReale - tempoStandard) / tempoStandard) * 100;
-            scostamentoTotale += Math.abs(scostamento);
-            fasiConDati++;
-          }
+      Object.values(comparisonData.fasi).forEach(fase => {
+        if (fase && (fase.tempo_osservato_minuti > 0 || fase.tempo_standard_minuti > 0)) {
+          fasiConDati++;
         }
       });
     } catch (err) {
-      console.error('Errore nel calcolo dello scostamento medio:', err);
+      console.error('Errore nel calcolo delle fasi con dati:', err);
     }
     
-    return fasiConDati > 0 ? scostamentoTotale / fasiConDati : 0;
+    return fasiConDati;
   }
 
-  // Verifica se ci sono ODL completati
+  // ✅ NUOVO: Usa lo scostamento medio calcolato dal backend
+  const getScostamentoMedio = (): number => {
+    return comparisonData?.scostamento_medio_percentuale || 0;
+  }
+
+  // ✅ NUOVO: Verifica se ci sono dati validi dal backend
   const hasDatiValidi = (): boolean => {
-    if (!statistiche) return false;
-    
-    try {
-      const totaleODL = statistiche.totale_odl || 0;
-      return totaleODL > 0;
-    } catch (err) {
-      console.error('Errore nella verifica dei dati validi:', err);
-      return false;
+    if (!comparisonData) return false;
+    return comparisonData.odl_totali_periodo > 0;
+  }
+
+  // ✅ NUOVO: Funzione per ottenere l'icona del trend
+  const getTrendIcon = (delta: number) => {
+    if (Math.abs(delta) < 1) return <Minus className="h-4 w-4" />;
+    return delta > 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />;
+  }
+
+  // ✅ NUOVO: Funzione per ottenere la classe CSS del colore
+  const getColorClass = (colore: string) => {
+    switch (colore) {
+      case 'rosso': return 'text-red-600';
+      case 'giallo': return 'text-orange-600';
+      case 'verde': return 'text-green-600';
+      default: return 'text-gray-600';
     }
   }
 
@@ -253,10 +254,15 @@ export default function StatisticheCatalogo({ filtri, catalogo, onError }: Stati
         <div className="md:col-span-3">
           <Card className="h-full">
             <CardHeader>
-              <CardTitle className="text-lg">
+              <CardTitle className="text-lg flex items-center gap-2">
                 {selectedPartNumber 
-                  ? `Statistiche per ${selectedPartNumber}`
+                  ? `Confronto Tempi - ${selectedPartNumber}`
                   : 'Seleziona un part number'}
+                {comparisonData?.dati_limitati_globale && (
+                  <Badge variant="destructive" className="text-xs">
+                    Dati limitati
+                  </Badge>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -264,13 +270,13 @@ export default function StatisticheCatalogo({ filtri, catalogo, onError }: Stati
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
                   <p className="text-muted-foreground">
-                    Seleziona un part number dalla lista per visualizzare le statistiche
+                    Seleziona un part number dalla lista per visualizzare il confronto con i tempi standard
                   </p>
                 </div>
               ) : loadingStats ? (
                 <div className="flex justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin" />
-                  <span className="ml-2">Caricamento statistiche...</span>
+                  <span className="ml-2">Caricamento confronto...</span>
                 </div>
               ) : !hasDatiValidi() ? (
                 <Alert>
@@ -283,37 +289,38 @@ export default function StatisticheCatalogo({ filtri, catalogo, onError }: Stati
                 </Alert>
               ) : (
                 <div className="space-y-6">
+                  {/* ✅ NUOVO: Summary cards aggiornate */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="p-4 bg-muted rounded-lg text-center">
                       <div className="text-2xl font-bold">
-                        {statistiche?.totale_odl || 0}
+                        {comparisonData?.odl_totali_periodo || 0}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        ODL Completati
+                        ODL Analizzati
                       </div>
                     </div>
                     
                     <div className="p-4 bg-muted rounded-lg text-center">
                       <div className="text-2xl font-bold">
-                        {formatDuration(calcolaTotaleMedie())}
+                        {formatDuration(calcolaTotaleMedieOsservate())}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        Tempo Medio Completamento
+                        Tempo Totale Osservato
                       </div>
                     </div>
                     
                     <div className="p-4 bg-muted rounded-lg text-center">
                       <div className="text-2xl font-bold">
-                        {calcolaFasiAttive()}
+                        {formatDuration(calcolaTotaleMedieStandard())}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        Fasi Registrate
+                        Tempo Totale Standard
                       </div>
                     </div>
 
                     <div className="p-4 bg-muted rounded-lg text-center">
-                      <div className={`text-2xl font-bold ${calcolaScostamentoMedio() > 20 ? 'text-red-600' : calcolaScostamentoMedio() > 10 ? 'text-orange-600' : 'text-green-600'}`}>
-                        {calcolaScostamentoMedio().toFixed(1)}%
+                      <div className={`text-2xl font-bold ${getScostamentoMedio() > 20 ? 'text-red-600' : getScostamentoMedio() > 10 ? 'text-orange-600' : 'text-green-600'}`}>
+                        {getScostamentoMedio().toFixed(1)}%
                       </div>
                       <div className="text-sm text-muted-foreground">
                         Scostamento Medio
@@ -321,56 +328,87 @@ export default function StatisticheCatalogo({ filtri, catalogo, onError }: Stati
                     </div>
                   </div>
                   
+                  {/* ✅ NUOVO: Dettaglio tempi per fase con confronto standard */}
                   <div className="space-y-4">
-                    <h3 className="text-lg font-medium">Dettaglio tempi per fase</h3>
+                    <h3 className="text-lg font-medium">Confronto Tempi per Fase</h3>
                     
-                    {statistiche && statistiche.previsioni && Object.entries(statistiche.previsioni).map(([fase, dati]) => {
+                    {comparisonData && comparisonData.fasi && Object.entries(comparisonData.fasi).map(([fase, dati]) => {
                       if (!dati) return null;
-                      
-                      // Calcola scostamento per questa fase
-                      const tempiStandard = {
-                        'laminazione': 120,    // 2 ore
-                        'attesa_cura': 60,     // 1 ora
-                        'cura': 300            // 5 ore
-                      };
-                      
-                      const mediaReale = dati.media_minuti || 0;
-                      const tempoStandard = tempiStandard[fase as keyof typeof tempiStandard] || 0;
-                      const scostamento = tempoStandard > 0 ? ((mediaReale - tempoStandard) / tempoStandard) * 100 : 0;
                       
                       return (
                         <div key={fase} className="p-4 border rounded-lg">
-                          <div className="flex justify-between items-center">
-                            <h4 className="font-medium">{translateFase(fase)}</h4>
+                          <div className="flex justify-between items-start mb-3">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-medium">{translateFase(fase)}</h4>
+                              {dati.dati_limitati && (
+                                <Badge variant="outline" className="text-xs">
+                                  &lt; 5 ODL
+                                </Badge>
+                              )}
+                            </div>
+                            
                             <div className="text-right">
-                              <div className="text-xl font-bold">{formatDuration(dati.media_minuti || 0)}</div>
-                              {tempoStandard > 0 && (
-                                <div className={`text-sm ${Math.abs(scostamento) > 20 ? 'text-red-600' : Math.abs(scostamento) > 10 ? 'text-orange-600' : 'text-green-600'}`}>
-                                  {scostamento > 0 ? '+' : ''}{scostamento.toFixed(1)}% vs standard
+                              <div className={`flex items-center gap-1 text-lg font-bold ${getColorClass(dati.colore_delta)}`}>
+                                {getTrendIcon(dati.delta_percentuale)}
+                                {dati.delta_percentuale > 0 ? '+' : ''}{dati.delta_percentuale.toFixed(1)}%
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                            <div>
+                              <div className="text-muted-foreground">Tempo Osservato</div>
+                              <div className="font-medium">{formatDuration(dati.tempo_osservato_minuti)}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {dati.numero_osservazioni} osservazioni
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <div className="text-muted-foreground">Tempo Standard</div>
+                              <div className="font-medium">{formatDuration(dati.tempo_standard_minuti)}</div>
+                              {dati.note_standard && (
+                                <div className="text-xs text-muted-foreground truncate">
+                                  {dati.note_standard}
                                 </div>
                               )}
                             </div>
-                          </div>
-                          <div className="flex justify-between items-center mt-2">
-                            <div className="text-sm text-muted-foreground">
-                              Basato su {dati.numero_osservazioni || 0} osservazioni
-                            </div>
-                            {tempoStandard > 0 && (
-                              <div className="text-sm text-muted-foreground">
-                                Standard: {formatDuration(tempoStandard)}
+                            
+                            <div>
+                              <div className="text-muted-foreground">Delta</div>
+                              <div className={`font-medium ${getColorClass(dati.colore_delta)}`}>
+                                {Math.abs(dati.tempo_osservato_minuti - dati.tempo_standard_minuti).toFixed(1)} min
                               </div>
-                            )}
+                              <div className={`text-xs ${getColorClass(dati.colore_delta)}`}>
+                                {dati.delta_percentuale > 0 ? 'Più lento' : dati.delta_percentuale < 0 ? 'Più veloce' : 'Conforme'}
+                              </div>
+                            </div>
                           </div>
                         </div>
                       );
                     })}
                     
-                    {(!statistiche || !statistiche.previsioni || Object.keys(statistiche.previsioni).length === 0) && (
+                    {(!comparisonData || !comparisonData.fasi || Object.keys(comparisonData.fasi).length === 0) && (
                       <div className="text-center text-muted-foreground py-4">
-                        Nessun dato disponibile per le fasi di produzione
+                        Nessun dato disponibile per il confronto delle fasi
                       </div>
                     )}
                   </div>
+                  
+                  {/* ✅ NUOVO: Info aggiuntive */}
+                  {comparisonData && (
+                    <div className="text-xs text-muted-foreground border-t pt-4">
+                      <p>
+                        <strong>Periodo analizzato:</strong> Ultimi {comparisonData.periodo_giorni} giorni 
+                        | <strong>Ultima analisi:</strong> {new Date(comparisonData.ultima_analisi).toLocaleString('it-IT')}
+                      </p>
+                      {comparisonData.dati_limitati_globale && (
+                        <p className="text-orange-600 mt-1">
+                          ⚠️ Attenzione: Il dataset contiene meno di 5 ODL completati. I risultati potrebbero non essere rappresentativi.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
