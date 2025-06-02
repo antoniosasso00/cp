@@ -186,17 +186,23 @@ class NestingSolveRequest(BaseModel):
         }
 
 class NestingMetricsResponse(BaseModel):
-    """Schema per le metriche del nesting v1.4.12-DEMO"""
+    """Schema per le metriche del nesting v1.4.17-DEMO"""
     area_utilization_pct: float = Field(..., description="Percentuale utilizzo area")
     vacuum_util_pct: float = Field(..., description="Percentuale utilizzo linee vuoto")
-    efficiency_score: float = Field(..., description="Score efficienza: 0.7·area + 0.3·vacuum")
+    efficiency_score: float = Field(..., description="Score efficienza: 0.8·area + 0.2·vacuum")  # 🔄 NUOVO v1.4.17-DEMO: aggiornato formula
     weight_utilization_pct: float = Field(..., description="Percentuale utilizzo peso")
     
     # Metriche tecniche
     time_solver_ms: float = Field(..., description="Tempo risoluzione solver in ms")
     fallback_used: bool = Field(..., description="Se è stato usato algoritmo fallback")
     heuristic_iters: int = Field(default=0, description="Numero iterazioni euristica RRGH")
-    algorithm_status: str = Field(..., description="Stato algoritmo (CP-SAT_OPTIMAL, FALLBACK_GREEDY, etc.)")
+    algorithm_status: str = Field(..., description="Stato algoritmo (CP-SAT_OPTIMAL, BL_FFD_FALLBACK, etc.)")
+    
+    # 🎯 NUOVO v1.4.16-DEMO: Campo per indicare sovrapposizioni
+    invalid: bool = Field(default=False, description="True se ci sono sovrapposizioni non risolte nel layout")
+    
+    # 🔄 NUOVO v1.4.17-DEMO: Campo per indicare utilizzo rotazione
+    rotation_used: bool = Field(default=False, description="True se è stata utilizzata rotazione 90° nel layout")
     
     # Statistiche fisiche
     total_area_cm2: float = Field(..., description="Area totale utilizzata in cm²")
@@ -236,6 +242,9 @@ class NestingSolveResponse(BaseModel):
     # 🔍 NUOVO v1.4.14: Motivi di esclusione dettagliati per debug
     excluded_reasons: Dict[str, int] = Field(default={}, description="Riassunto motivi esclusione: {motivo: count}")
     
+    # 🎯 NUOVO v1.4.16-DEMO: Dettagli sovrapposizioni per debug
+    overlaps: Optional[List[Dict[str, Any]]] = Field(default=None, description="Dettagli sovrapposizioni rilevate nel layout")
+    
     # Metriche dettagliate
     metrics: NestingMetricsResponse = Field(..., description="Metriche dettagliate del nesting")
     
@@ -274,6 +283,7 @@ class NestingSolveResponse(BaseModel):
                 "excluded_reasons": {
                     "Dimensioni eccessive per autoclave": 1
                 },
+                "overlaps": None,
                 "metrics": {
                     "area_utilization_pct": 78.5,
                     "vacuum_util_pct": 87.5,

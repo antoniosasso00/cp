@@ -893,6 +893,8 @@ def solve_nesting_v1_4_12_demo(
                     fallback_used=False,
                     heuristic_iters=0,
                     algorithm_status="NO_ODL_AVAILABLE",
+                    invalid=False,  # 🎯 NUOVO v1.4.16-DEMO
+                    rotation_used=False,  # 🔄 NUOVO v1.4.17-DEMO
                     total_area_cm2=0.0,
                     total_weight_kg=0.0,
                     vacuum_lines_used=0,
@@ -993,12 +995,19 @@ def solve_nesting_v1_4_12_demo(
             fallback_used=solution.metrics.fallback_used,
             heuristic_iters=solution.metrics.heuristic_iters,
             algorithm_status=solution.algorithm_status,
+            invalid=solution.metrics.invalid,  # 🎯 NUOVO v1.4.16-DEMO: Campo invalid per overlap
+            rotation_used=solution.metrics.rotation_used,  # 🔄 NUOVO v1.4.17-DEMO: Campo rotation_used
             total_area_cm2=sum(layout.width * layout.height for layout in solution.layouts) / 10000.0,
             total_weight_kg=solution.metrics.total_weight,
             vacuum_lines_used=solution.metrics.lines_used,
             pieces_positioned=solution.metrics.positioned_count,
             pieces_excluded=solution.metrics.excluded_count
         )
+        
+        # 🎯 NUOVO v1.4.16-DEMO: Estrai informazioni overlap se presenti
+        overlaps_info = None
+        if hasattr(solution, 'overlaps') and solution.overlaps:
+            overlaps_info = solution.overlaps
         
         # 7. Costruisci risposta
         response = NestingSolveResponse(
@@ -1007,6 +1016,7 @@ def solve_nesting_v1_4_12_demo(
             positioned_tools=positioned_tools,
             excluded_odls=excluded_odls,
             excluded_reasons=excluded_reasons,
+            overlaps=overlaps_info,  # 🎯 NUOVO v1.4.16-DEMO: Informazioni overlap
             metrics=metrics,
             autoclave_info={
                 "id": autoclave.id,
@@ -1020,7 +1030,8 @@ def solve_nesting_v1_4_12_demo(
         
         logger.info(f"✅ Nesting completato: {solution.metrics.positioned_count} pezzi posizionati, "
                    f"efficienza {solution.metrics.efficiency_score:.1f}%, "
-                   f"tempo {solution.metrics.time_solver_ms:.0f}ms")
+                   f"tempo {solution.metrics.time_solver_ms:.0f}ms, "
+                   f"rotazione={solution.metrics.rotation_used}")  # 🔄 NUOVO v1.4.17-DEMO
         
         return response
         

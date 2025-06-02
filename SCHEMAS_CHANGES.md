@@ -1116,361 +1116,111 @@ class NestingMetricsResponse(BaseModel):
 
 ---
 
-# 📋 SCHEMAS CHANGES - CarbonPilot v1.4.10-DEMO
+# 📋 SCHEMAS CHANGES - CarbonPilot
 
-**Documentazione delle modifiche ai modelli database per il sistema di valutazione efficienza batch nesting**
+## 🚀 v1.4.17-DEMO (2024-12-19)
 
----
+### 📄 Schema: NestingMetricsResponse
+**File**: `backend/schemas/batch_nesting.py`
 
-## 🔄 Modifiche Applicate
+#### ✨ Campi Aggiunti:
+- **`rotation_used: bool`** (default=False)
+  - **Descrizione**: True se è stata utilizzata rotazione 90° nel layout
+  - **Tipo**: Boolean
+  - **Utilizzo**: Tracking dell'utilizzo della rotazione automatica nei risultati nesting
 
-### 📄 Modello: BatchNesting
-   Tabella: batch_nesting
-   
-   **✅ CAMPO AGGIUNTO:**
-   
-   • **efficiency**: Float | DEFAULT=0.0
-     📝 Efficienza complessiva del batch calcolata con formula: 0.7·area_pct + 0.3·vacuum_util_pct
-     🎯 Range: green ≥80% | yellow 60-79% | red <60%
-   
-   • **area_pct** (calculated property): Float
-     📝 Percentuale di area utilizzata rispetto all'area totale disponibile dell'autoclave
-     🔧 Calcolo: (area_utilizzata_mm² / area_totale_autoclave_mm²) * 100
-   
-   • **vacuum_util_pct** (calculated property): Float  
-     📝 Percentuale di utilizzo delle linee vuoto
-     🔧 Calcolo: (valvole_utilizzate / num_linee_vuoto_autoclave) * 100
-   
-   • **efficiency_score** (calculated property): Float
-     📝 Score di efficienza secondo la formula specificata
-     🔧 Calcolo: (0.7 * area_pct) + (0.3 * vacuum_util_pct)
-   
-   • **efficiency_level** (calculated property): String
-     📝 Livello di efficienza per la logica di business
-     🔧 Valori: "green" (≥80%) | "yellow" (60-79%) | "red" (<60%)
-   
-   • **efficiency_color_class** (calculated property): String
-     📝 Classe CSS per colorare i badge nel frontend
-     🔧 Valori: "bg-green-500" | "bg-amber-500" | "bg-red-500"
-   
-   • **update_efficiency()** (method): void
-     📝 Metodo per aggiornare il campo efficiency con il valore calcolato
-     🔧 Uso: batch.update_efficiency() prima di salvare nel database
+#### 🔧 Campi Modificati:
+- **`efficiency_score: float`**
+  - **Vecchia descrizione**: "Score efficienza: 0.7·area + 0.3·vacuum"
+  - **Nuova descrizione**: "Score efficienza: 0.8·area + 0.2·vacuum"
+  - **Motivo**: Aggiornamento formula objective per bilanciamento migliore
 
----
+- **`algorithm_status: str`**
+  - **Vecchia descrizione**: "Stato algoritmo (CP-SAT_OPTIMAL, FALLBACK_GREEDY, etc.)"
+  - **Nuova descrizione**: "Stato algoritmo (CP-SAT_OPTIMAL, BL_FFD_FALLBACK, etc.)"
+  - **Motivo**: Riflette il nuovo algoritmo BL-FFD al posto del greedy
 
-## 📊 Schema Response API Aggiornato
+### 📄 Schema: NestingMetrics (Dataclass)
+**File**: `backend/services/nesting/solver.py`
 
-### BatchNestingResponse (Pydantic)
+#### ✨ Campi Aggiunti:
+- **`rotation_used: bool`** (default=False)
+  - **Descrizione**: Indica se è stata utilizzata rotazione 90° nel layout
+  - **Tipo**: Boolean
+  - **Utilizzo**: Tracking interno per propagazione alle API response
 
-**✅ CAMPI AGGIUNTI:**
+### 🔄 Impatto API
 
-```python
-efficiency: float = Field(default=0.0, description="Efficienza complessiva del batch")
-area_pct: Optional[float] = Field(None, description="Percentuale di area utilizzata")
-vacuum_util_pct: Optional[float] = Field(None, description="Percentuale di utilizzo linee vuoto")
-efficiency_score: Optional[float] = Field(None, description="Score di efficienza: 0.7·area + 0.3·vacuum")
-efficiency_level: Optional[str] = Field(None, description="Livello di efficienza: green/yellow/red")
-efficiency_color_class: Optional[str] = Field(None, description="Classe CSS per il badge di efficienza")
-```
+#### Endpoint: `/api/batch-nesting/solve`
+**Response**: `NestingSolveResponse`
 
----
-
-## 🗄️ Migrazione Database
-
-**File:** `backend/migrations/versions/20250128_add_efficiency_to_batch_nesting.py`
-
-```sql
--- Aggiunge il campo efficiency alla tabella batch_nesting
-ALTER TABLE batch_nesting ADD COLUMN efficiency FLOAT DEFAULT 0.0;
-
--- Aggiorna tutti i record esistenti
-UPDATE batch_nesting SET efficiency = 0.0 WHERE efficiency IS NULL;
-```
-
----
-
-## 🎨 Frontend - Badge Efficienza
-
-**Implementazione nel Nesting Preview:**
-
-```tsx
-<Badge 
-  className={`text-white font-semibold ${getEfficiencyColorClass(efficiency)}`}
->
-  {getEfficiencyLevel(efficiency).toUpperCase()}
-</Badge>
-```
-
-**Logica di Warning/Popup:**
-
-- **🔴 Red (<60%)**: Toast warning persistente, utente può proseguire
-- **🟡 Yellow (60-79%)**: Popup con scelta "Rigenera" o "Continua"  
-- **🟢 Green (≥80%)**: Nessun warning, tutto ok
-
----
-
-## 🧪 Test e Seed
-
-**Script di test:** `backend/tests/seed_efficiency_test.py`
-
-Crea un batch con efficienza ~55% per testare:
-- Badge rosso 
-- Toast warning
-- Comportamento UI corretto
-
-**Esecuzione:**
-```bash
-python backend/tests/seed_efficiency_test.py
-```
-
----
-
-## 📝 Note Implementazione
-
-1. **Calcolo Real-time**: L'efficienza viene ricalcolata ogni volta che si accede al batch
-2. **Persistenza**: Il valore calcolato viene salvato nel campo `efficiency` per performance
-3. **Backward Compatibility**: I batch esistenti avranno efficiency=0.0 di default
-4. **Frontend Integration**: I badge sono colorati automaticamente in base al livello
-5. **User Experience**: Warning non bloccanti, l'utente mantiene sempre il controllo
-
----
-
-**✅ Sistema di Valutazione Efficienza Implementato con Successo!**
-
-*Versione: v1.4.10-DEMO*  
-*Data: 28 Gennaio 2025*
-
-# 📝 MODIFICHE AGLI SCHEMI DATABASE - CarbonPilot
-
-## 🕒 Data: 2025-01-27
-## 🔧 Tipo: Correzioni e Miglioramenti di Robustezza
-
----
-
-## 🛠️ Modifiche Implementate (AGGIORNAMENTO FINALE)
-
-### 1. **✅ RISOLTO: Errore Validazione `batch_id` nel Nesting**
-**Modello:** `NestingResponse` (Schema Pydantic)
-**File:** `backend/services/nesting_robustness_improvement.py`
-
-**Problema Risolto:**
-- Errore di validazione: `1 validation error for NestingResponse.batch_id Input should be a valid string (type=string_type, input_value=None, input_type=NoneType)`
-
-**Modifiche Applicate:**
-```python
-# PRIMA (problematico)
-result = {
-    'batch_id': None,  # ❌ Causava errore validazione
-    # ... rest
-}
-
-# DOPO (corretto)
-result = {
-    'batch_id': '',  # ✅ Inizializzato come stringa vuota
-    # ... rest
-}
-
-# Aggiunto controllo sicuro per batch_id None
-if batch_id:
-    result['batch_id'] = batch_id
-else:
-    fallback_batch_id = f'BATCH_FAILED_{autoclave_id}_{int(datetime.now().timestamp())}'
-    if not result['batch_id']:
-        result['batch_id'] = fallback_batch_id
-```
-
-**Impatto:** 
-- Risolve crash dell'API quando il nesting fallisce
-- Garantisce sempre un batch_id valido anche in caso di errori
-
-### 2. **✅ RISOLTO: Errore 404 nella Preview Nesting**
-**File:** `frontend/src/app/dashboard/curing/nesting/preview/page.tsx`
-
-**Problema Risolto:**
-- Errore "404: Not Found" quando carica dati nella preview
-
-**Modifiche Applicate:**
-```typescript
-// PRIMA (problematico)
-const response = await fetch('/api/v1/batch_nesting/solve', {
-
-// DOPO (corretto)
-const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/batch_nesting/solve`, {
-```
-
-**Impatto:**
-- Risolve errori di caricamento dati nella preview
-- URL API ora costruito correttamente con domain completo
-
-### 3. **✅ RIMOSSA: Sezione "Obiettivo Ottimizzazione" Superflua**
-**File:** `frontend/src/app/dashboard/curing/nesting/page.tsx`
-
-**Problema Risolto:**
-- Sezione UI confusa e non necessaria per l'utente finale
-
-**Modifiche Applicate:**
-- Rimossa completamente la sezione dropdown "Obiettivo Ottimizzazione"
-- Semplificata interfaccia con solo parametri essenziali: padding e distanza minima
-- Parametro `priorita_area` gestito internamente come `false`
-
-**Impatto:**
-- UI più pulita e intuitiva
-- Ridotta complessità per l'utente finale
-
-### 4. **✅ RIMOSSO: Parametro "Linee Vuoto Max" Senza Senso**
-**File:** `frontend/src/app/dashboard/curing/nesting/preview/page.tsx`
-
-**Problema Risolto:**
-- Parametro `vacuum_lines_capacity` non aveva senso nel contesto preview
-
-**Modifiche Applicate:**
-```typescript
-interface NestingParameters {
-  padding_mm: number
-  min_distance_mm: number
-  // ❌ RIMOSSO: vacuum_lines_capacity: number
+##### Modifiche nella sezione `metrics`:
+```json
+{
+  "metrics": {
+    "area_utilization_pct": 45.3,
+    "vacuum_util_pct": 66.7,
+    "efficiency_score": 49.6,  // Formula aggiornata: 0.8*area + 0.2*vacuum
+    "algorithm_status": "BL_FFD_FALLBACK",  // Nuovo status
+    "rotation_used": true,  // NUOVO CAMPO
+    "invalid": false,
+    // ... altri campi esistenti
+  }
 }
 ```
 
-**Impatto:**
-- Interfaccia preview semplificata
-- Parametri più pertinenti al caso d'uso
+### 📋 Compatibilità
 
-### 5. **✅ MIGLIORATA: Gestione Robusta Fallback**
-**File:** `backend/services/nesting_robustness_improvement.py`
+#### ✅ Backward Compatible:
+- **`rotation_used`**: Campo opzionale con default `false`
+- **Existing fields**: Tutti i campi esistenti mantengono la stessa struttura
 
-**Modifiche Applicate:**
-- Tutti i metodi fallback ora generano sempre batch_id validi
-- Aggiunta timestamp nei batch_id di fallback per debugging
-- Migliorata gestione errori con ID univoci per ogni scenario
+#### ⚠️ Breaking Changes:
+- **`efficiency_score`**: Formula cambiata da 0.7·area + 0.3·vacuum a 0.8·area + 0.2·vacuum
+- **`algorithm_status`**: Valori possibili aggiornati (FALLBACK_GREEDY → BL_FFD_FALLBACK)
 
-**Pattern Implementato:**
-```python
-def _handle_no_odl(self, db: Session, issue: Dict, result: Dict) -> Dict:
-    result.update({
-        'batch_id': f'NO_ODL_{int(datetime.now().timestamp())}'  # ✅ Sempre valido
-    })
-```
+### 🧪 Testing Schema Changes
 
-**Impatto:**
-- Sistema sempre funzionante anche in scenari critici
-- Debugging facilitato con ID tracciabili
+#### Test File: `test_v1_4_17_demo_simple.py`
+- ✅ Verifica presenza campo `rotation_used`
+- ✅ Verifica correttezza formula `efficiency_score`
+- ✅ Verifica nuovo `algorithm_status` per BL-FFD
+- ✅ Verifica compatibilità response API
 
 ---
 
-## 📊 **Risultati Conseguiti**
+## 🎯 v1.4.16-DEMO (2024-12-19)
 
-### 🔧 **Problemi Risolti:**
-1. ✅ Crash API per errore validazione `batch_id`
-2. ✅ Errore 404 nella pagina preview
-3. ✅ Interfaccia confusa con sezioni superflue
-4. ✅ Parametri senza senso nel contesto
+### 📄 Schema: NestingMetricsResponse
+**File**: `backend/schemas/batch_nesting.py`
 
-### 🎯 **Miglioramenti UX:**
-1. ✅ Interfaccia più pulita e intuitiva
-2. ✅ Parametri più pertinenti al caso d'uso
-3. ✅ Gestione errori più user-friendly
-4. ✅ System più robusto e affidabile
+#### ✨ Campi Aggiunti:
+- **`invalid: bool`** (default=False)
+  - **Descrizione**: True se ci sono sovrapposizioni non risolte nel layout
+  - **Tipo**: Boolean
+  - **Utilizzo**: Indicazione di layout con overlap per debug e UI
 
-### 🏗️ **Robustezza Sistema:**
-1. ✅ Fallback garantiti per ogni scenario critico
-2. ✅ Batch ID sempre validi per tracking
-3. ✅ Logging migliorato per debugging
-4. ✅ Zero crash dell'applicazione
+### 📄 Schema: NestingSolveResponse
+**File**: `backend/schemas/batch_nesting.py`
 
----
-
-## 🔄 **Prossimi Passi Raccomandati**
-
-1. **Test Completo**: Verificare tutti i flussi di nesting con nuove correzioni
-2. **Monitoring**: Osservare log per eventuali edge case non coperti
-3. **Ottimizzazione**: Considerare cache per dati frequently accessed
-4. **Documentazione**: Aggiornare user manual con nuova interfaccia semplificata
+#### ✨ Campi Aggiunti:
+- **`overlaps: Optional[List[Dict[str, Any]]]`** (default=None)
+  - **Descrizione**: Dettagli sovrapposizioni rilevate nel layout
+  - **Tipo**: Lista opzionale di dizionari
+  - **Utilizzo**: Debug informazioni per sviluppatori e UI overlap highlighting
 
 ---
 
-**Data ultima modifica**: 2025-01-27  
-**Versione**: v1.4.2-CORREZIONI-FINALI  
-**Status**: ✅ PRODUZIONE READY
+## 📊 Riepilogo Modifiche Cumulative
 
-# 📌 RISOLUZIONE PROBLEMA use_secondary_plane - 2025-06-02
+### Campi Totali Aggiunti (v1.4.16 + v1.4.17):
+1. **`invalid: bool`** - Tracking overlap nel layout
+2. **`overlaps: Optional[List[Dict]]`** - Dettagli overlap per debug
+3. **`rotation_used: bool`** - Tracking utilizzo rotazione
 
-## 🔧 Problema Identificato
-- **Errore**: `'Autoclave' object has no attribute 'use_secondary_plane'`
-- **Causa**: Codice che accede direttamente all'attributo `use_secondary_plane` rimosso dal modello `Autoclave`
-- **Impatto**: Generazione nesting fallisce con errore di attributo mancante
+### Formule Aggiornate:
+- **Efficiency Score**: 0.7·area + 0.3·vacuum → **0.8·area + 0.2·vacuum**
 
-## ✅ Modifiche Applicate
-
-### 1. File: `backend/services/nesting_service.py`
-- **Linea 262**: ✅ Già corretto con `getattr(autoclave, 'use_secondary_plane', False)`
-
-### 2. File: `backend/api/routers/batch_nesting.py`  
-- **Linea 315**: ✅ Già corretto con `getattr(autoclave, 'use_secondary_plane', False)`
-
-### 3. File: `backend/models/batch_nesting.py`
-- **Linea 116**: ✅ Già corretto con `getattr(self.autoclave, 'use_secondary_plane', False)`
-
-### 4. File: `unused/backend/nesting_service.py`
-- **Linea 949**: ✅ Corretto da `autoclave.use_secondary_plane` a `getattr(autoclave, 'use_secondary_plane', False)`
-- **Linea 988**: ✅ Corretto da `autoclave.use_secondary_plane` a `getattr(autoclave, 'use_secondary_plane', False)`
-- **Linea 1520**: ✅ Corretto da `autoclave.use_secondary_plane` a `getattr(autoclave, 'use_secondary_plane', False)`
-
-### 5. File: `backend/check_nesting_data.py`
-- **Linea 72**: ✅ Rimosso `use_secondary_plane` dalla query SQL
-- **Linea 82**: ✅ Aggiornato messaggio per indicare che il piano secondario non è più supportato
-
-## 🚨 Problema Persistente
-- **Causa**: Server backend ha moduli Python in cache
-- **Soluzione**: Riavvio del server backend necessario per caricare le modifiche
-
-## 📋 Prossimi Passi
-1. **Riavviare il server backend** per forzare il ricaricamento dei moduli
-2. **Testare nuovamente** la generazione nesting
-3. **Verificare** che l'errore `use_secondary_plane` non si presenti più
-
-## 🔍 File Verificati e Corretti
-- ✅ `backend/services/nesting_service.py` 
-- ✅ `backend/api/routers/batch_nesting.py`
-- ✅ `backend/models/batch_nesting.py`
-- ✅ `unused/backend/nesting_service.py`
-- ✅ `backend/check_nesting_data.py`
-
-## 📊 Test di Verifica
-- **Script**: `test_fix_verification.py`
-- **Stato**: ❌ Fallisce (server cache)
-- **Comando**: `python test_fix_verification.py`
-
----
-
-# 🔧 CORREZIONI CRITICHE NESTING PREVIEW - v1.4.12-FIXED
-
-**Data**: 2025-06-02  
-**Priorità**: CRITICA  
-**Impatto**: Risolve statistiche errate nella preview del nesting  
-
-## ❌ PROBLEMI RISOLTI
-
-### 1. Conversione Errata Area mm² → cm²
-- **File**: `backend/api/routers/batch_nesting.py:979`
-- **Fix**: Cambiato `/100.0` in `/10000.0` per conversione corretta
-- **Impatto**: Efficienza ora realistica (70-85% invece di ~46%)
-
-### 2. Inconsistenza Status ODL
-- **File**: `backend/api/routers/batch_nesting.py:208`  
-- **Fix**: Endpoint `/data` ora usa status `"Preparazione"` come `/solve`
-- **Impatto**: ODL consistenti tra lista e preview
-
-### 3. Statistiche Non Realistiche
-- **Prima**: Area utilizzata ~112.5 cm² (troppo bassa)
-- **Dopo**: Area utilizzata ~11,250 cm² (realistica)
-
-## ✅ FILE MODIFICATI
-- `backend/api/routers/batch_nesting.py` (2 correzioni)
-- `test_nesting_preview_fix.py` (nuovo script di test)
-- `NESTING_PREVIEW_FIXES_REPORT.md` (documentazione completa)
-
----
-
-# 📊 RIASSUNTO SCHEMA DATABASE - CarbonPilot
+### Algorithm Status Aggiornati:
+- **FALLBACK_GREEDY** → **BL_FFD_FALLBACK**
+- Nuovi status CP-SAT con rotazione supportata

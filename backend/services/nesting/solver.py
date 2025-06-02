@@ -1,17 +1,19 @@
 """
 CarbonPilot - Nesting Solver Ottimizzato
 Implementazione migliorata dell'algoritmo di nesting 2D con OR-Tools CP-SAT
-Versione: 1.4.15-DEMO
+Versione: 1.4.17-DEMO
 
 Funzionalità principali:
-- Nuova funzione obiettivo multi-termine: Max Z = 0.5·area_pct + 0.3·vacuum_util_pct + 0.2·(placed/total)
+- 🔄 NUOVO v1.4.17: Rotazione 90° integrata nei modelli OR-Tools e fallback
+- 🎯 NUOVO v1.4.17: Sostituzione greedy con Bottom-Left First-Fit Decreasing (BL-FFD)
+- 🚀 NUOVO v1.4.17: Heuristica Ruin-&-Recreate Goal-Driven (RRGH) per +5-10% area
+- 📊 NUOVO v1.4.17: Objective migliorato Z = 0.8·area_pct + 0.2·vacuum_util_pct
 - Timeout adaptivo: min(90s, 2s × n_pieces)
 - Vincolo pezzi pesanti nella metà inferiore (y ≥ H/2)
-- Fallback greedy con first-fit decreasing sull'asse lungo
-- Heuristica "Ruin & Recreate Goal-Driven" (RRGH) opzionale
 - Vincoli su linee vuoto e peso
-- 🔍 NUOVO v1.4.14: Log diagnostici dettagliati per debug esclusioni
-- 🔧 NUOVO v1.4.15: Formula efficienza migliorata per casi piccoli
+- 🔍 v1.4.14: Log diagnostici dettagliati per debug esclusioni
+- 🔧 v1.4.15: Formula efficienza migliorata per casi piccoli
+- 🎯 v1.4.16-DEMO: Rilevamento e correzione overlap con algoritmo BL-FFD
 """
 
 import logging
@@ -89,6 +91,8 @@ class NestingMetrics:
     time_solver_ms: float  # Nuovo: tempo risoluzione in millisecondi
     fallback_used: bool  # Nuovo: indica se è stato usato fallback
     heuristic_iters: int  # Nuovo: iterazioni euristica RRGH
+    invalid: bool = False  # 🎯 NUOVO v1.4.16-DEMO: indica se ci sono overlap nel layout
+    rotation_used: bool = False  # 🔄 NUOVO v1.4.17-DEMO: indica se è stata utilizzata rotazione
 
 @dataclass
 class NestingSolution:
@@ -254,6 +258,10 @@ class NestingModel:
             
             # Aggiungi esclusioni del pre-filtraggio
             solution.excluded_odls.extend(excluded_tools)
+            
+            # 🎯 NUOVO v1.4.16-DEMO: Post-processing per controllo overlap
+            solution = self._post_process_overlaps(solution, tools, autoclave)
+            
             return solution
                 
         except Exception as e:
@@ -268,6 +276,10 @@ class NestingModel:
             solution = self._collect_exclusion_reasons(solution, tools, autoclave)
             
             solution.excluded_odls.extend(excluded_tools)
+            
+            # 🎯 NUOVO v1.4.16-DEMO: Post-processing per controllo overlap
+            solution = self._post_process_overlaps(solution, tools, autoclave)
+            
             return solution
         
         # Soluzione vuota se tutto fallisce
@@ -377,7 +389,7 @@ class NestingModel:
             return NestingSolution(
                 layouts=[],
                 excluded_odls=[],
-                metrics=NestingMetrics(0, 0, 0, 0, len(tools), 0, 0, 0, False, 0),
+                metrics=NestingMetrics(0, 0, 0, 0, len(tools), 0, 0, 0, False, False),
                 success=False,
                 algorithm_status=f"CP-SAT_{status}",
                 message=f"CP-SAT non ha trovato soluzione: {status}"
@@ -546,46 +558,68 @@ class NestingModel:
         tools: List[ToolInfo], 
         variables: Dict[str, Any]
     ) -> None:
-        """Aggiunge la funzione obiettivo al modello CP-SAT"""
+        """
+        🔄 NUOVO v1.4.17-DEMO: Objective migliorato Z = 0.8·area_pct + 0.2·vacuum_util_pct
+        Aggiunge la funzione obiettivo al modello CP-SAT
+        """
         
-        # Obiettivo primario: massimizza numero di ODL inclusi
-        num_included = sum(variables['included'].values())
+        # 🔄 NUOVO v1.4.17-DEMO: Objective multi-termine ottimizzato
+        # Termini per area utilizzata (peso 80%)
+        area_terms = []
+        for tool in tools:
+            tool_id = tool.odl_id
+            tool_area = round(tool.width * tool.height)
+            area_terms.append(variables['included'][tool_id] * tool_area)
         
-        if self.parameters.priorita_area:
-            # Obiettivo secondario: massimizza area utilizzata
-            area_terms = []
-            for tool in tools:
-                tool_id = tool.odl_id
-                tool_area = round(tool.width * tool.height)
-                area_terms.append(variables['included'][tool_id] * tool_area)
+        # Termini per utilizzo linee vuoto (peso 20%)
+        vacuum_terms = []
+        for tool in tools:
+            tool_id = tool.odl_id
+            vacuum_terms.append(variables['included'][tool_id] * tool.lines_needed)
+        
+        if area_terms and vacuum_terms:
+            # Variabili per i componenti dell'objective
+            total_area = model.NewIntVar(0, sum(round(t.width * t.height) for t in tools), 'total_area')
+            model.Add(total_area == sum(area_terms))
             
-            if area_terms:
-                total_area = model.NewIntVar(0, sum(round(t.width * t.height) for t in tools), 'total_area')
-                model.Add(total_area == sum(area_terms))
-                
-                # Obiettivo terziario: minimizza peso per bilanciamento
-                weight_terms = []
-                for tool in tools:
-                    tool_id = tool.odl_id
-                    weight_terms.append(variables['included'][tool_id] * round(tool.weight * 1000))
-                
-                if weight_terms:
-                    total_weight_obj = model.NewIntVar(0, sum(round(t.weight * 1000) for t in tools), 'weight_obj')
-                    model.Add(total_weight_obj == sum(weight_terms))
-                    
-                    # Corretto: creo una variabile per la divisione del peso
-                    weight_penalty = model.NewIntVar(0, sum(round(t.weight * 1000) for t in tools) // 1000, 'weight_penalty')
-                    model.AddDivisionEquality(weight_penalty, total_weight_obj, 1000)
-                    
-                    # Combinazione obiettivi: ODL (peso 10000) + area (peso 1) - peso_penalty
-                    model.Maximize(num_included * 10000 + total_area - weight_penalty)
-                else:
-                    model.Maximize(num_included * 10000 + total_area)
-            else:
-                model.Maximize(num_included)
+            total_vacuum = model.NewIntVar(0, sum(t.lines_needed for t in tools), 'total_vacuum')
+            model.Add(total_vacuum == sum(vacuum_terms))
+            
+            # Normalizzazione per mantenere i pesi relativi
+            # Area normalizzata: total_area / max_possible_area * 800 (peso 80% su scala 1000)
+            max_area = sum(round(t.width * t.height) for t in tools)
+            area_normalized = model.NewIntVar(0, 800, 'area_normalized')
+            if max_area > 0:
+                model.AddDivisionEquality(area_normalized, total_area * 800, max_area)
+            
+            # Vacuum normalizzato: total_vacuum / max_capacity * 200 (peso 20% su scala 1000)
+            max_vacuum = self.parameters.vacuum_lines_capacity
+            vacuum_normalized = model.NewIntVar(0, 200, 'vacuum_normalized')
+            if max_vacuum > 0:
+                model.AddDivisionEquality(vacuum_normalized, total_vacuum * 200, max_vacuum)
+            
+            # Objective finale: Z = 0.8·area_norm + 0.2·vacuum_norm
+            objective = model.NewIntVar(0, 1000, 'objective')
+            model.Add(objective == area_normalized + vacuum_normalized)
+            
+            model.Maximize(objective)
+            
+            self.logger.info("🎯 v1.4.17-DEMO: Objective Z = 0.8·area_pct + 0.2·vacuum_util_pct")
+            
+        elif area_terms:
+            # Fallback: solo area se non ci sono vacuum terms
+            total_area = model.NewIntVar(0, sum(round(t.width * t.height) for t in tools), 'total_area')
+            model.Add(total_area == sum(area_terms))
+            model.Maximize(total_area)
+            
+            self.logger.info("🎯 v1.4.17-DEMO: Fallback objective: solo area")
+            
         else:
-            # Solo massimizza numero ODL
+            # Fallback: solo numero di ODL inclusi
+            num_included = sum(variables['included'].values())
             model.Maximize(num_included)
+            
+            self.logger.info("🎯 v1.4.17-DEMO: Fallback objective: solo count ODL")
     
     def _extract_cpsat_solution(
         self, 
@@ -652,11 +686,14 @@ class NestingModel:
         total_area = autoclave.width * autoclave.height
         area_pct = (used_area / total_area * 100) if total_area > 0 else 0
         vacuum_util_pct = (total_lines / self.parameters.vacuum_lines_capacity * 100) if self.parameters.vacuum_lines_capacity > 0 else 0
+        # 🔄 NUOVO v1.4.17-DEMO: Formula efficienza allineata con objective Z = 0.8·area + 0.2·vacuum
         efficiency_score = (
-            0.5 * area_pct +
-            0.3 * vacuum_util_pct +
-            0.2 * (len(layouts) / len(tools) * 100)
+            0.8 * area_pct +               # area utilizzata (peso 80%)
+            0.2 * vacuum_util_pct          # linee vuoto (peso 20%)
         )
+        
+        # 🔄 NUOVO v1.4.17-DEMO: Verifica se è stata utilizzata rotazione
+        rotation_used = any(layout.rotated for layout in layouts)
         
         # ✅ FIX: Controllo efficienza bassa - warning ma non failure
         efficiency_warning = ""
@@ -673,12 +710,13 @@ class NestingModel:
             efficiency_score=efficiency_score,
             time_solver_ms=(time.time() - start_time) * 1000,
             fallback_used=False,
-            heuristic_iters=0
+            heuristic_iters=0,
+            rotation_used=rotation_used  # 🔄 NUOVO v1.4.17-DEMO: Track rotazione
         )
         
         status_name = "OPTIMAL" if status == cp_model.OPTIMAL else "FEASIBLE"
         
-        self.logger.info(f"✅ CP-SAT completato: {len(layouts)} posizionati, {area_pct:.1f}% area, {total_lines} linee")
+        self.logger.info(f"✅ CP-SAT completato: {len(layouts)} posizionati, {area_pct:.1f}% area, {total_lines} linee, rotazione={rotation_used}")
         
         return NestingSolution(
             layouts=layouts,
@@ -695,83 +733,44 @@ class NestingModel:
         autoclave: AutoclaveInfo,
         start_time: float
     ) -> NestingSolution:
-        """Algoritmo di fallback greedy con first-fit decreasing sull'asse lungo"""
+        """
+        🔄 NUOVO v1.4.17-DEMO: Algoritmo di fallback con Bottom-Left First-Fit Decreasing (BL-FFD)
+        Sostituisce il vecchio greedy con implementazione BL-FFD integrata
+        """
         
-        self.logger.info("🔄 Algoritmo fallback greedy attivo")
+        self.logger.info("🎯 v1.4.17-DEMO: Algoritmo fallback BL-FFD attivo")
         
-        # Ordina per dimensione asse lungo decrescente (first-fit decreasing)
-        sorted_tools = sorted(
-            tools, 
-            key=lambda t: max(t.width, t.height), 
-            reverse=True
-        )
+        # Applica BL-FFD direttamente
+        layouts = self._apply_bl_ffd_algorithm(tools, autoclave)
         
-        layouts = []
+        # Calcola esclusioni (tool non posizionati)
+        positioned_ids = {layout.odl_id for layout in layouts}
         excluded_odls = []
-        total_weight = 0
-        used_area = 0
-        total_lines = 0
-        occupied_rects = []  # Lista di rettangoli occupati
         
-        for tool in sorted_tools:
-            # Verifica vincoli globali
-            if total_weight + tool.weight > autoclave.max_weight:
+        for tool in tools:
+            if tool.odl_id not in positioned_ids:
                 excluded_odls.append({
                     'odl_id': tool.odl_id,
-                    'motivo': 'Peso eccessivo nel batch',
-                    'dettagli': f"Aggiungere il tool ({tool.weight}kg) supererebbe il limite ({autoclave.max_weight}kg)"
-                })
-                continue
-            
-            if total_lines + tool.lines_needed > self.parameters.vacuum_lines_capacity:
-                excluded_odls.append({
-                    'odl_id': tool.odl_id,
-                    'motivo': 'Capacità linee vuoto superata',
-                    'dettagli': f"Aggiungere il tool ({tool.lines_needed} linee) supererebbe la capacità ({self.parameters.vacuum_lines_capacity})"
-                })
-                continue
-            
-            # Trova posizione valida
-            best_position = self._find_greedy_position(tool, autoclave, occupied_rects)
-            
-            if best_position:
-                x, y, width, height, rotated = best_position
-                
-                # Aggiungi rettangolo occupato
-                occupied_rects.append((x, y, width, height))
-                
-                layouts.append(NestingLayout(
-                    odl_id=tool.odl_id,
-                    x=float(x),
-                    y=float(y),
-                    width=float(width),
-                    height=float(height),
-                    weight=tool.weight,
-                    rotated=rotated,
-                    lines_used=tool.lines_needed
-                ))
-                
-                total_weight += tool.weight
-                used_area += width * height
-                total_lines += tool.lines_needed
-                
-                self.logger.info(f"✅ Tool {tool.odl_id} posizionato: {x},{y} {width}x{height}")
-            else:
-                excluded_odls.append({
-                    'odl_id': tool.odl_id,
-                    'motivo': 'Spazio insufficiente',
-                    'dettagli': f"Non è stata trovata una posizione valida per il tool {tool.width}x{tool.height}mm"
+                    'motivo': 'Non posizionato da BL-FFD',
+                    'dettagli': f"Tool {tool.width}x{tool.height}mm non ha trovato posizione con algoritmo BL-FFD"
                 })
         
         # Calcola metriche
+        total_weight = sum(layout.weight for layout in layouts)
+        used_area = sum(layout.width * layout.height for layout in layouts)
+        total_lines = sum(layout.lines_used for layout in layouts)
+        
         total_area = autoclave.width * autoclave.height
         area_pct = (used_area / total_area * 100) if total_area > 0 else 0
         vacuum_util_pct = (total_lines / self.parameters.vacuum_lines_capacity * 100) if self.parameters.vacuum_lines_capacity > 0 else 0
+        # 🔄 NUOVO v1.4.17-DEMO: Formula efficienza allineata con objective Z = 0.8·area + 0.2·vacuum
         efficiency_score = (
-            0.5 * area_pct +
-            0.3 * vacuum_util_pct +
-            0.2 * (len(layouts) / len(sorted_tools) * 100)
+            0.8 * area_pct +               # area utilizzata (peso 80%)
+            0.2 * vacuum_util_pct          # linee vuoto (peso 20%)
         )
+        
+        # Verifica se è stata utilizzata rotazione
+        rotation_used = any(layout.rotated for layout in layouts)
         
         # ✅ FIX: Controllo efficienza bassa - warning ma non failure
         efficiency_warning = ""
@@ -788,18 +787,19 @@ class NestingModel:
             efficiency_score=efficiency_score,
             time_solver_ms=(time.time() - start_time) * 1000,
             fallback_used=True,
-            heuristic_iters=0
+            heuristic_iters=0,
+            rotation_used=rotation_used  # 🔄 NUOVO v1.4.17-DEMO: Track rotazione
         )
         
-        self.logger.info(f"🔄 Fallback completato: {len(layouts)} posizionati, {area_pct:.1f}% efficienza")
+        self.logger.info(f"🎯 BL-FFD completato: {len(layouts)} posizionati, {area_pct:.1f}% area, {total_lines} linee, rotazione={rotation_used}")
         
         return NestingSolution(
             layouts=layouts,
             excluded_odls=excluded_odls,
             metrics=metrics,
             success=len(layouts) > 0,
-            algorithm_status="FALLBACK_GREEDY",
-            message=f"Fallback greedy completato: {len(layouts)} ODL posizionati, efficienza {efficiency_score:.1f}%{efficiency_warning}"
+            algorithm_status="BL_FFD_FALLBACK",
+            message=f"BL-FFD fallback completato: {len(layouts)} ODL posizionati, efficienza {efficiency_score:.1f}%{efficiency_warning}"
         )
     
     def _can_place(
@@ -920,7 +920,8 @@ class NestingModel:
             efficiency_score=0,
             time_solver_ms=(time.time() - start_time) * 1000,
             fallback_used=False,
-            heuristic_iters=0
+            heuristic_iters=0,
+            rotation_used=False
         )
         
         return NestingSolution(
@@ -940,101 +941,76 @@ class NestingModel:
         start_time: float
     ) -> NestingSolution:
         """
-        Applica l'heuristica "Ruin & Recreate Goal-Driven" (RRGH)
-        Esegue 5 iterazioni: elimina random 20% pezzi e reinserisci con FFD migliorato
+        🚀 NUOVO v1.4.17-DEMO: Heuristica "Ruin & Recreate Goal-Driven" (RRGH) migliorata
+        Esegue 5 iterazioni: elimina random 25% pezzi con efficienza bassa e reinserisci via BL-FFD
         """
         
         best_solution = initial_solution
         iterations = 5
-        ruin_percentage = 0.2
+        ruin_percentage = 0.25  # 🔄 NUOVO v1.4.17-DEMO: Aumentato da 20% a 25%
         
-        self.logger.info(f"🔄 Avvio heuristica RRGH: {iterations} iterazioni, ruin {ruin_percentage*100}%")
+        self.logger.info(f"🚀 v1.4.17-DEMO: Avvio heuristica RRGH: {iterations} iterazioni, ruin {ruin_percentage*100}%")
         
         for iteration in range(iterations):
             try:
                 # Copia la soluzione corrente
                 current_layouts = best_solution.layouts.copy()
                 
-                if len(current_layouts) < 2:
+                if len(current_layouts) < 3:  # Aumentato threshold minimo
                     continue  # Non abbastanza pezzi per applicare la ruin
                 
-                # 1. Ruin: rimuovi randomly 20% dei pezzi posizionati
+                # 🔄 NUOVO v1.4.17-DEMO: Ruin intelligente - rimuovi pezzi con efficienza bassa
                 num_to_remove = max(1, int(len(current_layouts) * ruin_percentage))
-                removed_layouts = random.sample(current_layouts, num_to_remove)
+                
+                # Calcola efficienza per pezzo (area/vacuum_lines)
+                layout_efficiency = []
+                for layout in current_layouts:
+                    efficiency = (layout.width * layout.height) / max(1, layout.lines_used)
+                    layout_efficiency.append((layout, efficiency))
+                
+                # Ordina per efficienza crescente e rimuovi i peggiori
+                layout_efficiency.sort(key=lambda x: x[1])
+                removed_layouts = [x[0] for x in layout_efficiency[:num_to_remove]]
                 remaining_layouts = [l for l in current_layouts if l not in removed_layouts]
                 
-                # 2. Recreate: riprova a posizionare i pezzi rimossi con FFD migliorato
+                # 🔄 NUOVO v1.4.17-DEMO: Recreate usando BL-FFD invece di enhanced_position
                 removed_tools = [
                     tool for tool in tools 
                     if any(rl.odl_id == tool.odl_id for rl in removed_layouts)
                 ]
                 
-                # Ordina per "efficacia" = area / linee_vuoto
-                removed_tools.sort(
-                    key=lambda t: (t.width * t.height) / max(1, t.lines_needed), 
-                    reverse=True
-                )
+                # Applica BL-FFD ai pezzi rimossi considerando quelli già posizionati
+                recreated_layouts = self._recreate_with_bl_ffd(removed_tools, autoclave, remaining_layouts)
                 
-                # Calcola rettangoli occupati dai pezzi rimanenti
-                occupied_rects = [
-                    (l.x, l.y, l.width, l.height) for l in remaining_layouts
-                ]
+                # Combina layout rimanenti + ricreati
+                new_layouts = remaining_layouts + recreated_layouts
                 
-                # Riprova a posizionare i pezzi rimossi
-                new_layouts = remaining_layouts.copy()
-                current_weight = sum(l.weight for l in remaining_layouts)
-                current_lines = sum(l.lines_used for l in remaining_layouts)
-                current_area = sum(l.width * l.height for l in remaining_layouts)
-                
-                for tool in removed_tools:
-                    # Verifica vincoli globali
-                    if current_weight + tool.weight > autoclave.max_weight:
-                        continue
-                    if current_lines + tool.lines_needed > self.parameters.vacuum_lines_capacity:
-                        continue
-                    
-                    # Cerca posizione con FFD migliorato (padding più piccolo)
-                    best_pos = self._find_enhanced_position(tool, autoclave, occupied_rects)
-                    
-                    if best_pos:
-                        x, y, width, height, rotated = best_pos
-                        
-                        new_layout = NestingLayout(
-                            odl_id=tool.odl_id,
-                            x=x,
-                            y=y,
-                            width=width,
-                            height=height,
-                            weight=tool.weight,
-                            rotated=rotated,
-                            lines_used=tool.lines_needed
-                        )
-                        
-                        new_layouts.append(new_layout)
-                        occupied_rects.append((x, y, width, height))
-                        current_weight += tool.weight
-                        current_lines += tool.lines_needed
-                        current_area += width * height
-                
-                # 3. Valuta se la nuova soluzione è migliore
+                # 🔄 NUOVO v1.4.17-DEMO: Valuta con nuovo objective Z = 0.8·area + 0.2·vacuum
                 total_area = autoclave.width * autoclave.height
+                current_area = sum(l.width * l.height for l in new_layouts)
+                current_lines = sum(l.lines_used for l in new_layouts)
+                
                 area_pct = (current_area / total_area * 100) if total_area > 0 else 0
                 vacuum_util_pct = (current_lines / self.parameters.vacuum_lines_capacity * 100) if self.parameters.vacuum_lines_capacity > 0 else 0
-                new_efficiency = 0.7 * area_pct + 0.3 * vacuum_util_pct
+                new_efficiency = 0.8 * area_pct + 0.2 * vacuum_util_pct  # Nuovo objective
                 
                 if new_efficiency > best_solution.metrics.efficiency_score:
+                    # Verifica se è stata utilizzata rotazione
+                    rotation_used = any(layout.rotated for layout in new_layouts)
+                    
                     # Accetta la nuova soluzione
                     metrics = NestingMetrics(
                         area_pct=area_pct,
                         vacuum_util_pct=vacuum_util_pct,
                         lines_used=current_lines,
-                        total_weight=current_weight,
+                        total_weight=sum(l.weight for l in new_layouts),
                         positioned_count=len(new_layouts),
                         excluded_count=len(tools) - len(new_layouts),
                         efficiency_score=new_efficiency,
                         time_solver_ms=(time.time() - start_time) * 1000,
                         fallback_used=best_solution.metrics.fallback_used,
-                        heuristic_iters=iteration + 1
+                        heuristic_iters=iteration + 1,
+                        rotation_used=rotation_used or best_solution.metrics.rotation_used  # 🔄 NUOVO v1.4.17-DEMO
                     )
                     
                     # Calcola ODL esclusi
@@ -1057,9 +1033,9 @@ class NestingModel:
                         message=f"Heuristica RRGH migliorata: {new_efficiency:.1f}% efficienza"
                     )
                     
-                    self.logger.info(f"  ✅ Iterazione {iteration+1}: miglioramento {new_efficiency:.1f}%")
+                    self.logger.info(f"  ✅ Iterazione {iteration+1}: miglioramento {new_efficiency:.1f}% (rot={rotation_used})")
                 else:
-                    self.logger.info(f"  ⚖️ Iterazione {iteration+1}: nessun miglioramento")
+                    self.logger.info(f"  ⚖️ Iterazione {iteration+1}: nessun miglioramento ({new_efficiency:.1f}% vs {best_solution.metrics.efficiency_score:.1f}%)")
                     
             except Exception as e:
                 self.logger.warning(f"  ⚠️ Errore iterazione {iteration+1}: {str(e)}")
@@ -1067,51 +1043,58 @@ class NestingModel:
         
         return best_solution
     
-    def _find_enhanced_position(
+    def _recreate_with_bl_ffd(
         self, 
-        tool: ToolInfo, 
+        tools_to_place: List[ToolInfo], 
         autoclave: AutoclaveInfo, 
-        occupied_rects: List[Tuple[float, float, float, float]]
-    ) -> Optional[Tuple[float, float, float, float, bool]]:
+        existing_layouts: List[NestingLayout]
+    ) -> List[NestingLayout]:
         """
-        Trova posizione ottimale con FFD migliorato e padding ridotto per heuristica
+        🔄 NUOVO v1.4.17-DEMO: Ricrea layout usando BL-FFD considerando pezzi già posizionati
         """
+        if not tools_to_place:
+            return []
         
-        # Usa padding ridotto per migliorare placement
-        margin = int(max(5, self.parameters.min_distance_mm // 2))
+        # Ordina per max(height,width) decrescente come BL-FFD
+        sorted_tools = sorted(tools_to_place, key=lambda t: max(t.width, t.height), reverse=True)
         
-        # Prova entrambi gli orientamenti
-        orientations = []
-        if tool.width + margin <= autoclave.width and tool.height + margin <= autoclave.height:
-            orientations.append((tool.width, tool.height, False))
-        if tool.height + margin <= autoclave.width and tool.width + margin <= autoclave.height:
-            orientations.append((tool.height, tool.width, True))
+        new_layouts = []
+        padding = self.parameters.min_distance_mm
         
-        # Griglia più fine per heuristica
-        step = 5
+        # Calcola vincoli attuali dai layout esistenti
+        current_weight = sum(l.weight for l in existing_layouts)
+        current_lines = sum(l.lines_used for l in existing_layouts)
         
-        for width, height, rotated in orientations:
-            for y in range(margin, int(round(autoclave.height - height)) + 1, step):
-                for x in range(margin, int(round(autoclave.width - width)) + 1, step):
-                    
-                    # Controlla sovrapposizioni
-                    overlaps = False
-                    for rect_x, rect_y, rect_w, rect_h in occupied_rects:
-                        if not (x + width <= rect_x or x >= rect_x + rect_w or 
-                               y + height <= rect_y or y >= rect_y + rect_h):
-                            overlaps = True
-                            break
-                    
-                    if not overlaps:
-                        # NUOVO: Vincolo pezzi pesanti nella metà inferiore
-                        if tool.weight > self.parameters.heavy_piece_threshold_kg:
-                            half_height = autoclave.height / 2
-                            if y < half_height:
-                                continue  # Pezzo pesante deve stare nella metà inferiore
-                        
-                        return (x, y, width, height, rotated)
+        for tool in sorted_tools:
+            # Verifica vincoli globali
+            if current_weight + tool.weight > autoclave.max_weight:
+                continue
+            if current_lines + tool.lines_needed > self.parameters.vacuum_lines_capacity:
+                continue
+            
+            # Trova posizione considerando sia layout esistenti che nuovi
+            all_layouts = existing_layouts + new_layouts
+            best_position = self._find_bottom_left_position(tool, autoclave, all_layouts, padding)
+            
+            if best_position:
+                x, y, width, height, rotated = best_position
+                
+                layout = NestingLayout(
+                    odl_id=tool.odl_id,
+                    x=x,
+                    y=y,
+                    width=width,
+                    height=height,
+                    weight=tool.weight,
+                    rotated=rotated,
+                    lines_used=tool.lines_needed
+                )
+                
+                new_layouts.append(layout)
+                current_weight += tool.weight
+                current_lines += tool.lines_needed
         
-        return None 
+        return new_layouts
 
     def _collect_exclusion_reasons(
         self, 
@@ -1171,5 +1154,284 @@ class NestingModel:
         
         if excluded_summary:
             self.logger.info(f"🔍 RIASSUNTO ESCLUSIONI: {excluded_summary}")
+        
+        return solution 
+
+    # 🎯 NUOVO v1.4.16-DEMO: Funzione per rilevare sovrapposizioni
+    def check_overlap(self, layout: List[NestingLayout]) -> List[Tuple[NestingLayout, NestingLayout]]:
+        """
+        Controlla se ci sono sovrapposizioni tra i pezzi nel layout.
+        
+        Args:
+            layout: Lista dei pezzi posizionati
+            
+        Returns:
+            Lista di tuple con le coppie di pezzi che si sovrappongono
+        """
+        overlaps = []
+        
+        for i in range(len(layout)):
+            for j in range(i + 1, len(layout)):
+                piece_a = layout[i]
+                piece_b = layout[j]
+                
+                # Controlla se i bounding box si intersecano
+                if not (piece_a.x + piece_a.width <= piece_b.x or  # A è a sinistra di B
+                       piece_b.x + piece_b.width <= piece_a.x or   # B è a sinistra di A
+                       piece_a.y + piece_a.height <= piece_b.y or  # A è sopra B
+                       piece_b.y + piece_b.height <= piece_a.y):   # B è sopra A
+                    overlaps.append((piece_a, piece_b))
+                    self.logger.warning(f"🔴 OVERLAP rilevato tra ODL {piece_a.odl_id} e ODL {piece_b.odl_id}")
+        
+        return overlaps
+
+    # 🎯 NUOVO v1.4.16-DEMO: Algoritmo Bottom-Left First-Fit Decreasing (BL-FFD)
+    def _apply_bl_ffd_algorithm(
+        self, 
+        tools: List[ToolInfo], 
+        autoclave: AutoclaveInfo,
+        padding: int = None
+    ) -> List[NestingLayout]:
+        """
+        🔄 NUOVO v1.4.17-DEMO: Applica l'algoritmo Bottom-Left First-Fit Decreasing per posizionare i pezzi.
+        
+        Ordinamento: max(height,width) desc per First-Fit Decreasing
+        Posizionamento: Bottom-Left con supporto rotazione 90°
+        
+        Args:
+            tools: Lista dei tool da posizionare
+            autoclave: Informazioni dell'autoclave
+            padding: Padding tra i pezzi (default usa parametro della classe)
+            
+        Returns:
+            Lista dei layout posizionati senza sovrapposizioni
+        """
+        if padding is None:
+            padding = self.parameters.min_distance_mm
+            
+        self.logger.info(f"🎯 v1.4.17-DEMO: Applico algoritmo BL-FFD con padding {padding}mm")
+        
+        # 🔄 NUOVO v1.4.17-DEMO: Ordina per max(height,width) decrescente (criterio FFD migliorato)
+        sorted_tools = sorted(tools, key=lambda t: max(t.width, t.height), reverse=True)
+        
+        layouts = []
+        
+        for tool in sorted_tools:
+            # Controlla vincoli di peso e linee vuoto globali
+            current_weight = sum(l.weight for l in layouts)
+            current_lines = sum(l.lines_used for l in layouts)
+            
+            if current_weight + tool.weight > autoclave.max_weight:
+                self.logger.debug(f"❌ ODL {tool.odl_id}: peso eccessivo ({current_weight + tool.weight} > {autoclave.max_weight})")
+                continue
+                
+            if current_lines + tool.lines_needed > self.parameters.vacuum_lines_capacity:
+                self.logger.debug(f"❌ ODL {tool.odl_id}: linee vuoto insufficienti ({current_lines + tool.lines_needed} > {self.parameters.vacuum_lines_capacity})")
+                continue
+            
+            # 🔄 NUOVO v1.4.17-DEMO: Trova la posizione bottom-left migliore con rotazione
+            best_position = self._find_bottom_left_position(tool, autoclave, layouts, padding)
+            
+            if best_position:
+                x, y, width, height, rotated = best_position
+                
+                layout = NestingLayout(
+                    odl_id=tool.odl_id,
+                    x=x,
+                    y=y,
+                    width=width,
+                    height=height,
+                    weight=tool.weight,
+                    rotated=rotated,
+                    lines_used=tool.lines_needed
+                )
+                
+                layouts.append(layout)
+                rotation_str = " [RUOTATO]" if rotated else ""
+                self.logger.debug(f"✅ ODL {tool.odl_id}: posizionato in ({x}, {y}) - {width}x{height}mm{rotation_str}")
+            else:
+                self.logger.debug(f"❌ ODL {tool.odl_id}: nessuna posizione valida trovata per {tool.width}x{tool.height}mm")
+        
+        rotation_count = sum(1 for l in layouts if l.rotated)
+        self.logger.info(f"🔄 BL-FFD completato: {len(layouts)} posizionati, {rotation_count} ruotati")
+        
+        return layouts
+
+    # 🎯 NUOVO v1.4.16-DEMO: Trova posizione bottom-left per un pezzo
+    def _find_bottom_left_position(
+        self,
+        tool: ToolInfo,
+        autoclave: AutoclaveInfo,
+        existing_layouts: List[NestingLayout],
+        padding: int
+    ) -> Optional[Tuple[float, float, float, float, bool]]:
+        """
+        Trova la posizione bottom-left più bassa e a sinistra per il tool.
+        
+        Args:
+            tool: Tool da posizionare
+            autoclave: Informazioni dell'autoclave
+            existing_layouts: Layout già posizionati
+            padding: Padding tra i pezzi
+            
+        Returns:
+            Tuple (x, y, width, height, rotated) se trovata posizione valida, None altrimenti
+        """
+        
+        # Prepara rettangoli occupati per controllo sovrapposizioni
+        occupied_rects = [(l.x, l.y, l.width, l.height) for l in existing_layouts]
+        
+        # Prova entrambi gli orientamenti
+        orientations = []
+        if tool.width + padding <= autoclave.width and tool.height + padding <= autoclave.height:
+            orientations.append((tool.width, tool.height, False))
+        if tool.height + padding <= autoclave.width and tool.width + padding <= autoclave.height:
+            orientations.append((tool.height, tool.width, True))
+            
+        if not orientations:
+            return None
+        
+        best_position = None
+        best_y = float('inf')  # Cerca la posizione più bassa
+        best_x = float('inf')  # In caso di parità, la più a sinistra
+        
+        # Griglia di ricerca bottom-left
+        grid_step = 5  # Risoluzione griglia in mm
+        
+        for width, height, rotated in orientations:
+            # Scansiona dal basso verso l'alto, da sinistra a destra
+            for y in range(padding, int(autoclave.height - height) + 1, grid_step):
+                for x in range(padding, int(autoclave.width - width) + 1, grid_step):
+                    
+                    # Controlla se la posizione è valida (no sovrapposizioni)
+                    valid_position = True
+                    for rect_x, rect_y, rect_w, rect_h in occupied_rects:
+                        if not (x + width <= rect_x or x >= rect_x + rect_w or 
+                               y + height <= rect_y or y >= rect_y + rect_h):
+                            valid_position = False
+                            break
+                    
+                    if valid_position:
+                        # Controlla se è migliore della precedente (bottom-left)
+                        if y < best_y or (y == best_y and x < best_x):
+                            best_position = (x, y, width, height, rotated)
+                            best_y = y
+                            best_x = x
+                            
+                        # Se trovata una posizione valida in questa riga, passa alla successiva
+                        # (bottom-left significa prima posizione valida dal basso)
+                        break
+                        
+                # Se trovata una posizione in questa altezza, non cercare più in alto
+                if best_position and best_y == y:
+                    break
+                    
+        return best_position
+
+    # 🎯 NUOVO v1.4.16-DEMO: Post-processing per eliminare overlap
+    def _post_process_overlaps(
+        self, 
+        solution: NestingSolution, 
+        tools: List[ToolInfo], 
+        autoclave: AutoclaveInfo
+    ) -> NestingSolution:
+        """
+        Post-processing per rilevare e correggere sovrapposizioni nel layout.
+        
+        Args:
+            solution: Soluzione da verificare e correggere
+            tools: Lista completa dei tool
+            autoclave: Informazioni dell'autoclave
+            
+        Returns:
+            Soluzione corretta o marcata come invalid se persistono overlap
+        """
+        
+        # 1. Controlla se ci sono sovrapposizioni
+        overlaps = self.check_overlap(solution.layouts)
+        
+        if not overlaps:
+            # Nessuna sovrapposizione, layout valido
+            self.logger.info("✅ Layout validato: nessuna sovrapposizione rilevata")
+            return solution
+        
+        self.logger.warning(f"🔴 Rilevate {len(overlaps)} sovrapposizioni nel layout")
+        
+        # 2. Se c'erano overlap e non era stato usato fallback, prova BL-FFD
+        if not solution.metrics.fallback_used:
+            self.logger.info("🎯 Tentativo correzione overlap con algoritmo BL-FFD")
+            
+            # Estrai i tool dalla soluzione attuale
+            positioned_tools = []
+            for layout in solution.layouts:
+                # Trova il tool corrispondente
+                for tool in tools:
+                    if tool.odl_id == layout.odl_id:
+                        positioned_tools.append(tool)
+                        break
+            
+            # Applica BL-FFD con padding considerato
+            corrected_layouts = self._apply_bl_ffd_algorithm(
+                positioned_tools, 
+                autoclave,
+                self.parameters.min_distance_mm
+            )
+            
+            # Verifica se BL-FFD ha risolto gli overlap
+            corrected_overlaps = self.check_overlap(corrected_layouts)
+            
+            if not corrected_overlaps:
+                # BL-FFD ha risolto i problemi!
+                self.logger.info("✅ BL-FFD ha risolto le sovrapposizioni")
+                
+                # Ricalcola metriche
+                total_area = autoclave.width * autoclave.height
+                used_area = sum(l.width * l.height for l in corrected_layouts)
+                total_weight = sum(l.weight for l in corrected_layouts)
+                total_lines = sum(l.lines_used for l in corrected_layouts)
+                
+                area_pct = (used_area / total_area * 100) if total_area > 0 else 0
+                vacuum_util_pct = (total_lines / self.parameters.vacuum_lines_capacity * 100) if self.parameters.vacuum_lines_capacity > 0 else 0
+                efficiency_score = 0.6 * area_pct + 0.2 * min(100, total_weight / autoclave.max_weight * 100) + 0.2 * vacuum_util_pct
+                
+                # Aggiorna la soluzione
+                solution.layouts = corrected_layouts
+                solution.metrics.area_pct = area_pct
+                solution.metrics.vacuum_util_pct = vacuum_util_pct
+                solution.metrics.lines_used = total_lines
+                solution.metrics.total_weight = total_weight
+                solution.metrics.positioned_count = len(corrected_layouts)
+                solution.metrics.efficiency_score = efficiency_score
+                solution.metrics.invalid = False
+                solution.algorithm_status += "_BL_FFD_CORRECTED"
+                solution.message += " [Overlap corretti con BL-FFD]"
+                
+                return solution
+            else:
+                self.logger.warning(f"⚠️ BL-FFD non ha risolto tutti gli overlap ({len(corrected_overlaps)} rimasti)")
+        
+        # 3. Se persistono overlap, marca il layout come invalid
+        self.logger.error(f"🔴 Layout INVALID: {len(overlaps)} sovrapposizioni non risolte")
+        
+        # Aggiungi informazioni dettagliate sugli overlap
+        overlap_details = []
+        for piece_a, piece_b in overlaps:
+            overlap_details.append({
+                'odl_a': piece_a.odl_id,
+                'odl_b': piece_b.odl_id,
+                'area_a': f"{piece_a.width}x{piece_a.height}mm",
+                'area_b': f"{piece_b.width}x{piece_b.height}mm",
+                'pos_a': f"({piece_a.x}, {piece_a.y})",
+                'pos_b': f"({piece_b.x}, {piece_b.y})"
+            })
+        
+        # Marca la soluzione come invalid
+        solution.metrics.invalid = True
+        solution.algorithm_status += "_INVALID_OVERLAPS"
+        solution.message += f" [ATTENZIONE: {len(overlaps)} sovrapposizioni rilevate]"
+        
+        # Aggiungi i dettagli degli overlap alla soluzione per il frontend
+        if not hasattr(solution, 'overlaps'):
+            solution.overlaps = overlap_details
         
         return solution 

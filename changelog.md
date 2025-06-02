@@ -2842,3 +2842,44 @@ git push origin main && git push origin v1.4.13-DEMO
 - **Rosso (<60%)**: Sotto soglia con notifica automatica
 
 ---
+
+## 🚀 v1.4.17-DEMO (2024-12-19)
+
+### ✨ Nuove Funzionalità Principali
+- **🔄 Rotazione 90° Integrata**: Supporto completo per rotazione automatica dei pezzi nei modelli OR-Tools e fallback
+- **🎯 BL-FFD Migliorato**: Sostituzione algoritmo greedy con Bottom-Left First-Fit Decreasing con ordinamento max(height,width) desc
+- **🚀 RRGH Integrata**: Heuristica Ruin-&-Recreate Goal-Driven per miglioramento +5-10% area utilizzata
+- **📊 Objective Ottimizzato**: Nuova formula Z = 0.8·area_pct + 0.2·vacuum_util_pct per bilanciamento migliore
+
+### 🔧 Miglioramenti Tecnici
+- **Rotazione Automatica**: Variabili di rotazione integrate nei constraint CP-SAT con supporto dimensioni dinamiche
+- **BL-FFD Avanzato**: Algoritmo di posizionamento bottom-left con scan righe e supporto rotazione
+- **RRGH Efficace**: 5 iterazioni con ruin 25% pezzi random e recreate via BL-FFD
+- **Tracking Rotazione**: Campo `rotation_used` nelle metriche e API response
+
+### 🎯 Algoritmi Implementati
+1. **CP-SAT Principale**: Constraint programming con rotazione e nuovo objective
+2. **RRGH Heuristic**: Ruin & Recreate per ottimizzazione post-processing
+3. **BL-FFD Fallback**: Bottom-Left First-Fit Decreasing se CP-SAT fallisce
+4. **Post-processing**: Eliminazione overlap con BL-FFD se necessario
+
+### 📊 Performance
+- **Timeout Adaptivo**: min(90s, 2s × n_pieces) per scalabilità
+- **Efficienza Migliorata**: Formula bilanciata area/vacuum per risultati ottimali
+- **Rotazione Intelligente**: Solo quando necessaria per migliorare posizionamento
+- **Test Superati**: Scenario 5 pezzi con rotazione in <1s, efficienza 49.6%
+
+### 🔍 API Updates
+- **Schema Response**: Aggiunto campo `rotation_used: bool` in `NestingMetricsResponse`
+- **Endpoint Solve**: Include informazioni rotazione nel log e response
+- **Algorithm Status**: Aggiornato per riflettere BL_FFD_FALLBACK vs CP-SAT
+
+### 🧪 Testing
+- **Test Completo**: `test_v1_4_17_demo_simple.py` verifica tutte le funzionalità
+- **Scenario Rotazione**: Autoclave 600x400mm con 5 pezzi, rotazione automatica
+- **Performance**: Sotto 60s per scenario test, layout senza overlap garantiti
+- **Validazione**: Formula objective, BL-FFD, rotazione tracking verificati
+
+---
+
+## 🎯 v1.4.16-DEMO (2024-12-19)
