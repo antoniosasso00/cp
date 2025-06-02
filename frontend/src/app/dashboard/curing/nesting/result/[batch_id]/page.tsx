@@ -89,6 +89,16 @@ interface BatchNestingResult {
   area_totale_utilizzata?: number
   valvole_totali_utilizzate?: number
   note?: string
+  // 🎯 NUOVO v1.4.16-DEMO: Dati per motivi di esclusione
+  odl_esclusi?: Array<{
+    odl_id: number
+    motivo: string
+    dettagli?: string
+    debug_reasons?: string[]
+    motivi_dettagliati?: string
+  }>
+  excluded_reasons?: Record<string, number>
+  metrics?: any
 }
 
 interface Props {
@@ -113,7 +123,7 @@ export default function NestingResultPage({ params }: Props) {
       setLoading(true)
       setError(null)
 
-      // ✅ CORREZIONE: Aggiunto prefisso /v1 per allinearsi alla struttura API del backend
+      // ✅ CORREZIONE: Usa URL relativo per sfruttare il proxy Next.js
       const response = await fetch(`/api/v1/batch_nesting/${params.batch_id}/full`)
       if (!response.ok) {
         if (response.status === 404) {
@@ -313,7 +323,10 @@ export default function NestingResultPage({ params }: Props) {
                   <NestingCanvas 
                     batchData={{
                       configurazione_json: batchData.configurazione_json,
-                      autoclave: batchData.autoclave
+                      autoclave: batchData.autoclave,
+                      odl_esclusi: batchData.odl_esclusi || [],
+                      excluded_reasons: batchData.excluded_reasons || {},
+                      metrics: batchData.metrics
                     }}
                     className="w-full"
                   />

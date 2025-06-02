@@ -1,0 +1,111 @@
+{
+  "timestamp": "2025-06-02T19:52:20.097789",
+  "test_version": "v1.4.13-DEMO",
+  "scenarios": [
+    {
+      "scenario": "A",
+      "success": true,
+      "fallback_used": true,
+      "efficiency_score": 28.40625,
+      "area_pct": 23.4375,
+      "vacuum_pct": 40.0,
+      "time_solver_ms": 3.9184093475341797,
+      "heuristic_iters": 0,
+      "algorithm_status": "FALLBACK_GREEDY",
+      "pieces_positioned": 1,
+      "pieces_excluded": 0,
+      "total_pieces": 1,
+      "excluded_reasons": [],
+      "error_message": null,
+      "timeout": false,
+      "test_duration_ms": 2079.6985626220703
+    },
+    {
+      "scenario": "B",
+      "success": true,
+      "fallback_used": true,
+      "efficiency_score": 41.8125,
+      "area_pct": 46.875,
+      "vacuum_pct": 30.0,
+      "time_solver_ms": 19.742488861083984,
+      "heuristic_iters": 0,
+      "algorithm_status": "FALLBACK_GREEDY",
+      "pieces_positioned": 2,
+      "pieces_excluded": 3,
+      "total_pieces": 6,
+      "excluded_reasons": [
+        "Spazio insufficiente",
+        "Capacità linee vuoto superata"
+      ],
+      "error_message": null,
+      "timeout": false,
+      "test_duration_ms": 2110.8834743499756
+    },
+    {
+      "scenario": "C",
+      "success": false,
+      "fallback_used": false,
+      "efficiency_score": 0.0,
+      "area_pct": 0.0,
+      "vacuum_pct": 0.0,
+      "time_solver_ms": 0.0,
+      "heuristic_iters": 0,
+      "algorithm_status": "NO_ODL_AVAILABLE",
+      "pieces_positioned": 0,
+      "pieces_excluded": 0,
+      "total_pieces": 50,
+      "excluded_reasons": [],
+      "error_message": null,
+      "timeout": false,
+      "test_duration_ms": 2089.3301963806152
+    },
+    {
+      "scenario": "D",
+      "success": false,
+      "fallback_used": false,
+      "efficiency_score": 0.0,
+      "area_pct": 0.0,
+      "vacuum_pct": 0.0,
+      "time_solver_ms": 0.0,
+      "heuristic_iters": 0,
+      "algorithm_status": "HTTP_ERROR",
+      "pieces_positioned": 0,
+      "pieces_excluded": 10,
+      "total_pieces": 10,
+      "excluded_reasons": [
+        "HTTP 422"
+      ],
+      "error_message": "HTTP 422: {\"detail\":[{\"type\":\"less_than_equal\",\"loc\":[\"body\",\"padding_mm\"],\"msg\":\"Input should be less than or equal to 50\",\"input\":100.0,\"ctx\":{\"le\":50.0}},{\"type\":\"less_than_equal\",\"loc\":[\"body\",\"min_distance_mm\"],\"msg\":\"Input should be less than or equal to 30\",\"input\":50.0,\"ctx\":{\"le\":30.0}}]}",
+      "timeout": false,
+      "test_duration_ms": 2085.033893585205
+    },
+    {
+      "scenario": "E",
+      "success": false,
+      "fallback_used": false,
+      "efficiency_score": 0.0,
+      "area_pct": 0.0,
+      "vacuum_pct": 0.0,
+      "time_solver_ms": 0.0,
+      "heuristic_iters": 0,
+      "algorithm_status": "NO_ODL_AVAILABLE",
+      "pieces_positioned": 0,
+      "pieces_excluded": 0,
+      "total_pieces": 15,
+      "excluded_reasons": [],
+      "error_message": null,
+      "timeout": false,
+      "test_duration_ms": 2076.5984058380127
+    }
+  ],
+  "frontend_test": {
+    "page_loaded": false,
+    "canvas_visible": false,
+    "console_errors": [
+      "Playwright non installato"
+    ],
+    "http_errors": [],
+    "load_time_ms": 0.0,
+    "screenshot_path": null
+  }
+}

@@ -19,6 +19,7 @@ from .state_log import StateLog
 from .tempo_fase import TempoFase
 from .nesting_result import NestingResult
 from .batch_nesting import BatchNesting, StatoBatchNestingEnum
+from .batch_history import BatchHistory
 from .schedule_entry import ScheduleEntry, ScheduleEntryStatus, ScheduleEntryType
 from .tempo_produzione import TempoProduzione
 from .report import Report, ReportTypeEnum
@@ -43,6 +44,7 @@ __all__ = [
     "NestingResult",
     "BatchNesting",
     "StatoBatchNestingEnum",
+    "BatchHistory",
     "ScheduleEntry",
     "ScheduleEntryStatus",
     "ScheduleEntryType",

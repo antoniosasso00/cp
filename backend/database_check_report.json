@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-05-31T21:05:28.855730",
+  "timestamp": "2025-06-02T18:50:00.393693",
   "structure_ok": true,
   "data_integrity_ok": true,
   "admin_endpoints_ok": true,
@@ -11,28 +11,63 @@
       ]
     },
     "autoclavi": {
-      "columns": 16,
+      "columns": 15,
       "column_names": [
         "id",
         "nome",
         "codice",
         "lunghezza",
         "larghezza_piano",
-        "num_linee_vuoto",
         "temperatura_max",
         "pressione_max",
+        "max_load_kg",
+        "num_linee_vuoto",
         "stato",
         "produttore",
         "anno_produzione",
         "note",
         "created_at",
-        "updated_at",
-        "max_load_kg",
-        "use_secondary_plane"
+        "updated_at"
+      ]
+    },
+    "batch_history": {
+      "columns": 31,
+      "column_names": [
+        "id",
+        "batch_id",
+        "nome_batch",
+        "autoclave_id",
+        "autoclave_nome",
+        "efficienza_teorica",
+        "efficienza_reale",
+        "peso_caricato_kg",
+        "area_utilizzata_cm2",
+        "valvole_utilizzate",
+        "numero_odl_completati",
+        "numero_odl_falliti",
+        "data_conferma",
+        "data_inizio_caricamento",
+        "data_inizio_cura",
+        "data_fine_cura",
+        "durata_caricamento_minuti",
+        "durata_cura_minuti",
+        "durata_totale_minuti",
+        "temperatura_max_raggiunta",
+        "pressione_max_raggiunta",
+        "configurazione_layout",
+        "parametri_cura",
+        "eventi_critici",
+        "odl_dettagli",
+        "note_operatore",
+        "anomalie_rilevate",
+        "creato_da_utente",
+        "creato_da_ruolo",
+        "created_at",
+        "updated_at"
       ]
     },
     "batch_nesting": {
-      "columns": 21,
+      "columns": 22,
       "column_names": [
         "id",
         "nome",
@@ -54,7 +89,8 @@
         "created_at",
         "updated_at",
         "data_completamento",
-        "durata_ciclo_minuti"
+        "durata_ciclo_minuti",
+        "efficiency"
       ]
     },
     "cataloghi": {
@@ -98,7 +134,7 @@
       ]
     },
     "nesting_results": {
-      "columns": 22,
+      "columns": 20,
       "column_names": [
         "id",
         "autoclave_id",
@@ -119,13 +155,11 @@
         "report_id",
         "peso_totale_kg",
         "area_piano_1",
-        "area_piano_2",
-        "superficie_piano_2_max",
         "batch_id"
       ]
     },
     "odl": {
-      "columns": 9,
+      "columns": 10,
       "column_names": [
         "id",
         "parte_id",
@@ -135,7 +169,8 @@
         "note",
         "created_at",
         "updated_at",
-        "motivo_blocco"
+        "motivo_blocco",
+        "include_in_std"
       ]
     },
     "odl_logs": {
@@ -210,6 +245,18 @@
         "parent_schedule_id",
         "note",
         "estimated_duration_minutes",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "standard_times": {
+      "columns": 7,
+      "column_names": [
+        "id",
+        "part_number",
+        "phase",
+        "minutes",
+        "note",
         "created_at",
         "updated_at"
       ]
@@ -307,8 +354,8 @@
     "cicli_cura": 4,
     "parti": 6,
     "tools": 8,
-    "odl": 4,
-    "nesting_results": 15,
-    "system_logs": 15
+    "odl": 6,
+    "nesting_results": 0,
+    "system_logs": 14
   }
 }

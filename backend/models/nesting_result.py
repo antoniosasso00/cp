@@ -53,8 +53,6 @@ class NestingResult(Base):
     # ✅ NUOVO: Statistiche per nesting su due piani
     peso_totale_kg = Column(Float, default=0.0, doc="Peso totale del carico in kg")
     area_piano_1 = Column(Float, default=0.0, doc="Area utilizzata sul piano 1 in cm²")
-    area_piano_2 = Column(Float, default=0.0, doc="Area utilizzata sul piano 2 in cm²")
-    superficie_piano_2_max = Column(Float, nullable=True, doc="Superficie massima configurabile del piano 2 in cm²")
     
     # Note aggiuntive
     note = Column(Text, nullable=True, doc="Note aggiuntive sul nesting")
@@ -80,18 +78,11 @@ class NestingResult(Base):
         return 0.0
     
     @property
-    def efficienza_piano_2(self) -> float:
-        """Calcola l'efficienza di utilizzo del piano 2"""
-        if self.superficie_piano_2_max and self.superficie_piano_2_max > 0:
-            return (self.area_piano_2 / self.superficie_piano_2_max) * 100
-        return 0.0
-    
-    @property
     def efficienza_totale(self) -> float:
         """Calcola l'efficienza totale di utilizzo"""
-        area_totale_disponibile = self.area_totale + (self.superficie_piano_2_max or 0)
+        area_totale_disponibile = self.area_totale
         if area_totale_disponibile > 0:
-            return ((self.area_piano_1 + self.area_piano_2) / area_totale_disponibile) * 100
+            return (self.area_piano_1 / area_totale_disponibile) * 100
         return 0.0
     
     def __repr__(self):

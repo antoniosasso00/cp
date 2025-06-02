@@ -1,0 +1,116 @@
+{
+  "timestamp": "2025-06-02T21:45:57.022238",
+  "test_version": "v1.4.13-DEMO",
+  "scenarios": [
+    {
+      "scenario": "A",
+      "success": false,
+      "fallback_used": false,
+      "efficiency_score": 0.0,
+      "area_pct": 0.0,
+      "vacuum_pct": 0.0,
+      "time_solver_ms": 0.0,
+      "heuristic_iters": 0,
+      "algorithm_status": "HTTP_ERROR",
+      "pieces_positioned": 0,
+      "pieces_excluded": 1,
+      "total_pieces": 1,
+      "excluded_reasons": [
+        "HTTP 404: {\"detail\":\"Not Found\"}"
+      ],
+      "error_message": "HTTP 404: {\"detail\":\"Not Found\"}",
+      "timeout": false,
+      "test_duration_ms": 2049.3948459625244
+    },
+    {
+      "scenario": "B",
+      "success": false,
+      "fallback_used": false,
+      "efficiency_score": 0.0,
+      "area_pct": 0.0,
+      "vacuum_pct": 0.0,
+      "time_solver_ms": 0.0,
+      "heuristic_iters": 0,
+      "algorithm_status": "HTTP_ERROR",
+      "pieces_positioned": 0,
+      "pieces_excluded": 6,
+      "total_pieces": 6,
+      "excluded_reasons": [
+        "HTTP 404: {\"detail\":\"Not Found\"}"
+      ],
+      "error_message": "HTTP 404: {\"detail\":\"Not Found\"}",
+      "timeout": false,
+      "test_duration_ms": 2028.0632972717285
+    },
+    {
+      "scenario": "C",
+      "success": false,
+      "fallback_used": false,
+      "efficiency_score": 0.0,
+      "area_pct": 0.0,
+      "vacuum_pct": 0.0,
+      "time_solver_ms": 0.0,
+      "heuristic_iters": 0,
+      "algorithm_status": "HTTP_ERROR",
+      "pieces_positioned": 0,
+      "pieces_excluded": 50,
+      "total_pieces": 50,
+      "excluded_reasons": [
+        "HTTP 404: {\"detail\":\"Not Found\"}"
+      ],
+      "error_message": "HTTP 404: {\"detail\":\"Not Found\"}",
+      "timeout": false,
+      "test_duration_ms": 2034.3005657196045
+    },
+    {
+      "scenario": "D",
+      "success": false,
+      "fallback_used": false,
+      "efficiency_score": 0.0,
+      "area_pct": 0.0,
+      "vacuum_pct": 0.0,
+      "time_solver_ms": 0.0,
+      "heuristic_iters": 0,
+      "algorithm_status": "HTTP_ERROR",
+      "pieces_positioned": 0,
+      "pieces_excluded": 10,
+      "total_pieces": 10,
+      "excluded_reasons": [
+        "HTTP 404: {\"detail\":\"Not Found\"}"
+      ],
+      "error_message": "HTTP 404: {\"detail\":\"Not Found\"}",
+      "timeout": false,
+      "test_duration_ms": 2024.2640972137451
+    },
+    {
+      "scenario": "E",
+      "success": false,
+      "fallback_used": false,
+      "efficiency_score": 0.0,
+      "area_pct": 0.0,
+      "vacuum_pct": 0.0,
+      "time_solver_ms": 0.0,
+      "heuristic_iters": 0,
+      "algorithm_status": "HTTP_ERROR",
+      "pieces_positioned": 0,
+      "pieces_excluded": 15,
+      "total_pieces": 15,
+      "excluded_reasons": [
+        "HTTP 404: {\"detail\":\"Not Found\"}"
+      ],
+      "error_message": "HTTP 404: {\"detail\":\"Not Found\"}",
+      "timeout": false,
+      "test_duration_ms": 2048.5482215881348
+    }
+  ],
+  "frontend_test": {
+    "page_loaded": false,
+    "canvas_visible": false,
+    "console_errors": [
+      "Playwright non installato"
+    ],
+    "http_errors": [],
+    "load_time_ms": 0.0,
+    "screenshot_path": null
+  }
+}

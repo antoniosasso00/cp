@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 import os
 import logging
 from dotenv import load_dotenv
+from pathlib import Path
 
 # Carica le variabili d'ambiente dal file .env
 load_dotenv()
@@ -22,8 +23,10 @@ USE_SQLITE = True  # Cambia a False per usare PostgreSQL
 
 # Configurazione del database
 if USE_SQLITE:
-    # SQLite per sviluppo locale
-    DATABASE_URL = "sqlite:///./carbonpilot.db"
+    # SQLite per sviluppo locale - usa path assoluto
+    backend_dir = Path(__file__).parent.parent
+    db_path = backend_dir / "carbonpilot.db"
+    DATABASE_URL = f"sqlite:///{db_path}"
     logger.info("🗃️ Configurazione database: SQLite (locale)")
 else:
     # PostgreSQL per produzione

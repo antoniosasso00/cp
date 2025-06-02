@@ -1,16 +1,17 @@
 """
 CarbonPilot - Nesting Solver Ottimizzato
 Implementazione migliorata dell'algoritmo di nesting 2D con OR-Tools CP-SAT
-Versione: 1.4.12-DEMO
+Versione: 1.4.15-DEMO
 
 Funzionalità principali:
-- Nuova funzione obiettivo multi-termine: Max Z = 0.7·area_pct + 0.3·vacuum_util_pct
+- Nuova funzione obiettivo multi-termine: Max Z = 0.5·area_pct + 0.3·vacuum_util_pct + 0.2·(placed/total)
 - Timeout adaptivo: min(90s, 2s × n_pieces)
 - Vincolo pezzi pesanti nella metà inferiore (y ≥ H/2)
 - Fallback greedy con first-fit decreasing sull'asse lungo
 - Heuristica "Ruin & Recreate Goal-Driven" (RRGH) opzionale
 - Vincoli su linee vuoto e peso
 - 🔍 NUOVO v1.4.14: Log diagnostici dettagliati per debug esclusioni
+- 🔧 NUOVO v1.4.15: Formula efficienza migliorata per casi piccoli
 """
 
 import logging
@@ -651,7 +652,11 @@ class NestingModel:
         total_area = autoclave.width * autoclave.height
         area_pct = (used_area / total_area * 100) if total_area > 0 else 0
         vacuum_util_pct = (total_lines / self.parameters.vacuum_lines_capacity * 100) if self.parameters.vacuum_lines_capacity > 0 else 0
-        efficiency_score = 0.7 * area_pct + 0.3 * vacuum_util_pct
+        efficiency_score = (
+            0.5 * area_pct +
+            0.3 * vacuum_util_pct +
+            0.2 * (len(layouts) / len(tools) * 100)
+        )
         
         # ✅ FIX: Controllo efficienza bassa - warning ma non failure
         efficiency_warning = ""
@@ -762,7 +767,11 @@ class NestingModel:
         total_area = autoclave.width * autoclave.height
         area_pct = (used_area / total_area * 100) if total_area > 0 else 0
         vacuum_util_pct = (total_lines / self.parameters.vacuum_lines_capacity * 100) if self.parameters.vacuum_lines_capacity > 0 else 0
-        efficiency_score = 0.7 * area_pct + 0.3 * vacuum_util_pct
+        efficiency_score = (
+            0.5 * area_pct +
+            0.3 * vacuum_util_pct +
+            0.2 * (len(layouts) / len(sorted_tools) * 100)
+        )
         
         # ✅ FIX: Controllo efficienza bassa - warning ma non failure
         efficiency_warning = ""

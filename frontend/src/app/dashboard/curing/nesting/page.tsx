@@ -56,13 +56,11 @@ interface AutoclaveData {
   pressione_max: number
   max_load_kg: number
   num_linee_vuoto: number
-  use_secondary_plane: boolean
 }
 
 interface NestingParams {
   padding_mm: number
   min_distance_mm: number
-  priorita_area: boolean
 }
 
 export default function NestingPage() {
@@ -83,8 +81,7 @@ export default function NestingPage() {
   // Stati per i parametri
   const [parametri, setParametri] = useState({
     padding_mm: 10,
-    min_distance_mm: 8,
-    priorita_area: false
+    min_distance_mm: 8
   })
 
   // ✅ NUOVO: State per gestire batch recenti
@@ -208,7 +205,7 @@ export default function NestingPage() {
         parametri: {
           padding_mm: parametri.padding_mm,
           min_distance_mm: parametri.min_distance_mm,
-          priorita_area: parametri.priorita_area
+          priorita_area: false
         }
       }
 
@@ -398,9 +395,6 @@ export default function NestingPage() {
                             {autoclave.max_load_kg}kg max |
                             {autoclave.num_linee_vuoto} linee vuoto
                           </p>
-                          {autoclave.use_secondary_plane && (
-                            <p className="text-xs text-blue-600">✓ Piano secondario disponibile</p>
-                          )}
                         </div>
                       </div>
                     ))}
@@ -421,10 +415,10 @@ export default function NestingPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Parametri di nesting */}
+          {/* Parametri essenziali di nesting */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Parametri di Nesting</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="padding">
                   Padding (mm)
@@ -470,33 +464,6 @@ export default function NestingPage() {
                   value={parametri.min_distance_mm}
                   onChange={(e) => setParametri(prev => ({ ...prev, min_distance_mm: parseInt(e.target.value) || 8 }))}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="priority">
-                  Obiettivo Ottimizzazione
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="inline h-4 w-4 ml-1 text-muted-foreground" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Massimizza ODL: posiziona più pezzi possibile. Massimizza Area: ottimizza copertura piano.</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </Label>
-                <Select 
-                  value={parametri.priorita_area ? "area" : "odl"}
-                  onValueChange={(value) => setParametri(prev => ({ ...prev, priorita_area: value === "area" }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="odl">🎯 Massimizza ODL (Raccomandato)</SelectItem>
-                    <SelectItem value="area">📐 Massimizza Area</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
             </div>
           </div>
@@ -552,7 +519,18 @@ export default function NestingPage() {
           )}
 
           {/* Pulsante di generazione */}
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-4">
+            {/* ✅ NUOVO: Pulsante per la preview semplificata */}
+            <Button 
+              variant="outline"
+              onClick={() => router.push('/dashboard/curing/nesting/preview')}
+              className="min-w-[200px]"
+              size="lg"
+            >
+              <Eye className="h-4 w-4 mr-2" />
+              Preview Semplificata
+            </Button>
+            
             <Button 
               onClick={handleGenerateNesting}
               disabled={generating || selectedOdl.length === 0 || selectedAutoclavi.length === 0}

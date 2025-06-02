@@ -88,7 +88,6 @@ def create_successful_nesting():
             "min_distance_mm": 15.0,
             "priorita_area": True,
             "accorpamento_odl": False,
-            "use_secondary_plane": False,
             "max_weight_per_plane_kg": None
         }
         

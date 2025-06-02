@@ -947,7 +947,7 @@ async def select_odl_and_autoclave_automatically(db: Session) -> Dict:
                 area_disponibile = area_piano_base
                 
                 # Se supporta piano secondario e necessario, raddoppia l'area
-                if autoclave.use_secondary_plane and area_totale_richiesta > area_piano_base:
+                if getattr(autoclave, 'use_secondary_plane', False) and area_totale_richiesta > area_piano_base:
                     area_disponibile = area_piano_base * 2
                     print(f"🔄 Autoclave {autoclave.nome}: attivato piano secondario (area: {area_disponibile:.1f}cm²)")
                 
@@ -986,7 +986,7 @@ async def select_odl_and_autoclave_automatically(db: Session) -> Dict:
                             "peso_richiesto": peso_totale_stimato,
                             "carichi_oggi": carichi_oggi,
                             "punteggio": punteggio,
-                            "usa_piano_secondario": area_totale_richiesta > area_piano_base and autoclave.use_secondary_plane
+                            "usa_piano_secondario": area_totale_richiesta > area_piano_base and getattr(autoclave, 'use_secondary_plane', False)
                         }
         
         # ✅ STEP 6: Risultato finale
@@ -1518,7 +1518,7 @@ async def generate_multi_nesting(db: Session) -> Dict:
         area_totale_cm2 = autoclave.area_piano
         valvole_totali = autoclave.num_linee_vuoto or 0
         carico_max_kg = autoclave.max_load_kg or 1000.0
-        use_secondary_plane = autoclave.use_secondary_plane or False
+        use_secondary_plane = getattr(autoclave, 'use_secondary_plane', False)
         
         # Se supporta secondo piano, raddoppia l'area disponibile
         if use_secondary_plane:

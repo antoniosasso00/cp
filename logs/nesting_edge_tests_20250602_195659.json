@@ -1,0 +1,109 @@
+{
+  "timestamp": "2025-06-02T19:56:59.273212",
+  "test_version": "v1.4.13-DEMO",
+  "scenarios": [
+    {
+      "scenario": "A",
+      "success": true,
+      "fallback_used": true,
+      "efficiency_score": 28.40625,
+      "area_pct": 23.4375,
+      "vacuum_pct": 40.0,
+      "time_solver_ms": 4.336118698120117,
+      "heuristic_iters": 0,
+      "algorithm_status": "FALLBACK_GREEDY",
+      "pieces_positioned": 1,
+      "pieces_excluded": 0,
+      "total_pieces": 1,
+      "excluded_reasons": [],
+      "error_message": null,
+      "timeout": false,
+      "test_duration_ms": 2061.044692993164
+    },
+    {
+      "scenario": "B",
+      "success": true,
+      "fallback_used": true,
+      "efficiency_score": 41.8125,
+      "area_pct": 46.875,
+      "vacuum_pct": 30.0,
+      "time_solver_ms": 17.95339584350586,
+      "heuristic_iters": 0,
+      "algorithm_status": "FALLBACK_GREEDY",
+      "pieces_positioned": 2,
+      "pieces_excluded": 3,
+      "total_pieces": 6,
+      "excluded_reasons": [
+        "Spazio insufficiente",
+        "Capacità linee vuoto superata"
+      ],
+      "error_message": null,
+      "timeout": false,
+      "test_duration_ms": 2104.6056747436523
+    },
+    {
+      "scenario": "C",
+      "success": false,
+      "fallback_used": false,
+      "efficiency_score": 0.0,
+      "area_pct": 0.0,
+      "vacuum_pct": 0.0,
+      "time_solver_ms": 0.0,
+      "heuristic_iters": 0,
+      "algorithm_status": "NO_ODL_AVAILABLE",
+      "pieces_positioned": 0,
+      "pieces_excluded": 0,
+      "total_pieces": 50,
+      "excluded_reasons": [],
+      "error_message": null,
+      "timeout": false,
+      "test_duration_ms": 2084.979295730591
+    },
+    {
+      "scenario": "D",
+      "success": false,
+      "fallback_used": false,
+      "efficiency_score": 0.0,
+      "area_pct": 0.0,
+      "vacuum_pct": 0.0,
+      "time_solver_ms": 0.0,
+      "heuristic_iters": 0,
+      "algorithm_status": "NO_ODL_AVAILABLE",
+      "pieces_positioned": 0,
+      "pieces_excluded": 0,
+      "total_pieces": 10,
+      "excluded_reasons": [],
+      "error_message": null,
+      "timeout": false,
+      "test_duration_ms": 2077.7971744537354
+    },
+    {
+      "scenario": "E",
+      "success": false,
+      "fallback_used": false,
+      "efficiency_score": 0.0,
+      "area_pct": 0.0,
+      "vacuum_pct": 0.0,
+      "time_solver_ms": 0.0,
+      "heuristic_iters": 0,
+      "algorithm_status": "NO_ODL_AVAILABLE",
+      "pieces_positioned": 0,
+      "pieces_excluded": 0,
+      "total_pieces": 15,
+      "excluded_reasons": [],
+      "error_message": null,
+      "timeout": false,
+      "test_duration_ms": 2078.2089233398438
+    }
+  ],
+  "frontend_test": {
+    "page_loaded": false,
+    "canvas_visible": false,
+    "console_errors": [
+      "Playwright non installato"
+    ],
+    "http_errors": [],
+    "load_time_ms": 0.0,
+    "screenshot_path": null
+  }
+}

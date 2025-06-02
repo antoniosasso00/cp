@@ -169,7 +169,7 @@ class RobustNestingService:
         
         result = {
             'success': False,
-            'batch_id': None,
+            'batch_id': '',
             'message': '',
             'positioned_tools': [],
             'excluded_odls': [],
@@ -205,6 +205,7 @@ class RobustNestingService:
             if not valid_odl_ids:
                 result['message'] = 'Nessun ODL valido fornito'
                 result['algorithm_status'] = 'NO_VALID_ODL'
+                result['batch_id'] = f'EMPTY_BATCH_{int(datetime.now().timestamp())}'
                 return result
             
             # 5. Validazione autoclavi specifiche
@@ -212,6 +213,7 @@ class RobustNestingService:
             if not valid_autoclave_ids:
                 result['message'] = 'Nessuna autoclave valida fornita'
                 result['algorithm_status'] = 'NO_VALID_AUTOCLAVE'
+                result['batch_id'] = f'EMPTY_BATCH_{int(datetime.now().timestamp())}'
                 return result
             
             # 6. Generazione nesting con algoritmo base
@@ -272,6 +274,12 @@ class RobustNestingService:
                             ]
                             result['efficiency'] = nesting_result.efficiency
                             result['total_weight'] = nesting_result.total_weight
+                    else:
+                        # ✅ FIX: Se creazione batch fallisce, genera ID di fallback
+                        logger.warning(f"⚠️ Creazione batch fallita per autoclave {autoclave_id}")
+                        fallback_batch_id = f'BATCH_FAILED_{autoclave_id}_{int(datetime.now().timestamp())}'
+                        if not result['batch_id']:
+                            result['batch_id'] = fallback_batch_id
                 
                 # Accumula esclusioni
                 all_excluded.extend(nesting_result.excluded_odls)
@@ -290,6 +298,7 @@ class RobustNestingService:
                 result['success'] = False
                 result['algorithm_status'] = 'NO_POSITIONING_POSSIBLE'
                 result['message'] = 'Impossibile posizionare ODL sulle autoclavi disponibili'
+                result['batch_id'] = f'FAILED_BATCH_{int(datetime.now().timestamp())}'
             
             result['excluded_odls'] = all_excluded
             
@@ -301,6 +310,7 @@ class RobustNestingService:
             result['success'] = False
             result['algorithm_status'] = 'ERROR'
             result['message'] = f'Errore imprevisto: {str(e)}'
+            result['batch_id'] = f'ERROR_BATCH_{int(datetime.now().timestamp())}'
             return result
     
     def _validate_odl_list(self, db: Session, odl_ids: List[int]) -> List[int]:
@@ -453,7 +463,7 @@ class RobustNestingService:
             'success': False,
             'algorithm_status': 'FALLBACK_APPLIED',
             'message': 'Sistema non operativo - richiede intervento manuale',
-            'batch_id': None
+            'batch_id': ''
         })
         
         return result
@@ -463,7 +473,8 @@ class RobustNestingService:
         result.update({
             'success': False,
             'algorithm_status': 'NO_ODL_AVAILABLE',
-            'message': 'Nessun ODL in stato "Attesa Cura". Creare nuovi ODL per procedere.'
+            'message': 'Nessun ODL in stato "Attesa Cura". Creare nuovi ODL per procedere.',
+            'batch_id': f'NO_ODL_{int(datetime.now().timestamp())}'
         })
         return result
     
@@ -481,13 +492,15 @@ class RobustNestingService:
                     'success': True,
                     'algorithm_status': 'AUTOCLAVE_FREED',
                     'message': f'{updated} autoclavi liberate automaticamente',
-                    'fixes_applied': [f'Liberate {updated} autoclavi']
+                    'fixes_applied': [f'Liberate {updated} autoclavi'],
+                    'batch_id': f'AUTO_FIX_{int(datetime.now().timestamp())}'
                 })
             else:
                 result.update({
                     'success': False,
                     'algorithm_status': 'NO_AUTOCLAVE_AVAILABLE',
-                    'message': 'Nessuna autoclave disponibile. Verificare stato autoclavi.'
+                    'message': 'Nessuna autoclave disponibile. Verificare stato autoclavi.',
+                    'batch_id': f'NO_AUTOCLAVE_{int(datetime.now().timestamp())}'
                 })
             
             return result
@@ -498,7 +511,8 @@ class RobustNestingService:
             result.update({
                 'success': False,
                 'algorithm_status': 'AUTOCLAVE_FIX_FAILED',
-                'message': f'Impossibile liberare autoclavi: {str(e)}'
+                'message': f'Impossibile liberare autoclavi: {str(e)}',
+                'batch_id': f'FIX_FAILED_{int(datetime.now().timestamp())}'
             })
             return result
     
@@ -507,7 +521,8 @@ class RobustNestingService:
         result.update({
             'success': False,
             'algorithm_status': 'ALGORITHM_FAILED',
-            'message': 'Algoritmo di nesting fallito. Verificare parametri e dati.'
+            'message': 'Algoritmo di nesting fallito. Verificare parametri e dati.',
+            'batch_id': f'ALG_FAILED_{int(datetime.now().timestamp())}'
         })
         return result
     
@@ -516,7 +531,8 @@ class RobustNestingService:
         result.update({
             'success': False,
             'algorithm_status': 'POSITIONING_FAILED',
-            'message': 'Impossibile posizionare tool nelle autoclavi. Verificare dimensioni.'
+            'message': 'Impossibile posizionare tool nelle autoclavi. Verificare dimensioni.',
+            'batch_id': f'POS_FAILED_{int(datetime.now().timestamp())}'
         })
         return result
     
@@ -525,6 +541,7 @@ class RobustNestingService:
         result.update({
             'success': False,
             'algorithm_status': 'DATA_CORRUPTION',
-            'message': 'Dati corrotti rilevati. Verificare integrità database.'
+            'message': 'Dati corrotti rilevati. Verificare integrità database.',
+            'batch_id': f'DATA_CORRUPT_{int(datetime.now().timestamp())}'
         })
         return result 

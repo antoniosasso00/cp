@@ -35,10 +35,6 @@ class Autoclave(Base, TimestampMixin):
     max_load_kg = Column(Float, nullable=True, default=1000.0, 
                         doc="Carico massimo supportato dall'autoclave in kg")
     
-    # ✅ NUOVO: Supporto per piano secondario
-    use_secondary_plane = Column(Boolean, nullable=False, default=False,
-                               doc="Indica se l'autoclave può utilizzare un piano secondario per aumentare la capacità")
-    
     # Stato operativo
     stato = Column(
         PgEnum(StatoAutoclaveEnum, name="statoautoclave", create_type=True, validate_strings=True),

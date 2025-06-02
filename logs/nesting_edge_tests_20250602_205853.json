@@ -1,0 +1,116 @@
+{
+  "timestamp": "2025-06-02T20:58:53.971532",
+  "test_version": "v1.4.13-DEMO",
+  "scenarios": [
+    {
+      "scenario": "A",
+      "success": false,
+      "fallback_used": false,
+      "efficiency_score": 0.0,
+      "area_pct": 0.0,
+      "vacuum_pct": 0.0,
+      "time_solver_ms": 0.0,
+      "heuristic_iters": 0,
+      "algorithm_status": "ERROR",
+      "pieces_positioned": 0,
+      "pieces_excluded": 1,
+      "total_pieces": 1,
+      "excluded_reasons": [
+        "Errore durante test"
+      ],
+      "error_message": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/batch_nesting/solve (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000002198AF487D0>: Failed to establish a new connection: [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione'))",
+      "timeout": false,
+      "test_duration_ms": 4062.225103378296
+    },
+    {
+      "scenario": "B",
+      "success": false,
+      "fallback_used": false,
+      "efficiency_score": 0.0,
+      "area_pct": 0.0,
+      "vacuum_pct": 0.0,
+      "time_solver_ms": 0.0,
+      "heuristic_iters": 0,
+      "algorithm_status": "ERROR",
+      "pieces_positioned": 0,
+      "pieces_excluded": 6,
+      "total_pieces": 6,
+      "excluded_reasons": [
+        "Errore durante test"
+      ],
+      "error_message": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/batch_nesting/solve (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000002198AE9A8B0>: Failed to establish a new connection: [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione'))",
+      "timeout": false,
+      "test_duration_ms": 4060.8973503112793
+    },
+    {
+      "scenario": "C",
+      "success": false,
+      "fallback_used": false,
+      "efficiency_score": 0.0,
+      "area_pct": 0.0,
+      "vacuum_pct": 0.0,
+      "time_solver_ms": 0.0,
+      "heuristic_iters": 0,
+      "algorithm_status": "ERROR",
+      "pieces_positioned": 0,
+      "pieces_excluded": 50,
+      "total_pieces": 50,
+      "excluded_reasons": [
+        "Errore durante test"
+      ],
+      "error_message": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/batch_nesting/solve (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000002198AF45C70>: Failed to establish a new connection: [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione'))",
+      "timeout": false,
+      "test_duration_ms": 4070.6403255462646
+    },
+    {
+      "scenario": "D",
+      "success": false,
+      "fallback_used": false,
+      "efficiency_score": 0.0,
+      "area_pct": 0.0,
+      "vacuum_pct": 0.0,
+      "time_solver_ms": 0.0,
+      "heuristic_iters": 0,
+      "algorithm_status": "ERROR",
+      "pieces_positioned": 0,
+      "pieces_excluded": 10,
+      "total_pieces": 10,
+      "excluded_reasons": [
+        "Errore durante test"
+      ],
+      "error_message": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/batch_nesting/solve (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000002198B2B87C0>: Failed to establish a new connection: [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione'))",
+      "timeout": false,
+      "test_duration_ms": 4067.5835609436035
+    },
+    {
+      "scenario": "E",
+      "success": false,
+      "fallback_used": false,
+      "efficiency_score": 0.0,
+      "area_pct": 0.0,
+      "vacuum_pct": 0.0,
+      "time_solver_ms": 0.0,
+      "heuristic_iters": 0,
+      "algorithm_status": "ERROR",
+      "pieces_positioned": 0,
+      "pieces_excluded": 15,
+      "total_pieces": 15,
+      "excluded_reasons": [
+        "Errore durante test"
+      ],
+      "error_message": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/batch_nesting/solve (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000002198AD7FCE0>: Failed to establish a new connection: [WinError 10061] Impossibile stabilire la connessione. Rifiuto persistente del computer di destinazione'))",
+      "timeout": false,
+      "test_duration_ms": 4079.468250274658
+    }
+  ],
+  "frontend_test": {
+    "page_loaded": false,
+    "canvas_visible": false,
+    "console_errors": [
+      "Playwright non installato"
+    ],
+    "http_errors": [],
+    "load_time_ms": 0.0,
+    "screenshot_path": null
+  }
+}

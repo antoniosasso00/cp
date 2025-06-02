@@ -70,7 +70,7 @@ def check_nesting_data():
         # Autoclavi disponibili
         cursor.execute('''
             SELECT id, nome, codice, stato, larghezza_piano, lunghezza, max_load_kg,
-                   num_linee_vuoto, use_secondary_plane
+                   num_linee_vuoto
             FROM autoclavi
             WHERE stato = 'DISPONIBILE'
             ORDER BY id
@@ -86,7 +86,7 @@ def check_nesting_data():
                 print(f"      Dimensioni: {row[4]}x{row[5]}mm")
                 print(f"      Carico max: {row[6]}kg")
                 print(f"      Linee vuoto: {row[7]}")
-                print(f"      Piano secondario: {'Sì' if row[8] else 'No'}")
+                print(f"      Piano secondario: Non più supportato")
                 print()
         else:
             print("    ❌ Nessuna autoclave disponibile trovata")
