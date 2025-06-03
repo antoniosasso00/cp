@@ -327,7 +327,16 @@ def save_nesting_results(db, results):
                     }
                     for tool in result.positioned_tools
                 ],
-                "plane_assignments": {str(tool.odl_id): 1 for tool in result.positioned_tools}
+                "plane_assignments": {str(tool.odl_id): 1 for tool in result.positioned_tools},
+                # 🎯 NUOVO v1.4.19-DEMO: Metadata per debug SVG ground-truth
+                "autoclave_mm": [
+                    float(autoclave.lunghezza or 3000),  # Larghezza autoclave in mm
+                    float(autoclave.larghezza_piano or 2000)  # Altezza autoclave in mm
+                ],
+                "bounding_px": [
+                    800,  # Larghezza container canvas in px (default)
+                    600   # Altezza container canvas in px (default)
+                ]
             }
             
             # Crea NestingResult nel database

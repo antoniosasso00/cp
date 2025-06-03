@@ -69,7 +69,8 @@ export default function ODLModalImproved({
     priorita: 1,
     status: "Preparazione",
     note: "",
-    motivo_blocco: ""
+    motivo_blocco: "",
+    include_in_std: true
   })
   
   const [parti, setParti] = useState<ParteResponse[]>([])
@@ -107,7 +108,8 @@ export default function ODLModalImproved({
         priorita: editingItem.priorita,
         status: editingItem.status,
         note: editingItem.note || "",
-        motivo_blocco: editingItem.motivo_blocco || ""
+        motivo_blocco: editingItem.motivo_blocco || "",
+        include_in_std: editingItem.include_in_std
       })
       setSelectedParte(editingItem.parte as any)
       setParteSearchQuery(editingItem.parte.part_number)
@@ -119,7 +121,8 @@ export default function ODLModalImproved({
         priorita: 1,
         status: "Preparazione",
         note: "",
-        motivo_blocco: ""
+        motivo_blocco: "",
+        include_in_std: true
       })
       setSelectedParte(null)
       setParteSearchQuery('')

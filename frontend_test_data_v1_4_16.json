@@ -1,0 +1,95 @@
+{
+  "success": true,
+  "message": "Test v1.4.16-DEMO: Layout con overlap per verifica frontend",
+  "positioned_tools": [
+    {
+      "odl_id": 147,
+      "tool_id": 147,
+      "x": 100.0,
+      "y": 100.0,
+      "width": 500.0,
+      "height": 400.0,
+      "rotated": false,
+      "plane": 1,
+      "weight_kg": 40.0
+    },
+    {
+      "odl_id": 148,
+      "tool_id": 148,
+      "x": 350.0,
+      "y": 250.0,
+      "width": 450.0,
+      "height": 350.0,
+      "rotated": false,
+      "plane": 1,
+      "weight_kg": 45.0
+    },
+    {
+      "odl_id": 149,
+      "tool_id": 149,
+      "x": 900.0,
+      "y": 100.0,
+      "width": 400.0,
+      "height": 300.0,
+      "rotated": false,
+      "plane": 1,
+      "weight_kg": 35.0
+    }
+  ],
+  "excluded_odls": [
+    {
+      "odl_id": 150,
+      "reason": "Capacità linee vuoto superata",
+      "part_number": "TEST-PART-150",
+      "tool_dimensions": "600x500mm"
+    }
+  ],
+  "excluded_reasons": {
+    "Capacità linee vuoto superata": 1
+  },
+  "overlaps": [
+    {
+      "odl_a": 147,
+      "odl_b": 148,
+      "area_a": {
+        "x": 100.0,
+        "y": 100.0,
+        "width": 500.0,
+        "height": 400.0
+      },
+      "area_b": {
+        "x": 350.0,
+        "y": 250.0,
+        "width": 450.0,
+        "height": 350.0
+      },
+      "overlap_area_cm2": 18750.0,
+      "severity": "high"
+    }
+  ],
+  "metrics": {
+    "area_utilization_pct": 65.5,
+    "vacuum_util_pct": 75.0,
+    "efficiency_score": 68.25,
+    "weight_utilization_pct": 48.0,
+    "time_solver_ms": 1250.0,
+    "fallback_used": true,
+    "heuristic_iters": 0,
+    "algorithm_status": "FALLBACK_GREEDY_WITH_OVERLAPS",
+    "invalid": true,
+    "total_area_cm2": 131250.0,
+    "total_weight_kg": 120.0,
+    "vacuum_lines_used": 6,
+    "pieces_positioned": 3,
+    "pieces_excluded": 1
+  },
+  "autoclave_info": {
+    "id": 1,
+    "nome": "Test-Autoclave-v1.4.16",
+    "larghezza_piano": 1200.0,
+    "lunghezza": 2000.0,
+    "max_load_kg": 500.0,
+    "num_linee_vuoto": 8
+  },
+  "solved_at": "2025-06-03T00:45:11.510079"
+}

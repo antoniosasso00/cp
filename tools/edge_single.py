@@ -1,28 +1,29 @@
 #!/usr/bin/env python3
 """
-Edge Single Scenario Test per CarbonPilot
-Esegue un singolo test edge case e genera output verbose.
+Edge Single Test Tool per CarbonPilot v1.4.17-DEMO
+Script per testare lo scenario C di performance con 50 pezzi misti
+
+Scenario Test: 50 pezzi misti con timeout 90s
+Aspettativa: time < 90s, overlaps=[], efficiency ≥ 70%
 """
 
 import sys
 import os
-import json
-import time
 import logging
+import time
 import requests
-import argparse
+import json
 from pathlib import Path
-from typing import Dict, List, Any, Optional
 from datetime import datetime
+from typing import List, Dict, Any
 
 # Aggiungi il path del backend per gli import
 backend_path = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(backend_path))
 
+from models.database import SessionLocal, engine
+from models.models import Autoclave, ODL, Parte, Tool, Catalogo, CicloCura
 from sqlalchemy.orm import Session
-from api.database import get_db
-from models.autoclave import Autoclave
-from models.odl import ODL
 
 # Configurazione logging
 logging.basicConfig(
@@ -31,254 +32,427 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class EdgeSingleTester:
-    """Tester per singoli scenari edge case"""
+# Configurazione API
+API_BASE_URL = "http://localhost:8000"
+API_TIMEOUT = 120  # secondi
+
+def clear_existing_test_data(db: Session):
+    """Pulisce dati di test esistenti per evitare conflitti"""
+    logger.info("🧹 Pulizia dati test esistenti...")
     
-    def __init__(self, verbose: bool = False):
-        self.base_url = "http://localhost:8000"
-        self.verbose = verbose
-        self.autoclave_id = None
+    # Rimuovi ODL di test (range 8000-8099 per scenario C)
+    db.query(ODL).filter(ODL.id.between(8000, 8099)).delete(synchronize_session=False)
+    
+    # Rimuovi parti di test  
+    db.query(Parte).filter(Parte.id.between(8000, 8099)).delete(synchronize_session=False)
+    
+    # Rimuovi tool di test
+    db.query(Tool).filter(Tool.id.between(8000, 8099)).delete(synchronize_session=False)
+    
+    # Rimuovi catalogo di test
+    db.query(Catalogo).filter(Catalogo.part_number.like('PERF-%')).delete(synchronize_session=False)
+    
+    # Rimuovi autoclave di test
+    db.query(Autoclave).filter(Autoclave.id == 8000).delete(synchronize_session=False)
+    
+    # Rimuovi ciclo cura di test
+    db.query(CicloCura).filter(CicloCura.id == 8000).delete(synchronize_session=False)
+    
+    db.commit()
+    logger.info("✅ Pulizia completata")
+
+def create_test_autoclave(db: Session) -> Autoclave:
+    """Crea autoclave di test grande per 50 pezzi"""
+    logger.info("🏭 Creazione autoclave test per performance...")
+    
+    autoclave = Autoclave(
+        id=8000,
+        nome="Test-Autoclave-Performance",
+        codice="PERF-STRESS-001",
+        larghezza_piano=1500.0,  # mm - autoclave grande
+        lunghezza=2000.0,        # mm - per contenere molti pezzi
+        max_load_kg=2000.0,      # kg - capacità alta
+        num_linee_vuoto=20,      # linee vuoto abbondanti
+        temperatura_max=220.0,
+        pressione_max=10.0,
+        produttore="Test-Performance",
+        anno_produzione=2024,
+        stato="DISPONIBILE",
+        use_secondary_plane=False,
+        note="Autoclave per test performance v1.4.17-DEMO - Scenario C"
+    )
+    
+    db.add(autoclave)
+    db.commit()
+    db.refresh(autoclave)
+    
+    logger.info(f"✅ Autoclave creata: {autoclave.nome} ({autoclave.larghezza_piano}×{autoclave.lunghezza}mm)")
+    return autoclave
+
+def create_test_ciclo_cura(db: Session) -> CicloCura:
+    """Crea ciclo di cura di test"""
+    logger.info("🔄 Creazione ciclo cura test...")
+    
+    ciclo = CicloCura(
+        id=8000,
+        nome="Test-Ciclo-Performance",
+        temperatura_stasi1=200.0,
+        pressione_stasi1=8.0,
+        durata_stasi1=45,
+        attiva_stasi2=False,
+        descrizione="Ciclo di test per performance v1.4.17-DEMO"
+    )
+    
+    db.add(ciclo)
+    db.commit()
+    db.refresh(ciclo)
+    
+    logger.info(f"✅ Ciclo cura creato: {ciclo.nome}")
+    return ciclo
+
+def create_performance_test_data(db: Session):
+    """
+    Crea 50 pezzi misti per test di performance
+    
+    Mix di dimensioni:
+    - 20 pezzi piccoli: 50×100mm
+    - 20 pezzi medi: 150×200mm  
+    - 10 pezzi grandi: 300×400mm
+    
+    Alcuni richiedono rotazione per testare l'algoritmo completo
+    """
+    logger.info("📦 Creazione 50 pezzi misti per test performance...")
+    
+    # Crea ciclo cura
+    ciclo_cura = create_test_ciclo_cura(db)
+    
+    # Configurazioni pezzi (width, height, peso_base, lines, categoria)
+    piece_configs = []
+    
+    # 20 pezzi piccoli (50×100mm)
+    for i in range(20):
+        piece_configs.append({
+            'width': 50.0,
+            'height': 100.0,
+            'peso_base': 5.0,
+            'lines': 1,
+            'categoria': 'piccoli',
+            'rotatable': i % 3 == 0  # 1/3 ruotabili per variazione
+        })
+    
+    # 20 pezzi medi (150×200mm)  
+    for i in range(20):
+        piece_configs.append({
+            'width': 150.0,
+            'height': 200.0,
+            'peso_base': 15.0,
+            'lines': 1,
+            'categoria': 'medi',
+            'rotatable': i % 2 == 0  # 1/2 ruotabili
+        })
+    
+    # 10 pezzi grandi (300×400mm)
+    for i in range(10):
+        piece_configs.append({
+            'width': 300.0,
+            'height': 400.0,
+            'peso_base': 30.0,
+            'lines': 2,
+            'categoria': 'grandi',
+            'rotatable': True  # Tutti ruotabili per massimizzare complessità
+        })
+    
+    # Crea i 50 pezzi
+    for i, config in enumerate(piece_configs, 1):
+        # Variazione dimensioni per rotazione se necessario
+        if config['rotatable'] and i % 4 == 0:
+            # Alcuni pezzi con dimensioni che forzano rotazione
+            width = max(config['width'], config['height'])
+            height = min(config['width'], config['height'])
+        else:
+            width = config['width']
+            height = config['height']
         
-    def setup(self) -> bool:
-        """Setup iniziale: trova autoclave di test"""
-        try:
-            db_gen = get_db()
-            db = next(db_gen)
-            
-            # Trova autoclave di test
-            autoclave = db.query(Autoclave).filter(
-                Autoclave.nome == "EdgeTest-Autoclave"
-            ).first()
-            
-            if not autoclave:
-                logger.error("❌ Autoclave di test non trovata. Esegui prima seed_edge_data.py")
-                return False
-                
-            self.autoclave_id = autoclave.id
-            if self.verbose:
-                logger.info(f"✅ Autoclave di test trovata: ID {self.autoclave_id}")
-            
-            db.close()
-            return True
-            
-        except Exception as e:
-            logger.error(f"💥 Errore setup: {str(e)}")
-            return False
-    
-    def get_scenario_odl_ids(self, scenario: str) -> List[int]:
-        """Ottiene gli ID degli ODL per uno scenario specifico"""
-        try:
-            db_gen = get_db()
-            db = next(db_gen)
-            
-            # Mappatura scenari a pattern note
-            patterns = {
-                "A": "Edge case: pezzo gigante",
-                "B": "Edge case B:",
-                "C": "Edge case C:",
-                "D": "Edge case D:",
-                "E": "Edge case E:"
-            }
-            
-            pattern = patterns.get(scenario)
-            if not pattern:
-                logger.error(f"❌ Scenario sconosciuto: {scenario}")
-                return []
-            
-            odl_list = db.query(ODL).filter(
-                ODL.note.like(f"%{pattern}%")
-            ).all()
-            
-            odl_ids = [odl.id for odl in odl_list]
-            if self.verbose:
-                logger.info(f"📋 Scenario {scenario}: trovati {len(odl_ids)} ODL")
-            
-            db.close()
-            return odl_ids
-            
-        except Exception as e:
-            logger.error(f"💥 Errore recupero ODL scenario {scenario}: {str(e)}")
-            return []
-    
-    def update_odl_status_to_attesa_cura(self, odl_ids: List[int]):
-        """Aggiorna lo stato degli ODL a 'Attesa Cura' per renderli disponibili per il nesting"""
-        try:
-            for odl_id in odl_ids:
-                response = requests.patch(
-                    f"{self.base_url}/api/v1/odl/{odl_id}/status",
-                    json={"new_status": "Attesa Cura"},
-                    headers={"Content-Type": "application/json"},
-                    timeout=10
-                )
-                if response.status_code != 200:
-                    logger.warning(f"⚠️  Errore aggiornamento ODL {odl_id}: {response.status_code}")
-            
-            if self.verbose:
-                logger.info(f"✅ Aggiornati {len(odl_ids)} ODL a stato 'Attesa Cura'")
-                
-        except Exception as e:
-            logger.error(f"💥 Errore aggiornamento stato ODL: {str(e)}")
-    
-    def run_nesting_test(self, scenario: str, odl_ids: List[int]) -> Dict[str, Any]:
-        """Esegue un singolo test di nesting e ritorna i risultati"""
+        # Catalogo
+        part_number = f"PERF-{config['categoria'].upper()}-{i:03d}"
+        catalogo = Catalogo(
+            part_number=part_number,
+            descrizione=f"Performance Test Piece {i} - {config['categoria']} - v1.4.17-DEMO",
+            categoria=f"Test-Performance-{config['categoria']}",
+            sotto_categoria="v1.4.17-DEMO-ScenarioC",
+            attivo=True,
+            note=f"Pezzo #{i} per test performance - {width}×{height}mm"
+        )
+        db.add(catalogo)
         
-        if self.verbose:
-            logger.info(f"🧪 Test scenario {scenario}: {len(odl_ids)} ODL")
+        # Tool
+        tool = Tool(
+            id=8000 + i,
+            part_number_tool=f"TOOL-PERF-{i:03d}",
+            larghezza_piano=width,
+            lunghezza_piano=height,
+            peso=config['peso_base'] + (i * 0.5),  # Variazione peso graduale
+            materiale="Alluminio" if i % 2 == 0 else "Acciaio",
+            disponibile=True,
+            descrizione=f"Tool performance test {i} - {width}×{height}mm - {config['categoria']}"
+        )
+        db.add(tool)
         
-        # Preparazione richiesta
-        request_data = {
-            "autoclave_id": self.autoclave_id,
-            "odl_ids": odl_ids,
-            "padding_mm": 20.0,
-            "min_distance_mm": 15.0,
-            "vacuum_lines_capacity": 10,
-            "allow_heuristic": True,
-            "timeout_override": None,
-            "heavy_piece_threshold_kg": 50.0
+        # Parte
+        parte = Parte(
+            id=8000 + i,
+            part_number=part_number,
+            ciclo_cura_id=ciclo_cura.id,
+            descrizione_breve=f"Performance Test {i} - {config['categoria']}",
+            num_valvole_richieste=config['lines'],
+            note_produzione=f"Test performance v1.4.17-DEMO piece {i} - {config['categoria']}"
+        )
+        db.add(parte)
+        
+        # ODL
+        odl = ODL(
+            id=8000 + i,
+            parte_id=8000 + i,
+            tool_id=8000 + i,
+            status="Preparazione",
+            priorita=i,  # Priorità crescente
+            note=f"ODL performance test {i} - {config['categoria']} - v1.4.17-DEMO"
+        )
+        db.add(odl)
+        
+        if i % 10 == 0:  # Log ogni 10 pezzi
+            logger.info(f"  ✅ Creati {i}/50 pezzi...")
+    
+    db.commit()
+    logger.info("📦 50 pezzi test performance creati con successo")
+
+def create_performance_test_scenario():
+    """Crea lo scenario di test per la performance"""
+    logger.info("🚀 AVVIO CREAZIONE SCENARIO TEST PERFORMANCE v1.4.17-DEMO")
+    logger.info("=" * 60)
+    
+    db = SessionLocal()
+    try:
+        # Pulisci dati precedenti
+        clear_existing_test_data(db)
+        
+        # Crea autoclave di test
+        autoclave = create_test_autoclave(db)
+        
+        # Crea i 50 pezzi di test
+        create_performance_test_data(db)
+        
+        logger.info("=" * 60)
+        logger.info("🎉 SCENARIO TEST PERFORMANCE CREATO CON SUCCESSO!")
+        logger.info("")
+        logger.info("📋 RIASSUNTO SCENARIO:")
+        logger.info(f"   🏭 Autoclave: {autoclave.nome} - {autoclave.larghezza_piano}×{autoclave.lunghezza}mm")
+        logger.info(f"   📦 Pezzi: 50 misti (20 piccoli + 20 medi + 10 grandi)")
+        logger.info(f"   🎯 ODL IDs: 8001-8050")
+        logger.info(f"   ⏱️  Timeout: 90s")
+        
+        return autoclave.id
+        
+    except Exception as e:
+        logger.error(f"❌ Errore durante la creazione dello scenario: {str(e)}")
+        db.rollback()
+        return None
+    finally:
+        db.close()
+
+def run_performance_test(autoclave_id: int) -> Dict[str, Any]:
+    """Esegue il test di performance via API"""
+    logger.info("🧪 AVVIO TEST PERFORMANCE...")
+    
+    # Prepara richiesta API
+    odl_ids = list(range(8001, 8051))  # 8001-8050 = 50 ODL
+    
+    request_data = {
+        "autoclave_id": autoclave_id,
+        "odl_ids": odl_ids,
+        "parameters": {
+            "timeout_override": 90,  # Forza timeout 90s
+            "allow_heuristic": True,  # Abilita RRGH
+            "use_fallback": True     # Abilita BL-FFD fallback
         }
-        
-        start_time = time.time()
-        
-        try:
-            # Test API nesting
-            response = requests.post(
-                f"{self.base_url}/api/v1/batch_nesting/solve",
-                json=request_data,
-                headers={"Content-Type": "application/json"},
-                timeout=30
-            )
-            
-            test_duration = (time.time() - start_time) * 1000
-            
-            if response.status_code != 200:
-                result = {
-                    "scenario": scenario,
-                    "success": False,
-                    "error": f"HTTP {response.status_code}",
-                    "error_message": response.text if response.text else "Unknown HTTP error",
-                    "test_duration_ms": test_duration,
-                    "timestamp": datetime.now().isoformat()
-                }
-                return result
-            
-            # Parse risposta
-            data = response.json()
-            metrics = data.get("metrics", {})
-            positioned_tools = data.get("positioned_tools", [])
-            excluded_reasons = data.get("excluded_reasons", {})
-            
-            print(f"✅ Test completato:")
-            print(f"   📊 Pezzi posizionati: {len(positioned_tools)}")
-            print(f"   📊 Pezzi esclusi: {len(excluded_reasons)}")
-            print(f"   📊 Efficienza: {metrics.get('efficiency_score', 0):.1f}%")
-            print(f"   📊 Area utilizzata: {metrics.get('area_utilization_pct', 0):.1f}%")
-            print(f"   📊 Algoritmo: {metrics.get('algorithm_status', 'N/A')}")
-            print(f"   📊 Tempo solver: {metrics.get('time_solver_ms', 0):.0f}ms")
-            
-            if excluded_reasons:
-                print(f"   ❌ Motivi esclusione: {excluded_reasons}")
-            
-            return {
-                "success": True,
-                "positioned": len(positioned_tools),
-                "excluded": len(excluded_reasons),
-                "efficiency": metrics.get('efficiency_score', 0),
-                "area_pct": metrics.get('area_utilization_pct', 0),
-                "algorithm": metrics.get('algorithm_status', 'N/A')
-            }
-            
-        except requests.exceptions.Timeout:
-            result = {
-                "scenario": scenario,
-                "success": False,
-                "error": "TIMEOUT",
-                "error_message": "Request timeout dopo 30 secondi",
-                "test_duration_ms": (time.time() - start_time) * 1000,
-                "timestamp": datetime.now().isoformat()
-            }
-            return result
-            
-        except Exception as e:
-            result = {
-                "scenario": scenario,
-                "success": False,
-                "error": "EXCEPTION",
-                "error_message": str(e),
-                "test_duration_ms": (time.time() - start_time) * 1000,
-                "timestamp": datetime.now().isoformat()
-            }
-            return result
+    }
     
-    def test_scenario(self, scenario: str) -> Dict[str, Any]:
-        """Testa un singolo scenario"""
-        if not self.setup():
+    logger.info(f"📤 Richiesta nesting: {len(odl_ids)} ODL, timeout 90s")
+    
+    # Esegui richiesta con timing
+    start_time = time.time()
+    
+    try:
+        response = requests.post(
+            f"{API_BASE_URL}/batch_nesting/solve",
+            json=request_data,
+            timeout=API_TIMEOUT,
+            headers={"Content-Type": "application/json"}
+        )
+        
+        end_time = time.time()
+        api_time = end_time - start_time
+        
+        if response.status_code == 200:
+            result = response.json()
+            logger.info(f"✅ API chiamata completata in {api_time:.2f}s")
             return {
-                "scenario": scenario,
-                "success": False,
-                "error": "SETUP_FAILED",
-                "error_message": "Setup fallito - controlla che l'API sia attiva e i dati siano caricati"
+                'success': True,
+                'api_time': api_time,
+                'response': result
             }
-        
-        # Ottieni ODL per lo scenario
-        odl_ids = self.get_scenario_odl_ids(scenario)
-        if not odl_ids:
+        else:
+            logger.error(f"❌ API error {response.status_code}: {response.text}")
             return {
-                "scenario": scenario,
-                "success": False,
-                "error": "NO_ODL_FOUND",
-                "error_message": f"Nessun ODL trovato per scenario {scenario}"
+                'success': False,
+                'api_time': api_time,
+                'error': f"HTTP {response.status_code}: {response.text}"
             }
-        
-        # Aggiorna stato ODL
-        self.update_odl_status_to_attesa_cura(odl_ids)
-        
-        # Esegui test
-        result = self.run_nesting_test(scenario, odl_ids)
-        
-        return result
+            
+    except requests.exceptions.Timeout:
+        end_time = time.time()
+        api_time = end_time - start_time
+        logger.error(f"⏰ API timeout dopo {api_time:.2f}s")
+        return {
+            'success': False,
+            'api_time': api_time,
+            'error': "API timeout"
+        }
+    except Exception as e:
+        end_time = time.time()
+        api_time = end_time - start_time
+        logger.error(f"💥 Errore API: {str(e)}")
+        return {
+            'success': False,
+            'api_time': api_time,
+            'error': str(e)
+        }
+
+def analyze_performance_results(test_result: Dict[str, Any]) -> Dict[str, Any]:
+    """Analizza i risultati del test di performance"""
+    logger.info("📊 ANALISI RISULTATI PERFORMANCE...")
+    
+    if not test_result['success']:
+        return {
+            'passed': False,
+            'reason': f"Test fallito: {test_result['error']}",
+            'metrics': {}
+        }
+    
+    response = test_result['response']
+    metrics = response.get('metrics', {})
+    
+    # Estrai metriche chiave
+    api_time = test_result['api_time']
+    solver_time_ms = metrics.get('time_solver_ms', 0)
+    solver_time_s = solver_time_ms / 1000.0
+    
+    positioned_count = metrics.get('positioned_count', 0)
+    total_pieces = 50
+    excluded_count = metrics.get('excluded_count', total_pieces)
+    
+    efficiency_score = metrics.get('efficiency_score', 0.0)
+    algorithm_status = metrics.get('algorithm_status', 'UNKNOWN')
+    rotation_used = metrics.get('rotation_used', False)
+    heuristic_iters = metrics.get('heuristic_iters', 0)
+    
+    # Verifica overlaps
+    layouts = response.get('layouts', [])
+    has_overlaps = len(response.get('overlaps', [])) > 0
+    
+    # Criteri di successo
+    time_ok = solver_time_s < 90.0  # < 90s
+    no_overlaps_ok = not has_overlaps
+    efficiency_ok = efficiency_score >= 70.0  # ≥ 70%
+    positioned_ok = positioned_count > 0  # Almeno qualche pezzo posizionato
+    
+    passed = time_ok and no_overlaps_ok and efficiency_ok and positioned_ok
+    
+    # Log risultati dettagliati
+    logger.info(f"⏱️  Timing: API {api_time:.2f}s, Solver {solver_time_s:.2f}s")
+    logger.info(f"📦 Posizionamento: {positioned_count}/{total_pieces} pezzi ({(positioned_count/total_pieces)*100:.1f}%)")
+    logger.info(f"📊 Efficienza: {efficiency_score:.1f}%")
+    logger.info(f"🔄 Rotazione: {rotation_used}")
+    logger.info(f"🚀 RRGH iterazioni: {heuristic_iters}")
+    logger.info(f"⚙️  Algoritmo: {algorithm_status}")
+    logger.info(f"🎯 Overlap: {'❌ Presenti' if has_overlaps else '✅ Nessuno'}")
+    
+    # Criteri dettagliati
+    logger.info("")
+    logger.info("🧪 CRITERI VALIDAZIONE:")
+    logger.info(f"   ⏱️  Tempo < 90s: {'✅' if time_ok else '❌'} ({solver_time_s:.1f}s)")
+    logger.info(f"   🎯 Nessun overlap: {'✅' if no_overlaps_ok else '❌'}")
+    logger.info(f"   📊 Efficienza ≥ 70%: {'✅' if efficiency_ok else '❌'} ({efficiency_score:.1f}%)")
+    logger.info(f"   📦 Pezzi posizionati: {'✅' if positioned_ok else '❌'} ({positioned_count})")
+    
+    return {
+        'passed': passed,
+        'reason': 'Test superato' if passed else 'Uno o più criteri falliti',
+        'metrics': {
+            'api_time_s': api_time,
+            'solver_time_s': solver_time_s,
+            'positioned_count': positioned_count,
+            'total_pieces': total_pieces,
+            'efficiency_score': efficiency_score,
+            'has_overlaps': has_overlaps,
+            'rotation_used': rotation_used,
+            'heuristic_iters': heuristic_iters,
+            'algorithm_status': algorithm_status,
+            'criteria': {
+                'time_ok': time_ok,
+                'no_overlaps_ok': no_overlaps_ok,
+                'efficiency_ok': efficiency_ok,
+                'positioned_ok': positioned_ok
+            }
+        }
+    }
 
 def main():
     """Main function"""
-    parser = argparse.ArgumentParser(description="Test singolo scenario edge case")
-    parser.add_argument("--scenario", "-s", required=True, 
-                       choices=["A", "B", "C", "D", "E"],
-                       help="Scenario da testare (A-E)")
-    parser.add_argument("--verbose", "-v", action="store_true",
-                       help="Output verbose")
-    
-    args = parser.parse_args()
-    
-    # Setup logging level
-    if args.verbose:
-        logging.getLogger().setLevel(logging.INFO)
-    else:
-        logging.getLogger().setLevel(logging.WARNING)
-    
-    # Crea tester
-    tester = EdgeSingleTester(verbose=args.verbose)
-    
-    # Esegui test
-    result = tester.test_scenario(args.scenario)
-    
-    # Output risultato
-    if args.verbose:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-    else:
-        # Output essenziale
-        if result["success"]:
-            summary = result.get("summary", {})
-            print(f"✅ Scenario {args.scenario}: SUCCESS")
-            print(f"   - Positioned: {summary.get('placed', 0)}")
-            print(f"   - Excluded: {summary.get('excluded', 0)}")
-            print(f"   - Efficiency: {summary.get('efficiency_score', 0):.1f}%")
-            print(f"   - Duration: {result.get('test_duration_ms', 0):.0f}ms")
+    try:
+        # Fase 1: Crea scenario test
+        logger.info("🎬 FASE 1: CREAZIONE SCENARIO")
+        autoclave_id = create_performance_test_scenario()
+        
+        if not autoclave_id:
+            print("❌ Creazione scenario fallita!")
+            sys.exit(1)
+        
+        # Fase 2: Esegui test performance
+        logger.info("")
+        logger.info("🎬 FASE 2: ESECUZIONE TEST")
+        test_result = run_performance_test(autoclave_id)
+        
+        # Fase 3: Analizza risultati
+        logger.info("")
+        logger.info("🎬 FASE 3: ANALISI RISULTATI")
+        analysis = analyze_performance_results(test_result)
+        
+        # Report finale
+        logger.info("")
+        logger.info("=" * 60)
+        if analysis['passed']:
+            logger.info("🎉 TEST PERFORMANCE SUPERATO!")
+            print("✅ Test performance v1.4.17-DEMO SUPERATO!")
+            print(f"📊 Efficienza: {analysis['metrics']['efficiency_score']:.1f}%")
+            print(f"⏱️  Tempo: {analysis['metrics']['solver_time_s']:.1f}s")
+            print(f"📦 Posizionati: {analysis['metrics']['positioned_count']}")
+            sys.exit(0)
         else:
-            print(f"❌ Scenario {args.scenario}: FAILED")
-            print(f"   - Error: {result.get('error', 'Unknown')}")
-            print(f"   - Message: {result.get('error_message', 'No details')}")
-    
-    # Exit code
-    sys.exit(0 if result["success"] else 1)
+            logger.error("❌ TEST PERFORMANCE FALLITO!")
+            print("❌ Test performance v1.4.17-DEMO FALLITO!")
+            print(f"🔍 Motivo: {analysis['reason']}")
+            if 'metrics' in analysis:
+                print(f"📊 Efficienza: {analysis['metrics'].get('efficiency_score', 0):.1f}%")
+                print(f"⏱️  Tempo: {analysis['metrics'].get('solver_time_s', 0):.1f}s")
+            sys.exit(1)
+            
+    except KeyboardInterrupt:
+        logger.info("⏹️  Test interrotto dall'utente")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"💥 Errore imprevisto: {str(e)}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main() 

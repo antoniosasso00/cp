@@ -1,0 +1,86 @@
+{
+  "success": true,
+  "message": "Layout con overlap artificiali per test v1.4.16-DEMO",
+  "positioned_tools": [
+    {
+      "odl_id": 149,
+      "tool_id": 149,
+      "x": 5.0,
+      "y": 5.0,
+      "width": 600.0,
+      "height": 500.0,
+      "rotated": false,
+      "plane": 1,
+      "weight_kg": 50.0
+    },
+    {
+      "odl_id": 148,
+      "tool_id": 148,
+      "x": 305.0,
+      "y": 155.0,
+      "width": 550.0,
+      "height": 450.0,
+      "rotated": false,
+      "plane": 1,
+      "weight_kg": 45.0
+    },
+    {
+      "odl_id": 147,
+      "tool_id": 147,
+      "x": 1155.0,
+      "y": 5.0,
+      "width": 500.0,
+      "height": 400.0,
+      "rotated": false,
+      "plane": 1,
+      "weight_kg": 40.0
+    }
+  ],
+  "excluded_odls": [],
+  "excluded_reasons": {},
+  "overlaps": [
+    {
+      "odl_a": 149,
+      "odl_b": 148,
+      "area_a": {
+        "x": 5.0,
+        "y": 5.0,
+        "width": 600.0,
+        "height": 500.0
+      },
+      "area_b": {
+        "x": 305.0,
+        "y": 155.0,
+        "width": 550.0,
+        "height": 450.0
+      },
+      "overlap_area_cm2": 15000.0,
+      "severity": "medium"
+    }
+  ],
+  "metrics": {
+    "area_utilization_pct": 31.145833333333332,
+    "vacuum_util_pct": 15.0,
+    "efficiency_score": 40.072916666666664,
+    "weight_utilization_pct": 16.875,
+    "time_solver_ms": 14.036893844604492,
+    "fallback_used": true,
+    "heuristic_iters": 0,
+    "algorithm_status": "FALLBACK_GREEDY",
+    "invalid": true,
+    "total_area_cm2": 74.75,
+    "total_weight_kg": 135.0,
+    "vacuum_lines_used": 3,
+    "pieces_positioned": 3,
+    "pieces_excluded": 0
+  },
+  "autoclave_info": {
+    "id": 1,
+    "nome": "EdgeTest-Autoclave",
+    "larghezza_piano": 1200.0,
+    "lunghezza": 2000.0,
+    "max_load_kg": 800.0,
+    "num_linee_vuoto": 10
+  },
+  "solved_at": "2025-06-03T00:45:11.480126"
+}

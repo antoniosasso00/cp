@@ -377,7 +377,12 @@ class NestingModel:
         # Risolvi
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = timeout_seconds
-        solver.parameters.search_branching = cp_model.PORTFOLIO
+        # 🔧 FIX: PORTFOLIO non disponibile in tutte le versioni OR-Tools
+        try:
+            solver.parameters.search_branching = cp_model.PORTFOLIO
+        except AttributeError:
+            # Fallback per versioni OR-Tools che non supportano PORTFOLIO
+            solver.parameters.search_branching = cp_model.AUTOMATIC_SEARCH
         
         status = solver.Solve(model)
         
@@ -403,15 +408,20 @@ class NestingModel:
         tools: List[ToolInfo], 
         autoclave: AutoclaveInfo
     ) -> Dict[str, Any]:
-        """Crea le variabili per il modello CP-SAT"""
+        """
+        🔄 NUOVO v1.4.17-DEMO: Crea le variabili per il modello CP-SAT con rotazione 90° integrata
+        Approccio compatibile OR-Tools: intervalli separati per ogni orientamento
+        """
         
         variables = {
             'included': {},      # tool incluso nel layout
             'x': {},            # posizione x
             'y': {},            # posizione y  
-            'rotated': {},      # tool ruotato
-            'intervals_x': {},  # intervalli x per non-sovrapposizione
-            'intervals_y': {}   # intervalli y per non-sovrapposizione
+            'rotated': {},      # tool ruotato 90°
+            'intervals_x_normal': {},   # intervalli x orientamento normale
+            'intervals_y_normal': {},   # intervalli y orientamento normale
+            'intervals_x_rotated': {},  # intervalli x orientamento ruotato
+            'intervals_y_rotated': {},  # intervalli y orientamento ruotato
         }
         
         margin = self.parameters.min_distance_mm
@@ -422,45 +432,95 @@ class NestingModel:
             # Inclusione
             variables['included'][tool_id] = model.NewBoolVar(f'included_{tool_id}')
             
-            # Posizione
-            variables['x'][tool_id] = model.NewIntVar(
-                margin, round(autoclave.width - margin), f'x_{tool_id}'
-            )
-            variables['y'][tool_id] = model.NewIntVar(
-                margin, round(autoclave.height - margin), f'y_{tool_id}'
-            )
-            
-            # Rotazione (se possibile)
+            # 🔄 NUOVO v1.4.17-DEMO: Rotazione 90° con AddAllowedAssignments
+            # Verifica se entrambi gli orientamenti sono possibili
             fits_normal = (tool.width + margin <= autoclave.width and 
                           tool.height + margin <= autoclave.height)
             fits_rotated = (tool.height + margin <= autoclave.width and 
                            tool.width + margin <= autoclave.height)
             
             if fits_normal and fits_rotated:
+                # Entrambi orientamenti possibili - variabile binaria
                 variables['rotated'][tool_id] = model.NewBoolVar(f'rotated_{tool_id}')
-            elif fits_rotated:
-                variables['rotated'][tool_id] = 1  # Forzato ruotato
+                # 🔄 SPECIFICO v1.4.17-DEMO: AddAllowedAssignments per rotazione 0=no rot, 1=90°
+                model.AddAllowedAssignments([variables['rotated'][tool_id]], [[0], [1]])
+            elif fits_rotated and not fits_normal:
+                # Solo orientamento ruotato possibile
+                variables['rotated'][tool_id] = model.NewBoolVar(f'rotated_{tool_id}')
+                model.Add(variables['rotated'][tool_id] == 1)  # Forzato ruotato
             else:
-                variables['rotated'][tool_id] = 0  # Forzato normale
+                # Solo orientamento normale possibile (o nessuno dei due, gestito in pre-filter)
+                variables['rotated'][tool_id] = model.NewBoolVar(f'rotated_{tool_id}')
+                model.Add(variables['rotated'][tool_id] == 0)  # Forzato normale
             
-            # Intervalli per non-sovrapposizione (usando dimensioni massime)
-            max_width = max(round(tool.width), round(tool.height))
-            max_height = max(round(tool.width), round(tool.height))
+            # Posizione (con limiti per entrambi gli orientamenti)
+            max_x_normal = round(autoclave.width - tool.width - margin)
+            max_y_normal = round(autoclave.height - tool.height - margin)
+            max_x_rotated = round(autoclave.width - tool.height - margin)
+            max_y_rotated = round(autoclave.height - tool.width - margin)
             
-            variables['intervals_x'][tool_id] = model.NewOptionalIntervalVar(
-                variables['x'][tool_id], 
-                max_width,
-                variables['x'][tool_id] + max_width,
-                variables['included'][tool_id],
-                f'interval_x_{tool_id}'
+            # Limiti conservativi per le variabili di posizione
+            max_x = max(max_x_normal, max_x_rotated) if fits_normal and fits_rotated else (
+                max_x_rotated if fits_rotated else max_x_normal
+            )
+            max_y = max(max_y_normal, max_y_rotated) if fits_normal and fits_rotated else (
+                max_y_rotated if fits_rotated else max_y_normal
             )
             
-            variables['intervals_y'][tool_id] = model.NewOptionalIntervalVar(
+            variables['x'][tool_id] = model.NewIntVar(
+                margin, max(margin, max_x), f'x_{tool_id}'
+            )
+            variables['y'][tool_id] = model.NewIntVar(
+                margin, max(margin, max_y), f'y_{tool_id}'
+            )
+            
+            # 🔄 NUOVO v1.4.17-DEMO: Intervalli separati per orientamento normale e ruotato
+            # Orientamento normale: width x height
+            normal_active = model.NewBoolVar(f'normal_active_{tool_id}')
+            model.Add(normal_active == 1).OnlyEnforceIf([
+                variables['included'][tool_id], variables['rotated'][tool_id].Not()
+            ])
+            model.Add(normal_active == 0).OnlyEnforceIf(variables['rotated'][tool_id])
+            model.Add(normal_active == 0).OnlyEnforceIf(variables['included'][tool_id].Not())
+            
+            variables['intervals_x_normal'][tool_id] = model.NewOptionalIntervalVar(
+                variables['x'][tool_id], 
+                round(tool.width),
+                variables['x'][tool_id] + round(tool.width),
+                normal_active,
+                f'interval_x_normal_{tool_id}'
+            )
+            
+            variables['intervals_y_normal'][tool_id] = model.NewOptionalIntervalVar(
                 variables['y'][tool_id], 
-                max_height,
-                variables['y'][tool_id] + max_height,
-                variables['included'][tool_id],
-                f'interval_y_{tool_id}'
+                round(tool.height),
+                variables['y'][tool_id] + round(tool.height),
+                normal_active,
+                f'interval_y_normal_{tool_id}'
+            )
+            
+            # Orientamento ruotato: height x width
+            rotated_active = model.NewBoolVar(f'rotated_active_{tool_id}')
+            model.Add(rotated_active == 1).OnlyEnforceIf([
+                variables['included'][tool_id], variables['rotated'][tool_id]
+            ])
+            model.Add(rotated_active == 0).OnlyEnforceIf(variables['rotated'][tool_id].Not())
+            model.Add(rotated_active == 0).OnlyEnforceIf(variables['included'][tool_id].Not())
+            
+            variables['intervals_x_rotated'][tool_id] = model.NewOptionalIntervalVar(
+                variables['x'][tool_id], 
+                round(tool.height),  # Ruotato: larghezza = altezza originale
+                variables['x'][tool_id] + round(tool.height),
+                rotated_active,
+                f'interval_x_rotated_{tool_id}'
+            )
+            
+            variables['intervals_y_rotated'][tool_id] = model.NewOptionalIntervalVar(
+                variables['y'][tool_id], 
+                round(tool.width),   # Ruotato: altezza = larghezza originale
+                variables['y'][tool_id] + round(tool.width),
+                rotated_active,
+                f'interval_y_rotated_{tool_id}'
             )
         
         return variables
@@ -472,14 +532,19 @@ class NestingModel:
         autoclave: AutoclaveInfo, 
         variables: Dict[str, Any]
     ) -> None:
-        """Aggiunge i vincoli al modello CP-SAT"""
+        """
+        🔄 NUOVO v1.4.17-DEMO: Aggiunge i vincoli al modello CP-SAT con supporto rotazione dinamica
+        """
         
-        # Vincolo di non sovrapposizione 2D
-        if len(variables['intervals_x']) > 0:
-            model.AddNoOverlap2D(
-                list(variables['intervals_x'].values()),
-                list(variables['intervals_y'].values())
-            )
+        # Vincolo di non sovrapposizione 2D per entrambi gli orientamenti
+        if len(variables['intervals_x_normal']) > 0:
+            # Combina intervalli normali e ruotati per non-sovrapposizione
+            all_intervals_x = (list(variables['intervals_x_normal'].values()) + 
+                              list(variables['intervals_x_rotated'].values()))
+            all_intervals_y = (list(variables['intervals_y_normal'].values()) + 
+                              list(variables['intervals_y_rotated'].values()))
+            
+            model.AddNoOverlap2D(all_intervals_x, all_intervals_y)
         
         # Vincolo di peso massimo
         weight_terms = []
@@ -507,50 +572,33 @@ class NestingModel:
             model.Add(total_lines == sum(lines_terms))
             model.Add(total_lines <= self.parameters.vacuum_lines_capacity)
         
-        # Vincoli di posizione basati sulla rotazione
+        # 🔄 NUOVO v1.4.17-DEMO: Vincoli di posizione per entrambi gli orientamenti
         margin = self.parameters.min_distance_mm
         
         for tool in tools:
             tool_id = tool.odl_id
             
-            # Controlla se rotazione è variabile
-            if isinstance(variables['rotated'][tool_id], int):
-                # Rotazione fissa
-                if variables['rotated'][tool_id] == 0:  # Normale
-                    max_x = round(autoclave.width - tool.width - margin)
-                    max_y = round(autoclave.height - tool.height - margin)
-                else:  # Ruotato
-                    max_x = round(autoclave.width - tool.height - margin)
-                    max_y = round(autoclave.height - tool.width - margin)
-                
-                model.Add(variables['x'][tool_id] <= max_x).OnlyEnforceIf(variables['included'][tool_id])
-                model.Add(variables['y'][tool_id] <= max_y).OnlyEnforceIf(variables['included'][tool_id])
-            else:
-                # Rotazione variabile - vincoli condizionali
-                max_x_normal = round(autoclave.width - tool.width - margin)
-                max_y_normal = round(autoclave.height - tool.height - margin)
-                max_x_rotated = round(autoclave.width - tool.height - margin)
-                max_y_rotated = round(autoclave.height - tool.width - margin)
-                
-                # Vincoli per orientamento normale
-                model.Add(variables['x'][tool_id] <= max_x_normal).OnlyEnforceIf([
-                    variables['included'][tool_id], 
-                    variables['rotated'][tool_id].Not()
-                ])
-                model.Add(variables['y'][tool_id] <= max_y_normal).OnlyEnforceIf([
-                    variables['included'][tool_id], 
-                    variables['rotated'][tool_id].Not()
-                ])
-                
-                # Vincoli per orientamento ruotato
-                model.Add(variables['x'][tool_id] <= max_x_rotated).OnlyEnforceIf([
-                    variables['included'][tool_id], 
-                    variables['rotated'][tool_id]
-                ])
-                model.Add(variables['y'][tool_id] <= max_y_rotated).OnlyEnforceIf([
-                    variables['included'][tool_id], 
-                    variables['rotated'][tool_id]
-                ])
+            # Vincoli di boundary per orientamento normale
+            model.Add(
+                variables['x'][tool_id] + round(tool.width) <= round(autoclave.width - margin)
+            ).OnlyEnforceIf([variables['included'][tool_id], variables['rotated'][tool_id].Not()])
+            
+            model.Add(
+                variables['y'][tool_id] + round(tool.height) <= round(autoclave.height - margin)
+            ).OnlyEnforceIf([variables['included'][tool_id], variables['rotated'][tool_id].Not()])
+            
+            # Vincoli di boundary per orientamento ruotato
+            model.Add(
+                variables['x'][tool_id] + round(tool.height) <= round(autoclave.width - margin)
+            ).OnlyEnforceIf([variables['included'][tool_id], variables['rotated'][tool_id]])
+            
+            model.Add(
+                variables['y'][tool_id] + round(tool.width) <= round(autoclave.height - margin)
+            ).OnlyEnforceIf([variables['included'][tool_id], variables['rotated'][tool_id]])
+            
+            # Vincoli minimi di posizione
+            model.Add(variables['x'][tool_id] >= margin).OnlyEnforceIf(variables['included'][tool_id])
+            model.Add(variables['y'][tool_id] >= margin).OnlyEnforceIf(variables['included'][tool_id])
     
     def _add_cpsat_objective(
         self, 
@@ -630,70 +678,53 @@ class NestingModel:
         status: int,
         start_time: float
     ) -> NestingSolution:
-        """Estrae la soluzione dal solver CP-SAT"""
-        
+        """Estrae la soluzione dal solver CP-SAT e calcola le metriche"""
         layouts = []
-        excluded_odls = []
         total_weight = 0
-        used_area = 0
         total_lines = 0
         
+        # 🔄 NUOVO v1.4.18-DEMO: Traccia utilizzo rotazione
+        rotation_used = False
+        
+        # Estrae posizioni per ogni tool incluso
         for tool in tools:
             tool_id = tool.odl_id
-            
             if solver.Value(variables['included'][tool_id]):
-                # Tool incluso
-                x = float(solver.Value(variables['x'][tool_id]))
-                y = float(solver.Value(variables['y'][tool_id]))
+                # 🔄 NUOVO v1.4.17-DEMO: Controlla se rotato
+                is_rotated = solver.Value(variables['rotated'][tool_id])
+                if is_rotated:
+                    rotation_used = True
                 
-                # Determina rotazione
-                if isinstance(variables['rotated'][tool_id], int):
-                    rotated = bool(variables['rotated'][tool_id])
+                # 🔧 FIX v1.4.18-DEMO: Dimensioni finali corrette (senza accesso a variables inesistenti)
+                if is_rotated:
+                    # Tool ruotato: scambia larghezza e altezza
+                    final_width = tool.height
+                    final_height = tool.width
                 else:
-                    rotated = bool(solver.Value(variables['rotated'][tool_id]))
+                    # Tool normale: usa dimensioni originali
+                    final_width = tool.width
+                    final_height = tool.height
                 
-                # Calcola dimensioni finali
-                if rotated:
-                    width = tool.height
-                    height = tool.width
-                else:
-                    width = tool.width
-                    height = tool.height
-                
-                layouts.append(NestingLayout(
-                    odl_id=tool_id,
-                    x=x,
-                    y=y,
-                    width=width,
-                    height=height,
+                layout = NestingLayout(
+                    odl_id=tool.odl_id,
+                    x=float(solver.Value(variables['x'][tool_id])),
+                    y=float(solver.Value(variables['y'][tool_id])),
+                    width=float(final_width),
+                    height=float(final_height),
                     weight=tool.weight,
-                    rotated=rotated,
+                    rotated=bool(is_rotated),  # 🔧 FIX v1.4.18-DEMO: Assicura che sia boolean
                     lines_used=tool.lines_needed
-                ))
-                
+                )
+                layouts.append(layout)
                 total_weight += tool.weight
-                used_area += width * height
                 total_lines += tool.lines_needed
-            else:
-                # Tool escluso
-                excluded_odls.append({
-                    'odl_id': tool_id,
-                    'motivo': 'Non incluso nella soluzione ottimale',
-                    'dettagli': f"Tool non selezionato dall'algoritmo di ottimizzazione"
-                })
         
         # Calcola metriche
         total_area = autoclave.width * autoclave.height
-        area_pct = (used_area / total_area * 100) if total_area > 0 else 0
+        area_pct = (sum(l.width * l.height for l in layouts) / total_area * 100) if total_area > 0 else 0
         vacuum_util_pct = (total_lines / self.parameters.vacuum_lines_capacity * 100) if self.parameters.vacuum_lines_capacity > 0 else 0
-        # 🔄 NUOVO v1.4.17-DEMO: Formula efficienza allineata con objective Z = 0.8·area + 0.2·vacuum
-        efficiency_score = (
-            0.8 * area_pct +               # area utilizzata (peso 80%)
-            0.2 * vacuum_util_pct          # linee vuoto (peso 20%)
-        )
-        
-        # 🔄 NUOVO v1.4.17-DEMO: Verifica se è stata utilizzata rotazione
-        rotation_used = any(layout.rotated for layout in layouts)
+        # 🔄 NUOVO v1.4.17-DEMO: Formula efficienza corretta Z = 0.8·area + 0.2·vacuum
+        efficiency_score = 0.8 * area_pct + 0.2 * vacuum_util_pct
         
         # ✅ FIX: Controllo efficienza bassa - warning ma non failure
         efficiency_warning = ""
@@ -706,7 +737,7 @@ class NestingModel:
             lines_used=total_lines,
             total_weight=total_weight,
             positioned_count=len(layouts),
-            excluded_count=len(excluded_odls),
+            excluded_count=len(tools) - len(layouts),
             efficiency_score=efficiency_score,
             time_solver_ms=(time.time() - start_time) * 1000,
             fallback_used=False,
@@ -720,7 +751,7 @@ class NestingModel:
         
         return NestingSolution(
             layouts=layouts,
-            excluded_odls=excluded_odls,
+            excluded_odls=[],
             metrics=metrics,
             success=True,
             algorithm_status=f"CP-SAT_{status_name}",
@@ -763,11 +794,8 @@ class NestingModel:
         total_area = autoclave.width * autoclave.height
         area_pct = (used_area / total_area * 100) if total_area > 0 else 0
         vacuum_util_pct = (total_lines / self.parameters.vacuum_lines_capacity * 100) if self.parameters.vacuum_lines_capacity > 0 else 0
-        # 🔄 NUOVO v1.4.17-DEMO: Formula efficienza allineata con objective Z = 0.8·area + 0.2·vacuum
-        efficiency_score = (
-            0.8 * area_pct +               # area utilizzata (peso 80%)
-            0.2 * vacuum_util_pct          # linee vuoto (peso 20%)
-        )
+        # 🔄 NUOVO v1.4.17-DEMO: Formula efficienza corretta Z = 0.8·area + 0.2·vacuum
+        efficiency_score = 0.8 * area_pct + 0.2 * vacuum_util_pct
         
         # Verifica se è stata utilizzata rotazione
         rotation_used = any(layout.rotated for layout in layouts)
@@ -1392,7 +1420,8 @@ class NestingModel:
                 
                 area_pct = (used_area / total_area * 100) if total_area > 0 else 0
                 vacuum_util_pct = (total_lines / self.parameters.vacuum_lines_capacity * 100) if self.parameters.vacuum_lines_capacity > 0 else 0
-                efficiency_score = 0.6 * area_pct + 0.2 * min(100, total_weight / autoclave.max_weight * 100) + 0.2 * vacuum_util_pct
+                # 🔄 NUOVO v1.4.17-DEMO: Formula efficienza corretta Z = 0.8·area + 0.2·vacuum
+                efficiency_score = 0.8 * area_pct + 0.2 * vacuum_util_pct
                 
                 # Aggiorna la soluzione
                 solution.layouts = corrected_layouts

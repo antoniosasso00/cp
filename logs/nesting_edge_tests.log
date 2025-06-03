@@ -1,38 +1,38 @@
-EDGE TESTS EXECUTION LOG - 2025-06-02T22:06:20.951191
+EDGE TESTS EXECUTION LOG - 2025-06-02T22:31:02.315511
 ================================================================================
 
 SCENARIO A:
   Success: False
-  Algorithm: UNKNOWN
+  Algorithm: NO_VALID_TOOLS
   Efficiency: 0.0%
-  Time: 9ms
+  Time: 4ms
   Pieces: 0/1
 
 SCENARIO B:
   Success: True
-  Algorithm: UNKNOWN
+  Algorithm: FALLBACK_GREEDY
   Efficiency: 59.2%
   Time: 9ms
   Pieces: 5/6
 
 SCENARIO C:
   Success: True
-  Algorithm: UNKNOWN
+  Algorithm: FALLBACK_GREEDY
   Efficiency: 74.4%
-  Time: 139ms
+  Time: 142ms
   Pieces: 12/50
 
 SCENARIO D:
   Success: True
-  Algorithm: UNKNOWN
+  Algorithm: FALLBACK_GREEDY
   Efficiency: 78.2%
-  Time: 75ms
+  Time: 116ms
   Pieces: 7/10
 
 SCENARIO E:
   Success: True
-  Algorithm: UNKNOWN
+  Algorithm: FALLBACK_GREEDY
   Efficiency: 58.2%
-  Time: 43ms
+  Time: 51ms
   Pieces: 7/15
 

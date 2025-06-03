@@ -1044,3 +1044,128 @@ def solve_nesting_v1_4_12_demo(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Errore interno durante la risoluzione del nesting: {str(e)}"
         )
+
+# ========== NUOVO ENDPOINT VALIDAZIONE v1.4.18-DEMO ==========
+
+@router.get("/{batch_id}/validate", 
+            summary="🔍 Valida layout nesting v1.4.18-DEMO")
+def validate_nesting_layout(
+    batch_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    🔍 ENDPOINT VALIDAZIONE LAYOUT v1.4.18-DEMO
+    ==========================================
+    
+    Valida un layout di nesting esistente controllando:
+    - **in_bounds**: Tutti i pezzi sono dentro i limiti dell'autoclave
+    - **no_overlap**: Nessuna sovrapposizione tra i pezzi  
+    - **overlaps**: Lista delle coppie di pezzi che si sovrappongono
+    - **scale_ok**: Le proporzioni sono ragionevoli rispetto all'autoclave
+    
+    **Parametri:**
+    - batch_id: ID del batch nesting da validare
+    
+    **Ritorna:**
+    - in_bounds: boolean - tutti i pezzi dentro i limiti
+    - no_overlap: boolean - nessuna sovrapposizione
+    - overlaps: lista di tuple (idA, idB) con sovrapposizioni
+    - scale_ok: boolean - scala ragionevole
+    - details: dettagli aggiuntivi della validazione
+    """
+    try:
+        logger.info(f"🔍 Validazione layout per batch {batch_id}")
+        
+        # Recupera il batch
+        batch = db.query(BatchNesting).filter(BatchNesting.id == batch_id).first()
+        if not batch:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Batch {batch_id} non trovato"
+            )
+        
+        # Recupera configurazione JSON
+        config_json = batch.configurazione_json
+        if not config_json or not config_json.get('tool_positions'):
+            return {
+                "in_bounds": True,
+                "no_overlap": True, 
+                "overlaps": [],
+                "scale_ok": True,
+                "details": "Nessun layout da validare"
+            }
+        
+        # Recupera autoclave
+        autoclave = db.query(Autoclave).filter(Autoclave.id == batch.autoclave_id).first()
+        if not autoclave:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Autoclave {batch.autoclave_id} non trovata"
+            )
+        
+        tool_positions = config_json['tool_positions']
+        autoclave_width = autoclave.larghezza_piano or autoclave.lunghezza or 2000
+        autoclave_height = autoclave.larghezza_piano or 1200
+        
+        # 1. Controllo bounds
+        in_bounds = True
+        out_of_bounds = []
+        
+        for tool in tool_positions:
+            x, y, w, h = float(tool['x']), float(tool['y']), float(tool['width']), float(tool['height'])
+            
+            if x < 0 or y < 0 or x + w > autoclave_width or y + h > autoclave_height:
+                in_bounds = False
+                out_of_bounds.append({
+                    'odl_id': tool['odl_id'],
+                    'bounds': f"({x},{y}) {w}×{h}",
+                    'autoclave_limits': f"{autoclave_width}×{autoclave_height}"
+                })
+        
+        # 2. Controllo overlap
+        overlaps = []
+        for i, tool_a in enumerate(tool_positions):
+            for j, tool_b in enumerate(tool_positions[i+1:], i+1):
+                x1, y1, w1, h1 = float(tool_a['x']), float(tool_a['y']), float(tool_a['width']), float(tool_a['height'])
+                x2, y2, w2, h2 = float(tool_b['x']), float(tool_b['y']), float(tool_b['width']), float(tool_b['height'])
+                
+                # Controllo sovrapposizione
+                if not (x1 + w1 <= x2 or x2 + w2 <= x1 or y1 + h1 <= y2 or y2 + h2 <= y1):
+                    overlaps.append([tool_a['odl_id'], tool_b['odl_id']])
+        
+        no_overlap = len(overlaps) == 0
+        
+        # 3. Controllo scala
+        total_tool_area = sum(float(tool['width']) * float(tool['height']) for tool in tool_positions)
+        autoclave_area = autoclave_width * autoclave_height
+        area_ratio = total_tool_area / autoclave_area if autoclave_area > 0 else 0
+        
+        # Scala OK se i tool occupano tra 1% e 95% dell'autoclave
+        scale_ok = 0.01 <= area_ratio <= 0.95
+        
+        result = {
+            "in_bounds": in_bounds,
+            "no_overlap": no_overlap,
+            "overlaps": overlaps,
+            "scale_ok": scale_ok,
+            "details": {
+                "total_pieces": len(tool_positions),
+                "out_of_bounds_pieces": len(out_of_bounds),
+                "overlapping_pairs": len(overlaps),
+                "area_ratio_pct": area_ratio * 100,
+                "autoclave_dimensions": f"{autoclave_width}×{autoclave_height}mm",
+                "out_of_bounds_details": out_of_bounds
+            }
+        }
+        
+        logger.info(f"✅ Validazione completata: bounds={in_bounds}, overlaps={no_overlap}, scala={scale_ok}")
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Errore validazione layout {batch_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante la validazione: {str(e)}"
+        )

@@ -175,9 +175,9 @@ class EdgeTestHarness:
         start_time = time.time()
         
         try:
-            # Test API nesting
+            # ✅ FIX: Uso il nuovo endpoint
             response = requests.post(
-                f"{self.base_url}/api/v1/batch_nesting/solve",
+                f"{self.base_url}/api/v1/nesting/solve",
                 json=request_data,
                 headers={"Content-Type": "application/json"},
                 timeout=30
@@ -204,28 +204,31 @@ class EdgeTestHarness:
                     test_duration_ms=test_duration
                 )
             
-            # Parse risposta dal nuovo endpoint
+            # ✅ FIX: Parse risposta dal nuovo formato
             data = response.json()
+            
+            # Parse campi dalla nuova struttura della risposta come specificato nelle istruzioni
+            placed = len(data.get("positioned_tools", []))  # placed = len(resp.layout)
+            efficiency_score = data.get("metrics", {}).get("efficiency_score", 0.0)  # efficiency_score = resp.metrics.efficiency_score
+            excluded = data.get("excluded_reasons", {})  # excluded = resp.excluded_reasons   # dict
             
             # Estrai metriche dalle nuove strutture dati
             metrics = data.get("metrics", {})
-            positioned_tools = data.get("positioned_tools", [])
-            excluded_reasons = data.get("excluded_reasons", {})
             
             return NestingTestMetrics(
                 scenario=scenario,
                 success=data.get("success", False),
                 fallback_used=metrics.get("fallback_used", False),
-                efficiency_score=metrics.get("efficiency_score", 0.0),
-                area_pct=metrics.get("area_pct", 0.0),
+                efficiency_score=efficiency_score,
+                area_pct=metrics.get("area_utilization_pct", 0.0),
                 vacuum_pct=metrics.get("vacuum_util_pct", 0.0),
                 time_solver_ms=metrics.get("time_solver_ms", 0.0),
                 heuristic_iters=metrics.get("heuristic_iters", 0),
-                algorithm_status=data.get("algorithm_status", "UNKNOWN"),
-                pieces_positioned=len(positioned_tools),
-                pieces_excluded=len(excluded_reasons),
+                algorithm_status=metrics.get("algorithm_status", "UNKNOWN"),
+                pieces_positioned=placed,
+                pieces_excluded=len(data.get("excluded_odls", [])),
                 total_pieces=len(odl_ids),
-                excluded_reasons=list(excluded_reasons.values()),
+                excluded_reasons=list(excluded.keys()) if isinstance(excluded, dict) else [],
                 test_duration_ms=test_duration
             )
             
@@ -344,12 +347,24 @@ class EdgeTestHarness:
             
             results.append(result)
             
-            # Log risultato
-            status = "✅" if result.success else "❌"
-            logger.info(f"{status} Scenario {scenario}: "
-                       f"Successo={result.success}, "
-                       f"Efficienza={result.efficiency_score:.1f}%, "
-                       f"Tempo={result.time_solver_ms:.0f}ms")
+            # ✅ FIX: Log risultato con gestione scenario A
+            if scenario == "A":
+                # Scenario A: pezzo gigante, atteso che fallisca
+                if result.success:
+                    status = "⚠️"
+                    message = f"PROBLEMA - Pezzo gigante non dovrebbe avere successo!"
+                else:
+                    status = "✅"
+                    message = f"ATTESO - Fallimento corretto per pezzo oversize"
+                logger.info(f"{status} Scenario {scenario}: {message}")
+                logger.info(f"   📊 Efficienza={result.efficiency_score:.1f}%, Tempo={result.time_solver_ms:.0f}ms")
+            else:
+                # Altri scenari: normale gestione successo/fallimento
+                status = "✅" if result.success else "❌"
+                logger.info(f"{status} Scenario {scenario}: "
+                           f"Successo={result.success}, "
+                           f"Efficienza={result.efficiency_score:.1f}%, "
+                           f"Tempo={result.time_solver_ms:.0f}ms")
         
         logger.info("=" * 50)
         logger.info("🏁 TUTTI I SCENARI COMPLETATI")
@@ -455,7 +470,14 @@ class EdgeTestHarness:
         critical_issues = []
         
         for result in results:
-            if not result.success and not result.fallback_used:
+            # ✅ FIX: Scenario A è atteso che fallisca, non è un problema critico
+            if result.scenario == "A":
+                if result.success:
+                    critical_issues.append(f"**Scenario A**: ⚠️ PROBLEMA - Pezzo gigante non dovrebbe avere successo! Verificare logica pre-filtering.")
+                else:
+                    # Scenario A fallisce come atteso, non è un problema
+                    continue
+            elif not result.success and not result.fallback_used:
                 critical_issues.append(f"**Scenario {result.scenario}**: Solver failure completo - {result.error_message or result.algorithm_status}")
             
             if result.timeout:
@@ -469,6 +491,33 @@ class EdgeTestHarness:
                 report += f"- {issue}\n"
         else:
             report += "🎉 **Nessun problema critico rilevato!**\n"
+        
+        # ✅ FIX: Sezione comportamenti attesi
+        report += "\n---\n\n## 📋 Comportamenti Attesi vs Reali\n\n"
+        
+        expected_behaviors = {
+            "A": {"should_succeed": False, "description": "Pezzo gigante - DEVE fallire (oversize)"},
+            "B": {"should_succeed": "either", "description": "Overflow vacuum - può fallire o usare fallback"},
+            "C": {"should_succeed": True, "description": "Stress performance - deve completare (anche con timeout)"},
+            "D": {"should_succeed": True, "description": "Bassa efficienza - deve completare con efficienza < 50%"},
+            "E": {"should_succeed": True, "description": "Happy path - DEVE sempre funzionare"}
+        }
+        
+        for result in results:
+            expected = expected_behaviors.get(result.scenario, {"should_succeed": True, "description": "Comportamento sconosciuto"})
+            
+            if expected["should_succeed"] == False:  # Deve fallire
+                status = "✅ ATTESO" if not result.success else "❌ PROBLEMA"
+                outcome = "Fallimento corretto" if not result.success else "Successo inatteso!"
+            elif expected["should_succeed"] == True:  # Deve riuscire
+                status = "✅ ATTESO" if result.success else "❌ PROBLEMA" 
+                outcome = "Successo corretto" if result.success else "Fallimento inatteso!"
+            else:  # Either (può essere entrambi)
+                status = "✅ ATTESO"
+                outcome = "Fallimento/Successo" if not result.success else "Successo"
+            
+            report += f"**Scenario {result.scenario}**: {status} - {outcome}  \n"
+            report += f"└─ *{expected['description']}*  \n\n"
         
         # Frontend test result
         if self.frontend_result:
@@ -639,7 +688,7 @@ def main():
         harness.save_results(results)
         
         # Validazione finale
-        critical_failures = [r for r in results if not r.success and not r.fallback_used]
+        critical_failures = [r for r in results if not r.success and not r.fallback_used and r.scenario != "A"]  # ✅ FIX: Escludo scenario A dai critical failures
         frontend_errors = harness.frontend_result and any([
             not harness.frontend_result.page_loaded,
             "TypeError" in str(harness.frontend_result.console_errors)
@@ -647,6 +696,14 @@ def main():
         
         logger.info("=" * 60)
         logger.info("🏁 EDGE TESTS COMPLETATI")
+        
+        # ✅ FIX: Gestione speciale per scenario A
+        scenario_a_result = next((r for r in results if r.scenario == "A"), None)
+        if scenario_a_result:
+            if not scenario_a_result.success:
+                logger.info("✅ Scenario A: Fallimento atteso (pezzo gigante) - OK")
+            else:
+                logger.warning("⚠️ Scenario A: PROBLEMA - pezzo gigante non dovrebbe avere successo!")
         
         if critical_failures:
             print("🔴 Solver failure: see report")

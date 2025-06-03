@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Stage, Layer, Rect, Text, Group } from 'react-konva';
+import dynamic from 'next/dynamic';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +13,13 @@ import { batchNestingApi } from '@/lib/api';
 import BatchStatusSwitch from '@/components/batch-nesting/BatchStatusSwitch';
 import ODLStatusSwitch from '@/components/batch-nesting/ODLStatusSwitch';
 import axios from 'axios';
+import CanvasWrapper, { 
+  Layer, 
+  Rect, 
+  Text, 
+  Group,
+  useClientMount 
+} from '@/components/canvas/CanvasWrapper'
 
 // Interfacce TypeScript per i dati
 interface ToolPosition {
@@ -92,6 +99,7 @@ export default function NestingResultPage() {
   const [isConfirming, setIsConfirming] = useState(false);
   const [showStatusControls, setShowStatusControls] = useState(false);
   const [odlData, setOdlData] = useState<any[]>([]);
+  const mounted = useClientMount();
 
   // Recupera i dati del batch dal backend
   useEffect(() => {
@@ -321,121 +329,127 @@ export default function NestingResultPage() {
             </CardHeader>
             <CardContent>
               <div className="border rounded-lg p-4 bg-gray-50">
-                <Stage width={canvasWidth} height={canvasHeight}>
-                  <Layer>
-                    {/* Bordo dell'autoclave */}
-                    <Rect
-                      x={0}
-                      y={0}
-                      width={canvasWidth}
-                      height={canvasHeight}
-                      stroke="#333"
-                      strokeWidth={2}
-                      fill="rgba(240, 240, 240, 0.5)"
-                    />
-                    
-                    {/* Griglia opzionale */}
-                    {Array.from({ length: Math.floor(autoclaveWidth / 100) + 1 }, (_, i) => (
+                {mounted ? (
+                  <CanvasWrapper width={canvasWidth} height={canvasHeight}>
+                    <Layer>
+                      {/* Bordo dell'autoclave */}
                       <Rect
-                        key={`grid-v-${i}`}
-                        x={i * 100 * canvasScale}
-                        y={0}
-                        width={1}
-                        height={canvasHeight}
-                        fill="rgba(200, 200, 200, 0.3)"
-                      />
-                    ))}
-                    {Array.from({ length: Math.floor(autoclaveHeight / 100) + 1 }, (_, i) => (
-                      <Rect
-                        key={`grid-h-${i}`}
                         x={0}
-                        y={i * 100 * canvasScale}
+                        y={0}
                         width={canvasWidth}
-                        height={1}
-                        fill="rgba(200, 200, 200, 0.3)"
+                        height={canvasHeight}
+                        stroke="#333"
+                        strokeWidth={2}
+                        fill="rgba(240, 240, 240, 0.5)"
                       />
-                    ))}
-                    
-                    {/* Tool posizionati */}
-                    {toolPositions.map((tool, index) => (
-                      <Group
-                        key={`tool-${tool.odl_id}`}
-                        x={tool.x * canvasScale}
-                        y={tool.y * canvasScale}
-                        onMouseEnter={() => setSelectedTool(tool)}
-                        onMouseLeave={() => setSelectedTool(null)}
-                        onClick={() => {
-                          if (window.confirm(`Rimuovere ODL ${tool.odl_id} dalla configurazione?`)) {
-                            removeODL(tool.odl_id);
-                          }
-                        }}
-                      >
-                        {/* Rettangolo del tool */}
+                      
+                      {/* Griglia opzionale */}
+                      {Array.from({ length: Math.floor(autoclaveWidth / 100) + 1 }, (_, i) => (
                         <Rect
-                          width={tool.width * canvasScale}
-                          height={tool.height * canvasScale}
-                          fill={generateToolColor(index)}
-                          stroke="#000"
-                          strokeWidth={1}
-                          opacity={selectedTool?.odl_id === tool.odl_id ? 0.8 : 0.7}
+                          key={`grid-v-${i}`}
+                          x={i * 100 * canvasScale}
+                          y={0}
+                          width={1}
+                          height={canvasHeight}
+                          fill="rgba(200, 200, 200, 0.3)"
                         />
-                        
-                        {/* Testo del tool */}
-                        <Text
-                          x={(tool.width * canvasScale) / 2}
-                          y={(tool.height * canvasScale) / 2 - 20}
-                          text={`ODL ${tool.odl_id}`}
-                          fontSize={12}
-                          fontStyle="bold"
-                          fill="#000"
-                          align="center"
-                          width={tool.width * canvasScale}
+                      ))}
+                      {Array.from({ length: Math.floor(autoclaveHeight / 100) + 1 }, (_, i) => (
+                        <Rect
+                          key={`grid-h-${i}`}
+                          x={0}
+                          y={i * 100 * canvasScale}
+                          width={canvasWidth}
+                          height={1}
+                          fill="rgba(200, 200, 200, 0.3)"
                         />
-                        
-                        <Text
-                          x={(tool.width * canvasScale) / 2}
-                          y={(tool.height * canvasScale) / 2}
-                          text={tool.part_number || `Tool ${tool.odl_id}`}
-                          fontSize={10}
-                          fill="#000"
-                          align="center"
-                          width={tool.width * canvasScale}
-                        />
-                        
-                        <Text
-                          x={(tool.width * canvasScale) / 2}
-                          y={(tool.height * canvasScale) / 2 + 15}
-                          text={`${tool.width.toFixed(0)}x${tool.height.toFixed(0)}mm`}
-                          fontSize={9}
-                          fill="#666"
-                          align="center"
-                          width={tool.width * canvasScale}
-                        />
-                        
-                        {/* Indicatore rotazione */}
-                        {tool.rotated && (
-                          <Group x={tool.width * canvasScale - 15} y={5}>
-                            <Rect
-                              width={12}
-                              height={12}
-                              fill="rgba(0, 0, 0, 0.7)"
-                              cornerRadius={2}
-                            />
-                            <Text
-                              x={6}
-                              y={6}
-                              text="↻"
-                              fontSize={8}
-                              fill="white"
-                              align="center"
-                              width={12}
-                            />
-                          </Group>
-                        )}
-                      </Group>
-                    ))}
-                  </Layer>
-                </Stage>
+                      ))}
+                      
+                      {/* Tool posizionati */}
+                      {toolPositions.map((tool, index) => (
+                        <Group
+                          key={`tool-${tool.odl_id}`}
+                          x={tool.x * canvasScale}
+                          y={tool.y * canvasScale}
+                          onMouseEnter={() => setSelectedTool(tool)}
+                          onMouseLeave={() => setSelectedTool(null)}
+                          onClick={() => {
+                            if (window.confirm(`Rimuovere ODL ${tool.odl_id} dalla configurazione?`)) {
+                              removeODL(tool.odl_id);
+                            }
+                          }}
+                        >
+                          {/* Rettangolo del tool */}
+                          <Rect
+                            width={tool.width * canvasScale}
+                            height={tool.height * canvasScale}
+                            fill={generateToolColor(index)}
+                            stroke="#000"
+                            strokeWidth={1}
+                            opacity={selectedTool?.odl_id === tool.odl_id ? 0.8 : 0.7}
+                          />
+                          
+                          {/* Testo del tool */}
+                          <Text
+                            x={(tool.width * canvasScale) / 2}
+                            y={(tool.height * canvasScale) / 2 - 20}
+                            text={`ODL ${tool.odl_id}`}
+                            fontSize={12}
+                            fontStyle="bold"
+                            fill="#000"
+                            align="center"
+                            width={tool.width * canvasScale}
+                          />
+                          
+                          <Text
+                            x={(tool.width * canvasScale) / 2}
+                            y={(tool.height * canvasScale) / 2}
+                            text={tool.part_number || `Tool ${tool.odl_id}`}
+                            fontSize={10}
+                            fill="#000"
+                            align="center"
+                            width={tool.width * canvasScale}
+                          />
+                          
+                          <Text
+                            x={(tool.width * canvasScale) / 2}
+                            y={(tool.height * canvasScale) / 2 + 15}
+                            text={`${tool.width.toFixed(0)}x${tool.height.toFixed(0)}mm`}
+                            fontSize={9}
+                            fill="#666"
+                            align="center"
+                            width={tool.width * canvasScale}
+                          />
+                          
+                          {/* Indicatore rotazione */}
+                          {tool.rotated && (
+                            <Group x={tool.width * canvasScale - 15} y={5}>
+                              <Rect
+                                width={12}
+                                height={12}
+                                fill="rgba(0, 0, 0, 0.7)"
+                                cornerRadius={2}
+                              />
+                              <Text
+                                x={6}
+                                y={6}
+                                text="↻"
+                                fontSize={8}
+                                fill="white"
+                                align="center"
+                                width={12}
+                              />
+                            </Group>
+                          )}
+                        </Group>
+                      ))}
+                    </Layer>
+                  </CanvasWrapper>
+                ) : (
+                  <div className="flex items-center justify-center h-64">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                  </div>
+                )}
               </div>
               
               {/* Tooltip per tool selezionato */}

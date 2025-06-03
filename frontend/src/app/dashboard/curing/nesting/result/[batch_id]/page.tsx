@@ -25,20 +25,88 @@ import BatchNavigator from './BatchNavigator'
 
 // Caricamento dinamico del canvas per evitare problemi SSR
 const NestingCanvas = dynamic(() => import('./NestingCanvas'), {
-  loading: () => <div className="flex items-center justify-center h-64"><span>Caricamento canvas...</span></div>,
+  loading: () => (
+    <div className="flex items-center justify-center h-64 bg-gray-50 border border-gray-200 rounded-lg">
+      <div className="text-center space-y-3">
+        <Loader2 className="h-8 w-8 text-blue-500 mx-auto animate-spin" />
+        <div>
+          <p className="text-sm font-medium text-gray-700">Caricamento Canvas</p>
+          <p className="text-xs text-gray-500">Inizializzazione componenti 3D...</p>
+        </div>
+      </div>
+    </div>
+  ),
   ssr: false
 })
 
-// Error Boundary semplificato
-const CanvasErrorBoundary = ({ children }: { children: React.ReactNode }) => {
-  try {
-    return <>{children}</>
-  } catch (error) {
-    return (
-      <div className="flex items-center justify-center h-64 bg-red-50 rounded-lg border border-red-200">
-        <p className="text-red-600">Errore nel caricamento del canvas</p>
-      </div>
-    )
+// ✅ Hook per garantire il mounting client-side
+const useClientSideOnly = () => {
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  return isMounted;
+};
+
+// ✅ Error Boundary migliorato per il Canvas
+class CanvasErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; errorInfo?: string }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    console.error('Canvas Error Boundary:', error)
+    return { 
+      hasError: true, 
+      errorInfo: error.message 
+    }
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Canvas Error Details:', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center justify-center h-64 bg-red-50 border border-red-200 rounded-lg">
+          <div className="text-center space-y-4">
+            <AlertTriangle className="h-16 w-16 text-red-500 mx-auto" />
+            <div>
+              <h3 className="text-lg font-semibold text-red-800">Errore nel Caricamento Canvas</h3>
+              <p className="text-red-600 text-sm">
+                {this.state.errorInfo || 'Problema nell\'inizializzazione del componente grafico'}
+              </p>
+              <div className="mt-4 space-x-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => window.location.reload()}
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Ricarica Pagina
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => this.setState({ hasError: false })}
+                >
+                  Riprova
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    return this.props.children
   }
 }
 
@@ -113,6 +181,7 @@ export default function NestingResultPage({ params }: Props) {
   const [batchData, setBatchData] = useState<BatchNestingResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const isMounted = useClientSideOnly()
 
   useEffect(() => {
     loadBatchData()
@@ -175,6 +244,20 @@ export default function NestingResultPage({ params }: Props) {
 
   const handleRetry = () => {
     router.push('/dashboard/curing/nesting')
+  }
+
+  // ✅ Protezione SSR: Non renderizzare nulla fino al mounting client-side
+  if (!isMounted) {
+    return (
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-center h-64">
+          <div className="flex items-center space-x-3">
+            <Loader2 className="h-6 w-6 animate-spin" />
+            <span>Inizializzazione...</span>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (loading) {
@@ -324,9 +407,8 @@ export default function NestingResultPage({ params }: Props) {
                     batchData={{
                       configurazione_json: batchData.configurazione_json,
                       autoclave: batchData.autoclave,
-                      odl_esclusi: batchData.odl_esclusi || [],
-                      excluded_reasons: batchData.excluded_reasons || {},
-                      metrics: batchData.metrics
+                      metrics: batchData.metrics,
+                      id: batchData.id
                     }}
                     className="w-full"
                   />
