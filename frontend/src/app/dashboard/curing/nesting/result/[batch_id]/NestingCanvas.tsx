@@ -1,17 +1,10 @@
 'use client'
 
-import React, { useEffect, useState, useCallback } from 'react'
-import { Package, AlertCircle, Loader2, Info, CheckCircle, TrendingUp, TrendingDown } from 'lucide-react'
-import dynamic from 'next/dynamic'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
+import { Package, AlertCircle, Loader2, Info, CheckCircle, TrendingUp, TrendingDown, Download, Grid3X3, Ruler } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { 
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion'
 import { 
   Tooltip,
   TooltipContent,
@@ -20,19 +13,18 @@ import {
 } from '@/components/ui/tooltip'
 import { useToast } from '@/components/ui/use-toast'
 
-// ✅ CORREZIONE: Definisco i componenti helper prima degli import dinamici
-// Componente di caricamento
-const CanvasLoader: React.FC = () => (
-  <div className="flex items-center justify-center bg-muted/30 rounded-lg" style={{ height: '400px' }}>
-    <div className="text-center space-y-2">
-      <Loader2 className="h-12 w-12 text-blue-500 mx-auto animate-spin" />
-      <p className="text-muted-foreground">Caricamento canvas...</p>
-      <p className="text-xs text-muted-foreground">Inizializzazione react-konva</p>
-    </div>
-  </div>
-)
+// ✅ NUOVO: Import del wrapper centralizzato per react-konva
+import CanvasWrapper, { 
+  Layer, 
+  Rect, 
+  Text, 
+  Group, 
+  Line, 
+  CanvasLoadingPlaceholder,
+  useClientMount 
+} from '@/components/canvas/CanvasWrapper'
 
-// ✅ CORREZIONE: Interfaccia corretta per i tool dal backend
+// ✅ NUOVO v1.4.18-DEMO: Interfacce aggiornate
 interface ToolPosition {
   odl_id: number
   x: number
@@ -40,7 +32,7 @@ interface ToolPosition {
   width: number
   height: number
   peso: number
-  rotated: boolean | string  // ✅ Gestisce sia boolean che string
+  rotated: boolean | string
   part_number?: string
   tool_nome?: string
 }
@@ -53,25 +45,36 @@ interface AutoclaveInfo {
   codice: string
 }
 
-// 🎯 NUOVO v1.4.16-DEMO: Interfaccia per motivi di esclusione
-interface ExclusionReason {
-  odl_id: number
-  motivo: string
-  dettagli?: string
-  debug_reasons?: string[]
-  motivi_dettagliati?: string
+interface ValidationResult {
+  in_bounds: boolean
+  no_overlap: boolean
+  overlaps: [number, number][]
+  scale_ok: boolean
+  details: {
+    total_pieces: number
+    out_of_bounds_pieces: number
+    overlapping_pairs: number
+    area_ratio_pct: number
+    autoclave_dimensions: string
+  }
 }
 
-// 🎯 NUOVO v1.4.16-DEMO: Interfaccia per metriche estese
-interface ExtendedMetrics {
-  efficiency: number
-  area_utilization: number
-  weight_utilization: number
-  vacuum_utilization: number
-  tools_positioned: number
-  tools_excluded: number
-  total_weight: number
-  total_area: number
+// 🎯 NUOVO v1.4.19-DEMO: Interfacce per debug SVG
+interface DebugDifference {
+  odl_id: number
+  dx: number
+  dy: number
+  dW: number
+  dH: number
+  error_mm: number
+}
+
+interface DebugState {
+  showGroundTruth: boolean
+  useSvgOnly: boolean
+  svgContent: string | null
+  differences: DebugDifference[]
+  scaleError: number
 }
 
 interface NestingCanvasProps {
@@ -80,17 +83,17 @@ interface NestingCanvasProps {
       canvas_width: number
       canvas_height: number
       tool_positions: ToolPosition[]
+      autoclave_mm?: [number, number]  // 🎯 NUOVO: Dimensioni autoclave in mm
+      bounding_px?: [number, number]   // 🎯 NUOVO: Dimensioni container in px
     } | null
     autoclave: AutoclaveInfo | undefined
-    // 🎯 NUOVO v1.4.16-DEMO: Dati per motivi di esclusione
-    odl_esclusi?: ExclusionReason[]
-    excluded_reasons?: Record<string, number>
     metrics?: any
+    id?: string
   }
   className?: string
 }
 
-// ✅ FUNZIONE DI NORMALIZZAZIONE DATI
+// ✅ NUOVO v1.4.18-DEMO: Normalizzazione dati
 const normalizeToolData = (tool: ToolPosition): ToolPosition => {
   return {
     ...tool,
@@ -103,51 +106,77 @@ const normalizeToolData = (tool: ToolPosition): ToolPosition => {
   }
 }
 
-// 🎯 NUOVO v1.4.16-DEMO: Badge di efficienza colorato con tooltip
-const EfficiencyBadge: React.FC<{ 
-  metrics: ExtendedMetrics
-  onLowEfficiency?: () => void 
-}> = ({ metrics, onLowEfficiency }) => {
-  const { efficiency } = metrics
-  
-  // Determina colore e icona in base all'efficienza
-  const getBadgeVariant = (eff: number) => {
-    if (eff >= 80) return { color: 'bg-green-500 hover:bg-green-600 text-white', icon: TrendingUp, label: 'Eccellente' }
-    if (eff >= 60) return { color: 'bg-amber-500 hover:bg-amber-600 text-white', icon: TrendingUp, label: 'Buona' }
-    return { color: 'bg-red-500 hover:bg-red-600 text-white', icon: TrendingDown, label: 'Sotto soglia' }
-  }
-  
-  const badgeStyle = getBadgeVariant(efficiency)
-  const IconComponent = badgeStyle.icon
-  
-  // Effetto per notifica di efficienza bassa
+// ✅ NUOVO v1.4.18-DEMO: Hook di validazione
+const useNestingValidation = (batchId?: string) => {
+  const [validation, setValidation] = useState<ValidationResult | null>(null)
+  const [loading, setLoading] = useState(false)
+
   useEffect(() => {
-    if (efficiency < 60 && onLowEfficiency) {
-      onLowEfficiency()
+    if (!batchId) return
+
+    const fetchValidation = async () => {
+      setLoading(true)
+      try {
+        const response = await fetch(`/api/v1/batch_nesting/${batchId}/validate`)
+        if (response.ok) {
+          const data = await response.json()
+          setValidation(data)
+        }
+      } catch (error) {
+        console.error('Errore validazione:', error)
+      } finally {
+        setLoading(false)
+      }
     }
-  }, [efficiency, onLowEfficiency])
-  
+
+    fetchValidation()
+  }, [batchId])
+
+  return { validation, loading }
+}
+
+// ✅ NUOVO v1.4.18-DEMO: Badge di validazione con colori
+const ValidationBadge: React.FC<{ validation: ValidationResult | null, loading: boolean }> = ({ validation, loading }) => {
+  const { toast } = useToast()
+
+  useEffect(() => {
+    if (validation && (!validation.no_overlap || !validation.scale_ok)) {
+      toast({
+        title: "⚠️ Layout da ricontrollare",
+        description: validation.no_overlap ? "Proporzioni non ottimali" : "Overlap rilevato tra pezzi",
+        variant: "destructive"
+      })
+    }
+  }, [validation, toast])
+
+  if (loading) {
+    return <Badge variant="outline"><Loader2 className="h-3 w-3 mr-1 animate-spin" />Validazione...</Badge>
+  }
+
+  if (!validation) {
+    return <Badge variant="outline">Nessuna validazione</Badge>
+  }
+
+  const hasIssues = !validation.in_bounds || !validation.no_overlap || !validation.scale_ok
+
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Badge className={`${badgeStyle.color} cursor-help transition-colors`}>
-            <IconComponent className="h-3 w-3 mr-1" />
-            Efficienza: {efficiency.toFixed(1)}% ({badgeStyle.label})
+          <Badge className={hasIssues ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}>
+            {hasIssues ? <AlertCircle className="h-3 w-3 mr-1" /> : <CheckCircle className="h-3 w-3 mr-1" />}
+            {hasIssues ? '⚠ Layout da ricontrollare' : '✅ Layout OK'}
           </Badge>
         </TooltipTrigger>
         <TooltipContent className="max-w-xs">
           <div className="space-y-2">
-            <p className="font-semibold">Metriche Dettagliate</p>
+            <p className="font-semibold">Dettagli Validazione</p>
             <div className="text-sm space-y-1">
-              <div>🎯 <strong>Efficienza Globale:</strong> {efficiency.toFixed(1)}%</div>
-              <div>📐 <strong>Utilizzo Area:</strong> {metrics.area_utilization.toFixed(1)}%</div>
-              <div>⚖️ <strong>Utilizzo Peso:</strong> {metrics.weight_utilization.toFixed(1)}%</div>
-              <div>🔌 <strong>Utilizzo Valvole:</strong> {metrics.vacuum_utilization.toFixed(1)}%</div>
-              <div>📦 <strong>Tool Posizionati:</strong> {metrics.tools_positioned}</div>
-              <div>❌ <strong>Tool Esclusi:</strong> {metrics.tools_excluded}</div>
-              <div>⚖️ <strong>Peso Totale:</strong> {metrics.total_weight.toFixed(1)}kg</div>
-              <div>📏 <strong>Area Totale:</strong> {(metrics.total_area / 10000).toFixed(2)}m²</div>
+              <div>🎯 <strong>Pezzi totali:</strong> {validation.details.total_pieces}</div>
+              <div>📐 <strong>Bounds:</strong> {validation.in_bounds ? '✅ OK' : '❌ Fuori limiti'}</div>
+              <div>🔲 <strong>Overlap:</strong> {validation.no_overlap ? '✅ Nessuno' : `❌ ${validation.overlaps.length} rilevati`}</div>
+              <div>📏 <strong>Scala:</strong> {validation.scale_ok ? '✅ OK' : '❌ Non ottimale'} ({validation.details.area_ratio_pct.toFixed(1)}%)</div>
+              <div>🏭 <strong>Autoclave:</strong> {validation.details.autoclave_dimensions}</div>
             </div>
           </div>
         </TooltipContent>
@@ -156,495 +185,900 @@ const EfficiencyBadge: React.FC<{
   )
 }
 
-// 🎯 NUOVO v1.4.16-DEMO: Tabella collassabile per motivi di esclusione
-const ExclusionReasonsTable: React.FC<{ 
-  exclusions: ExclusionReason[]
-  excludedReasons: Record<string, number>
-}> = ({ exclusions, excludedReasons }) => {
-  if (!exclusions || exclusions.length === 0) {
-    return null
+// 🎯 AGGIORNATO v1.4.20-DEMO: Griglia con coordinate mm native
+const GridLayer: React.FC<{ width: number, height: number, scale: number }> = ({ width, height, scale }) => {
+  const gridSpacing_mm = 100 // Spaziatura griglia in mm (ogni 100mm)
+  const lines: number[] = []
+  
+  // Linee verticali (coordinate in mm)
+  for (let x = 0; x <= width; x += gridSpacing_mm) {
+    lines.push(x, 0, x, height)
   }
   
-  // Mappatura motivi human-readable
-  const reasonLabels: Record<string, string> = {
-    'oversize': 'Dimensioni eccessive',
-    'weight_exceeded': 'Peso eccessivo', 
-    'vacuum_lines': 'Linee vuoto insufficienti',
-    'padding': 'Padding insufficiente',
-    'placement_failed': 'Posizionamento fallito',
-    'incompatible_cycle': 'Ciclo di cura incompatibile',
-    'unknown': 'Motivo sconosciuto'
+  // Linee orizzontali (coordinate in mm)
+  for (let y = 0; y <= height; y += gridSpacing_mm) {
+    lines.push(0, y, width, y)
   }
-  
+
   return (
-    <Card className="border-amber-200 bg-amber-50/50">
-      <CardHeader className="pb-3">
-        <Accordion type="single" collapsible>
-          <AccordionItem value="exclusions">
-            <AccordionTrigger className="hover:no-underline">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="h-4 w-4" />
-                <span>Motivi Esclusione ({exclusions.length} ODL)</span>
-              </div>
-            </AccordionTrigger>
-            
-            <AccordionContent className="space-y-4">
-              {/* Riassunto motivi */}
-              {Object.keys(excludedReasons).length > 0 && (
-                <div className="bg-white rounded-lg p-3 border">
-                  <h4 className="text-sm font-medium text-gray-900 mb-2">Riassunto per Categoria:</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(excludedReasons).map(([reason, count]) => (
-                      <Badge key={reason} variant="outline" className="text-xs">
-                        {reasonLabels[reason] || reason}: {count}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-              
-              {/* Lista dettagliata */}
-              <div className="bg-white rounded-lg border overflow-hidden">
-                <div className="max-h-60 overflow-y-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b">
-                      <tr>
-                        <th className="text-left p-3 font-medium text-gray-900">ODL ID</th>
-                        <th className="text-left p-3 font-medium text-gray-900">Motivo</th>
-                        <th className="text-left p-3 font-medium text-gray-900">Dettagli</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {exclusions.map((exclusion, index) => (
-                        <tr key={exclusion.odl_id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                          <td className="p-3 font-medium text-blue-600">
-                            #{exclusion.odl_id}
-                          </td>
-                          <td className="p-3">
-                            <Badge variant="outline" className="text-xs">
-                              {reasonLabels[exclusion.motivo] || exclusion.motivo}
-                            </Badge>
-                          </td>
-                          <td className="p-3 text-gray-600 text-xs">
-                            {exclusion.dettagli || exclusion.motivi_dettagliati || 'N/A'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
-      </CardHeader>
-    </Card>
+    <Line
+      points={lines}
+      stroke="#e5e7eb"
+      strokeWidth={1}
+      dash={[5, 5]}
+      opacity={0.5}
+    />
   )
 }
 
-// 🎯 NUOVO v1.4.16-DEMO: Componente principale NestingCanvasPanel
-const NestingCanvasPanel: React.FC<{
-  toolPositions: ToolPosition[]
-  autoclave: AutoclaveInfo
-  canvasSize: { width: number; height: number }
-  scale: number
-  exclusions: ExclusionReason[]
-  excludedReasons: Record<string, number>
-}> = ({ toolPositions, autoclave, canvasSize, scale, exclusions, excludedReasons }) => {
-  const { toast } = useToast()
+// 🎯 AGGIORNATO v1.4.20-DEMO: Righello con coordinate mm native
+const RulerLayer: React.FC<{ width: number, height: number, scale: number }> = ({ width, height, scale }) => {
+  const markerSpacing_mm = 200 // Marker ogni 200mm
+  const rulers: JSX.Element[] = []
   
-  // Normalizza tutti i tool
-  const normalizedTools = toolPositions.map(normalizeToolData)
-  
-  // Calcola metriche estese
-  const totalTools = normalizedTools.length
-  const totalWeight = normalizedTools.reduce((sum, tool) => sum + tool.peso, 0)
-  const totalArea = normalizedTools.reduce((sum, tool) => sum + (tool.width * tool.height), 0)
-  const autoclaveArea = autoclave.larghezza_piano * autoclave.lunghezza
-  const areaUtilization = (totalArea / autoclaveArea) * 100
-  
-  // Stima utilizzo valvole (assumendo 1 valvola per tool come base)
-  const estimatedVacuumLines = totalTools
-  const maxVacuumLines = 12 // Valore di default, potrebbe venire dall'autoclave
-  const vacuumUtilization = (estimatedVacuumLines / maxVacuumLines) * 100
-  
-  // Stima peso massimo autoclave
-  const maxWeight = 1000 // kg, valore di default
-  const weightUtilization = (totalWeight / maxWeight) * 100
-  
-  // Calcola efficienza globale (media pesata)
-  const efficiency = (areaUtilization * 0.6) + (weightUtilization * 0.2) + (vacuumUtilization * 0.2)
-  
-  const metrics: ExtendedMetrics = {
-    efficiency: Math.min(efficiency, 100),
-    area_utilization: areaUtilization,
-    weight_utilization: weightUtilization,
-    vacuum_utilization: vacuumUtilization,
-    tools_positioned: totalTools,
-    tools_excluded: exclusions.length,
-    total_weight: totalWeight,
-    total_area: totalArea
-  }
-  
-  // 🎯 NUOVO v1.4.16-DEMO: Gestione toast per efficienza bassa
-  const handleLowEfficiency = useCallback(() => {
-    toast({
-      title: "⚠️ Layout sotto soglia",
-      description: `L'efficienza del layout (${metrics.efficiency.toFixed(1)}%) è inferiore al 60%. Considera di ottimizzare la configurazione.`,
-      variant: "destructive",
-      duration: 5000,
-    })
-  }, [metrics.efficiency, toast])
-  
-  return (
-    <div className="space-y-6">
-      {/* Header con Badge Efficienza */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="font-semibold text-lg flex items-center gap-2">
-            <Package className="h-5 w-5 text-blue-600" />
-            Layout Nesting Interattivo
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            Autoclave: {autoclave.nome} • Dimensioni: {autoclave.lunghezza} × {autoclave.larghezza_piano} mm
-          </p>
-        </div>
-        
-        {/* 🎯 NUOVO: Badge Efficienza con tooltip metriche */}
-        <EfficiencyBadge metrics={metrics} onLowEfficiency={handleLowEfficiency} />
-      </div>
-      
-      {/* Canvas principale */}
-      <Card>
-        <CardContent className="p-6">
-          <div 
-            className="relative mx-auto border-2 border-dashed border-blue-300 bg-blue-50/30 rounded-lg overflow-hidden"
-            style={{ 
-              width: Math.min(canvasSize.width, 800), 
-              height: Math.min(canvasSize.height, 500)
-            }}
-          >
-            {/* Grid di sfondo */}
-            <div 
-              className="absolute inset-0 opacity-20"
-              style={{
-                backgroundImage: `
-                  linear-gradient(to right, #e5e7eb 1px, transparent 1px),
-                  linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)
-                `,
-                backgroundSize: '50px 50px'
-              }}
-            />
-            
-            {/* Label autoclave */}
-            <div className="absolute top-2 left-2 bg-blue-600 text-white px-2 py-1 rounded text-xs font-medium">
-              {autoclave.nome}
-            </div>
-            
-            {/* Tool posizionati */}
-            {normalizedTools.map((tool, index) => {
-              const scaledX = (tool.x * scale) + 10
-              const scaledY = (tool.y * scale) + 10  
-              const scaledWidth = (tool.width * scale) * 0.8
-              const scaledHeight = (tool.height * scale) * 0.8
-              
-              return (
-                <div
-                  key={tool.odl_id}
-                  className="absolute bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded shadow-lg border-2 border-blue-400 hover:from-blue-600 hover:to-blue-700 transition-all duration-200 cursor-pointer"
-                  style={{
-                    left: `${Math.max(10, Math.min(scaledX, canvasSize.width - scaledWidth - 10))}px`,
-                    top: `${Math.max(30, Math.min(scaledY, canvasSize.height - scaledHeight - 10))}px`,
-                    width: `${Math.max(80, scaledWidth)}px`,
-                    height: `${Math.max(60, scaledHeight)}px`,
-                    transform: tool.rotated ? 'rotate(90deg)' : 'none'
-                  }}
-                  title={`ODL ${tool.odl_id}: ${tool.part_number || 'N/A'} • ${tool.peso}kg`}
-                >
-                  <div className="p-1 h-full flex flex-col justify-center items-center text-center">
-                    <div className="text-xs font-bold">ODL {tool.odl_id}</div>
-                    <div className="text-xs opacity-90">{tool.peso}kg</div>
-                    {tool.rotated && (
-                      <div className="text-xs opacity-75">🔄</div>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-            
-            {/* Etichette dimensioni */}
-            <div className="absolute bottom-1 right-1 bg-black/75 text-white px-2 py-1 rounded text-xs">
-              {autoclave.lunghezza} × {autoclave.larghezza_piano} mm
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      
-      {/* 🎯 NUOVO: Tabella collassabile motivi esclusione */}
-      <ExclusionReasonsTable 
-        exclusions={exclusions} 
-        excludedReasons={excludedReasons} 
+  // Righello superiore
+  for (let x = 0; x <= width; x += markerSpacing_mm) {
+    rulers.push(
+      <Text
+        key={`top-${x}`}
+        x={x - 15}
+        y={5}
+        text={`${x}mm`}
+        fontSize={10}
+        fill="#6b7280"
       />
-      
-      {/* Statistiche dettagliate aggiornate */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
-          <div className="text-sm font-medium text-blue-800">Tool Posizionati</div>
-          <div className="text-xl font-bold text-blue-900">{totalTools}</div>
-        </div>
-        <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-          <div className="text-sm font-medium text-green-800">Peso Totale</div>
-          <div className="text-xl font-bold text-green-900">{totalWeight.toFixed(1)} kg</div>
-        </div>
-        <div className="bg-purple-50 p-3 rounded-lg border border-purple-200">
-          <div className="text-sm font-medium text-purple-800">Area Utilizzata</div>
-          <div className="text-xl font-bold text-purple-900">{(totalArea / 10000).toFixed(1)} m²</div>
-        </div>
-        <div className="bg-orange-50 p-3 rounded-lg border border-orange-200">
-          <div className="text-sm font-medium text-orange-800">Efficienza</div>
-          <div className="text-xl font-bold text-orange-900">{metrics.efficiency.toFixed(1)}%</div>
-        </div>
-      </div>
-      
-      {/* Lista tool dettagliata */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Dettagli Tool Posizionati</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {normalizedTools.map((tool, index) => (
-              <div key={tool.odl_id} className="flex items-center justify-between bg-gray-50 rounded px-3 py-2 text-sm">
-                <div>
-                  <span className="font-medium">ODL {tool.odl_id}</span>
-                  {tool.part_number && <span className="text-gray-600 ml-2">{tool.part_number}</span>}
-                </div>
-                <div className="text-gray-600">
-                  {tool.width}×{tool.height}mm • {tool.peso}kg
-                  {tool.rotated && <span className="ml-1">🔄</span>}
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-      
-      {/* Footer con informazioni */}
-      <div className="flex items-center justify-between text-sm text-gray-600 p-4 bg-gray-50 rounded-lg">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 border-2 border-blue-300 border-dashed"></div>
-            <span>Bordo autoclave</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-blue-500 rounded"></div>
-            <span>Tool posizionati</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 text-green-600">
-          <CheckCircle className="h-4 w-4" />
-          <span>Layout validato</span>
-        </div>
-      </div>
-    </div>
+    )
+  }
+  
+  // Righello sinistro
+  for (let y = 0; y <= height; y += markerSpacing_mm) {
+    rulers.push(
+      <Text
+        key={`left-${y}`}
+        x={5}
+        y={y - 5}
+        text={`${y}mm`}
+        fontSize={10}
+        fill="#6b7280"
+      />
+    )
+  }
+  
+  return <>{rulers}</>
+}
+
+// ✅ NUOVO v1.4.18-DEMO: Componente autoclave outline
+const AutoclaveOutline: React.FC<{ autoclave: AutoclaveInfo, scale: number }> = ({ autoclave, scale }) => {
+  const width = (autoclave.larghezza_piano || autoclave.lunghezza || 2000) * scale
+  const height = (autoclave.larghezza_piano || 1200) * scale
+  
+  return (
+    <Group>
+      <Rect
+        x={0}
+        y={0}
+        width={width}
+        height={height}
+        stroke="#3b82f6"
+        strokeWidth={2}
+        dash={[10, 5]}
+        fill="transparent"
+      />
+      <Text
+        x={width - 120}
+        y={height - 25}
+        text={`${Math.round(width/scale)} × ${Math.round(height/scale)} mm`}
+        fontSize={12}
+        fill="#3b82f6"
+        fontStyle="bold"
+      />
+    </Group>
   )
 }
 
-// ✅ NUOVO COMPONENTE CANVAS INTERATTIVO MIGLIORATO - Aggiornato per usare NestingCanvasPanel
+// 🎯 AGGIORNATO v1.4.20-DEMO: Componente tool con coordinate mm native
+const ToolRect: React.FC<{ 
+  tool: ToolPosition, 
+  scale: number, 
+  isOverlapping?: boolean,
+  onClick?: () => void 
+}> = ({ tool, scale, isOverlapping, onClick }) => {
+  const [hovered, setHovered] = useState(false)
+  
+  // Coordinate già in mm - non applico più lo scaling qui
+  const x = tool.x
+  const y = tool.y
+  const width = tool.width
+  const height = tool.height
+  
+  const fillColor = isOverlapping ? '#ef4444' : '#2563eb'
+  const strokeWidth = tool.rotated ? 3 : 1
+  const opacity = hovered ? 0.8 : 0.7
+
+  return (
+    <Group
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <Rect
+        x={x}
+        y={y}
+        width={width}
+        height={height}
+        fill={fillColor}
+        stroke={isOverlapping ? '#dc2626' : '#1d4ed8'}
+        strokeWidth={strokeWidth}
+        opacity={opacity}
+      />
+      <Text
+        x={x + width/2}
+        y={y + height/2}
+        text={`ODL ${tool.odl_id}\n${Math.round(tool.width)}×${Math.round(tool.height)}mm${tool.rotated ? '\n🔄' : ''}`}
+        fontSize={Math.max(8, Math.min(14, width/15))}
+        fill="white"
+        align="center"
+        verticalAlign="middle"
+      />
+      {tool.rotated && (
+        <Rect
+          x={x + width - 15}
+          y={y + 5}
+          width={10}
+          height={10}
+          fill="#fbbf24"
+          stroke="#f59e0b"
+          strokeWidth={1}
+          cornerRadius={2}
+        />
+      )}
+    </Group>
+  )
+}
+
+// ✅ NUOVO v1.4.18-DEMO: Legenda
+const LegendCard: React.FC = () => (
+  <Card className="absolute top-4 right-4 w-64 z-10 bg-white/95 backdrop-blur">
+    <CardHeader className="pb-2">
+      <CardTitle className="text-sm flex items-center gap-2">
+        <Info className="h-4 w-4" />
+        Legenda Canvas
+      </CardTitle>
+    </CardHeader>
+    <CardContent className="text-xs space-y-2">
+      <div className="flex items-center gap-2">
+        <div className="w-4 h-4 bg-blue-600 rounded"></div>
+        <span>Tool posizionati</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="w-4 h-4 bg-red-600 rounded"></div>
+        <span>Tool con overlap</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="w-4 h-1 border-2 border-dashed border-blue-500"></div>
+        <span>Contorno autoclave</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <Grid3X3 className="h-4 w-4 text-gray-400" />
+        <span>Griglia 100mm</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-gray-600"></div>
+        <span>Origine (0,0)</span>
+      </div>
+    </CardContent>
+  </Card>
+)
+
+// ✅ Error Boundary per il Canvas
+class CanvasErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error?: string }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { 
+      hasError: true, 
+      error: error.message 
+    }
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Canvas Error:', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center justify-center h-96 bg-red-50 border border-red-200 rounded-lg">
+          <div className="text-center space-y-3">
+            <AlertCircle className="h-12 w-12 text-red-500 mx-auto" />
+            <div>
+              <h3 className="text-lg font-semibold text-red-800">Errore Canvas</h3>
+              <p className="text-red-600">{this.state.error || 'Errore sconosciuto nel rendering'}</p>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="mt-3"
+                onClick={() => window.location.reload()}
+              >
+                Ricarica Pagina
+              </Button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
+}
+
+// ✅ NUOVO v1.4.18-DEMO: Canvas interattivo principale
 const InteractiveCanvas: React.FC<{
   toolPositions: ToolPosition[]
   autoclave: AutoclaveInfo
-  canvasSize: { width: number; height: number }
-  scale: number
-  exclusions: ExclusionReason[]
-  excludedReasons: Record<string, number>
-}> = ({ toolPositions, autoclave, canvasSize, scale, exclusions, excludedReasons }) => {
+  validation: ValidationResult | null
+}> = ({ toolPositions, autoclave, validation }) => {
+  const stageRef = useRef<any>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [selectedTool, setSelectedTool] = useState<number | null>(null)
+  const [pixelPerMM, setPixelPerMM] = useState(1)
+  const { toast } = useToast()
+  
+  // 🎯 NUOVO v1.4.20-DEMO: Dimensioni autoclave in mm
+  const autoclaveWidth_mm = autoclave.larghezza_piano || autoclave.lunghezza || 2000
+  const autoclaveHeight_mm = autoclave.larghezza_piano || 1200
+  const autoclave_mm: [number, number] = [autoclaveWidth_mm, autoclaveHeight_mm]
+  
+  // 🎯 NUOVO v1.4.20-DEMO: Auto-fit function - calcola pixelPerMM una sola volta
+  const autoFit = useCallback(() => {
+    if (!containerRef.current || !stageRef.current) return
+    
+    const containerWidth = containerRef.current.offsetWidth - 40 // padding
+    const containerHeight = containerRef.current.offsetHeight - 40
+    
+    // Calcola il fattore di scala che fa entrare l'autoclave nel container
+    const scaleX = containerWidth / autoclave_mm[0]
+    const scaleY = containerHeight / autoclave_mm[1] 
+    const scale = Math.min(scaleX, scaleY)
+    
+    // Imposta pixelPerMM e applica a Stage
+    setPixelPerMM(scale)
+    stageRef.current.scale({ x: scale, y: scale })
+    stageRef.current.position({ x: 20, y: 20 })
+    stageRef.current.batchDraw()
+  }, [autoclave_mm])
+  
+  // 🎯 NUOVO v1.4.20-DEMO: Pulsante 1:1 per debug
+  const setOneToOne = useCallback(() => {
+    if (!stageRef.current) return
+    
+    setPixelPerMM(1)
+    stageRef.current.scale({ x: 1, y: 1 })
+    stageRef.current.position({ x: 20, y: 20 })
+    stageRef.current.batchDraw()
+  }, [])
+  
+  // 🎯 NUOVO v1.4.20-DEMO: Auto-fit on mount e resize
+  useEffect(() => {
+    autoFit()
+    window.addEventListener('resize', autoFit)
+    return () => window.removeEventListener('resize', autoFit)
+  }, [autoFit])
+
+  // Identifica tool con overlap
+  const overlappingToolIds = new Set<number>()
+  if (validation?.overlaps) {
+    validation.overlaps.forEach(([idA, idB]) => {
+      overlappingToolIds.add(idA)
+      overlappingToolIds.add(idB)
+    })
+  }
+
+  // Export PNG
+  const handleExportPNG = useCallback(() => {
+    if (stageRef.current) {
+      try {
+        const dataURL = stageRef.current.toDataURL({
+          mimeType: 'image/png',
+          quality: 1,
+          pixelRatio: 2
+        })
+        
+        const link = document.createElement('a')
+        link.download = `nesting_layout_${new Date().toISOString().slice(0, 10)}.png`
+        link.href = dataURL
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        
+        toast({
+          title: "✅ Export completato",
+          description: "Layout salvato come PNG"
+        })
+      } catch (error) {
+        console.error('Export error:', error)
+        toast({
+          title: "❌ Errore Export",
+          description: "Impossibile salvare l'immagine",
+          variant: "destructive"
+        })
+      }
+    }
+  }, [toast])
+
+  const handleToolClick = useCallback((toolId: number) => {
+    setSelectedTool(toolId)
+    const tool = toolPositions.find(t => t.odl_id === toolId)
+    if (tool) {
+      toast({
+        title: `Tool ODL ${toolId}`,
+        description: `${tool.width}×${tool.height}mm, ${tool.peso}kg ${tool.rotated ? '(ruotato)' : ''}`
+      })
+    }
+  }, [toolPositions, toast])
+  
+  // 🎯 NUOVO v1.4.20-DEMO: Verifica coerenza scala per badge
+  const scaleError = Math.abs(pixelPerMM - (stageRef.current?.scaleX() || pixelPerMM))
+  const scaleIsCoherent = scaleError < 0.01
+
+  return (
+    <CanvasErrorBoundary>
+      <div className="relative">
+        <div className="flex justify-between items-center mb-4">
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-semibold">Canvas Preview v1.4.20-DEMO</h3>
+            <span className="text-sm text-muted-foreground">
+              Scala: 1 : {(1/pixelPerMM).toFixed(1)}
+            </span>
+            {/* 🎯 NUOVO: Badge scala incoerente */}
+            {!scaleIsCoherent && (
+              <Badge variant="destructive" className="text-xs">
+                ⚠️ Scala incoerente
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {/* 🎯 NUOVO v1.4.20-DEMO: Pulsanti controllo scala */}
+            <Button onClick={setOneToOne} size="sm" variant="outline" className="flex items-center gap-1">
+              ⬜ 1 : 1
+            </Button>
+            <Button onClick={autoFit} size="sm" variant="outline" className="flex items-center gap-1">
+              🔍 Fit
+            </Button>
+            <Button onClick={handleExportPNG} size="sm" className="flex items-center gap-2">
+              <Download className="h-4 w-4" />
+              Scarica PNG
+            </Button>
+          </div>
+        </div>
+        
+        {/* 🎯 NUOVO v1.4.20-DEMO: Container con dimensioni fisse e overflow-visible */}
+        <div 
+          ref={containerRef}
+          className="border rounded-lg bg-gray-50 relative overflow-visible" 
+          style={{ width: '100%', height: '70vh' }}
+        >
+          <CanvasWrapper 
+            ref={stageRef}
+            width={autoclave_mm[0]} 
+            height={autoclave_mm[1]}
+            loadingDelay={800}
+          >
+            <Layer>
+              {/* 🎯 NUOVO v1.4.20-DEMO: Griglia con pixelPerMM unificato */}
+              <GridLayer width={autoclave_mm[0]} height={autoclave_mm[1]} scale={pixelPerMM} />
+              
+              {/* 🎯 NUOVO v1.4.20-DEMO: Righelli con pixelPerMM unificato */}
+              <RulerLayer width={autoclave_mm[0]} height={autoclave_mm[1]} scale={pixelPerMM} />
+              
+              {/* Autoclave outline - ora usa dimensioni in mm direttamente */}
+              <Rect
+                x={0}
+                y={0}
+                width={autoclave_mm[0]}
+                height={autoclave_mm[1]}
+                stroke="#2563eb"
+                strokeWidth={2}
+                dash={[5, 5]}
+                fill="transparent"
+              />
+              
+              {/* Triangolo origine */}
+              <Line
+                points={[0, 0, 15, 10, 10, 15, 0, 0]}
+                fill="#6b7280"
+                closed
+              />
+              
+              {/* Tool - ora senza applicare scale separato */}
+              {toolPositions.map((tool) => (
+                <ToolRect
+                  key={tool.odl_id}
+                  tool={tool}
+                  scale={1}  // 🎯 IMPORTANTE: scale=1 perché Stage applica già il scaling
+                  isOverlapping={overlappingToolIds.has(tool.odl_id)}
+                  onClick={() => handleToolClick(tool.odl_id)}
+                />
+              ))}
+            </Layer>
+          </CanvasWrapper>
+          
+          <LegendCard />
+        </div>
+        
+        {validation?.overlaps && validation.overlaps.length > 0 && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-800 font-semibold">⚠️ Overlap rilevati:</p>
+            <ul className="text-red-700 text-sm mt-1">
+              {validation.overlaps.map(([idA, idB], index) => (
+                <li key={index}>• ODL {idA} ↔ ODL {idB}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </CanvasErrorBoundary>
+  )
+}
+
+// ✅ NUOVO v1.4.19-DEMO: Hook per debug SVG ground-truth
+const useDebugSvg = (batchId?: string) => {
+  const [debugState, setDebugState] = useState<DebugState>({
+    showGroundTruth: false,
+    useSvgOnly: false,
+    svgContent: null,
+    differences: [],
+    scaleError: 0
+  })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchGroundTruthSvg = useCallback(async () => {
+    if (!batchId) return
+
+    setLoading(true)
+    setError(null)
+    
+    try {
+      console.log(`🎯 Fetching SVG ground-truth per batch: ${batchId}`)
+      
+      // 🔧 FIX: Usa il nuovo endpoint batch-based
+      const response = await fetch(`/api/v1/nesting/batch/${batchId}/svg`)
+      
+      if (response.ok) {
+        const svgContent = await response.text()
+        setDebugState(prev => ({ ...prev, svgContent }))
+        console.log('✅ SVG Ground-Truth caricato:', svgContent.length, 'caratteri')
+        
+        // Verifica che l'SVG sia valido
+        if (svgContent.includes('<svg') && svgContent.includes('</svg>')) {
+          console.log('✅ SVG validato: struttura corretta')
+        } else {
+          console.warn('⚠️ SVG potenzialmente malformato')
+        }
+      } else {
+        const errorText = await response.text()
+        const errorMsg = `HTTP ${response.status}: ${errorText}`
+        console.error('❌ Errore caricamento SVG:', errorMsg)
+        setError(errorMsg)
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Errore di rete'
+      console.error('❌ Errore fetch SVG:', errorMsg)
+      setError(errorMsg)
+    } finally {
+      setLoading(false)
+    }
+  }, [batchId])
+
+  const toggleGroundTruth = useCallback(() => {
+    setDebugState(prev => {
+      const newShow = !prev.showGroundTruth
+      if (newShow && !prev.svgContent && !error) {
+        fetchGroundTruthSvg()
+      }
+      return { ...prev, showGroundTruth: newShow }
+    })
+  }, [fetchGroundTruthSvg, error])
+
+  const toggleSvgOnly = useCallback(() => {
+    setDebugState(prev => ({ ...prev, useSvgOnly: !prev.useSvgOnly }))
+  }, [])
+
+  const retryFetch = useCallback(() => {
+    setError(null)
+    fetchGroundTruthSvg()
+  }, [fetchGroundTruthSvg])
+
+  const calculateDifferences = useCallback((
+    toolPositions: ToolPosition[],
+    autoClaveInfo: AutoclaveInfo,
+    containerWidth: number,
+    containerHeight: number
+  ) => {
+    if (!debugState.svgContent) return
+
+    // Calcola scala teorica
+    const autoclaveMm = [autoClaveInfo.lunghezza, autoClaveInfo.larghezza_piano]
+    const scaleCalc = Math.min(containerWidth / autoclaveMm[0], containerHeight / autoclaveMm[1])
+    
+    // Estrai scala Konva (assumendo 1:1 per ora)
+    const scaleKonva = 1.0 // TODO: Ottenere dalla ref del stage
+    
+    const scaleError = Math.abs(scaleCalc - scaleKonva)
+    
+    // Calcola differenze per ogni tool
+    const differences: DebugDifference[] = toolPositions.map(tool => {
+      // Coordinate teoriche (da SVG)
+      const svgX = tool.x
+      const svgY = tool.y
+      const svgW = tool.width
+      const svgH = tool.height
+      
+      // Coordinate Konva (scalate)
+      const konvaX = tool.x * scaleKonva
+      const konvaY = tool.y * scaleKonva
+      const konvaW = tool.width * scaleKonva
+      const konvaH = tool.height * scaleKonva
+      
+      // Differenze in mm
+      const dx = Math.abs(svgX - konvaX)
+      const dy = Math.abs(svgY - konvaY)
+      const dW = Math.abs(svgW - konvaW)
+      const dH = Math.abs(svgH - konvaH)
+      
+      const error_mm = Math.max(dx, dy, dW, dH)
+      
+      return {
+        odl_id: tool.odl_id,
+        dx, dy, dW, dH,
+        error_mm
+      }
+    })
+    
+    // Log delle differenze per debugging
+    console.table(differences)
+    
+    // Aggiorna stato
+    setDebugState(prev => ({
+      ...prev,
+      differences,
+      scaleError
+    }))
+    
+    // Toast per errori di scala significativi
+    if (scaleError > 0.02) {
+      console.warn(`🔴 Scala incoerente: calc=${scaleCalc.toFixed(3)}, konva=${scaleKonva.toFixed(3)}`)
+    }
+    
+  }, [debugState.svgContent])
+
+  return {
+    debugState,
+    loading,
+    error,
+    toggleGroundTruth,
+    toggleSvgOnly,
+    calculateDifferences,
+    retryFetch
+  }
+}
+
+// ✅ NUOVO v1.4.19-DEMO: Componente SVG overlay per debug
+const SvgGroundTruthOverlay: React.FC<{
+  svgContent: string
+  containerWidth: number
+  containerHeight: number
+  opacity?: number
+}> = ({ svgContent, containerWidth, containerHeight, opacity = 0.3 }) => {
+  
+  // Parse SVG per estrarre dimensioni
+  const svgMatch = svgContent.match(/viewBox="0 0 (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)"/)
+  const svgWidth = svgMatch ? parseFloat(svgMatch[1]) : containerWidth
+  const svgHeight = svgMatch ? parseFloat(svgMatch[2]) : containerHeight
+  
+  // Calcola scala per adattare SVG al container
+  const scale = Math.min(containerWidth / svgWidth, containerHeight / svgHeight)
   
   return (
-    <div className="bg-white border rounded-lg overflow-hidden">
-      <NestingCanvasPanel
-        toolPositions={toolPositions}
-        autoclave={autoclave}
-        canvasSize={canvasSize}
-        scale={scale}
-        exclusions={exclusions}
-        excludedReasons={excludedReasons}
+    <div 
+      className="absolute inset-0 pointer-events-none"
+      style={{
+        opacity,
+        transform: `scale(${scale})`,
+        transformOrigin: 'top left',
+        zIndex: 10
+      }}
+    >
+      <div 
+        dangerouslySetInnerHTML={{ __html: svgContent }}
+        style={{
+          width: svgWidth,
+          height: svgHeight
+        }}
       />
     </div>
   )
 }
 
-// Componente di errore migliorato
-const CanvasError: React.FC<{ onRetry: () => void; error?: string }> = ({ onRetry, error }) => (
-  <div className="flex items-center justify-center bg-red-50 border border-red-200 rounded-lg" style={{ height: '400px' }}>
-    <div className="text-center space-y-3">
-      <AlertCircle className="h-12 w-12 text-red-500 mx-auto" />
-      <div>
-        <p className="text-red-800 font-medium">Errore nel rendering del canvas</p>
-        <p className="text-sm text-red-600">{error || 'Si è verificato un problema nella visualizzazione del layout nesting'}</p>
+// ✅ NUOVO v1.4.19-DEMO: Componenti di controllo debug
+const DebugControls: React.FC<{
+  debugState: DebugState
+  loading: boolean
+  error: string | null
+  onToggleGroundTruth: () => void
+  onToggleSvgOnly: () => void
+  onRetry: () => void
+}> = ({ debugState, loading, error, onToggleGroundTruth, onToggleSvgOnly, onRetry }) => {
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2 mb-4">
+        <Button
+          variant={debugState.showGroundTruth ? "default" : "outline"}
+          size="sm"
+          onClick={onToggleGroundTruth}
+          disabled={loading}
+          className="flex items-center gap-2"
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Grid3X3 className="h-4 w-4" />}
+          {debugState.showGroundTruth ? 'Nascondi GT' : 'Mostra GT'}
+        </Button>
+        
+        {debugState.svgContent && (
+          <Button
+            variant={debugState.useSvgOnly ? "default" : "outline"}
+            size="sm"
+            onClick={onToggleSvgOnly}
+            className="flex items-center gap-2"
+          >
+            <Ruler className="h-4 w-4" />
+            {debugState.useSvgOnly ? 'Mostra Konva' : 'Solo SVG'}
+          </Button>
+        )}
+        
+        {error && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onRetry}
+            className="flex items-center gap-2 border-red-300 text-red-700 hover:bg-red-50"
+          >
+            <AlertCircle className="h-4 w-4" />
+            Riprova
+          </Button>
+        )}
+        
+        {debugState.scaleError > 0.02 && (
+          <Badge variant="destructive" className="flex items-center gap-1">
+            <AlertCircle className="h-3 w-3" />
+            Scala incoerente: {(debugState.scaleError * 100).toFixed(1)}%
+          </Badge>
+        )}
+        
+        {debugState.differences.length > 0 && (
+          <Badge variant="secondary">
+            Differenze: {debugState.differences.filter(d => d.error_mm > 1).length} &gt; 1mm
+          </Badge>
+        )}
       </div>
-      <button 
-        onClick={onRetry}
-        className="px-4 py-2 bg-red-100 text-red-800 rounded hover:bg-red-200 transition-colors"
-      >
-        Riprova
-      </button>
+      
+      {/* 🎯 NUOVO: Pannello errori SVG */}
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <h4 className="text-red-800 font-semibold text-sm">Errore Caricamento SVG Ground-Truth</h4>
+              <p className="text-red-700 text-xs mt-1 font-mono">{error}</p>
+              <p className="text-red-600 text-xs mt-2">
+                Verifica che il backend sia attivo e che il batch contenga dati di nesting validi.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  </div>
-)
+  )
+}
 
-// Componente dati mancanti
-const NoDataCanvas: React.FC<{ message?: string }> = ({ message }) => (
-  <div className="flex items-center justify-center bg-muted/30 rounded-lg" style={{ height: '400px' }}>
-    <div className="text-center space-y-2">
-      <Package className="h-12 w-12 text-muted-foreground mx-auto" />
-      <p className="text-muted-foreground">
-        {message || 'Nessun ODL configurato'}
-      </p>
-      <p className="text-sm text-muted-foreground">
-        Verifica che il nesting contenga la configurazione_json con i dati degli ODL
-      </p>
-    </div>
-  </div>
-)
-
+// ✅ NUOVO v1.4.19-DEMO: Componente principale con debug SVG integrato
 const NestingCanvas: React.FC<NestingCanvasProps> = ({ batchData, className }) => {
-  const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 })
-  const [scale, setScale] = useState(1)
-  const [isClient, setIsClient] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
-  const [hasError, setHasError] = useState(false)
-  const [errorMessage, setErrorMessage] = useState<string>('')
-  const [retryCount, setRetryCount] = useState(0)
+  const { validation, loading: validationLoading } = useNestingValidation(batchData.id)
+  const { 
+    debugState, 
+    loading: debugLoading, 
+    error: debugError,
+    toggleGroundTruth, 
+    toggleSvgOnly, 
+    calculateDifferences,
+    retryFetch 
+  } = useDebugSvg(batchData.id)
+  const mounted = useClientMount()
+  const [renderError, setRenderError] = useState<string | null>(null)
 
-  // Debug logging migliorato
+  // ✅ Protezione aggiuntiva: Verifica dati
   useEffect(() => {
-    console.log('🔍 NestingCanvas props debug:', {
-      hasBatchData: !!batchData,
-      hasConfig: !!batchData?.configurazione_json,
-      hasToolPositions: !!batchData?.configurazione_json?.tool_positions,
-      toolPositionsCount: batchData?.configurazione_json?.tool_positions?.length || 0,
-      toolPositionsData: batchData?.configurazione_json?.tool_positions || [],
-      hasAutoclave: !!batchData?.autoclave,
-      autoclaveData: batchData?.autoclave
-    })
-  }, [batchData])
-
-  // Inizializzazione client-side
-  useEffect(() => {
-    setIsClient(true)
-    
-    // Simula un piccolo delay per assicurarsi che tutti i moduli siano caricati
-    const timer = setTimeout(() => {
-      setIsLoading(false)
-    }, 500)
-
-    return () => clearTimeout(timer)
-  }, [])
-
-  // Calcolo dimensioni e scala del canvas con gestione errori
-  useEffect(() => {
-    if (!batchData?.configurazione_json || !batchData?.autoclave) return
-
-    const config = batchData.configurazione_json
-    const autoclave = batchData.autoclave
-
-    try {
-      // Dimensioni dell'autoclave in mm - con controlli di sicurezza
-      const autoclaveLength = Number(autoclave.lunghezza) || 2000
-      const autoclaveWidth = Number(autoclave.larghezza_piano) || 1200
-
-      console.log('📐 Dimensioni autoclave:', { length: autoclaveLength, width: autoclaveWidth })
-
-      // Calcola scala per far stare tutto nel canvas
-      const maxCanvasWidth = 800
-      const maxCanvasHeight = 500
-      const padding = 50 // 25px per lato
-
-      const scaleX = (maxCanvasWidth - padding) / autoclaveLength
-      const scaleY = (maxCanvasHeight - padding) / autoclaveWidth
-      const calculatedScale = Math.min(scaleX, scaleY, 0.8) // Scala massima 0.8
-
-      // Dimensioni finali del canvas
-      const finalWidth = autoclaveLength * calculatedScale + padding
-      const finalHeight = autoclaveWidth * calculatedScale + padding
-
-      setCanvasSize({ 
-        width: Math.max(400, finalWidth), 
-        height: Math.max(300, finalHeight) 
-      })
-      setScale(calculatedScale)
-
-      console.log('📐 Canvas dimensions calculated:', {
-        autoclave: { length: autoclaveLength, width: autoclaveWidth },
-        scale: calculatedScale,
-        canvasSize: { width: finalWidth, height: finalHeight }
-      })
-
-    } catch (error) {
-      console.error('❌ Errore nel calcolo dimensioni canvas:', error)
-      setErrorMessage('Errore nel calcolo dimensioni del canvas')
-      setHasError(true)
+    if (mounted && batchData.configurazione_json?.tool_positions) {
+      try {
+        // Verifica che i dati siano validi
+        const positions = batchData.configurazione_json.tool_positions
+        if (!Array.isArray(positions)) {
+          throw new Error('Tool positions non è un array valido')
+        }
+        
+        // Verifica che ogni position abbia i campi necessari
+        for (const tool of positions) {
+          if (typeof tool.x !== 'number' || typeof tool.y !== 'number') {
+            throw new Error(`Tool ${tool.odl_id} ha coordinate non valide`)
+          }
+        }
+      } catch (error) {
+        console.error('Errore validazione dati canvas:', error)
+        setRenderError(error instanceof Error ? error.message : 'Dati non validi')
+      }
     }
-  }, [batchData])
+  }, [mounted, batchData.configurazione_json])
 
-  const handleRetry = useCallback(() => {
-    console.log('🔄 Retry canvas render, attempt:', retryCount + 1)
-    setHasError(false)
-    setErrorMessage('')
-    setIsLoading(true)
-    setRetryCount(prev => prev + 1)
-    
-    setTimeout(() => {
-      setIsLoading(false)
-    }, 500)
-  }, [retryCount])
+  // 🎯 NUOVO: Calcola differenze quando i dati sono pronti
+  useEffect(() => {
+    if (debugState.svgContent && batchData.configurazione_json?.tool_positions && batchData.autoclave) {
+      calculateDifferences(
+        batchData.configurazione_json.tool_positions,
+        batchData.autoclave,
+        800, // containerWidth
+        600  // containerHeight
+      )
+    }
+  }, [debugState.svgContent, batchData.configurazione_json?.tool_positions, batchData.autoclave, calculateDifferences])
 
-  // ✅ VALIDAZIONE DATI MIGLIORATA
-  if (!batchData) {
-    return <NoDataCanvas message="Dati batch non disponibili" />
+  if (!mounted) {
+    return <CanvasLoadingPlaceholder width={800} height={600} />
   }
 
-  if (!batchData.configurazione_json) {
-    return <NoDataCanvas message="Configurazione nesting non trovata" />
-  }
-
-  if (!batchData.configurazione_json.tool_positions || batchData.configurazione_json.tool_positions.length === 0) {
-    return <NoDataCanvas message="Nessun tool posizionato nel nesting" />
-  }
-
-  if (!batchData.autoclave) {
-    return <NoDataCanvas message="Informazioni autoclave non disponibili" />
-  }
-
-  // Gestione errori
-  if (hasError) {
-    return <CanvasError onRetry={handleRetry} error={errorMessage} />
-  }
-
-  // Caricamento
-  if (!isClient || isLoading) {
-    return <CanvasLoader />
-  }
-
-  // ✅ RENDERING PRINCIPALE CON CANVAS INTERATTIVO
-  try {
+  if (renderError) {
     return (
-      <div className={className || ''}>
-        <InteractiveCanvas
-          toolPositions={batchData.configurazione_json.tool_positions}
-          autoclave={batchData.autoclave}
-          canvasSize={canvasSize}
-          scale={scale}
-          exclusions={batchData.odl_esclusi || []}
-          excludedReasons={batchData.excluded_reasons || {}}
-        />
-      </div>
+      <Card className={className}>
+        <CardContent className="p-6">
+          <div className="text-center space-y-4">
+            <AlertCircle className="h-16 w-16 text-red-500 mx-auto" />
+            <div>
+              <h3 className="text-lg font-semibold text-red-800">Errore Dati Canvas</h3>
+              <p className="text-red-600 text-sm">{renderError}</p>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="mt-3"
+                onClick={() => {
+                  setRenderError(null)
+                  window.location.reload()
+                }}
+              >
+                Ricarica Pagina
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     )
-  } catch (error) {
-    console.error('❌ Errore nel rendering canvas:', error)
-    return <CanvasError onRetry={handleRetry} error="Errore nel rendering del canvas" />
   }
+
+  if (!batchData.configurazione_json?.tool_positions || !batchData.autoclave) {
+    return (
+      <Card className={className}>
+        <CardContent className="p-6">
+          <div className="text-center space-y-4">
+            <Package className="h-16 w-16 text-muted-foreground mx-auto" />
+            <div>
+              <h3 className="text-lg font-semibold">Nessun layout disponibile</h3>
+              <p className="text-muted-foreground">
+                Non ci sono dati di posizionamento per questo batch
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const normalizedTools = batchData.configurazione_json.tool_positions.map(normalizeToolData)
+
+  return (
+    <div className={className}>
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <CardTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Layout Nesting v1.4.19-DEMO Debug SVG
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <ValidationBadge validation={validation} loading={validationLoading} />
+              {process.env.NODE_ENV === 'development' && (
+                <Badge variant="outline" className="text-xs">
+                  🎯 DEBUG
+                </Badge>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {/* 🎯 NUOVO: Controlli debug SVG */}
+          {process.env.NODE_ENV === 'development' && (
+            <DebugControls
+              debugState={debugState}
+              loading={debugLoading}
+              error={debugError}
+              onToggleGroundTruth={toggleGroundTruth}
+              onToggleSvgOnly={toggleSvgOnly}
+              onRetry={retryFetch}
+            />
+          )}
+          
+          <CanvasErrorBoundary>
+            <div className="relative">
+              {/* Canvas Konva principale (nascosto se in modalità SVG-only) */}
+              {!debugState.useSvgOnly && (
+                <InteractiveCanvas
+                  toolPositions={normalizedTools}
+                  autoclave={batchData.autoclave}
+                  validation={validation}
+                />
+              )}
+              
+              {/* 🎯 NUOVO: SVG Ground-Truth Overlay */}
+              {debugState.showGroundTruth && debugState.svgContent && !debugError && (
+                <div className="relative">
+                  {debugState.useSvgOnly && (
+                    <div className="border rounded-lg overflow-hidden bg-gray-50" style={{ width: 800, height: 600 }}>
+                      <SvgGroundTruthOverlay
+                        svgContent={debugState.svgContent}
+                        containerWidth={800}
+                        containerHeight={600}
+                        opacity={1.0} // Opacità completa per modalità SVG-only
+                      />
+                    </div>
+                  )}
+                  
+                  {!debugState.useSvgOnly && (
+                    <SvgGroundTruthOverlay
+                      svgContent={debugState.svgContent}
+                      containerWidth={800}
+                      containerHeight={600}
+                      opacity={0.3} // Overlay trasparente
+                    />
+                  )}
+                </div>
+              )}
+              
+              {/* 🎯 NUOVO: Pannello diagnostica differenze */}
+              {debugState.differences.length > 0 && process.env.NODE_ENV === 'development' && (
+                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h4 className="text-blue-800 font-semibold mb-2">🔍 Diagnostica Coordinate (Debug)</h4>
+                  <div className="text-sm text-blue-700 space-y-1">
+                    <p>Tolleranza: 1mm | Errori rilevati: {debugState.differences.filter(d => d.error_mm > 1).length}</p>
+                    {debugState.differences.filter(d => d.error_mm > 1).slice(0, 3).map(diff => (
+                      <div key={diff.odl_id} className="font-mono text-xs">
+                        ODL {diff.odl_id}: dx={diff.dx.toFixed(1)}mm, dy={diff.dy.toFixed(1)}mm, err={diff.error_mm.toFixed(1)}mm
+                      </div>
+                    ))}
+                    {debugState.differences.filter(d => d.error_mm > 1).length > 3 && (
+                      <p className="text-xs italic">...e {debugState.differences.filter(d => d.error_mm > 1).length - 3} altri</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </CanvasErrorBoundary>
+        </CardContent>
+      </Card>
+    </div>
+  )
 }
 
 export default NestingCanvas 
