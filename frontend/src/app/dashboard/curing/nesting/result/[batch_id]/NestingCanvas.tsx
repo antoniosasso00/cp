@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useEffect, useState, useCallback, useRef } from 'react'
-import { Package, AlertCircle, Loader2, Info, CheckCircle, TrendingUp, TrendingDown, Download, Grid3X3, Ruler } from 'lucide-react'
+import React, { useEffect, useState, useCallback, useRef, useLayoutEffect } from 'react'
+import { Package, AlertCircle, Loader2, Info, CheckCircle, TrendingUp, TrendingDown, Download, Grid3X3, Ruler, ZoomIn, ZoomOut } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -12,9 +12,6 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useToast } from '@/components/ui/use-toast'
-// 🎯 NUOVO v1.4.21-DEMO: Import useResizeObserver
-import useResizeObserver from 'use-resize-observer'
-
 // ✅ NUOVO: Import del wrapper centralizzato per react-konva
 import CanvasWrapper, { 
   Layer, 
@@ -427,35 +424,24 @@ const InteractiveCanvas: React.FC<{
   validation: ValidationResult | null
 }> = ({ toolPositions, autoclave, validation }) => {
   const stageRef = useRef<any>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const [selectedTool, setSelectedTool] = useState<number | null>(null)
+  const [zoom, setZoom] = useState<number>(1)
   const { toast } = useToast()
   
-  // 🎯 NUOVO v1.4.21-DEMO: Resize observer per monitorare dimensioni card
-  const { ref: cardRef, width = 0, height = 0 } = useResizeObserver()
-  
-  // 🎯 NUOVO v1.4.21-DEMO: Dimensioni autoclave in mm
+  // 🎯 NUOVO v1.4.22-DEMO: Dimensioni autoclave in mm (native coordinates)
   const autoclaveWidth_mm = autoclave.larghezza_piano || autoclave.lunghezza || 2000
   const autoclaveHeight_mm = autoclave.larghezza_piano || 1200
-  const autoclave_mm: [number, number] = [autoclaveWidth_mm, autoclaveHeight_mm]
+  const aspectRatio = autoclaveWidth_mm / autoclaveHeight_mm
   
-  // 🎯 NUOVO v1.4.21-DEMO: Calcolo automatico scala e posizione con useEffect
-  useEffect(() => {
-    if (!width || !height || !stageRef.current) return
+  // 🎯 NUOVO v1.4.22-DEMO: Calcolo zoom iniziale automatico
+  useLayoutEffect(() => {
+    if (!containerRef.current) return
     
-    // Calcola scala bidimensionale con margine di sicurezza di 20px per lato (40px totali)
-    const scale = Math.min(
-      (width - 40) / autoclave_mm[0],
-      (height - 40) / autoclave_mm[1]
-    )
-    
-    // Applica scala e centramento
-    stageRef.current.scale({ x: scale, y: scale })
-    stageRef.current.position({
-      x: (width - autoclave_mm[0] * scale) / 2,
-      y: (height - autoclave_mm[1] * scale) / 2
-    })
-    stageRef.current.batchDraw()
-  }, [width, height, autoclave_mm])
+    const containerWidth = containerRef.current.offsetWidth
+    const initialScale = Math.min(containerWidth / autoclaveWidth_mm, 1) // Non ingrandire oltre 1:1
+    setZoom(initialScale)
+  }, [autoclaveWidth_mm])
 
   // Identifica tool con overlap
   const overlappingToolIds = new Set<number>()
@@ -509,20 +495,26 @@ const InteractiveCanvas: React.FC<{
     }
   }, [toolPositions, toast])
   
-  // 🎯 NUOVO v1.4.21-DEMO: Calcolo scala attuale per badge
-  const currentScale = stageRef.current?.scaleX() || 1
-  const scaleRatio = 1 / currentScale
+  // 🎯 NUOVO v1.4.22-DEMO: Funzioni zoom
+  const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.1, 2))
+  const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.1, 0.5))
+  const handleZoomReset = () => {
+    if (!containerRef.current) return
+    const containerWidth = containerRef.current.offsetWidth
+    const initialScale = Math.min(containerWidth / autoclaveWidth_mm, 1)
+    setZoom(initialScale)
+  }
 
   return (
     <CanvasErrorBoundary>
       <div className="relative">
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-2">
-            <h3 className="text-lg font-semibold">Canvas Preview v1.4.21-DEMO</h3>
-            {/* 🎯 NUOVO v1.4.21-DEMO: Badge scala aggiornato */}
-            <span className="text-sm text-muted-foreground">
-              Scala: 1 : {scaleRatio.toFixed(1)}
-            </span>
+            <h3 className="text-lg font-semibold">Canvas Preview v1.4.22-DEMO</h3>
+            {/* 🎯 NUOVO v1.4.22-DEMO: Badge scala NON più incoerente */}
+            <Badge variant="outline" className="text-sm">
+              Scala: 1 : {(1/zoom).toFixed(1)}
+            </Badge>
           </div>
           <div className="flex items-center gap-2">
             <Button onClick={handleExportPNG} size="sm" className="flex items-center gap-2">
@@ -532,58 +524,100 @@ const InteractiveCanvas: React.FC<{
           </div>
         </div>
         
-        {/* 🎯 NUOVO v1.4.21-DEMO: Container con useResizeObserver e flex-fill */}
-        <div 
-          ref={cardRef} 
-          className="w-full h-[calc(100vh-280px)] overflow-hidden relative flex flex-col"
-        >
-          <CanvasWrapper 
-            ref={stageRef}
-            width={width} 
-            height={height}
-            loadingDelay={800}
-          >
-            <Layer>
-              {/* 🎯 NUOVO v1.4.21-DEMO: Griglia con coordinate native mm */}
-              <GridLayer width={autoclave_mm[0]} height={autoclave_mm[1]} scale={1} />
-              
-              {/* 🎯 NUOVO v1.4.21-DEMO: Righelli con coordinate native mm */}
-              <RulerLayer width={autoclave_mm[0]} height={autoclave_mm[1]} scale={1} />
-              
-              {/* Autoclave outline - usa dimensioni in mm direttamente */}
-              <Rect
-                x={0}
-                y={0}
-                width={autoclave_mm[0]}
-                height={autoclave_mm[1]}
-                stroke="#2563eb"
-                strokeWidth={2}
-                dash={[5, 5]}
-                fill="transparent"
-              />
-              
-              {/* Triangolo origine */}
-              <Line
-                points={[0, 0, 15, 10, 10, 15, 0, 0]}
-                fill="#6b7280"
-                closed
-              />
-              
-              {/* Tool - coordinate native in mm */}
-              {toolPositions.map((tool) => (
-                <ToolRect
-                  key={tool.odl_id}
-                  tool={tool}
-                  scale={1}  // 🎯 IMPORTANTE: scale=1 perché Stage applica già il scaling
-                  isOverlapping={overlappingToolIds.has(tool.odl_id)}
-                  onClick={() => handleToolClick(tool.odl_id)}
-                />
-              ))}
-            </Layer>
-          </CanvasWrapper>
-          
-          <LegendCard />
+        {/* 🎯 NUOVO v1.4.22-DEMO: Controlli zoom */}
+        <div className="flex items-center gap-2 mb-4 p-3 bg-gray-50 rounded-lg">
+          <Button variant="outline" size="sm" onClick={handleZoomOut}>
+            <ZoomOut className="h-4 w-4" />
+          </Button>
+          <div className="flex-1 px-2">
+            <input
+              type="range"
+              value={zoom}
+              onChange={(e) => setZoom(parseFloat(e.target.value))}
+              min={0.5}
+              max={2}
+              step={0.05}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+            />
+          </div>
+          <Button variant="outline" size="sm" onClick={handleZoomIn}>
+            <ZoomIn className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleZoomReset}>
+            Auto-Fit
+          </Button>
+          <span className="text-sm text-muted-foreground min-w-[80px]">
+            {(zoom * 100).toFixed(0)}%
+          </span>
         </div>
+        
+        {/* 🎯 NUOVO v1.4.22-DEMO: Contenitore aspect-ratio fisso */}
+        <div 
+          ref={containerRef}
+          className="relative w-full max-w-full border rounded-lg overflow-visible bg-white"
+          style={{ aspectRatio: `${autoclaveWidth_mm} / ${autoclaveHeight_mm}` }}
+        >
+          {/* 🎯 NUOVO v1.4.22-DEMO: Scaling via CSS transform, NON stage.scale() */}
+          <div 
+            className="konva-container"
+            style={{
+              transform: `scale(${zoom})`,
+              transformOrigin: 'top left',
+              width: `${autoclaveWidth_mm}px`,
+              height: `${autoclaveHeight_mm}px`,
+              position: 'absolute',
+              top: 0,
+              left: 0
+            }}
+          >
+            <CanvasWrapper 
+              ref={stageRef}
+              width={autoclaveWidth_mm} 
+              height={autoclaveHeight_mm}
+              loadingDelay={800}
+            >
+              <Layer>
+                {/* 🎯 NUOVO v1.4.22-DEMO: Griglia con coordinate native mm */}
+                <GridLayer width={autoclaveWidth_mm} height={autoclaveHeight_mm} scale={1} />
+                
+                {/* 🎯 NUOVO v1.4.22-DEMO: Righelli con coordinate native mm */}
+                <RulerLayer width={autoclaveWidth_mm} height={autoclaveHeight_mm} scale={1} />
+                
+                {/* Autoclave outline - usa dimensioni in mm direttamente */}
+                <Rect
+                  x={0}
+                  y={0}
+                  width={autoclaveWidth_mm}
+                  height={autoclaveHeight_mm}
+                  stroke="#2563eb"
+                  strokeWidth={2}
+                  dash={[5, 5]}
+                  fill="transparent"
+                />
+                
+                {/* Triangolo origine */}
+                <Line
+                  points={[0, 0, 15, 10, 10, 15, 0, 0]}
+                  fill="#6b7280"
+                  closed
+                />
+                
+                {/* Tool - coordinate native in mm */}
+                {toolPositions.map((tool) => (
+                  <ToolRect
+                    key={tool.odl_id}
+                    tool={tool}
+                    scale={1}  // 🎯 IMPORTANTE: scale=1 perché CSS applica già il scaling
+                    isOverlapping={overlappingToolIds.has(tool.odl_id)}
+                    onClick={() => handleToolClick(tool.odl_id)}
+                  />
+                ))}
+              </Layer>
+            </CanvasWrapper>
+          </div>
+        </div>
+        
+        <LegendCard />
         
         {validation?.overlaps && validation.overlaps.length > 0 && (
           <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -860,7 +894,7 @@ const DebugControls: React.FC<{
   )
 }
 
-// ✅ NUOVO v1.4.19-DEMO: Componente principale con debug SVG integrato
+// ✅ NUOVO v1.4.22-DEMO: Componente principale con titolo aggiornato
 const NestingCanvas: React.FC<NestingCanvasProps> = ({ batchData, className }) => {
   const { validation, loading: validationLoading } = useNestingValidation(batchData.id)
   const { 
@@ -968,7 +1002,7 @@ const NestingCanvas: React.FC<NestingCanvasProps> = ({ batchData, className }) =
           <div className="flex justify-between items-center">
             <CardTitle className="flex items-center gap-2">
               <Package className="h-5 w-5" />
-              Layout Nesting v1.4.21-DEMO Auto-Fit
+              Layout Nesting v1.4.22-DEMO CSS Aspect-Ratio
             </CardTitle>
             <div className="flex items-center gap-2">
               <ValidationBadge validation={validation} loading={validationLoading} />

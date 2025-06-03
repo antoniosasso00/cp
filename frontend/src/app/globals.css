@@ -140,8 +140,11 @@
   .dark .shadow-card { @apply shadow-slate-900/30; }
   .dark .shadow-modal { @apply shadow-slate-900/50; }
   
-  /* 🎯 NUOVO v1.4.21-DEMO: Rimozione padding container Konva */
+  /* 🎯 NUOVO v1.4.22-DEMO: CSS aspect-ratio strategy per konva-container */
   .konva-container { 
-    padding-top: 0 !important; 
+    position: absolute !important;   /* permette overflow visibile */
+    top: 0 !important; 
+    left: 0 !important;
+    padding-top: 0 !important;
   }
 } 
