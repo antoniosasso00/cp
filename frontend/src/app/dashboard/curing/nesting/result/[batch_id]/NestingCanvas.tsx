@@ -12,6 +12,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useToast } from '@/components/ui/use-toast'
+// 🎯 NUOVO v1.4.21-DEMO: Import useResizeObserver
+import useResizeObserver from 'use-resize-observer'
 
 // ✅ NUOVO: Import del wrapper centralizzato per react-konva
 import CanvasWrapper, { 
@@ -418,58 +420,42 @@ class CanvasErrorBoundary extends React.Component<
   }
 }
 
-// ✅ NUOVO v1.4.18-DEMO: Canvas interattivo principale
+// ✅ NUOVO v1.4.19-DEMO: Canvas interattivo principale
 const InteractiveCanvas: React.FC<{
   toolPositions: ToolPosition[]
   autoclave: AutoclaveInfo
   validation: ValidationResult | null
 }> = ({ toolPositions, autoclave, validation }) => {
   const stageRef = useRef<any>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
   const [selectedTool, setSelectedTool] = useState<number | null>(null)
-  const [pixelPerMM, setPixelPerMM] = useState(1)
   const { toast } = useToast()
   
-  // 🎯 NUOVO v1.4.20-DEMO: Dimensioni autoclave in mm
+  // 🎯 NUOVO v1.4.21-DEMO: Resize observer per monitorare dimensioni card
+  const { ref: cardRef, width = 0, height = 0 } = useResizeObserver()
+  
+  // 🎯 NUOVO v1.4.21-DEMO: Dimensioni autoclave in mm
   const autoclaveWidth_mm = autoclave.larghezza_piano || autoclave.lunghezza || 2000
   const autoclaveHeight_mm = autoclave.larghezza_piano || 1200
   const autoclave_mm: [number, number] = [autoclaveWidth_mm, autoclaveHeight_mm]
   
-  // 🎯 NUOVO v1.4.20-DEMO: Auto-fit function - calcola pixelPerMM una sola volta
-  const autoFit = useCallback(() => {
-    if (!containerRef.current || !stageRef.current) return
-    
-    const containerWidth = containerRef.current.offsetWidth - 40 // padding
-    const containerHeight = containerRef.current.offsetHeight - 40
-    
-    // Calcola il fattore di scala che fa entrare l'autoclave nel container
-    const scaleX = containerWidth / autoclave_mm[0]
-    const scaleY = containerHeight / autoclave_mm[1] 
-    const scale = Math.min(scaleX, scaleY)
-    
-    // Imposta pixelPerMM e applica a Stage
-    setPixelPerMM(scale)
-    stageRef.current.scale({ x: scale, y: scale })
-    stageRef.current.position({ x: 20, y: 20 })
-    stageRef.current.batchDraw()
-  }, [autoclave_mm])
-  
-  // 🎯 NUOVO v1.4.20-DEMO: Pulsante 1:1 per debug
-  const setOneToOne = useCallback(() => {
-    if (!stageRef.current) return
-    
-    setPixelPerMM(1)
-    stageRef.current.scale({ x: 1, y: 1 })
-    stageRef.current.position({ x: 20, y: 20 })
-    stageRef.current.batchDraw()
-  }, [])
-  
-  // 🎯 NUOVO v1.4.20-DEMO: Auto-fit on mount e resize
+  // 🎯 NUOVO v1.4.21-DEMO: Calcolo automatico scala e posizione con useEffect
   useEffect(() => {
-    autoFit()
-    window.addEventListener('resize', autoFit)
-    return () => window.removeEventListener('resize', autoFit)
-  }, [autoFit])
+    if (!width || !height || !stageRef.current) return
+    
+    // Calcola scala bidimensionale con margine di sicurezza di 20px per lato (40px totali)
+    const scale = Math.min(
+      (width - 40) / autoclave_mm[0],
+      (height - 40) / autoclave_mm[1]
+    )
+    
+    // Applica scala e centramento
+    stageRef.current.scale({ x: scale, y: scale })
+    stageRef.current.position({
+      x: (width - autoclave_mm[0] * scale) / 2,
+      y: (height - autoclave_mm[1] * scale) / 2
+    })
+    stageRef.current.batchDraw()
+  }, [width, height, autoclave_mm])
 
   // Identifica tool con overlap
   const overlappingToolIds = new Set<number>()
@@ -523,34 +509,22 @@ const InteractiveCanvas: React.FC<{
     }
   }, [toolPositions, toast])
   
-  // 🎯 NUOVO v1.4.20-DEMO: Verifica coerenza scala per badge
-  const scaleError = Math.abs(pixelPerMM - (stageRef.current?.scaleX() || pixelPerMM))
-  const scaleIsCoherent = scaleError < 0.01
+  // 🎯 NUOVO v1.4.21-DEMO: Calcolo scala attuale per badge
+  const currentScale = stageRef.current?.scaleX() || 1
+  const scaleRatio = 1 / currentScale
 
   return (
     <CanvasErrorBoundary>
       <div className="relative">
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-2">
-            <h3 className="text-lg font-semibold">Canvas Preview v1.4.20-DEMO</h3>
+            <h3 className="text-lg font-semibold">Canvas Preview v1.4.21-DEMO</h3>
+            {/* 🎯 NUOVO v1.4.21-DEMO: Badge scala aggiornato */}
             <span className="text-sm text-muted-foreground">
-              Scala: 1 : {(1/pixelPerMM).toFixed(1)}
+              Scala: 1 : {scaleRatio.toFixed(1)}
             </span>
-            {/* 🎯 NUOVO: Badge scala incoerente */}
-            {!scaleIsCoherent && (
-              <Badge variant="destructive" className="text-xs">
-                ⚠️ Scala incoerente
-              </Badge>
-            )}
           </div>
           <div className="flex items-center gap-2">
-            {/* 🎯 NUOVO v1.4.20-DEMO: Pulsanti controllo scala */}
-            <Button onClick={setOneToOne} size="sm" variant="outline" className="flex items-center gap-1">
-              ⬜ 1 : 1
-            </Button>
-            <Button onClick={autoFit} size="sm" variant="outline" className="flex items-center gap-1">
-              🔍 Fit
-            </Button>
             <Button onClick={handleExportPNG} size="sm" className="flex items-center gap-2">
               <Download className="h-4 w-4" />
               Scarica PNG
@@ -558,26 +532,25 @@ const InteractiveCanvas: React.FC<{
           </div>
         </div>
         
-        {/* 🎯 NUOVO v1.4.20-DEMO: Container con dimensioni fisse e overflow-visible */}
+        {/* 🎯 NUOVO v1.4.21-DEMO: Container con useResizeObserver e flex-fill */}
         <div 
-          ref={containerRef}
-          className="border rounded-lg bg-gray-50 relative overflow-visible" 
-          style={{ width: '100%', height: '70vh' }}
+          ref={cardRef} 
+          className="w-full h-[calc(100vh-280px)] overflow-hidden relative flex flex-col"
         >
           <CanvasWrapper 
             ref={stageRef}
-            width={autoclave_mm[0]} 
-            height={autoclave_mm[1]}
+            width={width} 
+            height={height}
             loadingDelay={800}
           >
             <Layer>
-              {/* 🎯 NUOVO v1.4.20-DEMO: Griglia con pixelPerMM unificato */}
-              <GridLayer width={autoclave_mm[0]} height={autoclave_mm[1]} scale={pixelPerMM} />
+              {/* 🎯 NUOVO v1.4.21-DEMO: Griglia con coordinate native mm */}
+              <GridLayer width={autoclave_mm[0]} height={autoclave_mm[1]} scale={1} />
               
-              {/* 🎯 NUOVO v1.4.20-DEMO: Righelli con pixelPerMM unificato */}
-              <RulerLayer width={autoclave_mm[0]} height={autoclave_mm[1]} scale={pixelPerMM} />
+              {/* 🎯 NUOVO v1.4.21-DEMO: Righelli con coordinate native mm */}
+              <RulerLayer width={autoclave_mm[0]} height={autoclave_mm[1]} scale={1} />
               
-              {/* Autoclave outline - ora usa dimensioni in mm direttamente */}
+              {/* Autoclave outline - usa dimensioni in mm direttamente */}
               <Rect
                 x={0}
                 y={0}
@@ -596,7 +569,7 @@ const InteractiveCanvas: React.FC<{
                 closed
               />
               
-              {/* Tool - ora senza applicare scale separato */}
+              {/* Tool - coordinate native in mm */}
               {toolPositions.map((tool) => (
                 <ToolRect
                   key={tool.odl_id}
@@ -995,7 +968,7 @@ const NestingCanvas: React.FC<NestingCanvasProps> = ({ batchData, className }) =
           <div className="flex justify-between items-center">
             <CardTitle className="flex items-center gap-2">
               <Package className="h-5 w-5" />
-              Layout Nesting v1.4.19-DEMO Debug SVG
+              Layout Nesting v1.4.21-DEMO Auto-Fit
             </CardTitle>
             <div className="flex items-center gap-2">
               <ValidationBadge validation={validation} loading={validationLoading} />

@@ -139,4 +139,9 @@
   .dark .shadow-soft { @apply shadow-slate-900/50; }
   .dark .shadow-card { @apply shadow-slate-900/30; }
   .dark .shadow-modal { @apply shadow-slate-900/50; }
+  
+  /* 🎯 NUOVO v1.4.21-DEMO: Rimozione padding container Konva */
+  .konva-container { 
+    padding-top: 0 !important; 
+  }
 } 
