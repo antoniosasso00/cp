@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
+import { Button } from '@/shared/components/ui/button'
 
 export default function Home() {
   return (
@@ -19,7 +19,7 @@ export default function Home() {
           
           <div className="space-y-4">
             <div className="flex flex-col space-y-2">
-              <Link href="/role" className="w-full">
+              <Link href="/modules/role" className="w-full">
                 <Button className="w-full text-lg py-6">
                   Accedi al Sistema
                 </Button>

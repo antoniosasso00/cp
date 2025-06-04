@@ -1,8 +1,0 @@
-{
-    "odl_ids": ["1", "2"],
-    "autoclave_ids": ["1"],
-    "parametri": {
-        "padding_mm": 10,
-        "min_distance_mm": 8
-    }
-} 

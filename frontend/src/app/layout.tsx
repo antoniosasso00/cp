@@ -1,12 +1,12 @@
 import './globals.css'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
-import { Toaster } from '@/components/ui/toaster'
-import { ThemeProvider } from '@/components/theme-provider'
-import { ThemeToggle } from '@/components/ui/theme-toggle'
-import { ApiErrorProvider } from '@/components/ApiErrorProvider'
-import { RoleGuard } from '@/components/RoleGuard'
-import { SWRProvider } from '@/components/providers/SWRProvider'
+import { Toaster } from '@/shared/components/ui/toaster'
+import { ThemeProvider } from '@/shared/components/theme-provider'
+import { ThemeToggle } from '@/shared/components/ui/theme-toggle'
+import { ApiErrorProvider } from '@/shared/components/ApiErrorProvider'
+import { RoleGuard } from '@/shared/components/RoleGuard'
+import { SWRProvider } from '@/shared/components/providers/SWRProvider'
 
 const inter = Inter({ 
   subsets: ['latin'],
