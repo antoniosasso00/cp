@@ -1,0 +1,1 @@
+export { default } from '@/modules/nesting/result/[batch_id]/page' 

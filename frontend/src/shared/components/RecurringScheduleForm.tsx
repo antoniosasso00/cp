@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { scheduleApi, catalogoApi } from '@/lib/api';
+import { scheduleApi, catalogApi } from '@/lib/api';
 import { 
   RecurringScheduleCreateData, 
   ScheduleEntryType 
@@ -48,30 +48,21 @@ const RecurringScheduleForm: React.FC<RecurringScheduleFormProps> = ({
     piecesPerDay: number;
   } | null>(null);
 
-  // Carica le categorie e sotto-categorie dal catalogo
+  // Carica le categorie dal catalogo
   useEffect(() => {
-    const loadCatalogData = async () => {
+    const loadCategorie = async () => {
       try {
-        const catalogo = await catalogoApi.getAll();
-        
-        const categorieSet = new Set(catalogo
+        const catalogo = await catalogApi.fetchCatalogItems();
+        const categorie = Array.from(new Set(catalogo
           .map(item => item.categoria)
-          .filter(Boolean));
-        const categorie = Array.from(categorieSet) as string[];
-        
-        const sottoCategorieSet = new Set(catalogo
-          .map(item => item.sotto_categoria)
-          .filter(Boolean));
-        const sottoCategorie = Array.from(sottoCategorieSet) as string[];
-        
+          .filter(Boolean))) as string[];
         setCategorieList(categorie);
-        setSottoCategorieList(sottoCategorie);
       } catch (err) {
-        console.error('Errore nel caricamento del catalogo:', err);
+        console.error('Errore nel caricamento delle categorie:', err);
       }
     };
 
-    loadCatalogData();
+    loadCategorie();
   }, []);
 
   // Calcola l'anteprima della distribuzione

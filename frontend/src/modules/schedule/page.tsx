@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { scheduleApi, autoclaveApi, odlApi } from '@/lib/api';
+import { scheduleApi, autoclavesApi, odlApi } from '@/lib/api';
 import { Autoclave, ODLResponse } from '@/lib/api';
 import CalendarSchedule from '@/components/CalendarSchedule';
 import { Button } from '@/components/ui/button';
@@ -20,10 +20,10 @@ export default function SchedulePage() {
         setError(null);
         
         // Recupera le autoclavi usando l'API client configurato
-        const autoclaviData = await autoclaveApi.getAll();
+        const autoclaviData = await autoclavesApi.fetchAutoclaves();
         
         // Recupera tutti gli ODL (non solo quelli in "Attesa Cura")
-        const odlData = await odlApi.getAll();
+        const odlData = await odlApi.fetchODLs();
         
         setAutoclavi(autoclaviData);
         setOdlList(odlData);

@@ -14,7 +14,7 @@ import json
 from typing import Dict, List, Any
 
 # Configurazione test
-API_BASE_URL = "http://localhost:8000/api/v1"
+API_BASE_URL = "http://localhost:8000/api"
 
 class TestNestingValidation:
     """Test suite per validazione layout nesting"""

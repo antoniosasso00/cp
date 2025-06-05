@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { catalogoApi, tempoFasiApi, odlApi, CatalogoResponse } from '@/lib/api'
+import { catalogApi, phaseTimesApi, odlApi, CatalogoResponse } from '@/lib/api'
 import { Loader2, AlertCircle, BarChart3, Clock, TrendingUp } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
@@ -47,7 +47,7 @@ export default function MonitoraggioPage() {
       try {
         setIsLoading(true)
         setError(null)
-        const data = await catalogoApi.getAll()
+        const data = await catalogApi.fetchCatalogItems()
         setCatalogo(data.filter(item => item.attivo)) // Solo parti attive
       } catch (err) {
         console.error('Errore nel caricamento del catalogo:', err)

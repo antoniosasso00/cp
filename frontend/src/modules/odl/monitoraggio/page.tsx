@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { ODLResponse, odlApi, tempoFasiApi, TempoFaseResponse } from '@/lib/api'
+import { ODLResponse, odlApi, phaseTimesApi, TempoFaseResponse } from '@/lib/api'
 import { formatDateIT } from '@/lib/utils'
 import { 
   Loader2, 
@@ -94,7 +94,7 @@ export default function MonitoraggioODLPage() {
   const fetchODLs = async () => {
     try {
       setIsLoading(true)
-      const data = await odlApi.getAll(filter)
+      const data = await odlApi.fetchODLs({ status: 'all' })
       
       // Separa gli ODL in corso da quelli finiti
       const odlAttivi = data.filter(odl => odl.status !== "Finito")
@@ -107,10 +107,10 @@ export default function MonitoraggioODLPage() {
       const tempiFasiData: Record<number, TempoFaseResponse[]> = {}
       for (const odl of data) {
         try {
-          const fasi = await tempoFasiApi.getAll({ odl_id: odl.id })
+          const fasi = await phaseTimesApi.fetchPhaseTimes({ odl_id: odl.id })
           tempiFasiData[odl.id] = fasi
         } catch (error) {
-          console.warn(`Errore nel caricamento delle fasi per ODL ${odl.id}:`, error)
+          console.error(`Errore nel caricamento fasi per ODL ${odl.id}:`, error)
           tempiFasiData[odl.id] = []
         }
       }
@@ -160,7 +160,7 @@ export default function MonitoraggioODLPage() {
         const currentFase = STATO_A_FASE[odlToAdvance.status as keyof typeof STATO_A_FASE]
         
         // Recupera la fase attuale non completata
-        const tempiFasiResponse = await tempoFasiApi.getAll({
+        const tempiFasiResponse = await phaseTimesApi.fetchPhaseTimes({
           odl_id: odlToAdvance.id,
           fase: currentFase
         })
@@ -169,24 +169,25 @@ export default function MonitoraggioODLPage() {
         
         if (faseAttiva) {
           // Chiudi la fase corrente
-          await tempoFasiApi.update(faseAttiva.id, {
-            fine_fase: new Date().toISOString()
+          const now = new Date().toISOString()
+          await phaseTimesApi.updatePhaseTime(faseAttiva.id, {
+            fine_fase: now
           })
         }
       }
       
       // 2. Aggiorna lo stato dell'ODL usando la nuova funzione generica
-              await odlApi.updateStatus(odlToAdvance.id, nextStatus)
+      await odlApi.updateODLStatus(Number(odlToAdvance.id), nextStatus)
       
       // 3. Crea una nuova fase se il nuovo stato è monitorato
       if (nextStatus in STATO_A_FASE) {
         const nuovaFase = STATO_A_FASE[nextStatus as keyof typeof STATO_A_FASE]
         
-        await tempoFasiApi.create({
+        const now = new Date().toISOString()
+        await phaseTimesApi.createPhaseTime({
           odl_id: odlToAdvance.id,
           fase: nuovaFase,
-          inizio_fase: new Date().toISOString(),
-          note: `Fase ${nuovaFase} iniziata automaticamente`
+          inizio_fase: now
         })
       }
       

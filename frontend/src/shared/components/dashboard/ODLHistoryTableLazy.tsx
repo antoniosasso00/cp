@@ -50,7 +50,7 @@ export function ODLHistoryTableLazy({
       setLoading(true)
       setError(null)
       
-      const data = await odlApi.getAll()
+      const data = await odlApi.fetchODLs()
       
       // Ordina per data di creazione (più recenti prima)
       data.sort((a, b) => 

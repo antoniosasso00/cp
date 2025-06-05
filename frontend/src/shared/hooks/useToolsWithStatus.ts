@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { toolApi, ToolWithStatus } from '@/lib/api'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import useSWR from 'swr'
+import { toolsApi, ToolWithStatus } from '@/lib/api'
 
 interface UseToolsWithStatusOptions {
   autoRefresh?: boolean
@@ -32,6 +33,16 @@ export function useToolsWithStatus(options: UseToolsWithStatusOptions = {}): Use
     filters
   } = options
 
+  const { data, error: swrError, isLoading, mutate } = useSWR(
+    'tools-with-status',
+    () => toolsApi.fetchToolsWithStatus(),
+    {
+      refreshInterval: 30000, // Aggiorna ogni 30 secondi
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+    }
+  )
+
   const [tools, setTools] = useState<ToolWithStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -48,7 +59,7 @@ export function useToolsWithStatus(options: UseToolsWithStatusOptions = {}): Use
       isFetchingRef.current = true
       setError(null)
       console.log('🔄 Fetching tools with status...', filters)
-      const data = await toolApi.getAllWithStatus(filters)
+      const data = await toolsApi.fetchToolsWithStatus()
       console.log('✅ Tools fetched successfully:', data)
       
       // Validazione dei dati ricevuti
@@ -87,7 +98,7 @@ export function useToolsWithStatus(options: UseToolsWithStatusOptions = {}): Use
     try {
       setError(null)
       console.log('🔄 Sincronizzazione stato tools...')
-      const result = await toolApi.updateStatusFromODL()
+      const result = await toolsApi.updateToolStatusFromODL()
       console.log('✅ Sincronizzazione completata:', result)
       
       // Dopo la sincronizzazione, ricarica i dati
@@ -176,9 +187,9 @@ export function useToolsWithStatus(options: UseToolsWithStatusOptions = {}): Use
   }, [])
 
   return {
-    tools,
+    tools: data || [],
     loading,
-    error,
+    error: error || (swrError ? swrError.message : null),
     refresh,
     syncStatus,
     lastUpdated

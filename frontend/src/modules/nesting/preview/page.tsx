@@ -256,7 +256,7 @@ export default function NestingPreviewPage() {
       console.log('🔄 Inizio caricamento dati preview nesting...')
 
       // Carica ODL disponibili
-      const odlResponse = await fetch('/api/v1/batch_nesting/data')
+      const odlResponse = await fetch('/api/batch_nesting/data')
       if (!odlResponse.ok) {
         throw new Error('Errore nel caricamento degli ODL disponibili')
       }
@@ -317,7 +317,7 @@ export default function NestingPreviewPage() {
       console.log('🚀 Generazione preview nesting:', payload)
       
       // ✅ FIX: Usa URL relativo per sfruttare il proxy Next.js
-      const response = await fetch('/api/v1/batch_nesting/solve', {
+      const response = await fetch('/api/batch_nesting/solve', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -435,7 +435,7 @@ export default function NestingPreviewPage() {
       }
       
       // ✅ FIX: Usa URL relativo per sfruttare il proxy Next.js
-      const response = await fetch('/api/v1/batch_nesting/genera', {
+      const response = await fetch('/api/batch_nesting/genera', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

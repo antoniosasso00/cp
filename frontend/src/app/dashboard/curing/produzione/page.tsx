@@ -73,7 +73,7 @@ export default function ProduzioneCuringPage() {
       // ✅ FALLBACK: Se l'API produzione non funziona, usa l'API standard con gestione robusta
       console.log('🔄 Fallback: caricamento con API standard...')
       
-      const allOdl = await odlApi.getAll()
+      const allOdl = await odlApi.fetchODLs()
       const relevantOdl = allOdl.filter(odl => 
         odl.status === "Attesa Cura" || odl.status === "Cura"
       )

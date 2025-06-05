@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { ParteResponse, partiApi } from '@/lib/api'
+import { ParteResponse, partsApi } from '@/lib/api'
 import { formatDateIT } from '@/lib/utils'
 import ParteModal from './components/parte-modal'
 import { 
@@ -31,17 +31,17 @@ export default function PartiPage() {
   const [editingItem, setEditingItem] = useState<ParteResponse | null>(null)
   const { toast } = useToast()
 
-  const fetchParti = async () => {
+  const loadData = async () => {
     try {
       setIsLoading(true)
-      const data = await partiApi.getAll(filter)
+      const data = await partsApi.fetchParts(filter)
       setParti(data)
     } catch (error) {
       console.error('Errore nel caricamento delle parti:', error)
       toast({
         variant: 'destructive',
         title: 'Errore',
-        description: 'Impossibile caricare le parti. Riprova più tardi.',
+        description: 'Impossibile caricare le parti.',
       })
     } finally {
       setIsLoading(false)
@@ -49,7 +49,7 @@ export default function PartiPage() {
   }
 
   useEffect(() => {
-    fetchParti()
+    loadData()
   }, [filter])
 
   const handleCreateClick = () => {
@@ -63,24 +63,23 @@ export default function PartiPage() {
   }
 
   const handleDeleteClick = async (id: number) => {
-    if (!window.confirm(`Sei sicuro di voler eliminare la parte con ID ${id}?`)) {
+    if (!window.confirm('Sei sicuro di voler eliminare questa parte?')) {
       return
     }
 
     try {
-      await partiApi.delete(id)
+      await partsApi.deletePart(id)
       toast({
-        variant: 'success',
-        title: 'Eliminata',
-        description: `Parte con ID ${id} eliminata con successo.`,
+        title: 'Eliminato',
+        description: 'Parte eliminata con successo.',
       })
-      fetchParti()
+      loadData()
     } catch (error) {
-      console.error(`Errore durante l'eliminazione della parte ${id}:`, error)
+      console.error('Errore durante l\'eliminazione della parte:', error)
       toast({
         variant: 'destructive',
         title: 'Errore',
-        description: `Impossibile eliminare la parte con ID ${id}.`,
+        description: 'Impossibile eliminare la parte.',
       })
     }
   }
@@ -195,7 +194,7 @@ export default function PartiPage() {
         onClose={() => setModalOpen(false)} 
         item={editingItem} 
         onSuccess={() => {
-          fetchParti()
+          loadData()
           setModalOpen(false)
         }}
       />

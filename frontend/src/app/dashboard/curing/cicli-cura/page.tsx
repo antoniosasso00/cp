@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { CicloModal } from './components/ciclo-modal'
-import { cicloCuraApi, type CicloCura } from '@/lib/api'
+import { curingCyclesApi, type CicloCura } from '@/lib/api'
 import { 
   Loader2, 
   MoreHorizontal, 
@@ -29,17 +29,17 @@ export default function CicliCuraPage() {
   const [editingItem, setEditingItem] = useState<CicloCura | null>(null)
   const { toast } = useToast()
 
-  const fetchCicli = async () => {
+  const loadData = async () => {
     try {
       setIsLoading(true)
-      const data = await cicloCuraApi.getAll()
+      const data = await curingCyclesApi.fetchCuringCycles()
       setCicli(data)
     } catch (error) {
-      console.error('Errore nel caricamento dei cicli:', error)
+      console.error('Errore nel caricamento dei cicli di cura:', error)
       toast({
         variant: 'destructive',
         title: 'Errore',
-        description: 'Impossibile caricare i cicli di cura. Riprova più tardi.',
+        description: 'Impossibile caricare i cicli di cura.',
       })
     } finally {
       setIsLoading(false)
@@ -47,7 +47,7 @@ export default function CicliCuraPage() {
   }
 
   useEffect(() => {
-    fetchCicli()
+    loadData()
   }, [])
 
   const handleCreateClick = () => {
@@ -61,25 +61,23 @@ export default function CicliCuraPage() {
   }
 
   const handleDeleteClick = async (id: number) => {
-    if (!window.confirm('Sei sicuro di voler eliminare questo ciclo?')) {
+    if (!window.confirm('Sei sicuro di voler eliminare questo ciclo di cura?')) {
       return
     }
 
     try {
-      await cicloCuraApi.delete(id)
-      
+      await curingCyclesApi.deleteCuringCycle(id)
       toast({
-        variant: 'success',
-        title: 'Ciclo eliminato',
-        description: 'Il ciclo di cura è stato eliminato con successo.',
+        title: 'Eliminato',
+        description: 'Ciclo di cura eliminato con successo.',
       })
-      fetchCicli()
+      loadData()
     } catch (error) {
-      console.error('Errore durante l\'eliminazione:', error)
+      console.error('Errore durante l\'eliminazione del ciclo di cura:', error)
       toast({
         variant: 'destructive',
         title: 'Errore',
-        description: 'Impossibile eliminare il ciclo. Potrebbe essere in uso.',
+        description: 'Impossibile eliminare il ciclo di cura.',
       })
     }
   }
@@ -183,7 +181,7 @@ export default function CicliCuraPage() {
         open={modalOpen}
         onOpenChange={setModalOpen}
         editingItem={editingItem}
-        onSuccess={fetchCicli}
+        onSuccess={loadData}
       />
     </div>
   )

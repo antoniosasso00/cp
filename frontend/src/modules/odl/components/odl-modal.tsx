@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Tool, ParteResponse, ODLResponse, ODLCreate, ODLUpdate, odlApi, toolApi, partiApi } from '@/lib/api'
+import { Tool, ParteResponse, ODLResponse, ODLCreate, ODLUpdate, odlApi, toolsApi, partsApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -114,8 +114,8 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
     try {
       setIsLoading(true)
       const [toolsData, partiData] = await Promise.all([
-        toolApi.getAll(),
-        partiApi.getAll()
+        toolsApi.fetchTools(),
+        partsApi.fetchParts()
       ])
       setTools(toolsData)
       setParti(partiData)
@@ -154,7 +154,7 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
       
       if (item) {
         // Aggiornamento
-        await odlApi.update(item.id, formData)
+        await odlApi.updateODL(item.id, formData)
         toast({
           variant: 'success',
           title: 'ODL aggiornato',
@@ -162,7 +162,7 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
         })
       } else {
         // Creazione
-        await odlApi.create(formData as ODLCreate)
+        await odlApi.createODL(formData as ODLCreate)
         toast({
           variant: 'success',
           title: 'ODL creato',

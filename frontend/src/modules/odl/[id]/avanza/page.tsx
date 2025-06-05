@@ -19,7 +19,7 @@ import {
   ArrowRightCircle 
 } from 'lucide-react'
 import { formatDateIT, formatDateTime } from '@/lib/utils'
-import { odlApi, tempoFasiApi } from '@/lib/api'
+import { odlApi, phaseTimesApi } from '@/lib/api'
 import Link from 'next/link'
 
 // Sequenza degli stati ODL
@@ -83,14 +83,14 @@ export default function AvanzaODLPage() {
     const fetchODL = async () => {
       try {
         setLoading(true)
-        const odlData = await odlApi.getOne(Number(odlId))
+        const odlData = await odlApi.fetchODL(Number(odlId))
         setOdl(odlData)
         
         // Determina il prossimo stato
         setProssimoStato(getProssimoStato(odlData.status))
         
         // Carica le fasi di tempo correnti
-        const tempiData = await tempoFasiApi.getAll({ odl_id: Number(odlId) })
+        const tempiData = await phaseTimesApi.fetchPhaseTimes({ odl_id: Number(odlId) })
         setTempoFasi(tempiData)
       } catch (error) {
         console.error('Errore nel caricamento ODL:', error)
@@ -125,7 +125,7 @@ export default function AvanzaODLPage() {
       }
       
       // Aggiorna lo stato dell'ODL usando la nuova funzione generica
-      const updatedOdl = await odlApi.updateStatus(Number(odlId), prossimoStato)
+      const updatedOdl = await odlApi.updateODLStatus(Number(odlId), prossimoStato)
       
       // Aggiorna stato locale
       setOdl(updatedOdl)
@@ -133,7 +133,7 @@ export default function AvanzaODLPage() {
       
       // Ricarica le fasi di tempo con gestione errori
       try {
-        const tempiData = await tempoFasiApi.getAll({ odl_id: Number(odlId) })
+        const tempiData = await phaseTimesApi.fetchPhaseTimes({ odl_id: Number(odlId) })
         setTempoFasi(tempiData)
       } catch (tempiError) {
         console.warn('Errore nel caricamento tempi fasi:', tempiError)

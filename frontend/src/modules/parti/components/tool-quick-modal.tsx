@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { toolApi, Tool } from '@/lib/api'
+import { toolsApi, Tool } from '@/lib/api'
 
 interface ToolQuickModalProps {
   isOpen: boolean
@@ -99,7 +99,7 @@ export default function ToolQuickModal({ isOpen, onClose, onSuccess }: ToolQuick
 
     setIsSubmitting(true)
     try {
-      const newTool = await toolApi.create(dataToSubmit)
+      const newTool = await toolsApi.createTool(dataToSubmit)
       toast({
         variant: 'success',
         title: 'Tool Creato',

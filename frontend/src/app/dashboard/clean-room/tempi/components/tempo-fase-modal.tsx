@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { tempoFasiApi, TempoFaseResponse, ODLResponse } from "@/lib/api";
+import { phaseTimesApi, TempoFaseResponse, ODLResponse } from "@/lib/api";
 
 interface TempoFaseModalProps {
   isOpen: boolean;
@@ -100,7 +100,7 @@ export default function TempoFaseModal({
           note: note || null,
         };
         
-        await tempoFasiApi.update(item.id, updateData);
+        await phaseTimesApi.updatePhaseTime(item.id, updateData);
         toast({
           title: "Modificato",
           description: "Tempo fase aggiornato con successo",
@@ -115,7 +115,7 @@ export default function TempoFaseModal({
           note: note || null,
         };
         
-        await tempoFasiApi.create(createData);
+        await phaseTimesApi.createPhaseTime(createData);
         toast({
           title: "Creato",
           description: "Nuovo tempo fase registrato con successo",

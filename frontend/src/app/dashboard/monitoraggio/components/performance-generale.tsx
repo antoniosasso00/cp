@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, TrendingUp, TrendingDown, Clock, CheckCircle, AlertCircle } from 'lucide-react'
-import { odlApi, tempoFasiApi, CatalogoResponse } from '@/lib/api'
+import { odlApi, phaseTimesApi, CatalogoResponse } from '@/lib/api'
 import { formatDuration } from '@/lib/utils'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
@@ -42,7 +42,7 @@ export default function PerformanceGenerale({ filtri, catalogo, onError }: Perfo
         setIsLoading(true)
         
         // Carica tutti gli ODL
-        const odlData = await odlApi.getAll()
+        const odlData = await odlApi.fetchODLs()
         
         // Filtra gli ODL in base ai filtri globali
         let odlFiltrati = odlData
@@ -78,7 +78,7 @@ export default function PerformanceGenerale({ filtri, catalogo, onError }: Perfo
           try {
             // Qui dovresti implementare la logica per calcolare il tempo medio
             // basandoti sui dati di TempoFase
-            const tempiData = await tempoFasiApi.getAll()
+            const tempiData = await phaseTimesApi.fetchPhaseTimes()
             const tempiCompletati = tempiData.filter(tempo => 
               odlFiltrati.some(odl => odl.id === tempo.odl_id && odl.status === 'Finito')
             )

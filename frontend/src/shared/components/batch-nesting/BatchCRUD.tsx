@@ -48,7 +48,7 @@ import {
 } from 'lucide-react';
 import { 
   batchNestingApi, 
-  autoclaveApi,
+  autoclavesApi,
   odlApi,
   BatchNestingResponse, 
   BatchNestingCreate,
@@ -109,7 +109,7 @@ const BatchCRUD: React.FC<BatchCRUDProps> = ({
   });
 
   // Stati per dati aggiuntivi
-  const [autoclavi, setAutoclavi] = useState<Autoclave[]>([]);
+  const [autoclaves, setAutoclaves] = useState<Autoclave[]>([]);
   const [odlDisponibili, setOdlDisponibili] = useState<ODLResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
@@ -132,18 +132,18 @@ const BatchCRUD: React.FC<BatchCRUDProps> = ({
     }
   }, [mode, editBatch]);
 
-  // Carica dati iniziali (autoclavi e ODL)
+  // Carica dati iniziali (autoclaves e ODL)
   const loadInitialData = async () => {
     try {
       setLoadingData(true);
       setError(null);
 
-      // Carica autoclavi disponibili
-      const autoclaveList = await autoclaveApi.getAll();
-      setAutoclavi(autoclaveList.filter(a => a.stato === 'DISPONIBILE'));
+      // Carica autoclaves disponibili
+      const autoclaveList = await autoclavesApi.fetchAutoclaves();
+      setAutoclaves(autoclaveList.filter(a => a.stato === 'DISPONIBILE'));
 
       // Carica ODL in attesa di cura
-      const odlList = await odlApi.getAll({ 
+      const odlList = await odlApi.fetchODLs({
         status: 'Attesa Cura'
       });
       setOdlDisponibili(odlList);
@@ -345,7 +345,7 @@ const BatchCRUD: React.FC<BatchCRUDProps> = ({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Seleziona un'autoclave...</SelectItem>
-                {autoclavi.map((autoclave) => (
+                {autoclaves.map((autoclave) => (
                   <SelectItem key={autoclave.id} value={autoclave.id.toString()}>
                     {autoclave.nome} ({autoclave.codice}) - {autoclave.lunghezza}x{autoclave.larghezza_piano}mm
                   </SelectItem>

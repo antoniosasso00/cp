@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Loader2, Settings, Play, AlertTriangle, CheckCircle } from 'lucide-react';
-import { odlApi, autoclaveApi } from '@/lib/api';
+import { odlApi, autoclavesApi } from '@/lib/api';
 import axios from 'axios';
 
 // Interfacce TypeScript
@@ -81,12 +81,12 @@ export default function NewNestingPage() {
         setError(null);
 
         // Carica ODL in attesa di cura
-        const odlResponse = await odlApi.getAll({ status: 'Attesa Cura' });
-        console.log('📋 ODL caricati:', odlResponse);
-        setOdlList(odlResponse);
+        const odlData = await odlApi.fetchODLs({ status: 'Attesa Cura' });
+        console.log('📋 ODL caricati:', odlData);
+        setOdlList(odlData);
 
         // Carica autoclavi disponibili
-        const autoclaveResponse = await autoclaveApi.getAvailable();
+        const autoclaveResponse = await autoclavesApi.fetchAvailableAutoclaves();
         console.log('🏭 Autoclavi caricate:', autoclaveResponse);
         setAutoclaveList(autoclaveResponse);
 
@@ -142,7 +142,7 @@ export default function NewNestingPage() {
       });
 
       // Chiamata API per generare il nesting
-      const response = await axios.post('/api/v1/batch_nesting/genera', {
+      const response = await axios.post('/api/batch_nesting/genera', {
         odl_ids: selectedOdl,
         autoclave_ids: [selectedAutoclave],
         parametri

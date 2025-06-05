@@ -136,7 +136,7 @@ class EdgeTestHarness:
         try:
             for odl_id in odl_ids:
                 response = requests.patch(
-                    f"{self.base_url}/api/v1/odl/{odl_id}/status",
+                    f"{self.base_url}/api/odl/{odl_id}/status",
                     json={"new_status": "Attesa Cura"},
                     headers={"Content-Type": "application/json"},
                     timeout=10
@@ -177,7 +177,7 @@ class EdgeTestHarness:
         try:
             # ✅ FIX: Uso il nuovo endpoint
             response = requests.post(
-                f"{self.base_url}/api/v1/nesting/solve",
+                f"{self.base_url}/api/nesting/solve",
                 json=request_data,
                 headers={"Content-Type": "application/json"},
                 timeout=30

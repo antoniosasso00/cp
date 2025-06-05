@@ -68,7 +68,7 @@ export default function ReportsPage() {
         params.odl_filter = filterOdl
       }
       
-      const response = await reportsApi.list(params)
+      const response = await reportsApi.fetchReports(params)
       setExistingReports(response.reports)
     } catch (error) {
       console.error('Errore nel caricamento dei report:', error)
@@ -99,7 +99,7 @@ export default function ReportsPage() {
         download: false
       }
       
-      const response = await reportsApi.generate(request)
+      const response = await reportsApi.generateReport(request)
       
       toast({
         title: 'Report generato',
@@ -124,7 +124,7 @@ export default function ReportsPage() {
   // Gestisce il download di un report esistente
   const handleDownloadReport = async (report: ReportFileInfo) => {
     try {
-      const blob = await reportsApi.downloadById(report.id)
+      const blob = await reportsApi.downloadReportById(report.id)
       
       // Crea un URL temporaneo per il download
       const url = window.URL.createObjectURL(blob)

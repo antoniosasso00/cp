@@ -5,7 +5,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { toolApi, ToolWithStatus } from '@/lib/api'
+import { toolsApi, ToolWithStatus } from '@/lib/api'
 import { ToolModal } from './components/tool-modal'
 import { ToolStatusBadge } from '@/components/ToolStatusBadge'
 import { useToolsWithStatus } from '@/hooks/useToolsWithStatus'
@@ -61,7 +61,7 @@ export default function ToolsPage() {
     }
 
     try {
-      await toolApi.delete(id)
+      await toolsApi.deleteTool(id)
       toast({
         title: 'Eliminato',
         description: 'Tool eliminato con successo.',

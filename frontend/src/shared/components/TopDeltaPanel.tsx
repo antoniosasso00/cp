@@ -26,7 +26,7 @@ export default function TopDeltaPanel({ limit = 5, days = 30, className }: TopDe
         setIsLoading(true)
         setError(null)
         
-        const response = await standardTimesApi.getTopDelta(limit, days)
+        const response = await standardTimesApi.fetchTopDeltaVariances(limit, days)
         setData(response.data)
         
       } catch (err) {

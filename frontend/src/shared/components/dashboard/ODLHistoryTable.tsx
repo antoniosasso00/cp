@@ -57,7 +57,7 @@ export function ODLHistoryTable({
         params.status = statusFilter
       }
       
-      const data = await odlApi.getAll(params)
+      const data = await odlApi.fetchODLs(params)
       
       // Filtro locale per search term e date range
       let filteredData = data

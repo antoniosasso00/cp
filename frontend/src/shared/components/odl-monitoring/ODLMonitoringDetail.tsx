@@ -79,7 +79,7 @@ export function ODLMonitoringDetail({ odlId, onBack }: ODLMonitoringDetailProps)
 
   const fetchOdlDetail = async () => {
     try {
-      const data = await odlApi.getMonitoringDetail(odlId);
+      const data = await odlApi.fetchODLMonitoringDetail(odlId);
       setOdlDetail(data);
     } catch (err) {
       console.error('Errore nel caricamento dei dettagli ODL:', err);
@@ -89,7 +89,7 @@ export function ODLMonitoringDetail({ odlId, onBack }: ODLMonitoringDetailProps)
 
   const fetchTimeline = async () => {
     try {
-      const data = await odlApi.getTimeline(odlId);
+      const data = await odlApi.fetchODLTimeline(odlId);
       setTimeline(data.timeline || []);
     } catch (err) {
       console.error('Errore nel caricamento della timeline:', err);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { scheduleApi, catalogoApi } from '@/lib/api';
+import { scheduleApi, catalogApi } from '@/lib/api';
 import { 
   ScheduleEntryCreateData, 
   ScheduleEntryType, 
@@ -64,7 +64,7 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
   useEffect(() => {
     const loadCatalogData = async () => {
       try {
-        const catalogo = await catalogoApi.getAll();
+        const catalogo = await catalogApi.fetchCatalogItems();
         
         const categorie = Array.from(new Set(catalogo
           .map(item => item.categoria)

@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
-import { autoclaveApi } from '@/lib/api'
+import { autoclavesApi } from '@/lib/api'
 
 const autoclaveSchema = z.object({
   nome: z.string().min(1, 'Il nome è obbligatorio'),
@@ -79,13 +79,13 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
     try {
       setIsLoading(true)
       if (editingItem) {
-        await autoclaveApi.update(editingItem.id, data)
+        await autoclavesApi.updateAutoclave(editingItem.id, data)
         toast({
           title: 'Autoclave aggiornata',
           description: 'L\'autoclave è stata aggiornata con successo.',
         })
       } else {
-        await autoclaveApi.create(data)
+        await autoclavesApi.createAutoclave(data)
         toast({
           title: 'Autoclave creata',
           description: 'La nuova autoclave è stata creata con successo.',

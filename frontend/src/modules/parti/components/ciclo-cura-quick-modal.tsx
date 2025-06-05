@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { cicloCuraApi, CicloCura } from '@/lib/api'
+import { curingCyclesApi, CicloCura } from '@/lib/api'
 
 interface CicloCuraQuickModalProps {
   isOpen: boolean
@@ -129,7 +129,7 @@ export default function CicloCuraQuickModal({ isOpen, onClose, onSuccess }: Cicl
 
     setIsSubmitting(true)
     try {
-      const newCiclo = await cicloCuraApi.create(dataToSubmit)
+      const newCiclo = await curingCyclesApi.createCuringCycle(dataToSubmit)
       toast({
         variant: 'success',
         title: 'Ciclo di Cura Creato',

@@ -193,7 +193,7 @@ export default function NestingResultPage({ params }: Props) {
       setError(null)
 
       // ✅ CORREZIONE: Usa URL relativo per sfruttare il proxy Next.js
-      const response = await fetch(`/api/v1/batch_nesting/${params.batch_id}/full`)
+      const response = await fetch(`/api/batch_nesting/${params.batch_id}/full`)
       if (!response.ok) {
         if (response.status === 404) {
           throw new Error('Batch nesting non trovato')

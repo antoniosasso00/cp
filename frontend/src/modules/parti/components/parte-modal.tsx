@@ -12,16 +12,16 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { 
-  ParteResponse, 
-  ParteCreate, 
-  ParteUpdate, 
-  partiApi, 
-  catalogoApi, 
-  toolApi, 
-  cicloCuraApi,
+  partsApi,
+  catalogApi,
+  toolsApi,
+  curingCyclesApi,
+  ParteCreate,
+  ParteUpdate,
+  ParteResponse,
   CatalogoResponse,
   Tool,
-  CicloCura
+  CicloCura,
 } from '@/lib/api'
 import { Loader2, Pencil, AlertTriangle, Plus } from 'lucide-react'
 import SmartCatalogoSelect from './smart-catalogo-select'
@@ -90,17 +90,16 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
   const loadOptions = async () => {
     setIsLoadingOptions(true)
     try {
-      const [catalogoRes, toolsRes, cicliRes] = await Promise.all([
-        catalogoApi.getAll({ attivo: true }),
-        toolApi.getAll(),
-        cicloCuraApi.getAll()
+      const [catalogoData, toolsData, cicliData] = await Promise.all([
+        catalogApi.fetchCatalogItems({ attivo: true }),
+        toolsApi.fetchTools(),
+        curingCyclesApi.fetchCuringCycles()
       ])
-
-      setCatalogo(catalogoRes)
-      setTools(toolsRes)
-      setCicliCura(cicliRes)
+      setCatalogo(catalogoData)
+      setTools(toolsData)
+      setCicliCura(cicliData)
     } catch (error) {
-      console.error('Errore nel caricamento delle opzioni:', error)
+      console.error('Errore nel caricamento dei dati:', error)
       toast({
         variant: 'destructive',
         title: 'Errore',
@@ -220,7 +219,7 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
         
         if (partNumberChanged) {
           // Se il part_number è cambiato, usa l'API di propagazione
-          await catalogoApi.updatePartNumberWithPropagation(item.part_number, formData.part_number)
+          await catalogApi.updatePartNumberWithPropagation(item.part_number, formData.part_number)
           toast({
             variant: 'success',
             title: 'Part Number Aggiornato',
@@ -237,7 +236,7 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
           ciclo_cura_id: formData.ciclo_cura_id || undefined,
           tool_ids: formData.tool_ids
         }
-        await partiApi.update(item.id, updateData)
+        await partsApi.updatePart(item.id, updateData)
         
         if (!partNumberChanged) {
           toast({
@@ -256,7 +255,7 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
           ciclo_cura_id: formData.ciclo_cura_id || undefined,
           tool_ids: formData.tool_ids
         }
-        await partiApi.create(createData)
+        await partsApi.createPart(createData)
         toast({
           variant: 'success',
           title: 'Creata',
@@ -307,7 +306,7 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
         ciclo_cura_id: formData.ciclo_cura_id || undefined,
         tool_ids: formData.tool_ids
       }
-      await partiApi.create(createData)
+      await partsApi.createPart(createData)
       
       toast({
         variant: 'success',

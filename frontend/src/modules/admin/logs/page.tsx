@@ -88,7 +88,7 @@ export default function AdminLogsPage() {
         if (value) params.append(key, value.toString())
       })
 
-      const response = await fetch(`/api/v1/system-logs/?${params}`)
+      const response = await fetch(`/api/system-logs/?${params}`)
       if (response.ok) {
         const data = await response.json()
         setLogs(data)
@@ -102,7 +102,7 @@ export default function AdminLogsPage() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('/api/v1/system-logs/stats')
+      const response = await fetch('/api/system-logs/stats')
       if (response.ok) {
         const data = await response.json()
         setStats(data)
@@ -119,7 +119,7 @@ export default function AdminLogsPage() {
         if (value && key !== 'limit') params.append(key, value.toString())
       })
 
-      const response = await fetch(`/api/v1/system-logs/export?${params}`)
+      const response = await fetch(`/api/system-logs/export?${params}`)
       if (response.ok) {
         const blob = await response.blob()
         const url = window.URL.createObjectURL(blob)

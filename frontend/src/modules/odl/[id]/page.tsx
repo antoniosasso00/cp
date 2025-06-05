@@ -10,7 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 import { Loader2, Clock, AlertTriangle, TimerOff, Check, ChevronLeft, Timer } from 'lucide-react'
 import { formatDateIT, formatDateTime } from '@/lib/utils'
-import { odlApi, tempoFasiApi, PrevisioneTempo } from '@/lib/api'
+import { odlApi, phaseTimesApi, PrevisioneTempo } from '@/lib/api'
 import Link from 'next/link'
 
 // Per i problemi di tipo, definiamo alcune costanti tipizzate
@@ -83,7 +83,7 @@ export default function ODLDetailsPage() {
     const fetchODL = async () => {
       try {
         setLoading(true)
-        const odlData = await odlApi.getOne(Number(odlId))
+        const odlData = await odlApi.fetchODL(Number(odlId))
         setOdl(odlData)
         
         // Determina la fase corrente in base allo stato dell'ODL
@@ -95,7 +95,7 @@ export default function ODLDetailsPage() {
         setFaseCorrente(faseMap[odlData.status] || null)
         
         // Fetch tempi fasi associati a questo ODL
-        const tempiData = await tempoFasiApi.getAll({ odl_id: Number(odlId) })
+        const tempiData = await phaseTimesApi.fetchPhaseTimes({ odl_id: Number(odlId) })
         setTempoFasi(tempiData)
         
         // Fetch previsioni per tutte le fasi
@@ -104,7 +104,7 @@ export default function ODLDetailsPage() {
         
         for (const fase of fasi) {
           try {
-            const previsione = await tempoFasiApi.getPrevisione(fase, odlData.parte.part_number)
+            const previsione = await phaseTimesApi.fetchPhaseTimeEstimate(fase, odlData.parte.part_number)
             previsioniObj[fase] = previsione
           } catch (error) {
             console.error(`Errore nel caricamento previsione per ${fase}:`, error)
@@ -164,7 +164,7 @@ export default function ODLDetailsPage() {
         inizio_fase: new Date().toISOString(),
       }
       
-      await tempoFasiApi.create(data)
+      await phaseTimesApi.createPhaseTime(data)
       toast({
         title: 'Fase avviata',
         description: `Fase di ${translateFase(fase)} avviata con successo`,
@@ -177,7 +177,7 @@ export default function ODLDetailsPage() {
         'cura': 'Cura'
       }
       
-      await odlApi.updateStatus(Number(odlId), statoMap[fase])
+      await odlApi.updateODLStatus(Number(odlId), statoMap[fase])
       
       // Ricarica i dati
       window.location.reload()
@@ -202,7 +202,7 @@ export default function ODLDetailsPage() {
         fine_fase: new Date().toISOString(),
       }
       
-      await tempoFasiApi.update(tempoFaseId, data)
+      await phaseTimesApi.updatePhaseTime(tempoFaseId, data)
       toast({
         title: 'Fase completata',
         description: `Fase di ${translateFase(faseName)} completata con successo`,
@@ -215,7 +215,7 @@ export default function ODLDetailsPage() {
         'cura': 'Finito'
       }
       
-              await odlApi.updateStatus(Number(odlId), nextState[faseName])
+      await odlApi.updateODLStatus(Number(odlId), nextState[faseName])
       
       // Ricarica i dati
       window.location.reload()

@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
-import { cicloCuraApi } from '@/lib/api'
+import { curingCyclesApi } from '@/lib/api'
 import { cicloSchema, type CicloFormValues } from '@/lib/types/form'
 
 interface CicloModalProps {
@@ -90,16 +90,16 @@ export function CicloModal({ open, onOpenChange, editingItem, onSuccess }: Ciclo
       }
       
       if (editingItem) {
-        await cicloCuraApi.update(editingItem.id, formData)
+        await curingCyclesApi.updateCuringCycle(editingItem.id, formData)
         toast({
-          title: 'Ciclo aggiornato',
-          description: 'Il ciclo di cura è stato aggiornato con successo.',
+          title: 'Aggiornato',
+          description: 'Ciclo di cura aggiornato con successo.',
         })
       } else {
-        await cicloCuraApi.create(formData)
+        await curingCyclesApi.createCuringCycle(formData)
         toast({
-          title: 'Ciclo creato',
-          description: 'Il nuovo ciclo di cura è stato creato con successo.',
+          title: 'Creato',
+          description: 'Ciclo di cura creato con successo.',
         })
       }
       

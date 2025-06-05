@@ -116,7 +116,7 @@ const useNestingValidation = (batchId?: string) => {
     const fetchValidation = async () => {
       setLoading(true)
       try {
-        const response = await fetch(`/api/v1/batch_nesting/${batchId}/validate`)
+        const response = await fetch(`/api/batch_nesting/${batchId}/validate`)
         if (response.ok) {
           const data = await response.json()
           setValidation(data)
@@ -656,7 +656,7 @@ const useDebugSvg = (batchId?: string) => {
       console.log(`🎯 Fetching SVG ground-truth per batch: ${batchId}`)
       
       // 🔧 FIX: Usa il nuovo endpoint batch-based
-      const response = await fetch(`/api/v1/nesting/batch/${batchId}/svg`)
+      const response = await fetch(`/api/nesting/batch/${batchId}/svg`)
       
       if (response.ok) {
         const svgContent = await response.text()

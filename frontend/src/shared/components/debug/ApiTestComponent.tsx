@@ -18,7 +18,7 @@ export function ApiTestComponent() {
   const [testResults, setTestResults] = useState<ApiTestResult[]>([])
   const [isRunning, setIsRunning] = useState(false)
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
 
   const testEndpoints = [
     { name: 'Health Check', url: 'http://localhost:8000/health' },

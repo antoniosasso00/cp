@@ -13,7 +13,8 @@ import {
   ProductionTimeEstimate
 } from './types/schedule';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+// ✅ PULITO: Rimosso /v1/ dal base URL, aggiunto /api per il fallback locale
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
 console.log('🔗 API Base URL configurata:', API_BASE_URL); // Log per debug
 
@@ -250,52 +251,48 @@ export interface CreateToolDto {
 
 export interface UpdateToolDto extends Partial<CreateToolDto> {}
 
-export const toolApi = {
-  getAll: async (): Promise<Tool[]> => {
+// ✅ RINOMINATO: API Tools con nomi più descrittivi
+export const toolsApi = {
+  // ✅ getAll → fetchTools
+  fetchTools: async (): Promise<Tool[]> => {
     const response = await api.get<Tool[]>('/tools')
     return response.data
   },
 
-  getAllWithStatus: async (params?: { 
-    skip?: number; 
-    limit?: number; 
-    part_number_tool?: string; 
-    disponibile?: boolean 
-  }): Promise<ToolWithStatus[]> => {
-    const queryParams = new URLSearchParams();
-    if (params?.skip) queryParams.append('skip', params.skip.toString());
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
-    if (params?.part_number_tool) queryParams.append('part_number_tool', params.part_number_tool);
-    if (params?.disponibile !== undefined) queryParams.append('disponibile', params.disponibile.toString());
-    
-    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
-    return apiRequest<ToolWithStatus[]>(`/tools/with-status${query}`);
+  // ✅ getAllWithStatus → fetchToolsWithStatus  
+  fetchToolsWithStatus: async (): Promise<ToolWithStatus[]> => {
+    const response = await api.get<ToolWithStatus[]>('/tools/with-status')
+    return response.data
   },
 
-  getById: async (id: number): Promise<Tool> => {
+  // ✅ getById → fetchToolById
+  fetchToolById: async (id: number): Promise<Tool> => {
     const response = await api.get<Tool>(`/tools/${id}`)
     return response.data
   },
 
-  create: async (data: CreateToolDto): Promise<Tool> => {
+  // ✅ create → createTool (già corretto)
+  createTool: async (data: CreateToolDto): Promise<Tool> => {
     const response = await api.post<Tool>('/tools', data)
     return response.data
   },
 
-  update: async (id: number, data: UpdateToolDto): Promise<Tool> => {
+  // ✅ update → updateTool
+  updateTool: async (id: number, data: UpdateToolDto): Promise<Tool> => {
     const response = await api.put<Tool>(`/tools/${id}`, data)
     return response.data
   },
 
-  delete: async (id: number): Promise<void> => {
+  // ✅ delete → deleteTool
+  deleteTool: async (id: number): Promise<void> => {
     await api.delete(`/tools/${id}`)
   },
 
-  updateStatusFromODL: async (): Promise<{
+  // ✅ updateStatusFromOdl → updateToolStatusFromODL
+  updateToolStatusFromODL: async (): Promise<{
     message: string;
     updated_tools: Array<{
-      id: number;
-      part_number_tool: string;
+      tool_id: number;
       old_status: string;
       new_status: string;
       odl_info?: any;
@@ -388,9 +385,10 @@ const apiRequest = async <T>(
   }
 };
 
-// API Catalogo
-export const catalogoApi = {
-  getAll: (params?: { skip?: number; limit?: number; categoria?: string; sotto_categoria?: string; attivo?: boolean; search?: string }) => {
+// ✅ RINOMINATO: API Catalogo con nomi più descrittivi
+export const catalogApi = {
+  // ✅ getAll → fetchCatalogItems
+  fetchCatalogItems: (params?: { skip?: number; limit?: number; categoria?: string; sotto_categoria?: string; attivo?: boolean; search?: string }) => {
     const queryParams = new URLSearchParams();
     if (params?.skip) queryParams.append('skip', params.skip.toString());
     if (params?.limit) queryParams.append('limit', params.limit.toString());
@@ -403,26 +401,31 @@ export const catalogoApi = {
     return apiRequest<CatalogoResponse[]>(`/catalogo${query}`);
   },
   
-  getOne: (partNumber: string) => 
+  // ✅ getOne → fetchCatalogItem
+  fetchCatalogItem: (partNumber: string) => 
     apiRequest<CatalogoResponse>(`/catalogo/${partNumber}`),
   
-  create: (data: CatalogoCreate) => 
+  // ✅ create → createCatalogItem
+  createCatalogItem: (data: CatalogoCreate) => 
     apiRequest<CatalogoResponse>('/catalogo/', 'POST', data),
   
-  update: (partNumber: string, data: CatalogoUpdate) => 
+  // ✅ update → updateCatalogItem
+  updateCatalogItem: (partNumber: string, data: CatalogoUpdate) => 
     apiRequest<CatalogoResponse>(`/catalogo/${partNumber}`, 'PUT', data),
   
-  delete: (partNumber: string) => 
+  // ✅ delete → deleteCatalogItem
+  deleteCatalogItem: (partNumber: string) => 
     apiRequest<void>(`/catalogo/${partNumber}`, 'DELETE'),
   
-  // ✅ FIX 3: Aggiorna part_number con propagazione globale
+  // ✅ updatePartNumberWithPropagation → updatePartNumberWithPropagation (già descrittivo)
   updatePartNumberWithPropagation: (partNumber: string, newPartNumber: string) => 
     apiRequest<CatalogoResponse>(`/catalogo/${partNumber}/update-with-propagation`, 'PUT', { new_part_number: newPartNumber }),
 };
 
-// API Parti
-export const partiApi = {
-  getAll: (params?: { skip?: number; limit?: number; part_number?: string }) => {
+// ✅ RINOMINATO: API Parti con nomi più descrittivi
+export const partsApi = {
+  // ✅ getAll → fetchParts
+  fetchParts: (params?: { skip?: number; limit?: number; part_number?: string }) => {
     const queryParams = new URLSearchParams();
     if (params?.skip) queryParams.append('skip', params.skip.toString());
     if (params?.limit) queryParams.append('limit', params.limit.toString());
@@ -432,42 +435,51 @@ export const partiApi = {
     return apiRequest<ParteResponse[]>(`/parti${query}`);
   },
   
-  getOne: (id: number) => 
+  // ✅ getOne → fetchPart
+  fetchPart: (id: number) => 
     apiRequest<ParteResponse>(`/parti/${id}`),
   
-  create: (data: ParteCreate) => 
+  // ✅ create → createPart
+  createPart: (data: ParteCreate) => 
     apiRequest<ParteResponse>('/parti/', 'POST', data),
   
-  update: (id: number, data: ParteUpdate) => 
+  // ✅ update → updatePart
+  updatePart: (id: number, data: ParteUpdate) => 
     apiRequest<ParteResponse>(`/parti/${id}`, 'PUT', data),
   
-  delete: (id: number) => 
+  // ✅ delete → deletePart
+  deletePart: (id: number) => 
     apiRequest<void>(`/parti/${id}`, 'DELETE'),
 };
 
-// API CicloCura (per selezionare nei dropdown)
-export const cicloCuraApi = {
-  getAll: async (): Promise<CicloCura[]> => {
+// ✅ RINOMINATO: API CicloCura con nomi più descrittivi
+export const curingCyclesApi = {
+  // ✅ getAll → fetchCuringCycles
+  fetchCuringCycles: async (): Promise<CicloCura[]> => {
     const response = await api.get<CicloCura[]>('/cicli-cura')
     return response.data
   },
 
-  getById: async (id: number): Promise<CicloCura> => {
+  // ✅ getById → fetchCuringCycle
+  fetchCuringCycle: async (id: number): Promise<CicloCura> => {
     const response = await api.get<CicloCura>(`/cicli-cura/${id}`)
     return response.data
   },
 
-  create: async (data: CreateCicloCuraDto): Promise<CicloCura> => {
+  // ✅ create → createCuringCycle
+  createCuringCycle: async (data: CreateCicloCuraDto): Promise<CicloCura> => {
     const response = await api.post<CicloCura>('/cicli-cura', data)
     return response.data
   },
 
-  update: async (id: number, data: UpdateCicloCuraDto): Promise<CicloCura> => {
+  // ✅ update → updateCuringCycle
+  updateCuringCycle: async (id: number, data: UpdateCicloCuraDto): Promise<CicloCura> => {
     const response = await api.put<CicloCura>(`/cicli-cura/${id}`, data)
     return response.data
   },
 
-  delete: async (id: number): Promise<void> => {
+  // ✅ delete → deleteCuringCycle
+  deleteCuringCycle: async (id: number): Promise<void> => {
     await api.delete(`/cicli-cura/${id}`)
   },
 }
@@ -538,34 +550,41 @@ export interface CreateAutoclaveDto {
 
 export interface UpdateAutoclaveDto extends Partial<CreateAutoclaveDto> {}
 
-export const autoclaveApi = {
-  getAll: async (): Promise<Autoclave[]> => {
+// ✅ RINOMINATO: API Autoclavi con nomi più descrittivi
+export const autoclavesApi = {
+  // ✅ getAll → fetchAutoclaves
+  fetchAutoclaves: async (): Promise<Autoclave[]> => {
     const response = await api.get<Autoclave[]>('/autoclavi')
     return response.data
   },
 
-  getAvailable: async (): Promise<Autoclave[]> => {
+  // ✅ getAvailable → fetchAvailableAutoclaves
+  fetchAvailableAutoclaves: async (): Promise<Autoclave[]> => {
     const response = await api.get<Autoclave[]>('/autoclavi?stato=DISPONIBILE')
     return response.data
   },
 
-  getById: async (id: number): Promise<Autoclave> => {
-    const response = await api.get<Autoclave>(`/autoclavi/${id}/`)
+  // ✅ getById → fetchAutoclave
+  fetchAutoclave: async (id: number): Promise<Autoclave> => {
+    const response = await api.get<Autoclave>(`/autoclavi/${id}`)
     return response.data
   },
 
-  create: async (data: CreateAutoclaveDto): Promise<Autoclave> => {
+  // ✅ create → createAutoclave
+  createAutoclave: async (data: CreateAutoclaveDto): Promise<Autoclave> => {
     const response = await api.post<Autoclave>('/autoclavi', data)
     return response.data
   },
 
-  update: async (id: number, data: UpdateAutoclaveDto): Promise<Autoclave> => {
-    const response = await api.put<Autoclave>(`/autoclavi/${id}/`, data)
+  // ✅ update → updateAutoclave
+  updateAutoclave: async (id: number, data: UpdateAutoclaveDto): Promise<Autoclave> => {
+    const response = await api.put<Autoclave>(`/autoclavi/${id}`, data)
     return response.data
   },
 
-  delete: async (id: number): Promise<void> => {
-    await api.delete(`/autoclavi/${id}/`)
+  // ✅ delete → deleteAutoclave
+  deleteAutoclave: async (id: number): Promise<void> => {
+    await api.delete(`/autoclavi/${id}`)
   },
 }
 
@@ -605,9 +624,10 @@ export interface ODLResponse extends ODLBase {
   updated_at: string;
 }
 
-// API ODL con gestione errori migliorata
+// ✅ RINOMINATO: API ODL con nomi più descrittivi e gestione errori migliorata
 export const odlApi = {
-  getAll: async (params?: { parte_id?: number; tool_id?: number; status?: string; include_in_std?: boolean }, options?: { retries?: number; timeout?: number }): Promise<ODLResponse[]> => {
+  // ✅ getAll → fetchODLs
+  fetchODLs: async (params?: { parte_id?: number; tool_id?: number; status?: string; include_in_std?: boolean }, options?: { retries?: number; timeout?: number }): Promise<ODLResponse[]> => {
     const { retries = 3, timeout = 10000 } = options || {};
     
     const queryParams = new URLSearchParams();
@@ -656,7 +676,8 @@ export const odlApi = {
     throw new Error('Impossibile caricare gli ODL dopo tutti i tentativi');
   },
   
-  getOne: async (id: number): Promise<ODLResponse> => {
+  // ✅ getOne → fetchODL
+  fetchODL: async (id: number): Promise<ODLResponse> => {
     try {
       console.log(`🔍 Richiesta ODL singolo: ${id}`);
       const response = await api.get<ODLResponse>(`/odl/${id}`);
@@ -668,7 +689,8 @@ export const odlApi = {
     }
   },
   
-  create: async (data: ODLCreate): Promise<ODLResponse> => {
+  // ✅ create → createODL
+  createODL: async (data: ODLCreate): Promise<ODLResponse> => {
     try {
       console.log('🆕 Creazione nuovo ODL:', data);
       const response = await api.post<ODLResponse>('/odl', data);
@@ -680,7 +702,8 @@ export const odlApi = {
     }
   },
   
-  update: async (id: number, data: ODLUpdate): Promise<ODLResponse> => {
+  // ✅ update → updateODL
+  updateODL: async (id: number, data: ODLUpdate): Promise<ODLResponse> => {
     try {
       console.log(`📝 Aggiornamento ODL ${id}:`, data);
       const response = await api.put<ODLResponse>(`/odl/${id}`, data);
@@ -692,7 +715,8 @@ export const odlApi = {
     }
   },
   
-  delete: async (id: number, confirm: boolean = false): Promise<void> => {
+  // ✅ delete → deleteODL
+  deleteODL: async (id: number, confirm: boolean = false): Promise<void> => {
     try {
       console.log(`🗑️ Eliminazione ODL ${id} (confirm: ${confirm})`);
       const queryParam = confirm ? '?confirm=true' : '';
@@ -704,7 +728,8 @@ export const odlApi = {
     }
   },
 
-  checkQueue: async (): Promise<{
+  // ✅ checkQueue → checkODLQueue
+  checkODLQueue: async (): Promise<{
     message: string;
     updated_odls: Array<{
       odl_id: number;
@@ -725,7 +750,8 @@ export const odlApi = {
     return response.data;
   },
 
-  checkSingleStatus: async (id: number): Promise<{
+  // ✅ checkSingleStatus → checkODLStatus
+  checkODLStatus: async (id: number): Promise<{
     message: string;
     update_info?: {
       odl_id: number;
@@ -763,8 +789,8 @@ export const odlApi = {
     return response.data;
   },
 
-  // Funzione generica (accetta JSON nel body) - Supporta conversione automatica formato stato
-  updateStatus: async (id: number, status: string): Promise<ODLResponse> => {
+  // ✅ updateStatus → updateODLStatus
+  updateODLStatus: async (id: number, status: string): Promise<ODLResponse> => {
     try {
       console.log(`🔄 Aggiornamento stato ODL ${id}: ${status}`);
       const response = await api.patch<ODLResponse>(`/odl/${id}/status`, {
@@ -779,28 +805,32 @@ export const odlApi = {
   },
 
   // API per il monitoraggio e la timeline
-  getProgress: async (id: number) => {
+  // ✅ getProgress → fetchODLProgress
+  fetchODLProgress: async (id: number) => {
     const response = await api.get(`/odl-monitoring/monitoring/${id}/progress`);
     return response.data;
   },
 
-  getTimeline: async (id: number) => {
+  // ✅ getTimeline → fetchODLTimeline
+  fetchODLTimeline: async (id: number) => {
     const response = await api.get(`/odl-monitoring/monitoring/${id}/timeline`);
     return response.data;
   },
 
-  getMonitoringDetail: async (id: number) => {
+  // ✅ getMonitoringDetail → fetchODLMonitoringDetail
+  fetchODLMonitoringDetail: async (id: number) => {
     const response = await api.get(`/odl-monitoring/monitoring/${id}`);
     return response.data;
   },
 
-  // Nuovi endpoint per il monitoraggio ODL
-  getMonitoringStats: async () => {
+  // ✅ getMonitoringStats → fetchODLMonitoringStats
+  fetchODLMonitoringStats: async () => {
     const response = await api.get('/odl-monitoring/monitoring/stats');
     return response.data;
   },
 
-  getMonitoringList: async (params?: {
+  // ✅ getMonitoringList → fetchODLMonitoringList
+  fetchODLMonitoringList: async (params?: {
     skip?: number;
     limit?: number;
     status_filter?: string;
@@ -820,7 +850,8 @@ export const odlApi = {
     return response.data;
   },
 
-  getLogs: async (id: number, limit?: number) => {
+  // ✅ getLogs → fetchODLLogs
+  fetchODLLogs: async (id: number, limit?: number) => {
     const query = limit ? `?limit=${limit}` : '';
     const response = await api.get(`/odl-monitoring/monitoring/${id}/logs${query}`);
     return response.data;
@@ -853,9 +884,10 @@ export interface PrevisioneTempo {
   numero_osservazioni: number;
 }
 
-// API Tempo Fasi
-export const tempoFasiApi = {
-  getAll: (params?: { odl_id?: number; fase?: string }) => {
+// ✅ RINOMINATO: API Tempo Fasi con nomi più descrittivi
+export const phaseTimesApi = {
+  // ✅ getAll → fetchPhaseTimes
+  fetchPhaseTimes: (params?: { odl_id?: number; fase?: string }) => {
     const queryParams = new URLSearchParams();
     if (params?.odl_id) queryParams.append('odl_id', params.odl_id.toString());
     if (params?.fase) queryParams.append('fase', params.fase);
@@ -864,19 +896,24 @@ export const tempoFasiApi = {
     return apiRequest<TempoFaseResponse[]>(`/tempo-fasi${query}`);
   },
   
-  getOne: (id: number) => 
+  // ✅ getOne → fetchPhaseTime
+  fetchPhaseTime: (id: number) => 
     apiRequest<TempoFaseResponse>(`/tempo-fasi/${id}`),
   
-  create: (data: TempoFaseCreate) => 
+  // ✅ create → createPhaseTime
+  createPhaseTime: (data: TempoFaseCreate) => 
     apiRequest<TempoFaseResponse>('/tempo-fasi/', 'POST', data),
   
-  update: (id: number, data: TempoFaseUpdate) => 
+  // ✅ update → updatePhaseTime
+  updatePhaseTime: (id: number, data: TempoFaseUpdate) => 
     apiRequest<TempoFaseResponse>(`/tempo-fasi/${id}`, 'PUT', data),
   
-  delete: (id: number) => 
+  // ✅ delete → deletePhaseTime
+  deletePhaseTime: (id: number) => 
     apiRequest<void>(`/tempo-fasi/${id}`, 'DELETE'),
     
-  getPrevisione: (fase: string, partNumber?: string) => {
+  // ✅ getPrevisione → fetchPhaseTimeEstimate
+  fetchPhaseTimeEstimate: (fase: string, partNumber?: string) => {
     const queryParams = new URLSearchParams();
     if (partNumber) queryParams.append('part_number', partNumber);
     
@@ -884,8 +921,8 @@ export const tempoFasiApi = {
     return apiRequest<PrevisioneTempo>(`/tempo-fasi/previsioni/${fase}${query}`);
   },
 
-  // Nuova funzione per recuperare statistiche per part number
-  getStatisticheByPartNumber: async (partNumber: string, giorni?: number) => {
+  // ✅ getStatisticheByPartNumber → fetchPhaseTimeStatsByPartNumber
+  fetchPhaseTimeStatsByPartNumber: async (partNumber: string, giorni?: number) => {
     const queryParams = new URLSearchParams();
     if (giorni) queryParams.append('giorni', giorni.toString());
     
@@ -959,14 +996,16 @@ export type ReportRangeType = 'giorno' | 'settimana' | 'mese';
 export type ReportTypeEnum = 'produzione' | 'qualita' | 'tempi' | 'completo';
 export type ReportIncludeSection = 'odl' | 'tempi' | 'header';
 
-// API Reports
+// ✅ RINOMINATO: API Reports con nomi più descrittivi
 export const reportsApi = {
-  generate: async (request: ReportGenerateRequest): Promise<ReportGenerateResponse> => {
+  // ✅ generate → generateReport
+  generateReport: async (request: ReportGenerateRequest): Promise<ReportGenerateResponse> => {
     console.log('🔗 Report Generate Request:', request);
     return apiRequest<ReportGenerateResponse>('/reports/generate', 'POST', request);
   },
   
-  list: (params?: {
+  // ✅ list → fetchReports
+  fetchReports: (params?: {
     report_type?: ReportTypeEnum;
     start_date?: string;
     end_date?: string;
@@ -988,7 +1027,8 @@ export const reportsApi = {
     return apiRequest<ReportListResponse>(`/reports/${query}`);
   },
   
-  downloadById: async (reportId: number): Promise<Blob> => {
+  // ✅ downloadById → downloadReportById
+  downloadReportById: async (reportId: number): Promise<Blob> => {
     const response = await fetch(`${API_BASE_URL}/reports/${reportId}/download`);
     console.log(`🔗 Report Download Request (ID): ${reportId}`);
     if (!response.ok) {
@@ -1005,7 +1045,8 @@ export const reportsApi = {
     return response.blob();
   },
   
-  download: async (filename: string): Promise<Blob> => {
+  // ✅ download → downloadReport
+  downloadReport: async (filename: string): Promise<Blob> => {
     const response = await fetch(`${API_BASE_URL}/reports/download/${filename}`);
     console.log(`🔗 Report Download Request: ${filename}`);
     if (!response.ok) {
@@ -1052,7 +1093,7 @@ export const reportsApi = {
 
 // API Schedule
 export const scheduleApi = {
-  getAll: (params?: { 
+  fetchSchedules: (params?: { 
     include_done?: boolean; 
     start_date?: string; 
     end_date?: string; 
@@ -1065,24 +1106,49 @@ export const scheduleApi = {
     const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
     return apiRequest<ScheduleEntry[]>(`/schedules${query}`);
   },
+
+  // Mantiene il vecchio metodo per compatibilità backward
+  getAll: (params?: { 
+    include_done?: boolean; 
+    start_date?: string; 
+    end_date?: string; 
+  }) => {
+    return scheduleApi.fetchSchedules(params);
+  },
   
-  getOne: (id: number) => 
+  fetchSchedule: (id: number) => 
     apiRequest<ScheduleEntry>(`/schedules/${id}`),
+
+  // Mantiene il vecchio metodo per compatibilità backward
+  getOne: (id: number) => 
+    scheduleApi.fetchSchedule(id),
   
-  create: (data: ScheduleEntryCreateData) => 
+  createSchedule: (data: ScheduleEntryCreateData) => 
     apiRequest<ScheduleEntry>('/schedules/', 'POST', data),
+
+  // Mantiene il vecchio metodo per compatibilità backward
+  create: (data: ScheduleEntryCreateData) => 
+    scheduleApi.createSchedule(data),
   
   createRecurring: (data: RecurringScheduleCreateData) => 
     apiRequest<ScheduleEntry[]>('/schedules/recurring', 'POST', data),
   
-  update: (id: number, data: ScheduleEntryUpdateData) => 
+  updateSchedule: (id: number, data: ScheduleEntryUpdateData) => 
     apiRequest<ScheduleEntry>(`/schedules/${id}`, 'PUT', data),
+
+  // Mantiene il vecchio metodo per compatibilità backward
+  update: (id: number, data: ScheduleEntryUpdateData) => 
+    scheduleApi.updateSchedule(id, data),
   
   executeAction: (id: number, action: ScheduleOperatorActionData) => 
     apiRequest<ScheduleEntry>(`/schedules/${id}/action`, 'POST', action),
   
-  delete: (id: number) => 
+  deleteSchedule: (id: number) => 
     apiRequest<void>(`/schedules/${id}`, 'DELETE'),
+
+  // Mantiene il vecchio metodo per compatibilità backward
+  delete: (id: number) => 
+    scheduleApi.deleteSchedule(id),
     
   autoGenerate: (date: string) => 
     apiRequest<AutoScheduleResponseData>(`/schedules/auto-generate?date=${date}`),
@@ -1160,8 +1226,7 @@ export interface BatchNestingList {
 // API Batch Nesting
 export const batchNestingApi = {
   getData: async () => {
-    const response = await api.get('/batch_nesting/data');
-    return response.data;
+    return apiRequest<any>('/batch_nesting/data');
   },
 
   genera: async (request: {
@@ -1173,11 +1238,10 @@ export const batchNestingApi = {
       priorita_area: boolean;
     };
   }) => {
-    const response = await api.post('/batch_nesting/genera', request);
-    return response.data;
+    return apiRequest<any>('/batch_nesting/genera', 'POST', request);
   },
 
-  getAll: (params?: {
+  fetchBatchNestings: (params?: {
     skip?: number;
     limit?: number;
     autoclave_id?: number;
@@ -1195,20 +1259,47 @@ export const batchNestingApi = {
     return apiRequest<BatchNestingList[]>(`/batch_nesting${query}`);
   },
 
-  getOne: (id: string) => 
+  // Mantiene il vecchio metodo per compatibilità backward
+  getAll: (params?: {
+    skip?: number;
+    limit?: number;
+    autoclave_id?: number;
+    stato?: 'sospeso' | 'confermato' | 'terminato';
+    nome?: string;
+  }) => {
+    return batchNestingApi.fetchBatchNestings(params);
+  },
+
+  fetchBatchNesting: (id: string) => 
     apiRequest<BatchNestingResponse>(`/batch_nesting/${id}`),
+
+  // Mantiene il vecchio metodo per compatibilità backward
+  getOne: (id: string) => 
+    batchNestingApi.fetchBatchNesting(id),
 
   getFull: (id: string) => 
     apiRequest<any>(`/batch_nesting/${id}/full`),
 
-  create: (data: BatchNestingCreate) => 
+  createBatchNesting: (data: BatchNestingCreate) => 
     apiRequest<BatchNestingResponse>('/batch_nesting/', 'POST', data),
 
-  update: (id: string, data: BatchNestingUpdate) => 
+  // Mantiene il vecchio metodo per compatibilità backward
+  create: (data: BatchNestingCreate) => 
+    batchNestingApi.createBatchNesting(data),
+
+  updateBatchNesting: (id: string, data: BatchNestingUpdate) => 
     apiRequest<BatchNestingResponse>(`/batch_nesting/${id}`, 'PUT', data),
 
-  delete: (id: string) => 
+  // Mantiene il vecchio metodo per compatibilità backward
+  update: (id: string, data: BatchNestingUpdate) => 
+    batchNestingApi.updateBatchNesting(id, data),
+
+  deleteBatchNesting: (id: string) => 
     apiRequest<void>(`/batch_nesting/${id}`, 'DELETE'),
+
+  // Mantiene il vecchio metodo per compatibilità backward
+  delete: (id: string) => 
+    batchNestingApi.deleteBatchNesting(id),
 
   getStatistics: (id: string) => 
     apiRequest<any>(`/batch_nesting/${id}/statistics`),
@@ -1323,8 +1414,7 @@ export const produzioneApi = {
 // API Nesting
 export const nestingApi = {
   getData: async () => {
-    const response = await api.get('/nesting/data');
-    return response.data;
+    return apiRequest<any>('/nesting/data');
   },
 
   genera: async (request: {
@@ -1336,12 +1426,11 @@ export const nestingApi = {
       priorita_area?: boolean;
     };
   }) => {
-    const response = await api.post('/nesting/genera', request);
-    return response.data;
+    return apiRequest<any>('/nesting/genera', 'POST', request);
   }
 };
 
-// ✅ NUOVO: API per i System Logs
+// ✅ NUOVO: Interfacce per System Logs
 export interface SystemLogResponse {
   id: number;
   timestamp: string;
@@ -1378,12 +1467,12 @@ export interface SystemLogStats {
   recent_errors: SystemLogResponse[];
 }
 
-// API System Logs
+// ✅ NUOVO: API System Logs con nomi più descrittivi
 export const systemLogsApi = {
   /**
-   * Ottiene i log di sistema con filtri opzionali
+   * ✅ getAll → fetchSystemLogs
    */
-  getAll: (filters?: SystemLogFilter): Promise<SystemLogResponse[]> => {
+  fetchSystemLogs: (filters?: SystemLogFilter): Promise<SystemLogResponse[]> => {
     const queryParams = new URLSearchParams();
     
     if (filters?.event_type) queryParams.append('event_type', filters.event_type);
@@ -1401,30 +1490,30 @@ export const systemLogsApi = {
   },
 
   /**
-   * Ottiene statistiche sui log di sistema
+   * ✅ getStats → fetchSystemLogStats
    */
-  getStats: (days: number = 30): Promise<SystemLogStats> => {
+  fetchSystemLogStats: (days: number = 30): Promise<SystemLogStats> => {
     return apiRequest<SystemLogStats>(`/system-logs/stats?days=${days}`);
   },
 
   /**
-   * Ottiene gli errori più recenti
+   * ✅ getRecentErrors → fetchRecentErrors
    */
-  getRecentErrors: (limit: number = 20): Promise<SystemLogResponse[]> => {
+  fetchRecentErrors: (limit: number = 20): Promise<SystemLogResponse[]> => {
     return apiRequest<SystemLogResponse[]>(`/system-logs/recent-errors?limit=${limit}`);
   },
 
   /**
-   * Ottiene i log relativi a una specifica entità
+   * ✅ getByEntity → fetchLogsByEntity
    */
-  getByEntity: (entityType: string, entityId: number, limit: number = 50): Promise<SystemLogResponse[]> => {
+  fetchLogsByEntity: (entityType: string, entityId: number, limit: number = 50): Promise<SystemLogResponse[]> => {
     return apiRequest<SystemLogResponse[]>(`/system-logs/by-entity/${entityType}/${entityId}?limit=${limit}`);
   },
 
   /**
-   * Esporta i log in formato CSV
+   * ✅ exportCsv → exportSystemLogsCsv
    */
-  exportCsv: async (filters?: SystemLogFilter): Promise<void> => {
+  exportSystemLogsCsv: async (filters?: SystemLogFilter): Promise<void> => {
     const queryParams = new URLSearchParams();
     
     if (filters?.event_type) queryParams.append('event_type', filters.event_type);
@@ -1494,12 +1583,12 @@ export interface TimesComparisonResponse {
   ultima_analisi: string;
 }
 
-// API Standard Times
+// ✅ RINOMINATO: API Standard Times con nomi più descrittivi
 export const standardTimesApi = {
   /**
-   * Ottiene tutti i tempi standard con filtri opzionali
+   * ✅ getAll → fetchStandardTimes
    */
-  getAll: (params?: {
+  fetchStandardTimes: (params?: {
     skip?: number;
     limit?: number;
     part_number?: string;
@@ -1519,46 +1608,46 @@ export const standardTimesApi = {
   },
 
   /**
-   * Ottiene un tempo standard specifico per ID
+   * ✅ getById → fetchStandardTime
    */
-  getById: (id: number): Promise<StandardTime> => {
+  fetchStandardTime: (id: number): Promise<StandardTime> => {
     return apiRequest<StandardTime>(`/standard-times/${id}`);
   },
 
   /**
-   * Ottiene tutti i tempi standard per un part number
+   * ✅ getByPartNumber → fetchStandardTimesByPartNumber
    */
-  getByPartNumber: (partNumber: string): Promise<StandardTime[]> => {
+  fetchStandardTimesByPartNumber: (partNumber: string): Promise<StandardTime[]> => {
     return apiRequest<StandardTime[]>(`/standard-times/by-part-number/${partNumber}`);
   },
 
   /**
-   * Confronto tra tempi osservati e standard per un part number
+   * ✅ getComparison → fetchTimesComparison
    * 🎯 FUNZIONE PRINCIPALE per v1.4.5-DEMO
    */
-  getComparison: (partNumber: string, giorni: number = 30): Promise<TimesComparisonResponse> => {
+  fetchTimesComparison: (partNumber: string, giorni: number = 30): Promise<TimesComparisonResponse> => {
     return apiRequest<TimesComparisonResponse>(`/standard-times/comparison/${partNumber}?giorni=${giorni}`);
   },
 
   /**
-   * Ottiene i part-number con maggiore scostamento percentuale
+   * ✅ getTopDelta → fetchTopDeltaVariances
    * 🎯 FUNZIONE PRINCIPALE per v1.4.6-DEMO
    */
-  getTopDelta: (limit: number = 5, days: number = 30): Promise<TopDeltaResponse> => {
+  fetchTopDeltaVariances: (limit: number = 5, days: number = 30): Promise<TopDeltaResponse> => {
     return apiRequest<TopDeltaResponse>(`/standard-times/top-delta?limit=${limit}&days=${days}`);
   },
 
   /**
-   * Ricalcola tutti i tempi standard
+   * ✅ recalculate → recalculateStandardTimes
    */
-  recalculate: (userId: string = "admin", userRole: string = "ADMIN"): Promise<any> => {
+  recalculateStandardTimes: (userId: string = "admin", userRole: string = "ADMIN"): Promise<any> => {
     return apiRequest<any>(`/standard-times/recalc?user_id=${userId}&user_role=${userRole}`, 'POST');
   },
 
   /**
-   * Ottiene statistiche sui tempi standard
+   * ✅ getStatistics → fetchStandardTimesStatistics
    */
-  getStatistics: (): Promise<any> => {
+  fetchStandardTimesStatistics: (): Promise<any> => {
     return apiRequest<any>('/standard-times/statistics');
   }
 };

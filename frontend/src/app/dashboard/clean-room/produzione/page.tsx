@@ -52,7 +52,7 @@ export default function ProduzionePage() {
       setIsLoading(true)
       
       // Carica solo ODL rilevanti per il Clean Room (Preparazione e Laminazione)
-      const allOdl = await odlApi.getAll()
+      const allOdl = await odlApi.fetchODLs()
       const relevantOdl = allOdl.filter(odl => 
         odl.status === "Preparazione" || odl.status === "Laminazione"
       )

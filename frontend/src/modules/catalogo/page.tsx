@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { CatalogoResponse, catalogoApi } from '@/lib/api'
+import { CatalogoResponse, catalogApi } from '@/lib/api'
 import { formatDateIT } from '@/lib/utils'
 import { useDebounce } from '@/hooks/useDebounce'
 import CatalogoModal from './components/catalogo-modal'
@@ -55,7 +55,7 @@ export default function CatalogoPage() {
         ...(searchTerm && { search: searchTerm })
       }
       
-      const data = await catalogoApi.getAll(params)
+      const data = await catalogApi.fetchCatalogItems(params)
       setCatalogo(data)
     } catch (error: any) {
       console.error('Errore nel caricamento del catalogo:', error)
@@ -94,24 +94,23 @@ export default function CatalogoPage() {
   }
 
   const handleDeleteClick = async (partNumber: string) => {
-    if (!window.confirm(`Sei sicuro di voler eliminare ${partNumber}?`)) {
+    if (!window.confirm('Sei sicuro di voler eliminare questo elemento dal catalogo?')) {
       return
     }
 
     try {
-      await catalogoApi.delete(partNumber)
+      await catalogApi.deleteCatalogItem(partNumber)
       toast({
-        variant: 'success',
         title: 'Eliminato',
-        description: `Part number ${partNumber} eliminato con successo.`,
+        description: 'Elemento eliminato con successo dal catalogo.',
       })
       fetchCatalogo(debouncedSearchQuery)
     } catch (error) {
-      console.error(`Errore durante l'eliminazione di ${partNumber}:`, error)
+      console.error('Errore durante l\'eliminazione dell\'elemento:', error)
       toast({
         variant: 'destructive',
         title: 'Errore',
-        description: `Impossibile eliminare ${partNumber}. Potrebbe essere utilizzato in altre parti.`,
+        description: 'Impossibile eliminare l\'elemento dal catalogo.',
       })
     }
   }

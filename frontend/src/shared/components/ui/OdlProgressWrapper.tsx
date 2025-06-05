@@ -30,7 +30,7 @@ export function OdlProgressWrapper({
   const loadProgressData = async () => {
     try {
       setError(null);
-      const data = await odlApi.getProgress(odlId);
+      const data = await odlApi.fetchODLProgress(odlId);
       setProgressData(data);
     } catch (err) {
       console.error('Errore nel caricamento dei dati di progresso:', err);

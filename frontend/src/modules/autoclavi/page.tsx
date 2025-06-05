@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { AutoclaveModal } from './components/autoclave-modal'
-import { autoclaveApi, type Autoclave } from '@/lib/api'
+import { autoclavesApi, type Autoclave } from '@/lib/api'
 import { 
   Loader2, 
   MoreHorizontal, 
@@ -32,7 +32,7 @@ export default function AutoclaviPage() {
   const fetchAutoclavi = async () => {
     try {
       setIsLoading(true)
-      const data = await autoclaveApi.getAll()
+      const data = await autoclavesApi.fetchAutoclaves()
       setAutoclavi(data)
     } catch (error) {
       console.error('Errore nel caricamento delle autoclavi:', error)
@@ -66,7 +66,7 @@ export default function AutoclaviPage() {
     }
 
     try {
-      await autoclaveApi.delete(id)
+      await autoclavesApi.deleteAutoclave(id)
       
       toast({
         variant: 'success',

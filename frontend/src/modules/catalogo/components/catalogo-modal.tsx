@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { CatalogoResponse, CatalogoCreate, CatalogoUpdate, catalogoApi } from '@/lib/api'
+import { CatalogoResponse, CatalogoCreate, CatalogoUpdate, catalogApi } from '@/lib/api'
 import { Plus, Pencil, AlertTriangle } from 'lucide-react'
 
 interface CatalogoModalProps {
@@ -144,7 +144,7 @@ export default function CatalogoModal({ isOpen, onClose, onSuccess, item }: Cata
         
         if (partNumberChanged) {
           // Se il part_number è cambiato, usa l'API di propagazione
-          await catalogoApi.updatePartNumberWithPropagation(item.part_number, formData.part_number!)
+          await catalogApi.updatePartNumberWithPropagation(item.part_number, formData.part_number!)
           toast({
             variant: 'success',
             title: 'Part Number Aggiornato',
@@ -163,7 +163,7 @@ export default function CatalogoModal({ isOpen, onClose, onSuccess, item }: Cata
         
         // Solo se non abbiamo già aggiornato tramite propagazione
         if (!partNumberChanged) {
-          await catalogoApi.update(item.part_number, updateData)
+          await catalogApi.updateCatalogItem(item.part_number, updateData)
           toast({
             variant: 'success',
             title: 'Aggiornato',
@@ -173,7 +173,7 @@ export default function CatalogoModal({ isOpen, onClose, onSuccess, item }: Cata
       } else {
         // Modalità creazione
         const createData = formData as CatalogoCreate
-        await catalogoApi.create(createData)
+        await catalogApi.createCatalogItem(createData)
         toast({
           variant: 'success',
           title: 'Creato',
@@ -215,7 +215,7 @@ export default function CatalogoModal({ isOpen, onClose, onSuccess, item }: Cata
     try {
       // Modalità creazione (il pulsante + è visibile solo in creazione)
       const createData = formData as CatalogoCreate
-      await catalogoApi.create(createData)
+      await catalogApi.createCatalogItem(createData)
       
       toast({
         variant: 'success',

@@ -13,10 +13,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { 
   ParteResponse, 
   ParteCreate, 
-  partiApi, 
-  catalogoApi, 
-  toolApi, 
-  cicloCuraApi,
+  partsApi, 
+  catalogApi, 
+  toolsApi, 
+  curingCyclesApi,
   CatalogoResponse,
   Tool,
   CicloCura
@@ -72,7 +72,7 @@ export default function ParteQuickModal({
   const loadTools = async () => {
     setIsLoadingTools(true)
     try {
-      const toolsRes = await toolApi.getAll()
+      const toolsRes = await toolsApi.fetchTools()
       setTools(toolsRes)
     } catch (error) {
       console.error('Errore nel caricamento dei tool:', error)
@@ -173,7 +173,7 @@ export default function ParteQuickModal({
 
     setIsSubmitting(true)
     try {
-      const newParte = await partiApi.create(dataToSubmit)
+      const newParte = await partsApi.createPart(dataToSubmit)
       toast({
         title: 'Parte creata',
         description: `Parte ${newParte.part_number} creata con successo.`,

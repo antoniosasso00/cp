@@ -18,8 +18,8 @@ import {
   ParteResponse, 
   Tool, 
   odlApi, 
-  partiApi, 
-  toolApi 
+  partsApi, 
+  toolsApi 
 } from '@/lib/api'
 import { 
   Loader2, 
@@ -142,10 +142,11 @@ export default function ODLModalImproved({
   const loadInitialData = async () => {
     try {
       setIsLoading(true)
-      const [toolsData] = await Promise.all([
-        toolApi.getAll()
-      ])
-      setTools(toolsData)
+      // Carica tools se non sono già caricati
+      if (tools.length === 0) {
+        const toolsData = await toolsApi.fetchTools()
+        setTools(toolsData)
+      }
     } catch (error) {
       console.error('Errore nel caricamento dei dati:', error)
       toast({
@@ -161,15 +162,18 @@ export default function ODLModalImproved({
   const searchParti = async (query: string) => {
     try {
       setIsSearchingParti(true)
-      const partiData = await partiApi.getAll()
+      // Carica parti se non sono già caricate
+      if (parti.length === 0) {
+        const partiData = await partsApi.fetchParts()
+        setParti(partiData)
+      }
       
       // Filtra parti in base alla query
-      const filteredParti = partiData.filter(parte => 
+      const filteredParti = parti.filter(parte => 
         parte.part_number.toLowerCase().includes(query.toLowerCase()) ||
         parte.descrizione_breve.toLowerCase().includes(query.toLowerCase())
       )
       
-      setParti(filteredParti)
       setShowParteResults(true)
     } catch (error) {
       console.error('Errore nella ricerca parti:', error)
@@ -232,13 +236,13 @@ export default function ODLModalImproved({
       setIsSaving(true)
       
       if (editingItem) {
-        await odlApi.update(editingItem.id, formData as ODLUpdate)
+        await odlApi.updateODL(editingItem.id, formData as ODLUpdate)
         toast({
           title: 'ODL aggiornato',
           description: 'L\'ordine di lavoro è stato aggiornato con successo.',
         })
       } else {
-        await odlApi.create(formData)
+        await odlApi.createODL(formData)
         toast({
           title: 'ODL creato',
           description: 'Nuovo ordine di lavoro creato con successo.',

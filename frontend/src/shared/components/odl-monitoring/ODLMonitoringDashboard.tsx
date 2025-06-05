@@ -66,7 +66,7 @@ export function ODLMonitoringDashboard() {
 
   const fetchStats = async () => {
     try {
-      const data = await odlApi.getMonitoringStats();
+      const data = await odlApi.fetchODLMonitoringStats();
       setStats(data);
     } catch (err) {
       console.error('Errore nel caricamento delle statistiche:', err);
@@ -84,7 +84,7 @@ export function ODLMonitoringDashboard() {
         ...(prioritaMin && { priorita_min: parseInt(prioritaMin) })
       };
       
-      const data = await odlApi.getMonitoringList(params);
+      const data = await odlApi.fetchODLMonitoringList(params);
       
       // Filtra per termine di ricerca se presente
       let filteredData = data;

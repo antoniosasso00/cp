@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { batchNestingApi, autoclaveApi, odlApi, BatchNestingResponse, Autoclave, ODLResponse } from '@/lib/api';
+import { batchNestingApi, autoclavesApi, odlApi, BatchNestingResponse, Autoclave, ODLResponse } from '@/lib/api';
 import { Clock, Package, Weight, Gauge, User, Calendar, CheckCircle, AlertCircle } from 'lucide-react';
 
 interface BatchConAutoclave extends BatchNestingResponse {
@@ -47,20 +47,11 @@ export default function ConfermaFineCuraPage() {
           const batchCompleto = await batchNestingApi.getOne(batch.id);
           
           // Recupera l'autoclave
-          const autoclave = await autoclaveApi.getById(batch.autoclave_id);
+          const autoclave = await autoclavesApi.fetchAutoclave(batch.autoclave_id);
           
-          // Recupera gli ODL inclusi nel batch
-          const odlList: ODLResponse[] = [];
-          if (batchCompleto.odl_ids && batchCompleto.odl_ids.length > 0) {
-            for (const odlId of batchCompleto.odl_ids) {
-              try {
-                const odl = await odlApi.getOne(odlId);
-                odlList.push(odl);
-              } catch (err) {
-                console.warn(`⚠️ ODL ${odlId} non trovato:`, err);
-              }
-            }
-          }
+          // Recupera gli ODL inclusi nel batch (usa batchCompleto che ha odl_ids)
+          const odlPromises = batchCompleto.odl_ids.map(id => odlApi.fetchODL(id));
+          const odlList: ODLResponse[] = await Promise.all(odlPromises);
           
           batchesArricchiti.push({
             ...batchCompleto,

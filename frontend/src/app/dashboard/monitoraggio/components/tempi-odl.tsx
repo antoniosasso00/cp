@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Loader2, Edit, Trash2 } from 'lucide-react'
 import { ConfirmDialog, useConfirmDialog } from '@/components/ui/confirm-dialog'
-import { tempoFasiApi, odlApi, CatalogoResponse } from '@/lib/api'
+import { phaseTimesApi, odlApi, CatalogoResponse } from '@/lib/api'
 import { formatDateTime } from '@/lib/utils'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { AlertCircle } from 'lucide-react'
@@ -87,11 +87,11 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
       setIsLoading(true)
       
       // Carica i dati dei tempi di fase
-      const tempiData = await tempoFasiApi.getAll();
+      const tempiData = await phaseTimesApi.fetchPhaseTimes();
       
       // Carica i dati degli ODL per riferimento con filtro opzionale
       const odlParams = showOnlyValidODL ? { include_in_std: true } : {};
-      const odlData = await odlApi.getAll(odlParams);
+      const odlData = await odlApi.fetchODLs(odlParams);
       
       // Applica i filtri globali
       let tempiFiltrati = tempiData;
@@ -179,7 +179,7 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
       setIsUpdating(true);
       
       // Aggiorna solo le note dell'ODL
-      await odlApi.update(editingOdl.id, {
+      await odlApi.updateODL(editingOdl.id, {
         note: editNote
       });
       
@@ -223,7 +223,7 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
         itemName: `ODL ${odlId} - ${odl.parte?.part_number || 'N/A'}`,
         onConfirm: async () => {
           // Elimina l'ODL con conferma se necessario
-          await odlApi.delete(odlId, isFinished);
+          await odlApi.deleteODL(odlId, isFinished);
           
           toast({
             title: "🗑️ ODL eliminato con successo",
@@ -248,7 +248,7 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
   // Funzione per aggiornare il campo include_in_std di un ODL
   const handleToggleIncludeInStd = async (odlId: number, currentValue: boolean) => {
     try {
-      await odlApi.update(odlId, {
+      await odlApi.updateODL(odlId, {
         include_in_std: !currentValue
       });
       

@@ -89,7 +89,7 @@ import { OdlProgressWrapper } from '@/components/ui/OdlProgressWrapper';
 
 ## 🔌 API Backend
 
-### Endpoint `/api/v1/odl-monitoring/monitoring/{odl_id}/progress`
+### Endpoint `/api/odl-monitoring/monitoring/{odl_id}/progress`
 
 **Scopo**: Dati ottimizzati per la barra di progresso.
 
@@ -118,7 +118,7 @@ import { OdlProgressWrapper } from '@/components/ui/OdlProgressWrapper';
 }
 ```
 
-### Endpoint `/api/v1/odl-monitoring/monitoring/{odl_id}/timeline`
+### Endpoint `/api/odl-monitoring/monitoring/{odl_id}/timeline`
 
 **Scopo**: Dati completi per il modal timeline.
 
@@ -183,7 +183,7 @@ import { OdlProgressWrapper } from '@/components/ui/OdlProgressWrapper';
 1. **Creazione ODL con Stati Diversi**:
    ```bash
    # Crea ODL in vari stati per verificare proporzioni
-   curl -X POST /api/v1/odl -d '{"parte_id": 1, "tool_id": 1, "priorita": 3}'
+   curl -X POST /api/odl -d '{"parte_id": 1, "tool_id": 1, "priorita": 3}'
    ```
 
 2. **Simulazione Ritardi**:

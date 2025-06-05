@@ -34,7 +34,7 @@ def solve_nesting_v1_4_17_demo(
     Alias per l'endpoint solve del batch_nesting con path aggiornato.
     Mantiene piena compatibilità con il sistema esistente.
     
-    **Questo endpoint è identico a `/api/v1/batch_nesting/solve`**
+    **Questo endpoint è identico a `/api/batch_nesting/solve`**
     
     Per la documentazione completa, vedere l'endpoint originale.
     """

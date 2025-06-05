@@ -95,7 +95,7 @@ export default function ODLPage() {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 15000) // 15 secondi
 
-      const data = await odlApi.getAll(filter)
+      const data = await odlApi.fetchODLs(filter)
       clearTimeout(timeoutId)
       
       // Verifica se il componente è ancora montato
@@ -194,7 +194,7 @@ export default function ODLPage() {
     }
 
     try {
-      await odlApi.delete(id)
+      await odlApi.deleteODL(id)
       toast({
         variant: 'success',
         title: 'Eliminato',

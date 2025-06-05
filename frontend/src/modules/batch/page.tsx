@@ -76,7 +76,7 @@ export default function BatchListPage() {
         params.append('stato', statusFilter);
       }
 
-      const response = await fetch(`/api/v1/batch_nesting/?${params}`);
+      const response = await fetch(`/api/batch_nesting/?${params}`);
       
       if (!response.ok) {
         throw new Error(`Errore HTTP: ${response.status}`);
@@ -104,7 +104,7 @@ export default function BatchListPage() {
     }
 
     try {
-      const response = await fetch(`/api/v1/batch_nesting/${batchId}`, {
+      const response = await fetch(`/api/batch_nesting/${batchId}`, {
         method: 'DELETE',
       });
 

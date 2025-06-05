@@ -155,7 +155,7 @@ export default function ODLStatusSwitch({
     try {
       console.log(`🔄 Aggiornando ODL ${odlId} da ${odl.status} a ${newStatus}...`);
       
-      await odlApi.updateStatus(
+      await odlApi.updateODLStatus(
         odlId,
         newStatus
       );

@@ -30,7 +30,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
-import { catalogoApi, tempoFasiApi, odlApi, CatalogoResponse } from '@/lib/api'
+import { catalogApi, phaseTimesApi, odlApi, CatalogoResponse } from '@/lib/api'
 import { formatDuration, formatDateTime } from '@/lib/utils'
 import TempoFaseModal from '../../clean-room/tempi/components/tempo-fase-modal'
 
@@ -105,9 +105,9 @@ export default function MonitoraggioPage() {
       
       // Carica tutti i dati necessari
       const [catalogoData, tempiData, odlData] = await Promise.all([
-        catalogoApi.getAll(),
-        tempoFasiApi.getAll(),
-        odlApi.getAll()
+        catalogApi.fetchCatalogItems(),
+        phaseTimesApi.fetchPhaseTimes(),
+        odlApi.fetchODLs()
       ])
       
       setCatalogo(catalogoData)
@@ -139,21 +139,29 @@ export default function MonitoraggioPage() {
       }
 
       // Carica statistiche per il part number specifico
-      const fasi = ['laminazione', 'attesa_cura', 'cura']
-      const previsioni: StatisticheFasi = {}
+      let previsioni: StatisticheFasi = {}
       
-      for (const fase of fasi) {
-        try {
-          const previsione = await tempoFasiApi.getPrevisione(fase, selectedPartNumber)
-          previsioni[fase] = previsione
-        } catch (error) {
-          console.warn(`Errore nel caricamento previsione per fase ${fase}:`, error)
+      try {
+        const statistichePartNumber = await phaseTimesApi.fetchPhaseTimeStatsByPartNumber(selectedPartNumber)
+        // Converte le previsioni dal formato API al formato locale
+        Object.entries(statistichePartNumber.previsioni).forEach(([fase, dati]) => {
+          previsioni[fase] = {
+            fase: dati.fase,
+            media_minuti: dati.media_minuti,
+            numero_osservazioni: dati.numero_osservazioni
+          }
+        })
+      } catch (error) {
+        console.warn(`Errore nel caricamento previsioni per ${selectedPartNumber}:`, error)
+        // Fallback con dati vuoti
+        const fasi = ['laminazione', 'attesa_cura', 'cura']
+        fasi.forEach(fase => {
           previsioni[fase] = {
             fase,
             media_minuti: 0,
             numero_osservazioni: 0
           }
-        }
+        })
       }
       
       const totaleODL = odlList.filter(odl => 
@@ -234,7 +242,7 @@ export default function MonitoraggioPage() {
     }
 
     try {
-      await tempoFasiApi.delete(id)
+      await phaseTimesApi.deletePhaseTime(id)
       toast({
         title: 'Eliminato',
         description: `Record eliminato con successo.`,
@@ -280,7 +288,7 @@ export default function MonitoraggioPage() {
     }
 
     try {
-      await odlApi.delete(odlId)
+      await odlApi.deleteODL(odlId)
       toast({
         title: 'ODL eliminato',
         description: `ODL ${odlId} eliminato con successo.`,

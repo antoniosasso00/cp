@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
-import { toolApi, Tool } from '@/lib/api'
+import { toolsApi, Tool } from '@/lib/api'
 import { 
   Loader2, 
   Pencil, 
@@ -116,14 +116,14 @@ export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolMo
       console.log('📤 Dati inviati al backend:', submitData) // Debug
       
       if (editingItem) {
-        await toolApi.update(editingItem.id, submitData)
+        await toolsApi.updateTool(editingItem.id, submitData)
         toast({
           variant: 'success',
           title: 'Tool aggiornato',
           description: `Tool ${submitData.part_number_tool} aggiornato con successo.`,
         })
       } else {
-        await toolApi.create(submitData)
+        await toolsApi.createTool(submitData)
         toast({
           variant: 'success',
           title: 'Tool creato',
@@ -189,7 +189,7 @@ export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolMo
       console.log('📤 Dati inviati al backend (Salva e nuovo):', submitData) // Debug
       
       // Solo modalità creazione (il pulsante è visibile solo in creazione)
-      await toolApi.create(submitData)
+      await toolsApi.createTool(submitData)
       toast({
         variant: 'success',
         title: 'Tool creato e pronto per il prossimo',

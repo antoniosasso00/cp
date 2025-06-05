@@ -92,7 +92,7 @@ export default function BatchDetailPage() {
       setLoading(true);
       setError(null);
 
-      const response = await axios.get(`/api/v1/batch_nesting/${batchId}`);
+      const response = await axios.get(`/api/batch_nesting/${batchId}`);
       console.log('📊 Dettagli batch caricati:', response.data);
       setBatch(response.data);
 
@@ -116,7 +116,7 @@ export default function BatchDetailPage() {
       setActionLoading('confirm');
       
       const response = await axios.patch(
-        `/api/v1/batch_nesting/${batchId}/conferma?confermato_da_utente=Operatore&confermato_da_ruolo=Management`
+        `/api/batch_nesting/${batchId}/conferma?confermato_da_utente=Operatore&confermato_da_ruolo=Management`
       );
       
       console.log('✅ Batch confermato:', response.data);
@@ -136,7 +136,7 @@ export default function BatchDetailPage() {
       setActionLoading('loaded');
       
       const response = await axios.patch(
-        `/api/v1/batch_nesting/${batchId}/loaded?caricato_da_utente=${loadedForm.caricato_da_utente}&caricato_da_ruolo=${loadedForm.caricato_da_ruolo}`
+        `/api/batch_nesting/${batchId}/loaded?caricato_da_utente=${loadedForm.caricato_da_utente}&caricato_da_ruolo=${loadedForm.caricato_da_ruolo}`
       );
       
       console.log('📦 Batch marcato come caricato:', response.data);
@@ -167,7 +167,7 @@ export default function BatchDetailPage() {
       if (curedForm.anomalie) params.append('anomalie', curedForm.anomalie);
       
       const response = await axios.patch(
-        `/api/v1/batch_nesting/${batchId}/cured?${params}`
+        `/api/batch_nesting/${batchId}/cured?${params}`
       );
       
       console.log('🎉 Batch marcato come curato:', response.data);

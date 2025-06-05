@@ -108,7 +108,7 @@ export default function SystemLogsPage() {
         end_date: endDate ? format(endDate, 'yyyy-MM-dd') : undefined,
       }
       
-      const data = await systemLogsApi.getAll(apiFilters)
+      const data = await systemLogsApi.fetchSystemLogs(apiFilters)
       setLogs(data)
       
       console.log(`✅ Caricati ${data.length} log`)
@@ -136,7 +136,7 @@ export default function SystemLogsPage() {
   const fetchStats = useCallback(async () => {
     try {
       console.log('📊 Caricamento statistiche log...')
-      const data = await systemLogsApi.getStats(30) // Ultimi 30 giorni
+      const data = await systemLogsApi.fetchSystemLogStats(30) // Ultimi 30 giorni
       setStats(data)
       console.log('✅ Statistiche caricate:', data)
     } catch (error: any) {
@@ -161,7 +161,7 @@ export default function SystemLogsPage() {
         end_date: endDate ? format(endDate, 'yyyy-MM-dd') : undefined,
       }
       
-      await systemLogsApi.exportCsv(exportFilters)
+      await systemLogsApi.exportSystemLogsCsv(exportFilters)
       
       toast({
         title: "Esportazione completata",

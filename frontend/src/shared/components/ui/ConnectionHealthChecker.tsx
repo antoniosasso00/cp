@@ -30,7 +30,7 @@ export function ConnectionHealthChecker({
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 5000)
       
-      const response = await fetch('/api/v1/docs', {
+      const response = await fetch('/api/docs', {
         method: 'HEAD',
         signal: controller.signal
       })

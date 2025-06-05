@@ -2,30 +2,30 @@
  * 🔧 Configurazione dell'applicazione
  */
 
-// URL base dell'API
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+// URL base dell'API  
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
 
 // Endpoint API
 export const API_ENDPOINTS = {
   // Dashboard endpoints
   dashboard: {
-    odlCount: `${API_BASE_URL}/api/v1/dashboard/odl-count`,
-    autoclaveLoad: `${API_BASE_URL}/api/v1/dashboard/autoclave-load`,
-    nestingActive: `${API_BASE_URL}/api/v1/dashboard/nesting-active`,
-    kpiSummary: `${API_BASE_URL}/api/v1/dashboard/kpi-summary`,
+    odlCount: `${API_BASE_URL}/api/dashboard/odl-count`,
+    autoclaveLoad: `${API_BASE_URL}/api/dashboard/autoclave-load`,
+    nestingActive: `${API_BASE_URL}/api/dashboard/nesting-active`,
+    kpiSummary: `${API_BASE_URL}/api/dashboard/kpi-summary`,
   },
   
   // Health check
   health: `${API_BASE_URL}/health`,
   
   // ODL endpoints
-  odl: `${API_BASE_URL}/api/v1/odl`,
+  odl: `${API_BASE_URL}/api/odl`,
   
   // Autoclave endpoints
-  autoclavi: `${API_BASE_URL}/api/v1/autoclavi`,
+  autoclavi: `${API_BASE_URL}/api/autoclavi`,
   
   // Tools endpoints
-  tools: `${API_BASE_URL}/api/v1/tools`,
+  tools: `${API_BASE_URL}/api/tools`,
 } as const
 
 // Configurazione refresh intervals (in millisecondi)

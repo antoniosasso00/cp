@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import useSWR from 'swr'
 import { odlApi, reportsApi, type ODLResponse } from '@/lib/api'
 
 interface UseODLByRoleOptions {
@@ -28,8 +29,17 @@ export function useODLByRole({
   autoRefresh = false, 
   refreshInterval = 30000 
 }: UseODLByRoleOptions): UseODLByRoleReturn {
+  const { data, error: swrError, isLoading, mutate } = useSWR(
+    `odl-by-role-${role}`,
+    () => odlApi.fetchODLs(),
+    {
+      refreshInterval: autoRefresh ? refreshInterval : 0,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+    }
+  )
+
   const [odlList, setOdlList] = useState<ODLResponse[]>([])
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   // Definisce gli stati ODL per ogni ruolo
@@ -44,22 +54,17 @@ export function useODLByRole({
     }
   }
 
-  const fetchODLByRole = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-
-      // Ottieni tutti gli ODL - l'API non supporta limit/skip, quindi filtriamo localmente
-      const allODL = await odlApi.getAll()
-      
+  // Filtra i dati quando arrivano da SWR
+  useEffect(() => {
+    if (data) {
       // Filtra per stati appropriati al ruolo
       const allowedStatuses = getStatusFilterForRole(role)
-      const filteredODL = allODL.filter(odl => 
+      const filteredODL = data.filter((odl: ODLResponse) => 
         odl.status && allowedStatuses.includes(odl.status)
       )
 
       // Ordina per priorità (alta prima) e poi per data di creazione
-      filteredODL.sort((a, b) => {
+      filteredODL.sort((a: ODLResponse, b: ODLResponse) => {
         // Prima ordina per priorità (numeri più alti = priorità più alta)
         const priorityDiff = (b.priorita || 0) - (a.priorita || 0)
         if (priorityDiff !== 0) return priorityDiff
@@ -69,14 +74,16 @@ export function useODLByRole({
       })
 
       setOdlList(filteredODL)
-      
-    } catch (err) {
-      console.error(`Errore nel caricamento ODL per ${role}:`, err)
-      setError(`Errore nel caricamento degli ODL per ${role}`)
-    } finally {
-      setLoading(false)
+      setError(null)
     }
-  }
+  }, [data, role])
+
+  // Gestione errori SWR
+  useEffect(() => {
+    if (swrError) {
+      setError(`Errore nel caricamento degli ODL per ${role}`)
+    }
+  }, [swrError, role])
 
   // Funzione per aggiornare lo stato di un ODL usando la funzione di utilità migliorata
   const updateODLStatus = async (odlId: number, newStatus: string) => {
@@ -105,6 +112,9 @@ export function useODLByRole({
         })
       )
       
+      // Ricarica i dati
+      mutate()
+      
     } catch (err) {
       console.error('Errore nell\'aggiornamento dello stato ODL:', err)
       throw new Error('Errore nell\'aggiornamento dello stato')
@@ -123,24 +133,11 @@ export function useODLByRole({
     }
   }
 
-  // Effetto per il caricamento iniziale
-  useEffect(() => {
-    fetchODLByRole()
-  }, [role])
-
-  // Effetto per il refresh automatico
-  useEffect(() => {
-    if (!autoRefresh) return
-
-    const interval = setInterval(fetchODLByRole, refreshInterval)
-    return () => clearInterval(interval)
-  }, [autoRefresh, refreshInterval, role])
-
   return {
     odlList,
-    loading,
-    error,
-    refresh: fetchODLByRole,
+    loading: isLoading,
+    error: error || (swrError ? swrError.message : null),
+    refresh: mutate,
     updateODLStatus
   }
 } 

@@ -62,9 +62,9 @@ export default function StatisticheCatalogo({ filtri, catalogo, onError }: Stati
       try {
         setLoadingStats(true)
         
-        // ✅ NUOVO: Utilizza la nuova API standardTimesApi.getComparison
+        // ✅ NUOVO: Utilizza la nuova API standardTimesApi.fetchTimesComparison
         const giorni = parseInt(filtri.periodo)
-        const result = await standardTimesApi.getComparison(selectedPartNumber, giorni)
+        const result = await standardTimesApi.fetchTimesComparison(selectedPartNumber, giorni)
         
         if (isMounted) {
           setComparisonData(result)

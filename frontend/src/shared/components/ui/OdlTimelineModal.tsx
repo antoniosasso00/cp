@@ -89,7 +89,7 @@ export function OdlTimelineModal({
     
     try {
       // Chiamata API per ottenere i dati completi della timeline
-      const response = await fetch(`/api/v1/odl-monitoring/monitoring/${odlId}/timeline`);
+      const response = await fetch(`/api/odl-monitoring/monitoring/${odlId}/timeline`);
       if (!response.ok) {
         throw new Error('Errore nel caricamento della timeline');
       }

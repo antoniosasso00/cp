@@ -37,7 +37,7 @@ export default function BatchNavigator({ currentBatchId, className }: BatchNavig
         setLoading(true)
         
         // Carica gli ultimi 10 batch per trovare quelli correlati
-        const response = await fetch('/api/v1/batch_nesting?limit=10&order_by=created_at&order=desc')
+        const response = await fetch('/api/batch_nesting?limit=10&order_by=created_at&order=desc')
         if (!response.ok) return
         
         const allBatches: BatchInfo[] = await response.json()

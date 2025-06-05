@@ -345,6 +345,8 @@
                 └── pack-fd18648a7a5e327b7029eebf8949950b1c2ec340.idx
                 └── pack-fd18648a7a5e327b7029eebf8949950b1c2ec340.pack
                 └── pack-fd18648a7a5e327b7029eebf8949950b1c2ec340.rev
+    📁 CursorNotes/
+        └── riorganizzazione-modulare.md
     📁 frontend/
         └── Dockerfile
         └── SIDEBAR_DINAMICA_README.md
@@ -371,16 +373,35 @@
                     📁 client-development/
                         └── 0.pack.gz
                         └── 1.pack.gz
+                        └── 10.pack.gz
                         └── 2.pack.gz
                         └── 3.pack.gz
+                        └── 4.pack.gz
+                        └── 5.pack.gz
+                        └── 6.pack.gz
+                        └── 7.pack.gz
+                        └── 8.pack.gz
+                        └── 9.pack.gz
                         └── index.pack.gz
                         └── index.pack.gz.old
+                    📁 client-development-fallback/
+                        └── 0.pack.gz
+                        └── index.pack.gz
+                    📁 client-production/
+                        └── 0.pack
+                        └── index.pack
                     📁 server-development/
                         └── 0.pack.gz
                         └── 1.pack.gz
                         └── 2.pack.gz
+                        └── 3.pack.gz
+                        └── 4.pack.gz
+                        └── 5.pack.gz
                         └── index.pack.gz
                         └── index.pack.gz.old
+                    📁 server-production/
+                        └── 0.pack
+                        └── index.pack
             📁 server/
                 └── app-paths-manifest.json
                 └── middleware-build-manifest.js
@@ -398,59 +419,25 @@
                     📁 dashboard/
                         └── page.js
                         └── page_client-reference-manifest.js
-                        📁 curing/
-                            📁 nesting/
-                                └── page.js
-                                └── page_client-reference-manifest.js
-                                📁 result/
-                                    📁 [batch_id]/
-                                        └── page.js
-                                        └── page_client-reference-manifest.js
-                    📁 role/
-                        └── page.js
-                        └── page_client-reference-manifest.js
+                    📁 modules/
+                        📁 role/
+                            └── page.js
+                            └── page_client-reference-manifest.js
                 📁 vendor-chunks/
                     └── @floating-ui.js
                     └── @radix-ui.js
                     └── @swc.js
                     └── aria-hidden.js
-                    └── asynckit.js
-                    └── axios.js
-                    └── call-bind-apply-helpers.js
                     └── class-variance-authority.js
                     └── clsx.js
-                    └── combined-stream.js
-                    └── debug.js
-                    └── delayed-stream.js
                     └── dequal.js
-                    └── dunder-proto.js
-                    └── es-define-property.js
-                    └── es-errors.js
-                    └── es-object-atoms.js
-                    └── es-set-tostringtag.js
-                    └── follow-redirects.js
-                    └── form-data.js
-                    └── function-bind.js
-                    └── get-intrinsic.js
                     └── get-nonce.js
-                    └── get-proto.js
-                    └── gopd.js
-                    └── has-flag.js
-                    └── has-symbols.js
-                    └── has-tostringtag.js
-                    └── hasown.js
                     └── lucide-react.js
-                    └── math-intrinsics.js
-                    └── mime-db.js
-                    └── mime-types.js
-                    └── ms.js
                     └── next-themes.js
                     └── next.js
-                    └── proxy-from-env.js
                     └── react-remove-scroll-bar.js
                     └── react-remove-scroll.js
                     └── react-style-singleton.js
-                    └── supports-color.js
                     └── swr.js
                     └── tailwind-merge.js
                     └── tslib.js
@@ -459,12 +446,10 @@
                     └── use-sync-external-store.js
             📁 static/
                 📁 chunks/
-                    └── _app-pages-browser_node_modules_react-konva_es_ReactKonva_js.js
-                    └── _app-pages-browser_src_app_dashboard_curing_nesting_result_batch_id_NestingCanvas_tsx.js
-                    └── _app-pages-browser_src_components_dashboard_DashboardAdmin_tsx.js
-                    └── _app-pages-browser_src_components_dashboard_DashboardCleanRoom_tsx.js
-                    └── _app-pages-browser_src_components_dashboard_DashboardCuring_tsx.js
-                    └── _app-pages-browser_src_components_dashboard_DashboardManagement_tsx.js
+                    └── _app-pages-browser_src_shared_components_dashboard_DashboardAdmin_tsx.js
+                    └── _app-pages-browser_src_shared_components_dashboard_DashboardCleanRoom_tsx.js
+                    └── _app-pages-browser_src_shared_components_dashboard_DashboardCuring_tsx.js
+                    └── _app-pages-browser_src_shared_components_dashboard_DashboardManagement_tsx.js
                     └── app-pages-internals.js
                     └── main-app.js
                     └── polyfills.js
@@ -475,15 +460,9 @@
                         📁 dashboard/
                             └── layout.js
                             └── page.js
-                            📁 curing/
-                                └── layout.js
-                                📁 nesting/
-                                    └── page.js
-                                    📁 result/
-                                        📁 [batch_id]/
-                                            └── page.js
-                        📁 role/
-                            └── page.js
+                        📁 modules/
+                            📁 role/
+                                └── page.js
                 📁 css/
                     📁 app/
                         └── layout.css
@@ -499,32 +478,15 @@
                     └── df0a9ae256c0569c-s.woff2
                     └── e4af272ccee01ff0-s.p.woff2
                 📁 webpack/
-                    └── 182e546a9ca9db77.webpack.hot-update.json
-                    └── 43f3666d24b8d151.webpack.hot-update.json
-                    └── 62a93d2563eb2699.webpack.hot-update.json
+                    └── 14899848a9c293c7.webpack.hot-update.json
+                    └── 230765e4208b9d95.webpack.hot-update.json
                     └── 633457081244afec._.hot-update.json
-                    └── 6415f3feb4d9458e.webpack.hot-update.json
-                    └── 6e4df35b2113a594.webpack.hot-update.json
-                    └── 867d78a95520edbe.webpack.hot-update.json
-                    └── 8cbc8b10e99e235e.webpack.hot-update.json
-                    └── b9f91c0fb433ff31.webpack.hot-update.json
-                    └── d18ffb8a725e82f0.webpack.hot-update.json
-                    └── webpack.182e546a9ca9db77.hot-update.js
-                    └── webpack.43f3666d24b8d151.hot-update.js
-                    └── webpack.62a93d2563eb2699.hot-update.js
-                    └── webpack.6415f3feb4d9458e.hot-update.js
-                    └── webpack.6e4df35b2113a594.hot-update.js
-                    └── webpack.867d78a95520edbe.hot-update.js
-                    └── webpack.8cbc8b10e99e235e.hot-update.js
-                    └── webpack.b9f91c0fb433ff31.hot-update.js
-                    └── webpack.d18ffb8a725e82f0.hot-update.js
+                    └── a548f56f17718b07.webpack.hot-update.json
+                    └── webpack.14899848a9c293c7.hot-update.js
+                    └── webpack.230765e4208b9d95.hot-update.js
+                    └── webpack.a548f56f17718b07.hot-update.js
                     📁 app/
-                        └── layout.182e546a9ca9db77.hot-update.js
-                        └── layout.43f3666d24b8d151.hot-update.js
-                        └── layout.6415f3feb4d9458e.hot-update.js
-                        └── layout.8cbc8b10e99e235e.hot-update.js
-                        └── layout.b9f91c0fb433ff31.hot-update.js
-                        └── layout.d18ffb8a725e82f0.hot-update.js
+                        └── layout.a548f56f17718b07.hot-update.js
             📁 types/
                 └── package.json
                 📁 app/
@@ -533,15 +495,9 @@
                     📁 dashboard/
                         └── layout.ts
                         └── page.ts
-                        📁 curing/
-                            └── layout.ts
-                            📁 nesting/
-                                └── page.ts
-                                📁 result/
-                                    📁 [batch_id]/
-                                        └── page.ts
-                    📁 role/
-                        └── page.ts
+                    📁 modules/
+                        📁 role/
+                            └── page.ts
         📁 node_modules/
             📁 .bin/
                 └── acorn
@@ -42913,34 +42869,11 @@
                 └── globals.css
                 └── layout.tsx
                 └── page.tsx
-                📁 batch/
-                    └── page.tsx
-                    📁 new/
-                        └── page.tsx
-                    📁 [id]/
-                        └── page.tsx
                 📁 dashboard/
                     └── layout.tsx
                     └── page.tsx
-                    📁 admin/
-                        └── layout.tsx
-                        📁 impostazioni/
-                            └── page.tsx
-                        📁 logs/
-                            └── page.tsx
-                        📁 system-logs/
-                            └── page.tsx
                     📁 clean-room/
                         └── layout.tsx
-                        📁 parts/
-                            └── page.tsx
-                            📁 components/
-                                └── ciclo-cura-quick-modal.tsx
-                                └── parte-modal.tsx
-                                └── smart-catalogo-select.tsx
-                                └── smart-ciclo-cura-select.tsx
-                                └── smart-tools-select.tsx
-                                └── tool-quick-modal.tsx
                         📁 produzione/
                             └── page.tsx
                         📁 tempi/
@@ -42952,10 +42885,6 @@
                                 └── tool-modal.tsx
                     📁 curing/
                         └── layout.tsx
-                        📁 autoclavi/
-                            └── page.tsx
-                            📁 components/
-                                └── autoclave-modal.tsx
                         📁 batch-monitoring/
                             └── page.tsx
                         📁 cicli-cura/
@@ -42977,8 +42906,6 @@
                                     └── page.tsx
                         📁 produzione/
                             └── page.tsx
-                        📁 schedule/
-                            └── page.tsx
                         📁 statistics/
                             └── page.tsx
                     📁 management/
@@ -42989,15 +42916,6 @@
                             └── page.tsx
                         📁 odl-monitoring/
                             └── page.tsx
-                        📁 reports/
-                            └── page.tsx
-                            └── page_new.tsx
-                        📁 tempo-fasi/
-                            └── page.tsx
-                        📁 tools/
-                            └── page.tsx
-                            📁 components/
-                                └── tool-modal.tsx
                     📁 monitoraggio/
                         └── page.tsx
                         📁 components/
@@ -43006,134 +42924,221 @@
                             └── tempi-odl.tsx
                     📁 shared/
                         └── layout.tsx
-                        📁 catalog/
+                📁 modules/
+                    📁 admin/
+                        📁 system-logs/
                             └── page.tsx
-                            📁 components/
-                                └── catalogo-modal.tsx
-                        📁 odl/
-                            └── README.md
+                    📁 autoclavi/
+                        └── page.tsx
+                    📁 batch/
+                        └── page.tsx
+                    📁 catalogo/
+                        └── page.tsx
+                    📁 dashboard/
+                        └── layout.tsx
+                        └── page.tsx
+                    📁 nesting/
+                        📁 new/
                             └── page.tsx
-                            📁 components/
-                                └── odl-modal-improved.tsx
-                                └── odl-modal.tsx
-                                └── parte-quick-modal.tsx
-                            📁 monitoraggio/
+                        📁 result/
+                            📁 [batch_id]/
                                 └── page.tsx
-                            📁 [id]/
-                                └── page.tsx
-                                📁 avanza/
-                                    └── page.tsx
-                📁 nesting/
+                    📁 odl/
+                        └── page.tsx
+                        📁 monitoraggio/
+                            └── page.tsx
+                    📁 parti/
+                        └── page.tsx
+                    📁 report/
+                        └── page.tsx
+                    📁 role/
+                        └── page.tsx
+                    📁 schedule/
+                        └── page.tsx
+                    📁 tempi/
+                        └── page.tsx
+                    📁 tools/
+                        └── page.tsx
+            📁 modules/
+                📁 admin/
+                    └── layout.tsx
+                    📁 impostazioni/
+                        └── page.tsx
+                    📁 logs/
+                        └── page.tsx
+                    📁 system-logs/
+                        └── page.tsx
+                📁 autoclavi/
+                    └── page.tsx
+                    📁 components/
+                        └── autoclave-modal.tsx
+                📁 batch/
+                    └── page.tsx
                     📁 new/
+                        └── page.tsx
+                    📁 [id]/
+                        └── page.tsx
+                📁 catalogo/
+                    └── page.tsx
+                    📁 components/
+                        └── catalogo-modal.tsx
+                📁 dashboard/
+                    └── layout.tsx
+                    └── page.tsx
+                📁 nesting/
+                    └── page.tsx
+                    📁 list/
+                        └── page.tsx
+                    📁 new/
+                        └── page.tsx
+                    📁 preview/
                         └── page.tsx
                     📁 result/
                         📁 [batch_id]/
+                            └── BatchNavigator.tsx
+                            └── NestingCanvas.tsx
                             └── page.tsx
+                📁 odl/
+                    └── README.md
+                    └── page.tsx
+                    📁 components/
+                        └── odl-modal-improved.tsx
+                        └── odl-modal.tsx
+                        └── parte-quick-modal.tsx
+                    📁 monitoraggio/
+                        └── page.tsx
+                    📁 [id]/
+                        └── page.tsx
+                        📁 avanza/
+                            └── page.tsx
+                📁 parti/
+                    └── page.tsx
+                    📁 components/
+                        └── ciclo-cura-quick-modal.tsx
+                        └── parte-modal.tsx
+                        └── smart-catalogo-select.tsx
+                        └── smart-ciclo-cura-select.tsx
+                        └── smart-tools-select.tsx
+                        └── tool-quick-modal.tsx
+                📁 pianificazione/
+                📁 report/
+                    └── page.tsx
+                    └── page_new.tsx
                 📁 role/
                     └── page.tsx
-            📁 components/
-                └── ApiErrorProvider.tsx
-                └── ApiErrorToast.tsx
-                └── BarraAvanzamentoODL.tsx
-                └── CalendarSchedule.tsx
-                └── RecurringScheduleForm.tsx
-                └── RoleGuard.tsx
-                └── ScheduleForm.tsx
-                └── ToolStatusBadge.tsx
-                └── TopDeltaPanel.tsx
-                └── theme-provider.tsx
-                📁 batch-nesting/
-                    └── BatchCRUD.tsx
-                    └── BatchListWithControls.tsx
-                    └── BatchStatusSwitch.tsx
-                    └── ODLStatusSwitch.tsx
-                📁 canvas/
-                    └── CanvasWrapper.tsx
-                📁 charts/
-                    └── LazyBarChart.tsx
-                    └── LazyLineChart.tsx
-                📁 dashboard/
-                    └── DashboardAdmin.tsx
-                    └── DashboardCleanRoom.tsx
-                    └── DashboardCuring.tsx
-                    └── DashboardManagement.tsx
-                    └── DashboardShortcuts.tsx
-                    └── KPIBox.tsx
-                    └── NestingStatusCard.tsx
-                    └── ODLHistoryTable.tsx
-                    └── ODLHistoryTableLazy.tsx
-                📁 debug/
-                    └── ApiTestComponent.tsx
-                📁 odl-monitoring/
-                    └── ODLAlertsPanel.tsx
-                    └── ODLMonitoringDashboard.tsx
-                    └── ODLMonitoringDetail.tsx
-                    └── ODLMonitoringList.tsx
-                    └── ODLMonitoringStats.tsx
-                    └── ODLStatsAdvanced.tsx
-                    └── ODLTimelineEnhanced.tsx
-                    └── ODLTimingDisplay.tsx
-                📁 providers/
-                    └── SWRProvider.tsx
-                📁 tables/
-                    └── LazyBigTable.tsx
-                📁 ui/
-                    └── ConnectionHealthChecker.tsx
-                    └── NestingConfigForm.tsx
-                    └── OdlProgressBar.tsx
-                    └── OdlProgressBarTest.tsx
-                    └── OdlProgressWrapper.tsx
-                    └── OdlTimelineModal.tsx
-                    └── README_ODL_Progress.md
-                    └── accordion.tsx
-                    └── alert.tsx
-                    └── badge.tsx
-                    └── button.tsx
-                    └── calendar.tsx
-                    └── card.tsx
-                    └── checkbox.tsx
-                    └── confirm-dialog.tsx
-                    └── date-picker.tsx
-                    └── dialog.tsx
-                    └── dropdown-menu.tsx
-                    └── form.tsx
-                    └── index.ts
-                    └── input.tsx
-                    └── label.tsx
-                    └── modal.tsx
-                    └── popover.tsx
-                    └── progress.tsx
-                    └── safe-select.tsx
-                    └── select.tsx
-                    └── separator.tsx
-                    └── sidebar.tsx
-                    └── slider.tsx
-                    └── switch.tsx
-                    └── table.tsx
-                    └── tabs.tsx
-                    └── textarea.tsx
-                    └── theme-toggle.tsx
-                    └── toast.tsx
-                    └── toaster.tsx
-                    └── tooltip.tsx
-                    └── use-toast.ts
-                    └── user-menu.tsx
-            📁 hooks/
-                └── useApiErrorHandler.ts
-                └── useDashboardAPI.ts
-                └── useDashboardKPI.ts
-                └── useDebounce.ts
-                └── useODLByRole.ts
-                └── useToolsWithStatus.ts
-                └── useUserRole.ts
-            📁 lib/
-                └── api.ts
-                └── config.ts
-                └── swrConfig.ts
-                └── utils.ts
-                📁 types/
-                    └── form.ts
-                    └── schedule.ts
+                📁 schedule/
+                    └── page.tsx
+                📁 settings/
+                📁 tempi/
+                    └── page.tsx
+                📁 tools/
+                    └── page.tsx
+                    📁 components/
+                        └── tool-modal.tsx
+            📁 shared/
+                📁 components/
+                    └── ApiErrorProvider.tsx
+                    └── ApiErrorToast.tsx
+                    └── BarraAvanzamentoODL.tsx
+                    └── CalendarSchedule.tsx
+                    └── RecurringScheduleForm.tsx
+                    └── RoleGuard.tsx
+                    └── ScheduleForm.tsx
+                    └── ToolStatusBadge.tsx
+                    └── TopDeltaPanel.tsx
+                    └── theme-provider.tsx
+                    📁 batch-nesting/
+                        └── BatchCRUD.tsx
+                        └── BatchListWithControls.tsx
+                        └── BatchStatusSwitch.tsx
+                        └── ODLStatusSwitch.tsx
+                    📁 canvas/
+                        └── CanvasWrapper.tsx
+                    📁 charts/
+                        └── LazyBarChart.tsx
+                        └── LazyLineChart.tsx
+                    📁 dashboard/
+                        └── DashboardAdmin.tsx
+                        └── DashboardCleanRoom.tsx
+                        └── DashboardCuring.tsx
+                        └── DashboardManagement.tsx
+                        └── DashboardShortcuts.tsx
+                        └── KPIBox.tsx
+                        └── NestingStatusCard.tsx
+                        └── ODLHistoryTable.tsx
+                        └── ODLHistoryTableLazy.tsx
+                    📁 debug/
+                        └── ApiTestComponent.tsx
+                    📁 odl-monitoring/
+                        └── ODLAlertsPanel.tsx
+                        └── ODLMonitoringDashboard.tsx
+                        └── ODLMonitoringDetail.tsx
+                        └── ODLMonitoringList.tsx
+                        └── ODLMonitoringStats.tsx
+                        └── ODLStatsAdvanced.tsx
+                        └── ODLTimelineEnhanced.tsx
+                        └── ODLTimingDisplay.tsx
+                    📁 providers/
+                        └── SWRProvider.tsx
+                    📁 tables/
+                        └── LazyBigTable.tsx
+                    📁 ui/
+                        └── ConnectionHealthChecker.tsx
+                        └── NestingConfigForm.tsx
+                        └── OdlProgressBar.tsx
+                        └── OdlProgressBarTest.tsx
+                        └── OdlProgressWrapper.tsx
+                        └── OdlTimelineModal.tsx
+                        └── README_ODL_Progress.md
+                        └── accordion.tsx
+                        └── alert.tsx
+                        └── badge.tsx
+                        └── button.tsx
+                        └── calendar.tsx
+                        └── card.tsx
+                        └── checkbox.tsx
+                        └── confirm-dialog.tsx
+                        └── date-picker.tsx
+                        └── dialog.tsx
+                        └── dropdown-menu.tsx
+                        └── form.tsx
+                        └── index.ts
+                        └── input.tsx
+                        └── label.tsx
+                        └── modal.tsx
+                        └── popover.tsx
+                        └── progress.tsx
+                        └── safe-select.tsx
+                        └── select.tsx
+                        └── separator.tsx
+                        └── sidebar.tsx
+                        └── slider.tsx
+                        └── switch.tsx
+                        └── table.tsx
+                        └── tabs.tsx
+                        └── textarea.tsx
+                        └── theme-toggle.tsx
+                        └── toast.tsx
+                        └── toaster.tsx
+                        └── tooltip.tsx
+                        └── use-toast.ts
+                        └── user-menu.tsx
+                📁 hooks/
+                    └── useApiErrorHandler.ts
+                    └── useDashboardAPI.ts
+                    └── useDashboardKPI.ts
+                    └── useDebounce.ts
+                    └── useODLByRole.ts
+                    └── useToolsWithStatus.ts
+                    └── useUserRole.ts
+                📁 lib/
+                    └── api.ts
+                    └── config.ts
+                    └── swrConfig.ts
+                    └── utils.ts
+                    📁 types/
+                        └── form.ts
+                        └── schedule.ts
     📁 logs/
         └── flow_map_build.log
         └── nesting_edge_tests.log
