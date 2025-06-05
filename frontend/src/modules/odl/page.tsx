@@ -417,10 +417,10 @@ export default function ODLPage() {
         </div>
       )}
 
-      <ODLModal 
-        isOpen={modalOpen} 
-        onClose={() => setModalOpen(false)} 
-        item={editingItem} 
+            <ODLModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        item={editingItem}
         onSuccess={() => {
           fetchODLs()
           setModalOpen(false)

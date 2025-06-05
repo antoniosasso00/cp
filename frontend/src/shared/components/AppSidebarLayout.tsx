@@ -27,6 +27,7 @@ import { usePathname } from 'next/navigation'
 import { useUserRole } from '@/shared/hooks/useUserRole'
 import type { UserRole } from '@/shared/types'
 import { UserMenu } from '@/shared/components/ui/user-menu'
+import { ThemeToggle } from '@/shared/components/ui/theme-toggle'
 
 interface SidebarNavItem {
   title: string;
@@ -47,7 +48,7 @@ const sidebarSections: SidebarSection[] = [
     items: [
       {
         title: "Dashboard",
-        href: "/modules/dashboard",
+        href: "/dashboard",
         icon: <Home className="h-4 w-4" />
       }
     ]
@@ -57,13 +58,13 @@ const sidebarSections: SidebarSection[] = [
     items: [
       {
         title: "ODL",
-        href: "/modules/odl",
+        href: "/odl",
         icon: <ClipboardList className="h-4 w-4" />,
         roles: ['ADMIN', 'Management']
       },
       {
         title: "Monitoraggio ODL",
-        href: "/modules/odl/monitoraggio",
+        href: "/dashboard/management/odl-monitoring",
         icon: <Activity className="h-4 w-4" />,
         roles: ['ADMIN', 'Management']
       }
@@ -75,7 +76,7 @@ const sidebarSections: SidebarSection[] = [
     items: [
       {
         title: "Laminazione",
-        href: "/modules/clean-room/produzione",
+        href: "/dashboard/clean-room/produzione",
         icon: <Factory className="h-4 w-4" />,
         roles: ['ADMIN', 'Clean Room']
       }
@@ -86,44 +87,44 @@ const sidebarSections: SidebarSection[] = [
     title: "CURING",
     items: [
       {
-        title: "🎯 Nesting & Batch",
-        href: "/modules/nesting",
+        title: "Nesting & Batch",
+        href: "/nesting",
         icon: <LayoutGrid className="h-4 w-4" />,
         roles: ['ADMIN', 'Curing']
       },
       {
-        title: "📦 Gestione Batch",
-        href: "/modules/batch",
+        title: "Gestione Batch",
+        href: "/dashboard/curing/batch-monitoring",
         icon: <Package className="h-4 w-4" />,
         roles: ['ADMIN', 'Curing']
       },
       {
-        title: "🔄 Monitoraggio ODL",
-        href: "/modules/curing/produzione",
+        title: "Monitoraggio ODL",
+        href: "/dashboard/curing/produzione",
         icon: <Activity className="h-4 w-4" />,
         roles: ['ADMIN', 'Curing']
       },
       {
-        title: "🔥 Autoclavi",
-        href: "/modules/autoclavi",
+        title: "Autoclavi",
+        href: "/autoclavi",
         icon: <Flame className="h-4 w-4" />,
         roles: ['ADMIN', 'Curing']
       },
       {
-        title: "⚙️ Cicli di Cura",
-        href: "/modules/curing/cicli-cura",
+        title: "Cicli di Cura",
+        href: "/dashboard/curing/cicli-cura",
         icon: <Clock className="h-4 w-4" />,
         roles: ['ADMIN', 'Curing']
       },
       {
-        title: "📊 Statistiche",
-        href: "/modules/curing/statistics",
+        title: "Statistiche",
+        href: "/dashboard/curing/statistics",
         icon: <TrendingUp className="h-4 w-4" />,
         roles: ['ADMIN', 'Curing', 'Management']
       },
       {
-        title: "📋 Reports",
-        href: "/modules/report",
+        title: "Reports",
+        href: "/report",
         icon: <FileText className="h-4 w-4" />,
         roles: ['ADMIN', 'Curing']
       }
@@ -135,7 +136,7 @@ const sidebarSections: SidebarSection[] = [
     items: [
       {
         title: "Schedule",
-        href: "/modules/schedule",
+        href: "/schedule",
         icon: <Calendar className="h-4 w-4" />,
         roles: ['ADMIN', 'Management']
       }
@@ -147,19 +148,19 @@ const sidebarSections: SidebarSection[] = [
     items: [
       {
         title: "Catalogo",
-        href: "/modules/catalogo",
+        href: "/catalogo",
         icon: <Package className="h-4 w-4" />,
         roles: ['ADMIN', 'Management']
       },
       {
         title: "Tools",
-        href: "/modules/tools",
+        href: "/tools",
         icon: <Cog className="h-4 w-4" />,
         roles: ['ADMIN', 'Management']
       },
       {
         title: "Parti",
-        href: "/modules/parti",
+        href: "/parti",
         icon: <Wrench className="h-4 w-4" />,
         roles: ['ADMIN']
       }
@@ -171,13 +172,13 @@ const sidebarSections: SidebarSection[] = [
     items: [
       {
         title: "Dashboard Monitoraggio",
-        href: "/modules/dashboard/monitoraggio",
+        href: "/dashboard/monitoraggio",
         icon: <BarChart3 className="h-4 w-4" />,
         roles: ['ADMIN', 'Management']
       },
       {
         title: "Tempo Fasi",
-        href: "/modules/tempi",
+        href: "/tempi",
         icon: <Timer className="h-4 w-4" />,
         roles: ['ADMIN', 'Management']
       },
@@ -192,10 +193,26 @@ const sidebarSections: SidebarSection[] = [
   }
 ]
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+interface AppSidebarLayoutProps {
+  children: React.ReactNode
+}
+
+export function AppSidebarLayout({ children }: AppSidebarLayoutProps) {
+  const pathname = usePathname()
+  const { role } = useUserRole()
+
+  // Pagine dove NON mostrare la sidebar
+  const shouldHideSidebar = 
+    pathname === '/' || 
+    pathname === '/modules/role' || 
+    pathname.startsWith('/modules/role') ||
+    !role  // Nascondi se non c'è un ruolo selezionato
+  
+  if (shouldHideSidebar) {
+    return <>{children}</>
+  }
+
   const activeClass = "text-foreground bg-muted font-semibold";
-  const { role } = useUserRole();
 
   const filterItemsByRole = (items: SidebarNavItem[]) => {
     return items.filter(item => !item.roles || (role && item.roles.includes(role)));
@@ -226,13 +243,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <span className="text-sm font-medium text-primary">{role}</span>
               </div>
             )}
+            <ThemeToggle />
             <UserMenu />
           </nav>
         </div>
       </header>
 
       <div className="flex-1 md:grid md:grid-cols-[240px_1fr]">
-        <aside className="fixed top-[64px] z-30 hidden h-[calc(100vh-64px)] w-full shrink-0 border-r bg-background md:sticky md:block transition-all duration-300">
+        <aside className="fixed top-[64px] z-30 hidden h-[calc(100vh-64px)] w-[240px] shrink-0 border-r bg-background md:sticky md:block transition-all duration-300">
           <div className="h-full py-6 pl-8 pr-4 overflow-y-auto">
             <nav className="space-y-6">
               {filteredSections.map((section, i) => (
@@ -274,10 +292,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </aside>
 
-        <main className="flex flex-col flex-1 w-full overflow-hidden">
-          <div className="p-6">{children}</div>
+        <main className="flex flex-col flex-1 w-full min-w-0 overflow-hidden">
+          <div className="flex-1 p-6">
+            {children}
+          </div>
         </main>
       </div>
     </div>
-  );
-}
+  )
+} 

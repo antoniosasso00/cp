@@ -1,35 +1,16 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { Tool, ParteResponse, ODLResponse, ODLCreate, ODLUpdate, odlApi, toolsApi, partsApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Label } from '@/components/ui/label'
 import { Loader2, AlertTriangle } from 'lucide-react'
-import { cn } from "@/lib/utils"
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import React from 'react'
-
-interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
-
-const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ className, ...props }, ref) => {
-    return (
-      <textarea
-        className={cn(
-          "flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-          className
-        )}
-        ref={ref}
-        {...props}
-      />
-    )
-  }
-)
-Textarea.displayName = "Textarea"
+import { FormField, FormSelect, FormWrapper, SelectOption } from '@/shared/components/form'
+import { odlSchema, ODLFormValues, odlDefaultValues, statusOptions } from '../schema'
 
 type ODLModalProps = {
   isOpen: boolean
@@ -47,13 +28,9 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   
-  // Form state
-  const [formData, setFormData] = useState<ODLCreate | ODLUpdate>({
-    parte_id: 0,
-    tool_id: 0,
-    priorita: 1,
-    status: "Preparazione",
-    note: ""
+  const form = useForm<ODLFormValues>({
+    resolver: zodResolver(odlSchema),
+    defaultValues: odlDefaultValues,
   })
 
   useEffect(() => {
@@ -62,7 +39,7 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
       
       // Se stiamo modificando, prendiamo i dati esistenti
       if (item) {
-        setFormData({
+        form.reset({
           parte_id: item.parte_id,
           tool_id: item.tool_id,
           priorita: item.priorita,
@@ -71,23 +48,18 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
         })
       } else {
         // Reset form per nuova creazione
-        setFormData({
-          parte_id: 0,
-          tool_id: 0,
-          priorita: 1,
-          status: "Preparazione",
-          note: ""
-        })
+        form.reset(odlDefaultValues)
         setSelectedParte(null)
         setFilteredTools([])
       }
     }
-  }, [isOpen, item])
+  }, [isOpen, item, form])
 
   // Aggiorna i tool filtrati quando cambia la parte selezionata
   useEffect(() => {
-    if (formData.parte_id && parti.length > 0) {
-      const parte = parti.find(p => p.id === formData.parte_id)
+    const parteId = form.watch('parte_id')
+    if (parteId && parti.length > 0) {
+      const parte = parti.find(p => p.id === parteId)
       setSelectedParte(parte || null)
       
       if (parte) {
@@ -98,8 +70,9 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
         setFilteredTools(filtered)
         
         // Se il tool attualmente selezionato non è nella lista filtrata, lo resettiamo
-        if (formData.tool_id && !toolIds.includes(formData.tool_id)) {
-          setFormData(prev => ({...prev, tool_id: 0}))
+        const currentToolId = form.watch('tool_id')
+        if (currentToolId && currentToolId !== 0 && !toolIds.includes(currentToolId)) {
+          form.setValue('tool_id', 0)
         }
       } else {
         setFilteredTools([])
@@ -108,7 +81,7 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
       setFilteredTools([])
       setSelectedParte(null)
     }
-  }, [formData.parte_id, parti, tools])
+  }, [form.watch('parte_id'), parti, tools, form])
 
   const loadDependencies = async () => {
     try {
@@ -131,30 +104,13 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
     }
   }
 
-  const handleChange = (field: string, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }))
-  }
-
-  const handleSubmit = async () => {
-    // Validazione base
-    if (!formData.parte_id || !formData.tool_id) {
-      toast({
-        variant: 'destructive',
-        title: 'Validazione fallita',
-        description: 'Seleziona una parte e un tool validi.',
-      })
-      return
-    }
-
+  const onSubmit = async (data: ODLFormValues) => {
     try {
       setIsSaving(true)
       
       if (item) {
         // Aggiornamento
-        await odlApi.updateODL(item.id, formData)
+        await odlApi.updateODL(item.id, data)
         toast({
           variant: 'success',
           title: 'ODL aggiornato',
@@ -162,7 +118,7 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
         })
       } else {
         // Creazione
-        await odlApi.createODL(formData as ODLCreate)
+        await odlApi.createODL(data as ODLCreate)
         toast({
           variant: 'success',
           title: 'ODL creato',
@@ -171,6 +127,7 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
       }
       
       onSuccess()
+      onClose()
     } catch (error) {
       console.error('Errore nel salvataggio dell\'ODL:', error)
       toast({
@@ -187,9 +144,28 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
     window.open('/dashboard/tools/new', '_blank')
   }
 
+  const handleCreateNewPart = () => {
+    window.open('/dashboard/parts/new', '_blank')
+  }
+
+  // Prepara le opzioni per i select
+  const partiOptions: SelectOption[] = parti
+    .filter(parte => parte?.id && parte?.part_number)
+    .map(parte => ({
+      value: parte.id,
+      label: `${parte.part_number} - ${parte.descrizione_breve}`
+    }))
+
+  const toolOptions: SelectOption[] = filteredTools
+    .filter(tool => tool?.id && tool?.part_number_tool)
+    .map(tool => ({
+      value: tool.id,
+      label: `${tool.part_number_tool}${tool.descrizione ? ` - ${tool.descrizione}` : ''}`
+    }))
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {item 
@@ -210,187 +186,124 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
             <span className="ml-2">Caricamento in corso...</span>
           </div>
         ) : (
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="parte_id" className="text-right">
-                Parte
-              </Label>
-              <div className="col-span-3">
-                <div className="space-y-2">
-                  <Select
-                    value={formData.parte_id?.toString() || ""}
-                    onValueChange={(value) => handleChange('parte_id', parseInt(value))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleziona una parte" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {parti.length === 0 ? (
-                        <div className="px-2 py-4 text-center text-sm">
-                          Nessuna parte disponibile
-                        </div>
-                      ) : (
-                        parti
-                          .filter(parte => parte?.id && parte?.part_number)
-                          .map(parte => (
-                            <SelectItem key={parte.id} value={parte.id.toString()}>
-                              {parte.part_number} - {parte.descrizione_breve}
-                            </SelectItem>
-                          ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  
-                  {(formData.parte_id === 0 || formData.parte_id === undefined) && (
-                    <div className="flex justify-end">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => window.open('/dashboard/parts/new', '_blank')}
-                      >
-                        + Crea nuova parte
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+          <FormWrapper
+            form={form}
+            onSubmit={onSubmit}
+            isLoading={isSaving}
+            submitText={item ? "Aggiorna ODL" : "Crea ODL"}
+            showCancel={true}
+            onCancel={onClose}
+            cardClassName="border-0 shadow-none"
+            headerClassName="hidden"
+          >
+            <FormSelect
+              label="Parte"
+              name="parte_id"
+              value={form.watch('parte_id')}
+              onChange={(value) => form.setValue('parte_id', value as number)}
+              options={partiOptions}
+              placeholder="Seleziona una parte"
+              required
+              error={form.formState.errors.parte_id?.message}
+              emptyMessage="Nessuna parte disponibile"
+            />
 
-            {/* ✅ Campo descrizione della parte selezionata */}
-            {selectedParte && (
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right text-muted-foreground">
-                  Descrizione
-                </Label>
-                <div className="col-span-3 space-y-1">
-                  <div className="px-3 py-2 bg-muted rounded-md text-sm">
-                    {selectedParte.descrizione_breve}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Descrizione della parte selezionata dal catalogo
-                  </p>
-                </div>
+            {partiOptions.length === 0 && (
+              <div className="flex justify-end">
+                <Button 
+                  type="button"
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleCreateNewPart}
+                >
+                  + Crea nuova parte
+                </Button>
               </div>
             )}
 
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="tool_id" className="text-right">
-                Tool
-              </Label>
-              <div className="col-span-3">
-                <div className="space-y-2">
-                  {selectedParte && filteredTools.length === 0 ? (
-                    <Alert variant="destructive" className="mb-2">
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertDescription>
-                        Nessun tool associato alla parte selezionata
-                      </AlertDescription>
-                    </Alert>
-                  ) : null}
-                  
-                  <Select
-                    value={formData.tool_id?.toString() || ""}
-                    onValueChange={(value) => handleChange('tool_id', parseInt(value))}
-                    disabled={!formData.parte_id || filteredTools.length === 0}
+            {/* Descrizione della parte selezionata */}
+            {selectedParte && (
+              <div className="p-3 bg-muted rounded-md">
+                <p className="text-sm font-medium">Descrizione parte:</p>
+                <p className="text-sm text-muted-foreground">{selectedParte.descrizione_breve}</p>
+              </div>
+            )}
+
+            <FormSelect
+              label="Tool"
+              name="tool_id"
+              value={form.watch('tool_id')}
+              onChange={(value) => form.setValue('tool_id', value as number)}
+              options={toolOptions}
+              placeholder="Seleziona un tool"
+              required
+              disabled={!form.watch('parte_id') || toolOptions.length === 0}
+              error={form.formState.errors.tool_id?.message}
+              emptyMessage={
+                form.watch('parte_id') && form.watch('parte_id') > 0 
+                  ? "Nessun tool disponibile per questa parte" 
+                  : "Seleziona prima una parte"
+              }
+            />
+
+            {selectedParte && toolOptions.length === 0 && (
+              <>
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    Nessun tool associato alla parte selezionata
+                  </AlertDescription>
+                </Alert>
+                <div className="flex justify-end">
+                  <Button 
+                    type="button"
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleCreateNewTool}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleziona un tool" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filteredTools.length === 0 ? (
-                        <div className="px-2 py-4 text-center text-sm">
-                          {formData.parte_id && formData.parte_id > 0 
-                            ? "Nessun tool disponibile per questa parte" 
-                            : "Seleziona prima una parte"}
-                        </div>
-                      ) : (
-                        filteredTools
-                          .filter(tool => tool?.id && tool?.part_number_tool)
-                          .map(tool => (
-                            <SelectItem key={tool.id} value={tool.id.toString()}>
-                              {tool.part_number_tool} {tool.descrizione ? `- ${tool.descrizione}` : ''}
-                            </SelectItem>
-                          ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  
-                  {formData.parte_id && formData.parte_id > 0 && filteredTools.length === 0 && (
-                    <div className="flex justify-end">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={handleCreateNewTool}
-                      >
-                        + Crea nuovo tool
-                      </Button>
-                    </div>
-                  )}
+                    + Crea nuovo tool
+                  </Button>
                 </div>
-              </div>
-            </div>
+              </>
+            )}
 
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="priorita" className="text-right">
-                Priorità
-              </Label>
-              <Input
-                id="priorita"
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                label="Priorità"
+                name="priorita"
                 type="number"
+                value={form.watch('priorita')}
+                onChange={(value) => form.setValue('priorita', value as number)}
                 min={1}
-                value={formData.priorita || 1}
-                onChange={(e) => handleChange('priorita', parseInt(e.target.value))}
-                className="col-span-3"
+                max={10}
+                required
+                error={form.formState.errors.priorita?.message}
+                description="Da 1 (bassa) a 10 (alta)"
+              />
+
+              <FormSelect
+                label="Stato"
+                name="status"
+                value={form.watch('status')}
+                onChange={(value) => form.setValue('status', value as any)}
+                options={statusOptions}
+                required
+                error={form.formState.errors.status?.message}
               />
             </div>
 
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="status" className="text-right">
-                Stato
-              </Label>
-              <div className="col-span-3">
-                <Select
-                  value={formData.status || "Preparazione"}
-                  onValueChange={(value) => handleChange('status', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleziona lo stato" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Preparazione">Preparazione</SelectItem>
-                    <SelectItem value="Laminazione">Laminazione</SelectItem>
-                    <SelectItem value="Attesa Cura">Attesa Cura</SelectItem>
-                    <SelectItem value="Cura">Cura</SelectItem>
-                    <SelectItem value="Finito">Finito</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="note" className="text-right">
-                Note
-              </Label>
-              <Textarea
-                id="note"
-                placeholder="Note aggiuntive sull'ordine di lavoro"
-                value={formData.note || ""}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleChange('note', e.target.value)}
-                className="col-span-3"
-              />
-            </div>
-          </div>
+            <FormField
+              label="Note"
+              name="note"
+              type="textarea"
+              value={form.watch('note')}
+              onChange={(value) => form.setValue('note', value as string)}
+              placeholder="Note aggiuntive (opzionale)"
+              rows={3}
+              error={form.formState.errors.note?.message}
+            />
+          </FormWrapper>
         )}
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Annulla
-          </Button>
-          <Button onClick={handleSubmit} disabled={isSaving}>
-            {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {item ? 'Aggiorna' : 'Crea'}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

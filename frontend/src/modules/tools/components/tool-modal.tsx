@@ -3,35 +3,20 @@
 import { useState, useEffect, useTransition } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ui/use-toast'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { FormField as UIFormField, FormControl, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { toolsApi, Tool } from '@/lib/api'
+import { FormField, FormWrapper } from '@/shared/components/form'
+import { toolSchema, ToolFormValues, toolDefaultValues } from '../schema'
 import { 
   Loader2, 
   Pencil, 
   AlertTriangle, 
   Plus 
 } from 'lucide-react'
-
-// Schema di validazione per il tool
-const toolSchema = z.object({
-  part_number_tool: z.string().min(1, "Part Number Tool obbligatorio"),
-  descrizione: z.string().optional(),
-  lunghezza_piano: z.number().min(0.1, "Lunghezza deve essere maggiore di 0"),
-  larghezza_piano: z.number().min(0.1, "Larghezza deve essere maggiore di 0"),
-  // ✅ FIX 4: Campo peso opzionale
-  peso: z.number().min(0, "Il peso deve essere positivo").optional().nullable(),
-  materiale: z.string().optional(),
-  disponibile: z.boolean()
-})
-
-type ToolFormValues = z.infer<typeof toolSchema>
 
 interface ToolModalProps {
   open: boolean
@@ -48,28 +33,10 @@ export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolMo
 
   const form = useForm<ToolFormValues>({
     resolver: zodResolver(toolSchema),
-    defaultValues: {
-      part_number_tool: '',
-      descrizione: '',
-      lunghezza_piano: 100,
-      larghezza_piano: 50,
-      // ✅ FIX 4: Peso opzionale (null di default)
-      peso: null,
-      materiale: '',
-      disponibile: true,
-    },
+    defaultValues: toolDefaultValues,
   })
 
-  // ✅ FIX 6: Gestione focus per sostituzione contenuto
-  const handleFocus = (fieldName: string) => {
-    // Seleziona tutto il contenuto quando l'utente fa focus su un campo precompilato
-    setTimeout(() => {
-      const input = document.querySelector(`input[name="${fieldName}"]`) as HTMLInputElement
-      if (input && input.value) {
-        input.select()
-      }
-    }, 0)
-  }
+
 
   // Aggiorna i valori del form quando editingItem cambia
   useEffect(() => {
@@ -79,22 +46,12 @@ export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolMo
         descrizione: editingItem.descrizione || '',
         lunghezza_piano: editingItem.lunghezza_piano,
         larghezza_piano: editingItem.larghezza_piano,
-        // ✅ FIX 4: Peso opzionale (null se non presente)
         peso: editingItem.peso || null,
         materiale: editingItem.materiale || '',
         disponibile: editingItem.disponibile,
       })
     } else {
-      form.reset({
-        part_number_tool: '',
-        descrizione: '',
-        lunghezza_piano: 100,
-        larghezza_piano: 50,
-        // ✅ FIX 4: Reset peso opzionale
-        peso: null,
-        materiale: '',
-        disponibile: true,
-      })
+      form.reset(toolDefaultValues)
     }
   }, [editingItem, form])
 
@@ -197,15 +154,7 @@ export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolMo
       })
       
       // Reset del form per un nuovo inserimento
-      form.reset({
-        part_number_tool: '',
-        descrizione: '',
-        lunghezza_piano: 100,
-        larghezza_piano: 50,
-        peso: null,
-        materiale: '',
-        disponibile: true,
-      })
+      form.reset(toolDefaultValues)
       
       // ✅ FIX 1: Refresh automatico dopo operazione
       router.refresh()
@@ -255,179 +204,103 @@ export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolMo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editingItem ? 'Modifica Tool' : 'Nuovo Tool'}</DialogTitle>
         </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        
+        <FormWrapper
+          form={form}
+          onSubmit={onSubmit}
+          isLoading={isLoading}
+          submitText={editingItem ? "Aggiorna" : "Crea Tool"}
+          showCancel={true}
+          onCancel={() => onOpenChange(false)}
+          showSaveAndNew={!editingItem}
+          onSaveAndNew={handleSaveAndNew}
+          saveAndNewText="Salva e Nuovo"
+          cardClassName="border-0 shadow-none"
+          headerClassName="hidden"
+        >
+          <FormField
+            label="Part Number Tool"
+            name="part_number_tool"
+            value={form.watch('part_number_tool')}
+            onChange={(value) => form.setValue('part_number_tool', value as string)}
+            placeholder="es. T001"
+            required
+            error={form.formState.errors.part_number_tool?.message}
+          />
+
+          <FormField
+            label="Descrizione"
+            name="descrizione"
+            value={form.watch('descrizione')}
+            onChange={(value) => form.setValue('descrizione', value as string)}
+            placeholder="Descrizione opzionale"
+            error={form.formState.errors.descrizione?.message}
+          />
+
+          <div className="grid grid-cols-2 gap-4">
             <FormField
-              control={form.control}
-              name="part_number_tool"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Part Number Tool</FormLabel>
-                  <FormControl>
-                    <Input 
-                      {...field} 
-                      placeholder="es. T001" 
-                      onFocus={() => handleFocus('part_number_tool')}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              label="Lunghezza Piano (mm)"
+              name="lunghezza_piano"
+              type="number"
+              value={form.watch('lunghezza_piano')}
+              onChange={(value) => form.setValue('lunghezza_piano', value as number)}
+              min={0.1}
+              step={0.1}
+              required
+              error={form.formState.errors.lunghezza_piano?.message}
             />
 
             <FormField
-              control={form.control}
-              name="descrizione"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Descrizione</FormLabel>
-                  <FormControl>
-                    <Input 
-                      {...field} 
-                      placeholder="Descrizione opzionale" 
-                      onFocus={() => handleFocus('descrizione')}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              label="Larghezza Piano (mm)"
+              name="larghezza_piano"
+              type="number"
+              value={form.watch('larghezza_piano')}
+              onChange={(value) => form.setValue('larghezza_piano', value as number)}
+              min={0.1}
+              step={0.1}
+              required
+              error={form.formState.errors.larghezza_piano?.message}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <FormField
+              label="Peso (kg)"
+              name="peso"
+              type="number"
+              value={form.watch('peso') ?? ''}
+              onChange={(value) => form.setValue('peso', value ? value as number : null)}
+              placeholder="Es. 12.4"
+              min={0}
+              step={0.1}
+              description="Campo opzionale"
+              error={form.formState.errors.peso?.message}
             />
 
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="lunghezza_piano"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Lunghezza Piano (mm)</FormLabel>
-                    <FormControl>
-                      <Input 
-                        type="number" 
-                        step="0.1"
-                        min="0.1"
-                        {...field} 
-                        onChange={e => field.onChange(Number(e.target.value))}
-                        onFocus={() => handleFocus('lunghezza_piano')}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <FormField
+              label="Materiale"
+              name="materiale"
+              value={form.watch('materiale')}
+              onChange={(value) => form.setValue('materiale', value as string)}
+              placeholder="es. Alluminio, Acciaio"
+              error={form.formState.errors.materiale?.message}
+            />
+          </div>
 
-              <FormField
-                control={form.control}
-                name="larghezza_piano"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Larghezza Piano (mm)</FormLabel>
-                    <FormControl>
-                      <Input 
-                        type="number" 
-                        step="0.1"
-                        min="0.1"
-                        {...field} 
-                        onChange={e => field.onChange(Number(e.target.value))}
-                        onFocus={() => handleFocus('larghezza_piano')}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <label className="text-sm font-medium">Disponibile</label>
             </div>
-
-            {/* ✅ FIX 5: Campi peso e materiale */}
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="peso"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Peso (kg) <span className="text-muted-foreground">(opzionale)</span></FormLabel>
-                    <FormControl>
-                      <Input 
-                        type="number" 
-                        step="0.1"
-                        min="0"
-                        placeholder="Es. 12.4"
-                        {...field} 
-                        value={field.value ?? ''}
-                        onChange={e => field.onChange(e.target.value ? Number(e.target.value) : null)}
-                        onFocus={() => handleFocus('peso')}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="materiale"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Materiale</FormLabel>
-                    <FormControl>
-                      <Input 
-                        {...field} 
-                        placeholder="es. Alluminio, Acciaio" 
-                        onFocus={() => handleFocus('materiale')}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <FormField
-              control={form.control}
-              name="disponibile"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                  <div className="space-y-0.5">
-                    <FormLabel>Disponibile</FormLabel>
-                  </div>
-                  <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                </FormItem>
-              )}
+            <Switch
+              checked={form.watch('disponibile')}
+              onCheckedChange={(checked) => form.setValue('disponibile', checked)}
             />
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading || isPending}>
-                Annulla
-              </Button>
-              
-              {/* ✅ FIX: Pulsante "Salva e nuovo" visibile solo in modalità creazione */}
-              {!editingItem && (
-                <Button 
-                  type="button" 
-                  variant="secondary" 
-                  onClick={form.handleSubmit(handleSaveAndNew)} 
-                  disabled={isLoading || isPending}
-                  className="gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  Salva e Nuovo
-                </Button>
-              )}
-              
-              <Button type="submit" disabled={isLoading || isPending}>
-                {isLoading || isPending ? 'Salvataggio...' : 'Salva'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
+          </div>
+        </FormWrapper>
       </DialogContent>
     </Dialog>
   )

@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { FormField } from '@/shared/components/form';
 import { Loader2, Settings, Play, AlertTriangle, CheckCircle } from 'lucide-react';
 import { odlApi, autoclavesApi } from '@/lib/api';
 import axios from 'axios';
@@ -306,58 +307,64 @@ export default function NewNestingPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="padding">Padding (mm)</Label>
-                <Input
-                  id="padding"
-                  type="number"
-                  value={parametri.padding_mm}
-                  onChange={(e) => setParametri(prev => ({
-                    ...prev,
-                    padding_mm: parseInt(e.target.value) || 20
-                  }))}
-                  min="5"
-                  max="100"
-                />
-              </div>
+              <FormField
+                label="Padding (mm)"
+                name="padding_mm"
+                type="number"
+                value={parametri.padding_mm}
+                onChange={(value) => setParametri(prev => ({
+                  ...prev,
+                  padding_mm: Number(value) || 20
+                }))}
+                min={5}
+                max={100}
+                description="Spazio aggiuntivo attorno ai pezzi"
+              />
 
-              <div className="space-y-2">
-                <Label htmlFor="distance">Distanza minima (mm)</Label>
-                <Input
-                  id="distance"
-                  type="number"
-                  value={parametri.min_distance_mm}
-                  onChange={(e) => setParametri(prev => ({
-                    ...prev,
-                    min_distance_mm: parseInt(e.target.value) || 15
-                  }))}
-                  min="5"
-                  max="50"
-                />
-              </div>
+              <FormField
+                label="Distanza minima (mm)"
+                name="min_distance_mm"
+                type="number"
+                value={parametri.min_distance_mm}
+                onChange={(value) => setParametri(prev => ({
+                  ...prev,
+                  min_distance_mm: Number(value) || 15
+                }))}
+                min={5}
+                max={50}
+                description="Distanza minima tra i pezzi"
+              />
 
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-0.5">
+                  <Label className="text-sm font-medium">Priorità area</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Ottimizza per ridurre l'area utilizzata
+                  </p>
+                </div>
                 <Switch
-                  id="priorita-area"
                   checked={parametri.priorita_area}
                   onCheckedChange={(checked) => setParametri(prev => ({
                     ...prev,
                     priorita_area: checked
                   }))}
                 />
-                <Label htmlFor="priorita-area">Priorità area</Label>
               </div>
 
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-0.5">
+                  <Label className="text-sm font-medium">Accorpamento ODL</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Raggruppa ODL simili per ottimizzare lo spazio
+                  </p>
+                </div>
                 <Switch
-                  id="accorpamento"
                   checked={parametri.accorpamento_odl}
                   onCheckedChange={(checked) => setParametri(prev => ({
                     ...prev,
                     accorpamento_odl: checked
                   }))}
                 />
-                <Label htmlFor="accorpamento">Accorpamento ODL</Label>
               </div>
             </CardContent>
           </Card>
