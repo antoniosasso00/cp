@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { useUserRole } from '@/hooks/useUserRole'
+import { useUserRole } from '@/shared/hooks/useUserRole'
 import { formatDateIT } from '@/lib/utils'
 
 /**

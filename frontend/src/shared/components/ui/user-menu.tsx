@@ -32,12 +32,12 @@ export function UserMenu({ className }: UserMenuProps) {
 
   const handleRoleChange = () => {
     clearRole()
-    router.push('/select-role')
+    router.push('/modules/role')
   }
 
   const handleLogout = () => {
     clearRole()
-    router.push('/role')
+    router.push('/modules/role')
   }
 
   return (

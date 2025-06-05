@@ -42,6 +42,7 @@ export function useUserRole() {
     try {
       localStorage.setItem(STORAGE_KEY, newRole)
       setRoleState(newRole)
+      console.log('Ruolo impostato:', newRole)
     } catch (error) {
       console.error('Errore nel salvare il ruolo in localStorage:', error)
     }

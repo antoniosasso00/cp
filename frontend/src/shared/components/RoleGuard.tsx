@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { useUserRole } from '@/hooks/useUserRole'
+import { useUserRole } from '@/shared/hooks/useUserRole'
 
 interface RoleGuardProps {
   children: React.ReactNode
@@ -12,7 +12,7 @@ interface RoleGuardProps {
  * Componente che protegge le route verificando se l'utente ha un ruolo impostato
  * 
  * Se l'utente non ha un ruolo e non si trova già nella pagina di selezione ruolo,
- * viene reindirizzato a /select-role
+ * viene reindirizzato a /modules/role
  */
 export function RoleGuard({ children }: RoleGuardProps) {
   const router = useRouter()
@@ -24,14 +24,14 @@ export function RoleGuard({ children }: RoleGuardProps) {
     if (isLoading) return
 
     // Se siamo già nella pagina di selezione ruolo, non fare redirect
-    if (pathname === '/select-role' || pathname === '/role') return
+    if (pathname === '/modules/role' || pathname === '/role') return
 
     // Se siamo nella home page, non fare redirect (permette l'accesso alla landing)
     if (pathname === '/') return
 
     // Se non c'è un ruolo impostato, reindirizza alla selezione ruolo
     if (!role) {
-      router.push('/select-role')
+      router.push('/modules/role')
       return
     }
   }, [role, isLoading, pathname, router])
@@ -47,7 +47,7 @@ export function RoleGuard({ children }: RoleGuardProps) {
 
   // Se non c'è ruolo e non siamo nelle pagine permesse, non renderizzare nulla
   // (il redirect è già in corso)
-  if (!role && pathname !== '/select-role' && pathname !== '/role' && pathname !== '/') {
+      if (!role && pathname !== '/modules/role' && pathname !== '/role' && pathname !== '/') {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>

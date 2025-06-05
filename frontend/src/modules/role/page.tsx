@@ -1,8 +1,8 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Button } from '@/components/ui/button'
-import { useUserRole } from '@/hooks/useUserRole'
+import { Button } from '@/shared/components/ui/button'
+import { useUserRole } from '@/shared/hooks/useUserRole'
 import type { UserRole } from '@/shared/types'
 import { 
   Shield, 
@@ -43,9 +43,15 @@ export default function RolePage() {
   const router = useRouter()
   const { setRole } = useUserRole()
 
-  const handleRoleSelect = (selectedRole: UserRole) => {
-    setRole(selectedRole)
-    router.push('/dashboard')
+  const handleRoleSelect = async (selectedRole: UserRole) => {
+    try {
+      setRole(selectedRole)
+      // Attendiamo un tick per assicurarci che localStorage sia aggiornato
+      await new Promise(resolve => setTimeout(resolve, 100))
+      router.replace('/dashboard')
+    } catch (error) {
+      console.error('Errore nella selezione del ruolo:', error)
+    }
   }
 
   return (

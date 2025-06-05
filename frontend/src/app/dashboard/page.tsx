@@ -3,7 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
-import { useUserRole } from '@/hooks/useUserRole'
+import { useUserRole } from '@/shared/hooks/useUserRole'
 import { Loader2 } from 'lucide-react'
 
 // Caricamento dinamico dei componenti dashboard per ottimizzare il bundle
@@ -49,7 +49,7 @@ function DashboardLoading() {
  * Funzionalità:
  * - Legge il ruolo utente tramite useUserRole()
  * - Carica dinamicamente il componente appropriato
- * - Reindirizza a /select-role se il ruolo non è valido
+ * - Reindirizza a /modules/role se il ruolo non è valido
  * - Ottimizza il bundle caricando solo il componente necessario
  */
 export default function DashboardPage() {
@@ -58,10 +58,14 @@ export default function DashboardPage() {
 
   // Effetto per gestire il reindirizzamento se il ruolo non è valido
   useEffect(() => {
+    console.log('Dashboard - stato hook:', { role, isLoading })
     // Aspetta che il caricamento del ruolo sia completato
     if (!isLoading && !role) {
-      console.log('Nessun ruolo trovato, reindirizzamento a /select-role')
-      router.push('/select-role')
+      console.log('Nessun ruolo trovato, reindirizzamento a /modules/role')
+      // Aggiungiamo un piccolo delay per assicurarci che localStorage sia stato letto
+      setTimeout(() => {
+        router.push('/modules/role')
+      }, 200)
     }
   }, [role, isLoading, router])
 
@@ -92,7 +96,7 @@ export default function DashboardPage() {
     default:
       // Ruolo non riconosciuto, reindirizza alla selezione ruolo
       console.warn(`Ruolo non riconosciuto: ${role}`)
-      router.push('/select-role')
+      router.push('/modules/role')
       return <DashboardLoading />
   }
 } 
