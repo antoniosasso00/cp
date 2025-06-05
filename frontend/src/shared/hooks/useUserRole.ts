@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-
-// Definizione dei ruoli disponibili
-export type UserRole = 'ADMIN' | 'Management' | 'Clean Room' | 'Curing'
+import { USER_ROLES } from '@/shared/lib/constants'
+import type { UserRole } from '@/shared/types'
 
 // Chiave per localStorage
 const STORAGE_KEY = 'userRole'
@@ -25,7 +24,7 @@ export function useUserRole() {
   useEffect(() => {
     try {
       const savedRole = localStorage.getItem(STORAGE_KEY) as UserRole | null
-      if (savedRole && ['ADMIN', 'Management', 'Clean Room', 'Curing'].includes(savedRole)) {
+      if (savedRole && USER_ROLES.includes(savedRole as any)) {
         setRoleState(savedRole)
       }
     } catch (error) {

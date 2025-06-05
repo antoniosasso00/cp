@@ -11,6 +11,7 @@ import {
   CalendarResource,
   ScheduleOperatorActionData
 } from '@/lib/types/schedule';
+import { SCHEDULE_STATUS_COLORS, SCHEDULE_STATUS_LABELS } from '@/shared/lib/constants';
 import { scheduleApi } from '@/lib/api';
 import { Autoclave, ODLResponse } from '@/lib/api';
 import { useTheme } from 'next-themes';
@@ -379,43 +380,17 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
     );
   };
 
-  // Funzioni helper per gli stati
+  // Funzioni helper per gli stati (usando costanti centralizzate)
   const getStatusColor = (status: ScheduleEntryStatus): string => {
-    switch (status) {
-      case ScheduleEntryStatus.PREVISIONALE:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
-      case ScheduleEntryStatus.IN_ATTESA:
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
-      case ScheduleEntryStatus.IN_CORSO:
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-      case ScheduleEntryStatus.DONE:
-        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case ScheduleEntryStatus.POSTICIPATO:
-        return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
-      default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
-    }
+    // Converti l'enum in stringa per usare le costanti centralizzate
+    const statusString = status.toString();
+    return SCHEDULE_STATUS_COLORS[statusString as keyof typeof SCHEDULE_STATUS_COLORS] || 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
   };
 
   const getStatusLabel = (status: ScheduleEntryStatus): string => {
-    switch (status) {
-      case ScheduleEntryStatus.SCHEDULED:
-        return 'Schedulato';
-      case ScheduleEntryStatus.MANUAL:
-        return 'Manuale';
-      case ScheduleEntryStatus.PREVISIONALE:
-        return 'Previsionale';
-      case ScheduleEntryStatus.IN_ATTESA:
-        return 'In Attesa';
-      case ScheduleEntryStatus.IN_CORSO:
-        return 'In Corso';
-      case ScheduleEntryStatus.DONE:
-        return 'Completato';
-      case ScheduleEntryStatus.POSTICIPATO:
-        return 'Posticipato';
-      default:
-        return status;
-    }
+    // Converti l'enum in stringa per usare le costanti centralizzate
+    const statusString = status.toString();
+    return SCHEDULE_STATUS_LABELS[statusString as keyof typeof SCHEDULE_STATUS_LABELS] || statusString;
   };
 
   return (

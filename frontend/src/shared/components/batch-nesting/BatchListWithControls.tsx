@@ -42,18 +42,15 @@ import BatchCRUD from './BatchCRUD';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/use-toast';
 
-// Configurazione icone per stati
-const STATUS_ICONS = {
-  sospeso: Clock,
-  confermato: PlayCircle,
-  terminato: CheckCircle
-};
+import { 
+  BATCH_STATUS_COLORS,
+  BATCH_STATUS_ICONS
+} from '@/shared/lib/constants';
+import type { BatchStatus } from '@/shared/types';
 
-const STATUS_COLORS = {
-  sospeso: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-  confermato: 'bg-green-100 text-green-800 border-green-300',
-  terminato: 'bg-blue-100 text-blue-800 border-blue-300'
-};
+// Configurazione icone e colori per stati batch (usando costanti centralizzate)
+const STATUS_ICONS = BATCH_STATUS_ICONS;
+const STATUS_COLORS = BATCH_STATUS_COLORS;
 
 interface BatchListWithControlsProps {
   /** Titolo del componente */

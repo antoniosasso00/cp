@@ -8,81 +8,41 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   AlertTriangle, 
-  CheckCircle, 
-  Clock, 
   Loader2, 
-  Package,
-  PlayCircle,
-  Settings,
   Info,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Settings
 } from 'lucide-react';
 import { odlApi } from '@/lib/api';
+import { 
+  ODL_STATUS_LABELS,
+  ODL_STATUS_DESCRIPTIONS,
+  ODL_STATUS_COLORS,
+  ODL_STATUS_ICONS,
+  ODL_STATUS_TRANSITIONS
+} from '@/shared/lib/constants';
+import type { ODLStatus, ODLStatusConfig } from '@/shared/types';
 
-// Tipi per lo stato dell'ODL
-type ODLStatus = 'Preparazione' | 'Laminazione' | 'In Coda' | 'Attesa Cura' | 'Cura' | 'Finito';
-
-interface ODLStatusInfo {
-  status: ODLStatus;
-  label: string;
-  description: string;
-  color: string;
-  icon: React.ComponentType<{ className?: string }>;
-  canTransitionTo: ODLStatus[];
-}
-
-// Configurazione stati ODL
-const ODL_STATUS_CONFIG: Record<ODLStatus, ODLStatusInfo> = {
-  'Preparazione': {
-    status: 'Preparazione',
-    label: 'Preparazione',
-    description: 'ODL in fase di preparazione iniziale',
-    color: 'bg-gray-100 text-gray-800 border-gray-300',
-    icon: Settings,
-    canTransitionTo: ['Laminazione']
-  },
-  'Laminazione': {
-    status: 'Laminazione',
-    label: 'Laminazione',
-    description: 'ODL in fase di laminazione',
-    color: 'bg-blue-100 text-blue-800 border-blue-300',
-    icon: Package,
-    canTransitionTo: ['In Coda']
-  },
-  'In Coda': {
-    status: 'In Coda',
-    label: 'In Coda',
-    description: 'ODL in coda per la cura',
-    color: 'bg-purple-100 text-purple-800 border-purple-300',
-    icon: Clock,
-    canTransitionTo: ['Attesa Cura']
-  },
-  'Attesa Cura': {
-    status: 'Attesa Cura',
-    label: 'Attesa Cura',
-    description: 'ODL pronto per il caricamento in autoclave',
-    color: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-    icon: Clock,
-    canTransitionTo: ['Cura']
-  },
-  'Cura': {
-    status: 'Cura',
-    label: 'Cura',
-    description: 'ODL in fase di cura nell\'autoclave',
-    color: 'bg-orange-100 text-orange-800 border-orange-300',
-    icon: PlayCircle,
-    canTransitionTo: ['Finito']
-  },
-  'Finito': {
-    status: 'Finito',
-    label: 'Finito',
-    description: 'ODL completato con successo',
-    color: 'bg-green-100 text-green-800 border-green-300',
-    icon: CheckCircle,
-    canTransitionTo: []
-  }
+// Configurazione stati ODL basata sulle costanti centralizzate
+const createODLStatusConfig = (): Record<ODLStatus, ODLStatusConfig> => {
+  const config: Record<string, ODLStatusConfig> = {};
+  
+  (['Preparazione', 'Laminazione', 'In Coda', 'Attesa Cura', 'Cura', 'Finito'] as ODLStatus[]).forEach(status => {
+    config[status] = {
+      status,
+      label: ODL_STATUS_LABELS[status],
+      description: ODL_STATUS_DESCRIPTIONS[status],
+      color: ODL_STATUS_COLORS[status],
+      icon: ODL_STATUS_ICONS[status],
+      canTransitionTo: [...ODL_STATUS_TRANSITIONS[status]] as ODLStatus[]
+    };
+  });
+  
+  return config as Record<ODLStatus, ODLStatusConfig>;
 };
+
+const ODL_STATUS_CONFIG = createODLStatusConfig();
 
 interface ODLInfo {
   id: number;
@@ -213,7 +173,7 @@ export default function ODLStatusSwitch({
     <Card className="w-full">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg">
-          <Package className="h-5 w-5" />
+          <Settings className="h-5 w-5" />
           Controllo Stato ODL ({filteredOdlList.length} ODL)
         </CardTitle>
       </CardHeader>
@@ -431,7 +391,7 @@ export default function ODLStatusSwitch({
                           {loadingOdl !== null ? (
                             <Loader2 className="h-4 w-4 animate-spin mr-1" />
                           ) : (
-                            <CheckCircle className="h-4 w-4 mr-1" />
+                            <Info className="h-4 w-4 mr-1" />
                           )}
                           Conferma
                         </Button>

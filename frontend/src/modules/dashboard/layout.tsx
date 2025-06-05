@@ -24,7 +24,8 @@ import {
   ScrollText
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
-import { useUserRole, type UserRole } from '@/shared/hooks/useUserRole'
+import { useUserRole } from '@/shared/hooks/useUserRole'
+import type { UserRole } from '@/shared/types'
 import { UserMenu } from '@/shared/components/ui/user-menu'
 
 interface SidebarNavItem {

@@ -19,7 +19,8 @@ import {
   LogOut,
   UserCog
 } from 'lucide-react'
-import { useUserRole, type UserRole } from '@/shared/hooks/useUserRole'
+import { useUserRole } from '@/shared/hooks/useUserRole'
+import type { UserRole } from '@/shared/types'
 
 interface UserMenuProps {
   className?: string

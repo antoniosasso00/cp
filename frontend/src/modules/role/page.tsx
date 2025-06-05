@@ -2,7 +2,8 @@
 
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { useUserRole, type UserRole } from '@/hooks/useUserRole'
+import { useUserRole } from '@/hooks/useUserRole'
+import type { UserRole } from '@/shared/types'
 import { 
   Shield, 
   Users, 

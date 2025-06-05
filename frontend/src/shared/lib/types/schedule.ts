@@ -1,6 +1,7 @@
 // Definizione dei tipi di schedule per il frontend
+import type { ScheduleStatus, ScheduleType } from '@/shared/types';
 
-// Enum per gli stati di una schedulazione
+// Enum per gli stati di una schedulazione (deprecato - usa ScheduleStatus da shared/types)
 export enum ScheduleEntryStatus {
   SCHEDULED = "scheduled",      // Schedulato automaticamente
   MANUAL = "manual",           // Schedulato manualmente
@@ -11,7 +12,7 @@ export enum ScheduleEntryStatus {
   POSTICIPATO = "posticipato", // Posticipato dall'operatore
 }
 
-// Enum per il tipo di schedulazione
+// Enum per il tipo di schedulazione (deprecato - usa ScheduleType da shared/types)
 export enum ScheduleEntryType {
   ODL_SPECIFICO = "odl_specifico",        // Schedulazione per ODL specifico
   CATEGORIA = "categoria",                // Schedulazione per categoria
