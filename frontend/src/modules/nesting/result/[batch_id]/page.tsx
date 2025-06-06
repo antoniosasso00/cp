@@ -1,12 +1,13 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
-import { useToast } from '@/components/ui/use-toast'
-import { 
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/components/ui/card'
+import { Button } from '@/shared/components/ui/button'
+import { Badge } from '@/shared/components/ui/badge'
+import { Separator } from '@/shared/components/ui/separator'
+import { useToast } from '@/shared/components/ui/use-toast'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/components/ui/tabs'
+import {
   Loader2, 
   ArrowLeft, 
   Package, 
@@ -15,18 +16,27 @@ import {
   AlertTriangle,
   Download,
   RefreshCw,
-  Info
+  Info,
+  CheckCircle,
+  Clock,
+  Settings,
+  History,
+  LayoutGrid
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import dynamic from 'next/dynamic'
-import BatchNavigator from './BatchNavigator'
 
-// Caricamento dinamico del canvas per evitare problemi SSR
+// Importazione componenti dedicati
+import BatchTabs from '../../../components/NestingResult/BatchTabs'
+import NestingDetailsCard from '../../../components/NestingResult/NestingDetailsCard'
+import BatchParameters from '../../../components/NestingResult/BatchParameters'
+import HistoryPanel from '../../../components/NestingResult/HistoryPanel'
+
+// Caricamento dinamico del canvas
 const NestingCanvas = dynamic(() => import('./NestingCanvas'), {
   loading: () => (
-    <div className="flex items-center justify-center h-64 bg-gray-50 border border-gray-200 rounded-lg">
+    <div className="flex items-center justify-center h-96 bg-gray-50 border border-gray-200 rounded-lg">
       <div className="text-center space-y-3">
         <Loader2 className="h-8 w-8 text-blue-500 mx-auto animate-spin" />
         <div>
@@ -50,67 +60,7 @@ const useClientSideOnly = () => {
   return isMounted;
 };
 
-// ✅ Error Boundary migliorato per il Canvas
-class CanvasErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean; errorInfo?: string }
-> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props)
-    this.state = { hasError: false }
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    console.error('Canvas Error Boundary:', error)
-    return { 
-      hasError: true, 
-      errorInfo: error.message 
-    }
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Canvas Error Details:', error, errorInfo)
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="flex items-center justify-center h-64 bg-red-50 border border-red-200 rounded-lg">
-          <div className="text-center space-y-4">
-            <AlertTriangle className="h-16 w-16 text-red-500 mx-auto" />
-            <div>
-              <h3 className="text-lg font-semibold text-red-800">Errore nel Caricamento Canvas</h3>
-              <p className="text-red-600 text-sm">
-                {this.state.errorInfo || 'Problema nell\'inizializzazione del componente grafico'}
-              </p>
-              <div className="mt-4 space-x-2">
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => window.location.reload()}
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Ricarica Pagina
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={() => this.setState({ hasError: false })}
-                >
-                  Riprova
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )
-    }
-
-    return this.props.children
-  }
-}
-
-// ✅ CORREZIONE: Interfacce corrette per i dati dal backend
+// Interfacce per i dati multi-batch
 interface ToolPosition {
   odl_id: number
   x: number
@@ -139,25 +89,24 @@ interface BatchNestingResult {
   autoclave_id: number
   autoclave?: AutoclaveInfo
   odl_ids: number[]
-  // ✅ CORREZIONE: Struttura corretta della configurazione
   configurazione_json: {
     canvas_width: number
     canvas_height: number
     tool_positions: ToolPosition[]
     plane_assignments: Record<string, number>
   } | null
-  parametri: {
+  parametri?: {
     padding_mm: number
     min_distance_mm: number
     priorita_area: boolean
   }
   created_at: string
+  updated_at?: string
   numero_nesting: number
   peso_totale_kg?: number
   area_totale_utilizzata?: number
   valvole_totali_utilizzate?: number
   note?: string
-  // 🎯 NUOVO v1.4.16-DEMO: Dati per motivi di esclusione
   odl_esclusi?: Array<{
     odl_id: number
     motivo: string
@@ -166,7 +115,23 @@ interface BatchNestingResult {
     motivi_dettagliati?: string
   }>
   excluded_reasons?: Record<string, number>
-  metrics?: any
+  metrics?: {
+    efficiency_percentage?: number
+    total_area_used_mm2?: number
+    total_weight_kg?: number
+  }
+  // Campi legacy per compatibilità
+  efficiency?: number
+  data_conferma?: string
+  data_completamento?: string
+  confermato_da_utente?: string
+  confermato_da_ruolo?: string
+}
+
+interface MultiBatchResponse {
+  batch_results: BatchNestingResult[]
+  execution_id?: string
+  total_batches: number
 }
 
 interface Props {
@@ -178,442 +143,358 @@ interface Props {
 export default function NestingResultPage({ params }: Props) {
   const { toast } = useToast()
   const router = useRouter()
-  const [batchData, setBatchData] = useState<BatchNestingResult | null>(null)
+  const [multiBatchData, setMultiBatchData] = useState<MultiBatchResponse | null>(null)
+  const [selectedBatchIndex, setSelectedBatchIndex] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isConfirming, setIsConfirming] = useState(false)
   const isMounted = useClientSideOnly()
 
   useEffect(() => {
-    loadBatchData()
+    loadMultiBatchData()
   }, [params.batch_id])
 
-  const loadBatchData = async () => {
+  const loadMultiBatchData = async () => {
     try {
       setLoading(true)
       setError(null)
 
-      // ✅ CORREZIONE: Usa URL relativo per sfruttare il proxy Next.js
-      const response = await fetch(`/api/batch_nesting/${params.batch_id}/full`)
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error('Batch nesting non trovato')
+      console.log(`🔄 Caricamento dati per batch: ${params.batch_id}`)
+
+      // Prima prova a caricare come multi-batch
+      const multiUrl = `/api/batch_nesting/result/${params.batch_id}?multi=true`
+      console.log(`📡 Chiamata multi-batch: ${multiUrl}`)
+      
+      const multiResponse = await fetch(multiUrl)
+      
+      if (multiResponse.ok) {
+        const multiData: MultiBatchResponse = await multiResponse.json()
+        console.log(`✅ Dati multi-batch ricevuti:`, multiData)
+        
+        // Verifica che ci siano risultati
+        if (!multiData.batch_results || multiData.batch_results.length === 0) {
+          throw new Error('Nessun batch trovato nei risultati multi-batch')
         }
-        throw new Error(`Errore ${response.status}: ${response.statusText}`)
+        
+        setMultiBatchData(multiData)
+        
+        // Trova l'indice del batch corrente
+        const currentIndex = multiData.batch_results.findIndex(b => b.id === params.batch_id)
+        setSelectedBatchIndex(currentIndex >= 0 ? currentIndex : 0)
+        
+        console.log(`🎯 Batch selezionato: indice ${currentIndex >= 0 ? currentIndex : 0}`)
+      } else {
+        console.log(`⚠️ Multi-batch fallito (${multiResponse.status}), tentativo fallback...`)
+        
+        // Fallback: carica singolo batch usando l'endpoint esistente
+        const singleUrl = `/api/batch_nesting/${params.batch_id}`
+        console.log(`📡 Chiamata fallback: ${singleUrl}`)
+        
+        const singleResponse = await fetch(singleUrl)
+        if (!singleResponse.ok) {
+          throw new Error(`HTTP ${singleResponse.status}: ${singleResponse.statusText}`)
+        }
+
+        const singleBatch: BatchNestingResult = await singleResponse.json()
+        console.log(`✅ Dati singolo batch ricevuti:`, singleBatch)
+        
+        // Normalizza i dati per compatibilità
+        if (singleBatch.efficiency && !singleBatch.metrics?.efficiency_percentage) {
+          singleBatch.metrics = {
+            ...singleBatch.metrics,
+            efficiency_percentage: singleBatch.efficiency
+          }
+        }
+
+        setMultiBatchData({
+          batch_results: [singleBatch],
+          total_batches: 1
+        })
+        setSelectedBatchIndex(0)
+        console.log(`🔄 Dati normalizzati per single-batch`)
       }
 
-      const data = await response.json()
-      setBatchData(data)
-
-    } catch (error) {
-      console.error('Errore nel caricamento batch:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Errore sconosciuto'
-      setError(errorMessage)
-      
-      toast({
-        title: 'Errore di caricamento',
-        description: errorMessage,
-        variant: 'destructive'
-      })
+    } catch (err) {
+      console.error('❌ Errore nel caricamento batch:', err)
+      setError(err instanceof Error ? err.message : 'Errore sconosciuto nel caricamento dati')
     } finally {
       setLoading(false)
     }
   }
 
+  const currentBatch = multiBatchData?.batch_results[selectedBatchIndex]
+
   const getStatoBadge = (stato: string) => {
-    switch (stato) {
-      case 'COMPLETATO':
-        return <Badge className="bg-green-600 hover:bg-green-700">Completato</Badge>
-      case 'IN_ELABORAZIONE':
-        return <Badge className="bg-blue-600 hover:bg-blue-700">In Elaborazione</Badge>
-      case 'ERRORE':
-        return <Badge variant="destructive">Errore</Badge>
-      case 'IN_SOSPESO':
-        return <Badge variant="secondary">In Sospeso</Badge>
+    switch (stato?.toLowerCase()) {
+      case 'sospeso':
+        return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+          <Clock className="h-3 w-3 mr-1" />
+          Sospeso
+        </Badge>
+      case 'confermato':
+        return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+          <CheckCircle className="h-3 w-3 mr-1" />
+          Confermato
+        </Badge>
+      case 'terminato':
+        return <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">
+          <CheckCircle2 className="h-3 w-3 mr-1" />
+          Terminato
+        </Badge>
       default:
-        return <Badge variant="outline">{stato}</Badge>
+        return <Badge variant="secondary">{stato}</Badge>
+    }
+  }
+
+  const handleConfirmBatch = async () => {
+    if (!currentBatch || currentBatch.stato !== 'sospeso') return
+
+    try {
+      setIsConfirming(true)
+      
+      // Parametri richiesti per la conferma
+      const confermato_da_utente = "ADMIN" // TODO: ottenere dall'utente loggato
+      const confermato_da_ruolo = "ADMIN"
+      
+      const params = new URLSearchParams({
+        confermato_da_utente,
+        confermato_da_ruolo
+      })
+      
+      const response = await fetch(`/api/batch_nesting/${currentBatch.id}/confirm?${params}`, {
+        method: 'PATCH'
+      })
+
+      if (!response.ok) {
+        const errorData = await response.text()
+        throw new Error(errorData || 'Errore nella conferma del batch')
+      }
+
+      toast({
+        title: "Batch Confermato",
+        description: `Il batch ${currentBatch.nome} è stato confermato con successo`,
+      })
+
+      // Ricarica i dati
+      await loadMultiBatchData()
+
+    } catch (err) {
+      console.error('❌ Errore conferma batch:', err)
+      toast({
+        title: "Errore",
+        description: err instanceof Error ? err.message : "Errore nella conferma",
+        variant: "destructive"
+      })
+    } finally {
+      setIsConfirming(false)
     }
   }
 
   const handleDownloadReport = () => {
-    toast({
-      title: 'Funzionalità in sviluppo',
-      description: 'Il download del report sarà disponibile nella prossima versione.',
-      variant: 'default'
-    })
-  }
-
-  const handleRetry = () => {
-    router.push('/dashboard/curing/nesting')
-  }
-
-  // ✅ Protezione SSR: Non renderizzare nulla fino al mounting client-side
-  if (!isMounted) {
-    return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="flex items-center space-x-3">
-            <Loader2 className="h-6 w-6 animate-spin" />
-            <span>Inizializzazione...</span>
-          </div>
-        </div>
-      </div>
-    )
+    if (!currentBatch) return
+    
+    const url = `/api/batch_nesting/${currentBatch.id}/export?format=pdf`
+    window.open(url, '_blank')
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex items-center space-x-3">
-          <Loader2 className="h-6 w-6 animate-spin" />
-          <span>Caricamento risultati nesting...</span>
+      <div className="container mx-auto p-6 max-w-7xl">
+        <div className="flex items-center justify-center h-96">
+          <div className="text-center space-y-4">
+            <Loader2 className="h-12 w-12 text-blue-500 mx-auto animate-spin" />
+            <div>
+              <h3 className="text-lg font-semibold text-gray-700">Caricamento Risultati</h3>
+              <p className="text-gray-500">Recupero dati batch nesting...</p>
+            </div>
+          </div>
         </div>
       </div>
     )
   }
 
-  if (error || !batchData) {
+  if (error || !multiBatchData) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center mb-6">
-          <Link href="/dashboard/curing/nesting">
-            <Button variant="ghost" className="mr-4">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Torna al Nesting
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-destructive">Errore</h1>
-            <p className="text-muted-foreground">
-              Impossibile caricare i risultati del nesting
-            </p>
-          </div>
-        </div>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-center py-8">
-              <div className="text-center space-y-4">
-                <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
-                <div>
-                  <h3 className="text-lg font-semibold">Nesting non trovato</h3>
-                  <p className="text-muted-foreground">
-                    {error || 'Il batch nesting richiesto non è stato trovato.'}
-                  </p>
-                </div>
-                <div className="flex justify-center gap-2">
-                  <Button onClick={handleRetry} variant="default">
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Riprova
+      <div className="container mx-auto p-6 max-w-7xl">
+        <div className="flex items-center justify-center h-96">
+          <div className="text-center space-y-4">
+            <AlertTriangle className="h-16 w-16 text-red-500 mx-auto" />
+            <div>
+              <h3 className="text-lg font-semibold text-red-800">Errore nel Caricamento</h3>
+              <p className="text-red-600">{error}</p>
+              <div className="mt-4 space-x-2">
+                <Button onClick={loadMultiBatchData} variant="outline">
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Riprova
+                </Button>
+                <Link href="/dashboard/curing/nesting">
+                  <Button variant="ghost">
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Torna alla Lista
                   </Button>
-                  <Button onClick={() => router.back()} variant="outline">
-                    Torna Indietro
-                  </Button>
-                </div>
+                </Link>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-6 max-w-7xl space-y-6">
+      {/* Header con navigazione */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center">
+        <div className="flex items-center gap-4">
           <Link href="/dashboard/curing/nesting">
-            <Button variant="ghost" className="mr-4">
+            <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Torna al Nesting
+              Lista Nesting
             </Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Risultato Nesting</h1>
-            <p className="text-muted-foreground">
-              Batch ID: {batchData.id}
+            <h1 className="text-2xl font-bold text-gray-900">
+              {multiBatchData.total_batches > 1 ? 'Risultati Multi-Batch' : 'Risultati Nesting'}
+            </h1>
+            <p className="text-gray-600">
+              {multiBatchData.total_batches > 1 
+                ? `${multiBatchData.total_batches} batch generati`
+                : 'Batch singolo'
+              } • {currentBatch?.autoclave?.nome || `Autoclave ${currentBatch?.autoclave_id}`}
+              {multiBatchData.execution_id && ` • ID: ${multiBatchData.execution_id}`}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {getStatoBadge(batchData.stato)}
+
+        {/* Azioni batch corrente */}
+        <div className="flex items-center gap-3">
+          {currentBatch && getStatoBadge(currentBatch.stato)}
+          
+          {/* Pulsante per forzare il caricamento di tutti i batch recenti */}
+          {multiBatchData?.total_batches === 1 && (
+            <Button
+              onClick={() => loadMultiBatchData()}
+              variant="outline"
+              size="sm"
+              className="text-xs"
+            >
+              <LayoutGrid className="h-3 w-3 mr-1" />
+              Mostra Altri Batch
+            </Button>
+          )}
+          
+          <Button
+            onClick={handleConfirmBatch}
+            disabled={!currentBatch || currentBatch.stato !== 'sospeso' || isConfirming}
+            className="bg-green-600 hover:bg-green-700"
+          >
+            {isConfirming ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <CheckCircle className="h-4 w-4 mr-2" />
+            )}
+            Conferma Batch
+          </Button>
+
+          <Button
+            onClick={handleDownloadReport}
+            variant="outline"
+            disabled={!currentBatch}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Esporta PDF
+          </Button>
         </div>
       </div>
 
-      {/* ✅ NUOVO: Navigatore Batch - Solo se ci sono batch multipli */}
-      <BatchNavigator 
-        currentBatchId={batchData.id} 
-        className="w-full"
+      {/* Navigazione Multi-Batch tramite Tab */}
+      <BatchTabs
+        batches={multiBatchData.batch_results}
+        selectedIndex={selectedBatchIndex}
+        onSelectionChange={setSelectedBatchIndex}
       />
 
-      {/* Contenuto principale con layout a griglia */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        
-        {/* Colonna principale - Canvas e informazioni (3/4) */}
-        <div className="lg:col-span-3 space-y-6">
-          
-          {/* Informazioni Generali */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Package className="h-5 w-5" />
-                Informazioni Generali
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground">Nome Batch</p>
-                <p className="font-semibold">{batchData.nome}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground">Data Creazione</p>
-                <p className="font-semibold">
-                  {new Date(batchData.created_at).toLocaleDateString('it-IT', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground">ODL Inclusi</p>
-                <p className="font-semibold">{batchData.odl_ids.length}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground">ODL Posizionati</p>
-                <p className="font-semibold">
-                  {batchData.configurazione_json ? batchData.configurazione_json.tool_positions.length : 0}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Canvas Nesting */}
-          {batchData.configurazione_json?.tool_positions && batchData.configurazione_json.tool_positions.length > 0 && batchData.autoclave ? (
-            <CanvasErrorBoundary>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Package className="h-5 w-5" />
-                    Visualizzazione Layout Nesting
-                  </CardTitle>
-                  <CardDescription>
-                    Layout 2D interattivo del posizionamento degli ODL nell'autoclave
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <NestingCanvas 
-                    batchData={{
-                      configurazione_json: batchData.configurazione_json,
-                      autoclave: batchData.autoclave,
-                      metrics: batchData.metrics,
-                      id: batchData.id
-                    }}
-                    className="w-full"
-                  />
-                </CardContent>
-              </Card>
-            </CanvasErrorBoundary>
-          ) : (
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                  <div className="text-center text-gray-500">
-                    <Package className="mx-auto h-12 w-12 mb-2 opacity-50" />
-                    <p className="text-lg font-medium">Canvas non disponibile</p>
-                    <p className="text-sm">Nessun tool posizionato nel nesting</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Status e Azioni Rapide */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-5 w-5 text-green-600" />
-                    <span className="font-medium">
-                      Nesting completato con successo
-                    </span>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Puoi ora procedere con la fase di caricamento o generare un nuovo nesting
-                  </p>
-                </div>
-                
-                <div className="flex gap-2">
-                  <Button onClick={handleDownloadReport} variant="outline">
-                    <Download className="h-4 w-4 mr-2" />
-                    Download Report
-                  </Button>
-                  <Link href="/dashboard/curing/batch-monitoring">
-                    <Button variant="outline">
-                      <Package className="h-4 w-4 mr-2" />
-                      Gestione Batch
-                    </Button>
-                  </Link>
-                  <Button onClick={handleRetry}>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Nuovo Nesting
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Colonna laterale - Dettagli e statistiche (1/4) */}
-        <div className="lg:col-span-1 space-y-6">
-          
-          {/* Parametri Utilizzati */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Parametri Utilizzati</CardTitle>
-              <CardDescription>
-                Configurazione dell'algoritmo di ottimizzazione
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground">Padding</p>
-                <p className="font-semibold">{batchData.parametri.padding_mm} mm</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground">Distanza Minima</p>
-                <p className="font-semibold">{batchData.parametri.min_distance_mm} mm</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground">Priorità Area</p>
-                <p className="font-semibold">
-                  {batchData.parametri.priorita_area ? (
-                    <span className="text-green-600">✓ Attivata</span>
-                  ) : (
-                    <span className="text-blue-600">🎯 Massimizza ODL</span>
-                  )}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Statistiche Risultato */}
-          {(batchData.area_totale_utilizzata || batchData.peso_totale_kg || batchData.valvole_totali_utilizzate) && (
-            <Card>
-              <CardHeader>
+      {/* Contenuto del batch selezionato */}
+      {currentBatch && isMounted && (
+        <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+          {/* Canvas Principale - 3/4 della larghezza su desktop */}
+          <div className="xl:col-span-3 order-2 xl:order-1">
+            <Card className="h-fit">
+              <CardHeader className="pb-4">
                 <CardTitle className="flex items-center gap-2">
-                  <Flame className="h-5 w-5" />
-                  Statistiche Risultato
+                  <LayoutGrid className="h-5 w-5" />
+                  Layout Nesting - {currentBatch.autoclave?.nome || `Autoclave ${currentBatch.autoclave_id}`}
                 </CardTitle>
                 <CardDescription>
-                  Risultati dell'ottimizzazione del nesting
+                  Visualizzazione del posizionamento strumenti sull'autoclave
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3">
-                {batchData.area_totale_utilizzata && (
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-muted-foreground">Area Utilizzata</p>
-                    <p className="font-semibold">{batchData.area_totale_utilizzata.toFixed(2)} cm²</p>
-                  </div>
-                )}
-                {batchData.peso_totale_kg && (
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-muted-foreground">Peso Totale</p>
-                    <p className="font-semibold">{batchData.peso_totale_kg.toFixed(2)} kg</p>
-                  </div>
-                )}
-                {batchData.valvole_totali_utilizzate && (
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-muted-foreground">Valvole</p>
-                    <p className="font-semibold">{batchData.valvole_totali_utilizzate}</p>
-                  </div>
-                )}
+              <CardContent className="pb-4">
+                <NestingCanvas 
+                  batchData={{
+                    configurazione_json: currentBatch.configurazione_json,
+                    autoclave: currentBatch.autoclave,
+                    metrics: currentBatch.metrics,
+                    id: currentBatch.id
+                  }}
+                  className="w-full"
+                />
               </CardContent>
             </Card>
-          )}
+          </div>
 
-          {/* Informazioni Autoclave */}
-          {batchData.autoclave && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Autoclave</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-muted-foreground">Nome</p>
-                  <p className="font-semibold">{batchData.autoclave.nome}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-muted-foreground">Dimensioni Piano</p>
-                  <p className="font-semibold">
-                    {batchData.autoclave.larghezza_piano} × {batchData.autoclave.lunghezza} mm
-                  </p>
-                </div>
-                {batchData.autoclave.produttore && (
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-muted-foreground">Produttore</p>
-                    <p className="font-semibold">{batchData.autoclave.produttore}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
+          {/* Pannello Informazioni - 1/4 della larghezza su desktop */}
+          <div className="xl:col-span-1 order-1 xl:order-2 space-y-4">
+            {/* Dettagli Batch */}
+            <NestingDetailsCard batch={currentBatch} />
 
-          {/* Note */}
-          {batchData.note && (
+            {/* Tab per informazioni aggiuntive */}
             <Card>
-              <CardHeader>
-                <CardTitle>Note</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm">{batchData.note}</p>
-              </CardContent>
+              <Tabs defaultValue="parameters" className="w-full">
+                <CardHeader className="pb-3">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="parameters">
+                      <Settings className="h-4 w-4 mr-1" />
+                      Parametri
+                    </TabsTrigger>
+                    <TabsTrigger value="layout">
+                      <Info className="h-4 w-4 mr-1" />
+                      Layout
+                    </TabsTrigger>
+                    <TabsTrigger value="history">
+                      <History className="h-4 w-4 mr-1" />
+                      Cronologia
+                    </TabsTrigger>
+                  </TabsList>
+                </CardHeader>
+
+                <CardContent>
+                  <TabsContent value="parameters" className="mt-0">
+                    {currentBatch.parametri ? (
+                      <BatchParameters batch={currentBatch} />
+                    ) : (
+                      <p className="text-sm text-gray-500">Nessun parametro disponibile</p>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="layout" className="mt-0">
+                    <div className="space-y-3">
+                      <h4 className="font-medium text-sm text-gray-700">Configurazione JSON</h4>
+                      <pre className="text-xs bg-gray-50 p-3 rounded border overflow-auto max-h-64">
+                        {JSON.stringify(currentBatch.configurazione_json, null, 2)}
+                      </pre>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="history" className="mt-0">
+                    <HistoryPanel batch={currentBatch} />
+                  </TabsContent>
+                </CardContent>
+              </Tabs>
             </Card>
-          )}
+          </div>
         </div>
-      </div>
-
-      {/* Sezione ODL Inclusi */}
-      <Card>
-        <CardHeader>
-          <CardTitle>ODL Inclusi nel Nesting</CardTitle>
-          <CardDescription>
-            Lista degli ordini di lavoro posizionati nel layout
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {batchData.configurazione_json?.tool_positions && batchData.configurazione_json.tool_positions.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left p-2">ODL ID</th>
-                    <th className="text-left p-2">Posizione (X, Y)</th>
-                    <th className="text-left p-2">Dimensioni (L × H)</th>
-                    <th className="text-left p-2">Peso</th>
-                    <th className="text-left p-2">Ruotato</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {batchData.configurazione_json.tool_positions.map((tool, index) => (
-                    <tr key={index} className="border-b">
-                      <td className="p-2 font-medium">ODL #{tool.odl_id}</td>
-                      <td className="p-2">{tool.x.toFixed(0)}, {tool.y.toFixed(0)} mm</td>
-                      <td className="p-2">{tool.width.toFixed(0)} × {tool.height.toFixed(0)} mm</td>
-                      <td className="p-2">{tool.peso.toFixed(1)} kg</td>
-                      <td className="p-2">{tool.rotated ? 'Sì' : 'No'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="text-muted-foreground">Nessun tool posizionato nel nesting.</p>
-          )}
-        </CardContent>
-      </Card>
+      )}
     </div>
   )
-} 
+}

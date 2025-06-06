@@ -15,9 +15,9 @@ class StatoBatchNestingEnum(str, Enum):
 # Schema per i parametri di nesting
 class ParametriNesting(BaseModel):
     """Schema per validare i parametri utilizzati nella generazione del nesting"""
-    padding_mm: float = Field(default=20.0, ge=0, le=100, 
+    padding_mm: float = Field(default=1.0, ge=0, le=100, 
                              description="Padding in millimetri tra i tool")
-    min_distance_mm: float = Field(default=15.0, ge=0, le=50,
+    min_distance_mm: float = Field(default=1.0, ge=0, le=50,
                                   description="Distanza minima tra i tool in millimetri")
     priorita_area: bool = Field(default=True,
                                description="Priorità alla massimizzazione dell'area utilizzata")
@@ -31,8 +31,8 @@ class ParametriNesting(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "padding_mm": 20.0,
-                "min_distance_mm": 15.0,
+                "padding_mm": 1.0,
+                "min_distance_mm": 1.0,
                 "priorita_area": True,
                 "accorpamento_odl": False,
                 "use_secondary_plane": False,
@@ -162,12 +162,12 @@ class NestingSolveRequest(BaseModel):
     odl_ids: Optional[List[int]] = Field(None, description="Lista specifica di ODL (se None, usa tutti quelli disponibili)")
     
     # Parametri algoritmo
-    padding_mm: float = Field(default=20.0, ge=5, le=50, description="Padding tra tool in mm")
-    min_distance_mm: float = Field(default=15.0, ge=5, le=30, description="Distanza minima dai bordi in mm")
-    vacuum_lines_capacity: int = Field(default=10, ge=1, le=50, description="Capacità massima linee vuoto")
+    padding_mm: float = Field(default=1.0, ge=5, le=50, description="Padding tra tool in mm")
+    min_distance_mm: float = Field(default=1.0, ge=5, le=30, description="Distanza minima dai bordi in mm")
+    vacuum_lines_capacity: int = Field(default=20, ge=1, le=50, description="Capacità massima linee vuoto")
     
     # Nuovi parametri v1.4.12-DEMO
-    allow_heuristic: bool = Field(default=False, description="Abilita euristica RRGH")
+    allow_heuristic: bool = Field(default=True, description="Abilita euristica RRGH")
     timeout_override: Optional[int] = Field(None, ge=30, le=300, description="Override timeout in secondi")
     heavy_piece_threshold_kg: float = Field(default=50.0, ge=10, le=200, description="Soglia peso per constraint posizionamento")
     
@@ -176,9 +176,9 @@ class NestingSolveRequest(BaseModel):
             "example": {
                 "autoclave_id": 1,
                 "odl_ids": None,
-                "padding_mm": 20.0,
-                "min_distance_mm": 15.0,
-                "vacuum_lines_capacity": 8,
+                "padding_mm": 1.0,
+                "min_distance_mm": 1.0,
+                "vacuum_lines_capacity": 20,
                 "allow_heuristic": True,
                 "timeout_override": None,
                 "heavy_piece_threshold_kg": 50.0

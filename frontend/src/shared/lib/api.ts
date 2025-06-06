@@ -1333,33 +1333,98 @@ export const batchNestingApi = {
     }
   },
 
-  // 🆕 Nuova funzione per chiudere il batch e completare il ciclo di cura
+  // 🆕 Funzione per caricare il batch (CONFERMATO → LOADED)
+  carica: async (
+    id: string, 
+    caricato_da_utente: string, 
+    caricato_da_ruolo: string
+  ): Promise<BatchNestingResponse> => {
+    try {
+      console.log(`📦 Avvio caricamento batch ${id}...`);
+      
+      const queryParams = new URLSearchParams();
+      queryParams.append('caricato_da_utente', caricato_da_utente);
+      queryParams.append('caricato_da_ruolo', caricato_da_ruolo);
+      
+      const response = await apiRequest<BatchNestingResponse>(
+        `/batch_nesting/${id}/load?${queryParams.toString()}`, 
+        'PATCH'
+      );
+      
+      console.log(`✅ Batch ${id} caricato con successo!`);
+      return response;
+    } catch (error: any) {
+      console.error(`❌ Errore nel caricamento del batch ${id}:`, error);
+      
+      const errorMessage = error?.message || error?.detail || 'Errore sconosciuto nel caricamento del batch';
+      throw new Error(errorMessage);
+    }
+  },
+
+  // 🆕 Funzione per avviare la cura (LOADED → CURED)
+  avviaCura: async (
+    id: string, 
+    avviato_da_utente: string, 
+    avviato_da_ruolo: string
+  ): Promise<BatchNestingResponse> => {
+    try {
+      console.log(`🔥 Avvio cura batch ${id}...`);
+      
+      const queryParams = new URLSearchParams();
+      queryParams.append('avviato_da_utente', avviato_da_utente);
+      queryParams.append('avviato_da_ruolo', avviato_da_ruolo);
+      
+      const response = await apiRequest<BatchNestingResponse>(
+        `/batch_nesting/${id}/cure?${queryParams.toString()}`, 
+        'PATCH'
+      );
+      
+      console.log(`✅ Cura batch ${id} avviata con successo!`);
+      return response;
+    } catch (error: any) {
+      console.error(`❌ Errore nell'avvio cura del batch ${id}:`, error);
+      
+      const errorMessage = error?.message || error?.detail || 'Errore sconosciuto nell\'avvio della cura';
+      throw new Error(errorMessage);
+    }
+  },
+
+  // 🆕 Funzione per terminare il batch (CURED → TERMINATO)
+  termina: async (
+    id: string, 
+    terminato_da_utente: string, 
+    terminato_da_ruolo: string
+  ): Promise<BatchNestingResponse> => {
+    try {
+      console.log(`🏁 Avvio terminazione batch ${id}...`);
+      
+      const queryParams = new URLSearchParams();
+      queryParams.append('terminato_da_utente', terminato_da_utente);
+      queryParams.append('terminato_da_ruolo', terminato_da_ruolo);
+      
+      const response = await apiRequest<BatchNestingResponse>(
+        `/batch_nesting/${id}/terminate?${queryParams.toString()}`, 
+        'PATCH'
+      );
+      
+      console.log(`✅ Batch ${id} terminato con successo!`);
+      return response;
+    } catch (error: any) {
+      console.error(`❌ Errore nella terminazione del batch ${id}:`, error);
+      
+      const errorMessage = error?.message || error?.detail || 'Errore sconosciuto nella terminazione del batch';
+      throw new Error(errorMessage);
+    }
+  },
+
+  // 🆕 Metodo legacy per compatibilità backward - ora mappatosull'endpoint corretto
   chiudi: async (
     id: string, 
     chiuso_da_utente: string, 
     chiuso_da_ruolo: string
   ): Promise<BatchNestingResponse> => {
-    try {
-      console.log(`🏁 Avvio chiusura batch ${id}...`);
-      
-      const queryParams = new URLSearchParams();
-      queryParams.append('chiuso_da_utente', chiuso_da_utente);
-      queryParams.append('chiuso_da_ruolo', chiuso_da_ruolo);
-      
-      const response = await apiRequest<BatchNestingResponse>(
-        `/batch_nesting/${id}/chiudi?${queryParams.toString()}`, 
-        'PATCH'
-      );
-      
-      console.log(`✅ Batch ${id} chiuso con successo!`);
-      return response;
-    } catch (error: any) {
-      console.error(`❌ Errore nella chiusura del batch ${id}:`, error);
-      
-      // Estrai il messaggio di errore più specifico
-      const errorMessage = error?.message || error?.detail || 'Errore sconosciuto nella chiusura del batch';
-      throw new Error(errorMessage);
-    }
+    // Compatibilità: chiudi ora mappa su termina
+    return batchNestingApi.termina(id, chiuso_da_utente, chiuso_da_ruolo);
   }
 };
 

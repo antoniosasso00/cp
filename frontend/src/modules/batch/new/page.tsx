@@ -61,9 +61,9 @@ export default function NewBatchPage() {
   const [selectedOdl, setSelectedOdl] = useState<string[]>([]);
   const [selectedAutoclave, setSelectedAutoclave] = useState<string>('');
   const [batchName, setBatchName] = useState<string>('');
-  const [parametri, setParametri] = useState<NestingParametri>({
-    padding_mm: 20,
-    min_distance_mm: 15,
+  const [nestingParams, setNestingParams] = useState<NestingParametri>({
+    padding_mm: 1,
+    min_distance_mm: 1,
     priorita_area: true
   });
   
@@ -133,14 +133,14 @@ export default function NewBatchPage() {
       console.log('🚀 Avvio generazione batch:', {
         odl_ids: selectedOdl,
         autoclave_ids: [selectedAutoclave],
-        parametri
+        parametri: nestingParams
       });
 
       // Chiamata API per generare il nesting robusto
       const response = await axios.post('http://localhost:8000/batch_nesting/genera', {
         odl_ids: selectedOdl,
         autoclave_ids: [selectedAutoclave],
-        parametri
+        parametri: nestingParams
       });
 
       console.log('✅ Batch generato:', response.data);
@@ -312,12 +312,12 @@ export default function NewBatchPage() {
                 <Input
                   id="padding"
                   type="number"
-                  value={parametri.padding_mm}
-                  onChange={(e) => setParametri(prev => ({
+                  value={nestingParams.padding_mm}
+                  onChange={(e) => setNestingParams(prev => ({
                     ...prev,
-                    padding_mm: parseInt(e.target.value) || 20
+                    padding_mm: parseInt(e.target.value) || 1
                   }))}
-                  min="5"
+                  min="1"
                   max="50"
                 />
               </div>
@@ -327,12 +327,12 @@ export default function NewBatchPage() {
                 <Input
                   id="distance"
                   type="number"
-                  value={parametri.min_distance_mm}
-                  onChange={(e) => setParametri(prev => ({
+                  value={nestingParams.min_distance_mm}
+                  onChange={(e) => setNestingParams(prev => ({
                     ...prev,
-                    min_distance_mm: parseInt(e.target.value) || 15
+                    min_distance_mm: parseInt(e.target.value) || 1
                   }))}
-                  min="5"
+                  min="1"
                   max="30"
                 />
               </div>
@@ -340,8 +340,8 @@ export default function NewBatchPage() {
               <div className="flex items-center space-x-2">
                 <Switch
                   id="priorita-area"
-                  checked={parametri.priorita_area}
-                  onCheckedChange={(checked) => setParametri(prev => ({
+                  checked={nestingParams.priorita_area}
+                  onCheckedChange={(checked) => setNestingParams(prev => ({
                     ...prev,
                     priorita_area: checked
                   }))}

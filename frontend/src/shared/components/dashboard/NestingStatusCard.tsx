@@ -53,7 +53,7 @@ export function NestingStatusCard() {
           <p className="text-sm text-muted-foreground mb-3">
             Componente in aggiornamento per compatibilità API
           </p>
-          <Link href="/dashboard/curing/nesting">
+          <Link href="/nesting">
             <Button variant="outline" size="sm">
               Vai al Nesting
             </Button>

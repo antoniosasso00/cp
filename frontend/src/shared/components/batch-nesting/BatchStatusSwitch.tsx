@@ -14,12 +14,14 @@ import {
   Lock, 
   PlayCircle,
   StopCircle,
-  Info
+  Info,
+  Package,
+  Flame
 } from 'lucide-react';
 import { batchNestingApi } from '@/lib/api';
 
 // Tipi per lo stato del batch
-type BatchStatus = 'sospeso' | 'confermato' | 'terminato';
+type BatchStatus = 'sospeso' | 'confermato' | 'loaded' | 'cured' | 'terminato';
 
 interface BatchStatusInfo {
   status: BatchStatus;
@@ -28,9 +30,10 @@ interface BatchStatusInfo {
   color: string;
   icon: React.ComponentType<{ className?: string }>;
   canTransitionTo: BatchStatus[];
+  actionLabel?: string;
 }
 
-// Configurazione stati batch
+// Configurazione stati batch completa
 const BATCH_STATUS_CONFIG: Record<BatchStatus, BatchStatusInfo> = {
   sospeso: {
     status: 'sospeso',
@@ -38,21 +41,41 @@ const BATCH_STATUS_CONFIG: Record<BatchStatus, BatchStatusInfo> = {
     description: 'Batch generato, in attesa di conferma per avviare il ciclo di cura',
     color: 'bg-yellow-100 text-yellow-800 border-yellow-300',
     icon: Clock,
-    canTransitionTo: ['confermato']
+    canTransitionTo: ['confermato'],
+    actionLabel: 'Conferma Batch'
   },
   confermato: {
     status: 'confermato', 
     label: 'Confermato',
-    description: 'Batch confermato, ciclo di cura avviato. ODL in stato "Cura"',
+    description: 'Batch confermato, pronto per il caricamento in autoclave. ODL in stato "Cura"',
     color: 'bg-green-100 text-green-800 border-green-300',
-    icon: PlayCircle,
-    canTransitionTo: ['terminato']
+    icon: CheckCircle,
+    canTransitionTo: ['loaded'],
+    actionLabel: 'Carica in Autoclave'
+  },
+  loaded: {
+    status: 'loaded',
+    label: 'Caricato',
+    description: 'Batch caricato in autoclave, pronto per avviare il ciclo di cura',
+    color: 'bg-blue-100 text-blue-800 border-blue-300',
+    icon: Package,
+    canTransitionTo: ['cured'],
+    actionLabel: 'Avvia Cura'
+  },
+  cured: {
+    status: 'cured',
+    label: 'In Cura',
+    description: 'Ciclo di cura in corso. Autoclave occupata',
+    color: 'bg-orange-100 text-orange-800 border-orange-300',
+    icon: Flame,
+    canTransitionTo: ['terminato'],
+    actionLabel: 'Termina Cura'
   },
   terminato: {
     status: 'terminato',
     label: 'Terminato', 
-    description: 'Ciclo di cura completato. ODL in stato "Finito"',
-    color: 'bg-blue-100 text-blue-800 border-blue-300',
+    description: 'Ciclo di cura completato. ODL in stato "Finito", autoclave disponibile',
+    color: 'bg-gray-100 text-gray-800 border-gray-300',
     icon: CheckCircle,
     canTransitionTo: []
   }
@@ -122,9 +145,27 @@ export default function BatchStatusSwitch({
           );
           break;
 
+        case 'loaded':
+          console.log(`📦 Caricando batch ${batchId}...`);
+          updatedBatch = await batchNestingApi.carica(
+            batchId,
+            userInfo.userId,
+            userInfo.userRole
+          );
+          break;
+
+        case 'cured':
+          console.log(`🔥 Avviando cura batch ${batchId}...`);
+          updatedBatch = await batchNestingApi.avviaCura(
+            batchId,
+            userInfo.userId,
+            userInfo.userRole
+          );
+          break;
+
         case 'terminato':
           console.log(`🏁 Terminando batch ${batchId}...`);
-          updatedBatch = await batchNestingApi.chiudi(
+          updatedBatch = await batchNestingApi.termina(
             batchId,
             userInfo.userId,
             userInfo.userRole

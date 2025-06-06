@@ -151,11 +151,10 @@ def read_batch_nesting_list(
 from typing import Dict, Any
 from pydantic import BaseModel
 from services.nesting_service import NestingService, NestingParameters
-from services.nesting_robustness_improvement import RobustNestingService
 
 class NestingParametri(BaseModel):
-    padding_mm: int = 20
-    min_distance_mm: int = 15
+    padding_mm: int = 1  # 🚀 OTTIMIZZAZIONE: Padding ultra-ottimizzato 1mm
+    min_distance_mm: int = 1  # 🚀 OTTIMIZZAZIONE: Distanza ultra-ottimizzata 1mm
 
 class NestingRequest(BaseModel):
     odl_ids: List[str]
@@ -452,10 +451,10 @@ def genera_nesting_robusto(
         )
         
         # Inizializza servizio robusto
-        robust_service = RobustNestingService()
+        nesting_service = NestingService()
         
         # Genera nesting con robustezza
-        result = robust_service.generate_robust_nesting(
+        result = nesting_service.generate_robust_nesting(
             db=db,
             odl_ids=odl_ids,
             autoclave_ids=autoclave_ids,
@@ -533,6 +532,159 @@ def read_batch_nesting(batch_id: str, db: Session = Depends(get_db)):
     
     return db_batch
 
+@router.get("/result/{batch_id}", summary="Ottiene risultati batch nesting, supporta multi-batch")
+def get_batch_result(
+    batch_id: str, 
+    multi: bool = False,
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint per risultati batch nesting con supporto multi-batch.
+    
+    Args:
+        batch_id: ID del batch principale
+        multi: Se True, ritorna tutti i batch correlati nell'esecuzione
+        
+    Returns:
+        MultiBatchResponse se multi=True, altrimenti BatchNestingResult singolo
+    """
+    logger.info(f"📊 Richiesta risultati batch: {batch_id}, multi={multi}")
+    
+    # Carica il batch principale
+    main_batch = db.query(BatchNesting).options(
+        joinedload(BatchNesting.autoclave)
+    ).filter(BatchNesting.id == batch_id).first()
+    
+    if not main_batch:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Batch nesting con ID {batch_id} non trovato"
+        )
+    
+    def format_batch_result(batch: BatchNesting) -> dict:
+        """Formatta un batch per la risposta API"""
+        # Calcola metriche se necessarie
+        if batch.configurazione_json and 'tool_positions' in batch.configurazione_json:
+            tool_positions = batch.configurazione_json['tool_positions']
+            total_area_used = sum(
+                tool.get('width', 0) * tool.get('height', 0) 
+                for tool in tool_positions
+            )
+            total_weight = sum(tool.get('peso', 0) for tool in tool_positions)
+            
+            # Area autoclave in mm²
+            autoclave_area = 0
+            if batch.autoclave:
+                autoclave_area = batch.autoclave.lunghezza * batch.autoclave.larghezza_piano
+                
+            efficiency_percentage = (
+                (total_area_used / autoclave_area * 100) if autoclave_area > 0 else 0
+            )
+        else:
+            total_area_used = 0
+            total_weight = 0  
+            efficiency_percentage = 0
+        
+        return {
+            "id": batch.id,
+            "nome": batch.nome,
+            "stato": batch.stato,
+            "autoclave_id": batch.autoclave_id,
+            "autoclave": {
+                "id": batch.autoclave.id,
+                "nome": batch.autoclave.nome,
+                "lunghezza": batch.autoclave.lunghezza,
+                "larghezza_piano": batch.autoclave.larghezza_piano,
+                "codice": batch.autoclave.codice,
+                "produttore": getattr(batch.autoclave, 'produttore', None)
+            } if batch.autoclave else None,
+            "odl_ids": batch.odl_ids or [],
+            "configurazione_json": batch.configurazione_json,
+            "parametri": batch.parametri,
+            "created_at": batch.created_at.isoformat() if batch.created_at else None,
+            "updated_at": batch.updated_at.isoformat() if batch.updated_at else None,
+            "numero_nesting": batch.numero_nesting,
+            "peso_totale_kg": batch.peso_totale_kg,
+            "area_totale_utilizzata": batch.area_totale_utilizzata,
+            "valvole_totali_utilizzate": batch.valvole_totali_utilizzate,
+            "note": batch.note,
+            "metrics": {
+                "efficiency_percentage": efficiency_percentage,
+                "total_area_used_mm2": total_area_used,
+                "total_weight_kg": total_weight
+            }
+        }
+    
+    if multi:
+        # Modalità multi-batch: trova tutti i batch correlati
+        batch_results = [format_batch_result(main_batch)]
+        
+        # ✨ MIGLIORAMENTO: Ricerca batch correlati più ampia
+        if main_batch.created_at:
+            from datetime import timedelta
+            # Prima prova con finestra di 5 minuti
+            time_window = timedelta(minutes=5)
+            start_time = main_batch.created_at - time_window
+            end_time = main_batch.created_at + time_window
+            
+            related_batches = db.query(BatchNesting).options(
+                joinedload(BatchNesting.autoclave)
+            ).filter(
+                BatchNesting.id != main_batch.id,  # Escludi il batch principale
+                BatchNesting.created_at >= start_time,
+                BatchNesting.created_at <= end_time,
+                BatchNesting.stato.in_(['sospeso', 'confermato'])  # Solo batch validi
+            ).all()
+            
+            logger.info(f"🔗 Trovati {len(related_batches)} batch correlati (5min) per {main_batch.id}")
+            
+            # Se non troviamo batch correlati nella finestra ristretta, espandi la ricerca
+            if not related_batches:
+                logger.info("🔍 Espansione ricerca batch correlati a ±30 minuti")
+                expanded_window = timedelta(minutes=30)
+                start_time = main_batch.created_at - expanded_window
+                end_time = main_batch.created_at + expanded_window
+                
+                related_batches = db.query(BatchNesting).options(
+                    joinedload(BatchNesting.autoclave)
+                ).filter(
+                    BatchNesting.id != main_batch.id,
+                    BatchNesting.created_at >= start_time,
+                    BatchNesting.created_at <= end_time,
+                    BatchNesting.stato.in_(['sospeso', 'confermato'])
+                ).limit(10).all()  # Limite per evitare troppe visualizzazioni
+                
+                logger.info(f"🔗 Trovati {len(related_batches)} batch correlati (30min) per {main_batch.id}")
+                
+                # Se ancora non troviamo batch, mostra almeno gli ultimi batch recenti
+                if not related_batches:
+                    logger.info("🔍 Fallback: mostra ultimi 5 batch recenti")
+                    recent_batches = db.query(BatchNesting).options(
+                        joinedload(BatchNesting.autoclave)
+                    ).filter(
+                        BatchNesting.id != main_batch.id,
+                        BatchNesting.stato.in_(['sospeso', 'confermato'])
+                    ).order_by(BatchNesting.created_at.desc()).limit(5).all()
+                    
+                    related_batches = recent_batches
+                    logger.info(f"🔗 Mostrati {len(related_batches)} batch recenti come fallback")
+            
+            # Aggiungi i batch correlati
+            for related_batch in related_batches:
+                batch_results.append(format_batch_result(related_batch))
+        
+        # Ordina per autoclave_id per una visualizzazione coerente
+        batch_results.sort(key=lambda x: x['autoclave_id'])
+        
+        return {
+            "batch_results": batch_results,
+            "total_batches": len(batch_results),
+            "execution_id": f"exec_{main_batch.created_at.strftime('%Y%m%d_%H%M%S')}" if main_batch.created_at else None
+        }
+    else:
+        # Modalità singolo batch
+        return format_batch_result(main_batch)
+
 @router.get("/{batch_id}/full", summary="Ottiene un batch nesting con tutte le informazioni")
 def read_batch_nesting_full(batch_id: str, db: Session = Depends(get_db)):
     """
@@ -604,8 +756,15 @@ def update_batch_nesting(
     db: Session = Depends(get_db)
 ):
     """
+    🔒 AGGIORNA BATCH NESTING
+    =========================
+    
     Aggiorna i dati di un batch nesting esistente.
     Solo i campi inclusi nella richiesta verranno aggiornati.
+    
+    **PROTEZIONE:**
+    - Solo batch in stato SOSPESO possono essere aggiornati
+    - Batch confermati, caricati o in corso non possono essere modificati
     
     Permette di aggiornare:
     - Nome del batch
@@ -623,6 +782,13 @@ def update_batch_nesting(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
             detail=f"Batch nesting con ID {batch_id} non trovato"
+        )
+    
+    # 🔒 PROTEZIONE: Solo batch SOSPESO possono essere aggiornati
+    if db_batch.stato != StatoBatchNestingEnum.SOSPESO.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Impossibile aggiornare batch: solo batch in stato 'sospeso' possono essere modificati. Stato attuale: {db_batch.stato}"
         )
     
     try:
@@ -744,20 +910,38 @@ def get_batch_statistics(batch_id: str, db: Session = Depends(get_db)):
     
     return statistics
 
-@router.patch("/{batch_id}/conferma", response_model=BatchNestingResponse,
-              summary="Conferma il batch e avvia il ciclo di cura")
-def conferma_batch_nesting(
+@router.patch("/{batch_id}/confirm", response_model=BatchNestingResponse,
+              summary="🔄 Conferma batch - Transizione SOSPESO → CONFERMATO")
+def confirm_batch_nesting(
     batch_id: str, 
     confermato_da_utente: str = Query(..., description="ID dell'utente che conferma il batch"),
-    confermato_da_ruolo: str = Query(..., description="Ruolo dell'utente che conferma"),
+    confermato_da_ruolo: str = Query(..., description="Ruolo dell'utente che conferma (Responsabile o Autoclavista)"),
     db: Session = Depends(get_db)
 ):
     """
-    Conferma un batch nesting e lo prepara per l'avvio del ciclo di cura.
+    🔄 CONFERMA BATCH NESTING
+    =========================
     
-    Cambia lo stato del batch da "sospeso" a "confermato" e registra
-    le informazioni dell'utente che ha effettuato la conferma.
+    Transizione: SOSPESO → CONFERMATO
+    
+    **Protezioni:**
+    - Solo batch in stato SOSPESO possono essere confermati
+    - Solo utenti con ruolo 'Responsabile' o 'Autoclavista' possono confermare
+    
+    **Aggiornamenti:**
+    - Stato → CONFERMATO
+    - data_conferma → timestamp attuale
+    - confermato_da_utente → ID utente
+    - confermato_da_ruolo → ruolo utente
     """
+    # Validazione ruolo
+    if confermato_da_ruolo not in ["Responsabile", "Autoclavista", "ADMIN"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Accesso negato: solo utenti 'Responsabile' o 'Autoclavista' possono confermare batch. Ruolo attuale: {confermato_da_ruolo}"
+        )
+    
+    # Recupera batch
     db_batch = db.query(BatchNesting).filter(BatchNesting.id == batch_id).first()
     
     if db_batch is None:
@@ -766,31 +950,294 @@ def conferma_batch_nesting(
             detail=f"Batch nesting con ID {batch_id} non trovato"
         )
     
+    # Validazione transizione di stato
     if db_batch.stato != StatoBatchNestingEnum.SOSPESO.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Il batch deve essere in stato 'sospeso' per essere confermato. Stato attuale: {db_batch.stato}"
+            detail=f"Transizione non valida: batch deve essere in stato 'sospeso' per essere confermato. Stato attuale: {db_batch.stato}"
         )
     
     try:
+        # Aggiornamento stato e metadati batch
         db_batch.stato = StatoBatchNestingEnum.CONFERMATO.value
         db_batch.confermato_da_utente = confermato_da_utente
         db_batch.confermato_da_ruolo = confermato_da_ruolo
         db_batch.data_conferma = datetime.now()
         
+        # 🆕 AGGIORNAMENTO AUTOMATICO STATO ODL: CONFERMATO → CURA
+        from models.odl import ODL
+        from models.autoclave import Autoclave, StatoAutoclaveEnum
+        
+        if db_batch.odl_ids:
+            updated_odl_count = 0
+            for odl_id in db_batch.odl_ids:
+                db_odl = db.query(ODL).filter(ODL.id == odl_id).first()
+                if db_odl and db_odl.status == "Attesa Cura":
+                    db_odl.status = "Cura"
+                    updated_odl_count += 1
+            
+            logger.info(f"📋 Aggiornati {updated_odl_count} ODL da 'Attesa Cura' a 'Cura' per batch {batch_id}")
+        
+        # 🆕 AGGIORNAMENTO AUTOMATICO STATO AUTOCLAVE: DISPONIBILE → IN_USO
+        db_autoclave = db.query(Autoclave).filter(Autoclave.id == db_batch.autoclave_id).first()
+        if db_autoclave and db_autoclave.stato == StatoAutoclaveEnum.DISPONIBILE:
+            db_autoclave.stato = StatoAutoclaveEnum.IN_USO
+            logger.info(f"🏭 Autoclave {db_autoclave.nome} (ID: {db_autoclave.id}) aggiornata da 'DISPONIBILE' a 'IN_USO' per batch {batch_id}")
+        
         db.commit()
         db.refresh(db_batch)
         
-        logger.info(f"Batch nesting {batch_id} confermato da {confermato_da_utente} ({confermato_da_ruolo})")
+        logger.info(f"✅ Batch {batch_id} confermato da {confermato_da_utente} ({confermato_da_ruolo})")
         return db_batch
         
     except Exception as e:
         db.rollback()
-        logger.error(f"Errore durante la conferma del batch nesting {batch_id}: {str(e)}")
+        logger.error(f"❌ Errore durante conferma batch {batch_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Si è verificato un errore durante la conferma del batch nesting: {str(e)}"
+            detail=f"Errore durante la conferma del batch: {str(e)}"
         )
+
+@router.patch("/{batch_id}/conferma", response_model=BatchNestingResponse,
+              summary="⚠️ DEPRECATO: usa /confirm - Conferma batch (legacy)")
+def conferma_batch_nesting_legacy(
+    batch_id: str,
+    confermato_da_utente: str = Query(..., description="ID dell'utente che conferma il batch"),
+    confermato_da_ruolo: str = Query(..., description="Ruolo dell'utente che conferma"),
+    db: Session = Depends(get_db)
+):
+    """
+    ⚠️ ENDPOINT LEGACY - USA /confirm
+    =================================
+    
+    Questo endpoint è deprecato. Usa invece: PATCH /{batch_id}/confirm
+    Mantiene compatibilità con il frontend esistente.
+    """
+    logger.warning(f"⚠️ Uso endpoint legacy /conferma per batch {batch_id} - migrare a /confirm")
+    
+    # Forward alla nuova implementazione
+    return confirm_batch_nesting(batch_id, confermato_da_utente, confermato_da_ruolo, db)
+
+@router.patch("/{batch_id}/load", response_model=BatchNestingResponse,
+              summary="🔄 Carica batch - Transizione CONFERMATO → LOADED")
+def load_batch_nesting(
+    batch_id: str,
+    caricato_da_utente: str = Query(..., description="ID dell'utente che carica il batch"),
+    caricato_da_ruolo: str = Query(..., description="Ruolo dell'utente che carica (Responsabile o Autoclavista)"),
+    db: Session = Depends(get_db)
+):
+    """
+    🔄 CARICA BATCH IN AUTOCLAVE
+    =============================
+    
+    Transizione: CONFERMATO → LOADED
+    
+    **Protezioni:**
+    - Solo batch in stato CONFERMATO possono essere caricati
+    - Solo utenti con ruolo 'Responsabile' o 'Autoclavista' possono caricare
+    
+    **Aggiornamenti:**
+    - Stato → LOADED
+    - updated_at → timestamp attuale
+    - Metadati utente aggiornati
+    """
+    # Validazione ruolo
+    if caricato_da_ruolo not in ["Responsabile", "Autoclavista", "ADMIN"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Accesso negato: solo utenti 'Responsabile' o 'Autoclavista' possono caricare batch. Ruolo attuale: {caricato_da_ruolo}"
+        )
+    
+    # Recupera batch
+    db_batch = db.query(BatchNesting).filter(BatchNesting.id == batch_id).first()
+    
+    if db_batch is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Batch nesting con ID {batch_id} non trovato"
+        )
+    
+    # Validazione transizione di stato
+    if db_batch.stato != StatoBatchNestingEnum.CONFERMATO.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Transizione non valida: batch deve essere in stato 'confermato' per essere caricato. Stato attuale: {db_batch.stato}"
+        )
+    
+    try:
+        # Aggiornamento stato
+        db_batch.stato = StatoBatchNestingEnum.LOADED.value
+        
+        db.commit()
+        db.refresh(db_batch)
+        
+        logger.info(f"✅ Batch {batch_id} caricato da {caricato_da_utente} ({caricato_da_ruolo})")
+        return db_batch
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Errore durante caricamento batch {batch_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante il caricamento del batch: {str(e)}"
+        )
+
+@router.patch("/{batch_id}/cure", response_model=BatchNestingResponse,
+              summary="🔄 Avvia cura - Transizione LOADED → CURED")  
+def cure_batch_nesting(
+    batch_id: str,
+    avviato_da_utente: str = Query(..., description="ID dell'utente che avvia la cura"),
+    avviato_da_ruolo: str = Query(..., description="Ruolo dell'utente che avvia la cura (Responsabile o Autoclavista)"),
+    db: Session = Depends(get_db)
+):
+    """
+    🔄 AVVIA CICLO DI CURA
+    ======================
+    
+    Transizione: LOADED → CURED
+    
+    **Protezioni:**
+    - Solo batch in stato LOADED possono avviare la cura
+    - Solo utenti con ruolo 'Responsabile' o 'Autoclavista' possono avviare
+    
+    **Aggiornamenti:**
+    - Stato → CURED
+    - updated_at → timestamp attuale
+    - Metadati utente aggiornati
+    """
+    # Validazione ruolo
+    if avviato_da_ruolo not in ["Responsabile", "Autoclavista", "ADMIN"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Accesso negato: solo utenti 'Responsabile' o 'Autoclavista' possono avviare la cura. Ruolo attuale: {avviato_da_ruolo}"
+        )
+    
+    # Recupera batch
+    db_batch = db.query(BatchNesting).filter(BatchNesting.id == batch_id).first()
+    
+    if db_batch is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Batch nesting con ID {batch_id} non trovato"
+        )
+    
+    # Validazione transizione di stato
+    if db_batch.stato != StatoBatchNestingEnum.LOADED.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Transizione non valida: batch deve essere in stato 'loaded' per avviare la cura. Stato attuale: {db_batch.stato}"
+        )
+    
+    try:
+        # Aggiornamento stato
+        db_batch.stato = StatoBatchNestingEnum.CURED.value
+        
+        db.commit()
+        db.refresh(db_batch)
+        
+        logger.info(f"✅ Cura avviata per batch {batch_id} da {avviato_da_utente} ({avviato_da_ruolo})")
+        return db_batch
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Errore durante avvio cura batch {batch_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante l'avvio della cura: {str(e)}"
+        )
+
+@router.patch("/{batch_id}/terminate", response_model=BatchNestingResponse,
+              summary="🔄 Termina batch - Transizione CURED → TERMINATO")
+def terminate_batch_nesting(
+    batch_id: str,
+    terminato_da_utente: str = Query(..., description="ID dell'utente che termina il batch"),
+    terminato_da_ruolo: str = Query(..., description="Ruolo dell'utente che termina (Responsabile o Autoclavista)"),
+    db: Session = Depends(get_db)
+):
+    """
+    🔄 TERMINA BATCH NESTING
+    ========================
+    
+    Transizione: CURED → TERMINATO
+    
+    **Protezioni:**
+    - Solo batch in stato CURED possono essere terminati
+    - Solo utenti con ruolo 'Responsabile' o 'Autoclavista' possono terminare
+    
+    **Aggiornamenti:**
+    - Stato → TERMINATO
+    - data_completamento → timestamp attuale
+    - durata_ciclo_minuti → calcolata dalla data_conferma
+    - updated_at → timestamp attuale
+    """
+    # Validazione ruolo
+    if terminato_da_ruolo not in ["Responsabile", "Autoclavista", "ADMIN"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Accesso negato: solo utenti 'Responsabile' o 'Autoclavista' possono terminare batch. Ruolo attuale: {terminato_da_ruolo}"
+        )
+    
+    # Recupera batch
+    db_batch = db.query(BatchNesting).filter(BatchNesting.id == batch_id).first()
+    
+    if db_batch is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Batch nesting con ID {batch_id} non trovato"
+        )
+    
+    # Validazione transizione di stato
+    if db_batch.stato != StatoBatchNestingEnum.CURED.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Transizione non valida: batch deve essere in stato 'cured' per essere terminato. Stato attuale: {db_batch.stato}"
+        )
+    
+    try:
+        # Aggiornamento stato e completamento batch
+        db_batch.stato = StatoBatchNestingEnum.TERMINATO.value
+        db_batch.data_completamento = datetime.now()
+        
+        # Calcola durata ciclo se abbiamo data_conferma
+        if db_batch.data_conferma:
+            durata = db_batch.data_completamento - db_batch.data_conferma
+            db_batch.durata_ciclo_minuti = int(durata.total_seconds() / 60)
+        
+        # 🆕 AGGIORNAMENTO AUTOMATICO STATO ODL: TERMINATO → FINITO
+        from models.odl import ODL
+        from models.autoclave import Autoclave, StatoAutoclaveEnum
+        
+        if db_batch.odl_ids:
+            updated_odl_count = 0
+            for odl_id in db_batch.odl_ids:
+                db_odl = db.query(ODL).filter(ODL.id == odl_id).first()
+                if db_odl and db_odl.status == "Cura":
+                    db_odl.status = "Finito"
+                    updated_odl_count += 1
+            
+            logger.info(f"📋 Aggiornati {updated_odl_count} ODL da 'Cura' a 'Finito' per batch {batch_id}")
+        
+        # 🆕 AGGIORNAMENTO AUTOMATICO STATO AUTOCLAVE: IN_USO → DISPONIBILE
+        db_autoclave = db.query(Autoclave).filter(Autoclave.id == db_batch.autoclave_id).first()
+        if db_autoclave and db_autoclave.stato == StatoAutoclaveEnum.IN_USO:
+            db_autoclave.stato = StatoAutoclaveEnum.DISPONIBILE
+            logger.info(f"🏭 Autoclave {db_autoclave.nome} (ID: {db_autoclave.id}) aggiornata da 'IN_USO' a 'DISPONIBILE' per batch {batch_id}")
+        
+        db.commit()
+        db.refresh(db_batch)
+        
+        logger.info(f"✅ Batch {batch_id} terminato da {terminato_da_utente} ({terminato_da_ruolo})")
+        return db_batch
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Errore durante terminazione batch {batch_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante la terminazione del batch: {str(e)}"
+        )
+
+# ========== FINE NUOVI ENDPOINT ==========
 
 # ========== ENDPOINT SOLVE v1.4.12-DEMO ==========
 
@@ -913,8 +1360,8 @@ def solve_nesting_v1_4_12_demo(
         
         # 3. Configura parametri solver
         solver_params = NestingParameters(
-            padding_mm=request.padding_mm,
-            min_distance_mm=request.min_distance_mm,
+            padding_mm=int(request.padding_mm),  # 🔧 FIX: Converte float to int
+            min_distance_mm=int(request.min_distance_mm),  # 🔧 FIX: Converte float to int
             vacuum_lines_capacity=request.vacuum_lines_capacity or autoclave.num_linee_vuoto,
             allow_heuristic=request.allow_heuristic,
             timeout_override=request.timeout_override,

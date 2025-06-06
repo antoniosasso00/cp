@@ -30,9 +30,9 @@ logger = logging.getLogger(__name__)
 @dataclass
 class NestingParameters:
     """Parametri per l'algoritmo di nesting ottimizzato"""
-    padding_mm: int = 20
-    min_distance_mm: int = 15
-    vacuum_lines_capacity: int = 10
+    padding_mm: int = 1  # 🚀 OTTIMIZZAZIONE MASSIMA: Padding ultra-aggressivo 1mm
+    min_distance_mm: int = 1  # 🚀 OTTIMIZZAZIONE MASSIMA: Distanza ultra-aggressiva 1mm
+    vacuum_lines_capacity: int = 20  # 🚀 OTTIMIZZAZIONE: Aumentato per maggiore flessibilità
     priorita_area: bool = True
     use_fallback: bool = True  # Abilita fallback greedy
     allow_heuristic: bool = True  # ✅ FIX: Cambiato da False a True per default
@@ -298,7 +298,9 @@ class NestingModel:
         
         valid_tools = []
         excluded_tools = []
-        margin = self.parameters.min_distance_mm
+        # 🚀 OTTIMIZZAZIONE: Margine ridotto per essere meno conservativi
+        margin = max(2, self.parameters.min_distance_mm // 2)  # Dimezza il margine
+        self.logger.info(f"🔍 Pre-filtraggio con margine ottimizzato: {margin}mm (ridotto da {self.parameters.min_distance_mm}mm)")
         
         for tool in tools:
             self.logger.info(f"   📋 Tool ODL {tool.odl_id}: {tool.width}x{tool.height}mm")
@@ -899,7 +901,7 @@ class NestingModel:
         autoclave: AutoclaveInfo, 
         occupied_rects: List[Tuple[float, float, float, float]]
     ) -> Optional[Tuple[float, float, float, float, bool]]:
-        """Trova la prima posizione valida per un tool nell'algoritmo greedy"""
+        """Trova la prima posizione valida per un tool nell'algoritmo greedy - OTTIMIZZATO"""
         
         margin = int(self.parameters.min_distance_mm)
         
@@ -910,10 +912,11 @@ class NestingModel:
         if tool.height + margin <= autoclave.width and tool.width + margin <= autoclave.height:
             orientations.append((tool.height, tool.width, True))
         
-        # Griglia di ricerca con passo di 10mm per performance
-        step = 10
+        # 🚀 OTTIMIZZAZIONE: Griglia di ricerca più fine (2mm invece di 10mm)
+        step = 2
         
         for width, height, rotated in orientations:
+            # 🚀 OTTIMIZZAZIONE: Cerca prima le posizioni più compatte (bottom-left)
             for y in range(margin, int(round(autoclave.height - height)) + 1, step):
                 for x in range(margin, int(round(autoclave.width - width)) + 1, step):
                     
@@ -1083,8 +1086,8 @@ class NestingModel:
         if not tools_to_place:
             return []
         
-        # Ordina per max(height,width) decrescente come BL-FFD
-        sorted_tools = sorted(tools_to_place, key=lambda t: max(t.width, t.height), reverse=True)
+        # 🚀 OTTIMIZZAZIONE: Ordina per area decrescente per migliore packing
+        sorted_tools = sorted(tools_to_place, key=lambda t: t.width * t.height, reverse=True)
         
         new_layouts = []
         padding = self.parameters.min_distance_mm
@@ -1240,7 +1243,8 @@ class NestingModel:
         self.logger.info(f"🎯 v1.4.17-DEMO: Applico algoritmo BL-FFD con padding {padding}mm")
         
         # 🔄 NUOVO v1.4.17-DEMO: Ordina per max(height,width) decrescente (criterio FFD migliorato)
-        sorted_tools = sorted(tools, key=lambda t: max(t.width, t.height), reverse=True)
+        # 🚀 OTTIMIZZAZIONE: Ordina per area decrescente per migliore packing
+        sorted_tools = sorted(tools, key=lambda t: t.width * t.height, reverse=True)
         
         layouts = []
         
@@ -1294,7 +1298,8 @@ class NestingModel:
         padding: int
     ) -> Optional[Tuple[float, float, float, float, bool]]:
         """
-        Trova la posizione bottom-left più bassa e a sinistra per il tool.
+        🚀 OTTIMIZZATO: Trova la posizione bottom-left più bassa e a sinistra per il tool.
+        Implementazione migliorata con ricerca intelligente e griglia fine.
         
         Args:
             tool: Tool da posizionare
@@ -1319,44 +1324,386 @@ class NestingModel:
         if not orientations:
             return None
         
-        best_position = None
-        best_y = float('inf')  # Cerca la posizione più bassa
-        best_x = float('inf')  # In caso di parità, la più a sinistra
+        # 🚀 OTTIMIZZAZIONE: Genera punti candidati intelligenti invece di griglia brute-force
+        candidate_points = self._generate_smart_candidate_points(autoclave, existing_layouts, padding)
         
-        # Griglia di ricerca bottom-left
-        grid_step = 5  # Risoluzione griglia in mm
+        best_position = None
+        best_score = float('inf')  # Score = y * 10000 + x (priorità bottom-left)
         
         for width, height, rotated in orientations:
-            # Scansiona dal basso verso l'alto, da sinistra a destra
-            for y in range(padding, int(autoclave.height - height) + 1, grid_step):
-                for x in range(padding, int(autoclave.width - width) + 1, grid_step):
-                    
-                    # Controlla se la posizione è valida (no sovrapposizioni)
-                    valid_position = True
-                    for rect_x, rect_y, rect_w, rect_h in occupied_rects:
-                        if not (x + width <= rect_x or x >= rect_x + rect_w or 
-                               y + height <= rect_y or y >= rect_y + rect_h):
-                            valid_position = False
-                            break
-                    
-                    if valid_position:
-                        # Controlla se è migliore della precedente (bottom-left)
-                        if y < best_y or (y == best_y and x < best_x):
-                            best_position = (x, y, width, height, rotated)
-                            best_y = y
-                            best_x = x
-                            
-                        # Se trovata una posizione valida in questa riga, passa alla successiva
-                        # (bottom-left significa prima posizione valida dal basso)
+            for x, y in candidate_points:
+                # Verifica se il tool entra nell'autoclave
+                if x + width > autoclave.width or y + height > autoclave.height:
+                    continue
+                
+                # Controlla sovrapposizioni
+                valid_position = True
+                for rect_x, rect_y, rect_w, rect_h in occupied_rects:
+                    if not (x + width <= rect_x or x >= rect_x + rect_w or 
+                           y + height <= rect_y or y >= rect_y + rect_h):
+                        valid_position = False
                         break
+                
+                if valid_position:
+                    # Calcola score bottom-left (priorità y, poi x)
+                    score = y * 10000 + x
+                    if score < best_score:
+                        best_position = (x, y, width, height, rotated)
+                        best_score = score
                         
-                # Se trovata una posizione in questa altezza, non cercare più in alto
-                if best_position and best_y == y:
-                    break
-                    
         return best_position
+    
+    def _generate_smart_candidate_points(
+        self, 
+        autoclave: AutoclaveInfo, 
+        existing_layouts: List[NestingLayout], 
+        padding: int
+    ) -> List[Tuple[float, float]]:
+        """
+        🚀 NUOVO: Genera punti candidati intelligenti per il posizionamento.
+        Invece di una griglia brute-force, genera punti strategici basati sui layout esistenti.
+        """
+        candidates = set()
+        
+        # Punto di origine
+        candidates.add((padding, padding))
+        
+        # Punti basati sui layout esistenti
+        for layout in existing_layouts:
+            # Angolo in basso a destra del layout
+            candidates.add((layout.x + layout.width + padding, padding))
+            # Angolo in alto a sinistra del layout  
+            candidates.add((padding, layout.y + layout.height + padding))
+            # Angolo in alto a destra del layout
+            candidates.add((layout.x + layout.width + padding, layout.y + layout.height + padding))
+            
+        # Aggiungi griglia fine solo nelle aree promettenti (primi 500mm da ogni bordo)
+        grid_step = 2
+        
+        # Griglia fine vicino ai bordi
+        for y in range(padding, min(500, int(autoclave.height)), grid_step):
+            for x in range(padding, min(500, int(autoclave.width)), grid_step):
+                candidates.add((x, y))
+        
+        # Converti in lista ordinata per bottom-left
+        candidate_list = list(candidates)
+        candidate_list.sort(key=lambda p: (p[1], p[0]))  # Ordina per y, poi x
+        
+        return candidate_list
+    
+    # 🚀 METODI HELPER PER ALGORITMO FFD 2D AVANZATO
+    
+    def _find_optimal_position_ffd(
+        self,
+        tool: ToolInfo,
+        autoclave: AutoclaveInfo,
+        existing_layouts: List[NestingLayout],
+        padding: int
+    ) -> Optional[Tuple[float, float, float, float, bool]]:
+        """
+        🚀 NUOVO: Trova la posizione ottimale usando múltiple strategie FFD 2D.
+        
+        Strategie implementate:
+        1. Bottom-Left-Fill con Skyline
+        2. Best-Fit con valutazione spreco
+        3. Corner-Fitting per spazi stretti
+        4. Gap-Filling per spazi residui
+        """
+        
+        strategies = [
+            self._strategy_bottom_left_skyline,
+            self._strategy_best_fit_waste,
+            self._strategy_corner_fitting,
+            self._strategy_gap_filling
+        ]
+        
+        best_position = None
+        best_score = float('inf')
+        
+        # Prova tutte le strategie e scegli la migliore
+        for strategy in strategies:
+            position = strategy(tool, autoclave, existing_layouts, padding)
+            if position:
+                x, y, width, height, rotated = position
+                # Score = priorità bottom-left + spreco spazio
+                wasted_space = self._calculate_wasted_space(x, y, width, height, existing_layouts, autoclave)
+                score = y * 1000 + x + wasted_space * 0.1
+                
+                if score < best_score:
+                    best_position = position
+                    best_score = score
+        
+        return best_position
+    
+    def _strategy_bottom_left_skyline(
+        self, 
+        tool: ToolInfo, 
+        autoclave: AutoclaveInfo, 
+        existing_layouts: List[NestingLayout], 
+        padding: int
+    ) -> Optional[Tuple[float, float, float, float, bool]]:
+        """🚀 Strategia 1: Bottom-Left con tracciamento Skyline"""
+        
+        # Crea skyline (contorno superiore degli oggetti posizionati)
+        skyline = self._build_skyline(existing_layouts, autoclave)
+        
+        # Prova entrambi gli orientamenti
+        orientations = []
+        if tool.width + padding <= autoclave.width and tool.height + padding <= autoclave.height:
+            orientations.append((tool.width, tool.height, False))
+        if tool.height + padding <= autoclave.width and tool.width + padding <= autoclave.height:
+            orientations.append((tool.height, tool.width, True))
+        
+        best_position = None
+        best_y = float('inf')
+        
+        for width, height, rotated in orientations:
+            # Trova la posizione più bassa possibile lungo la skyline
+            for x in range(padding, int(autoclave.width - width) + 1, 2):
+                y = self._find_skyline_y(x, x + width, skyline, padding)
+                
+                if y + height <= autoclave.height and y < best_y:
+                    # Verifica sovrapposizioni
+                    if not self._has_overlap(x, y, width, height, existing_layouts):
+                        best_position = (x, y, width, height, rotated)
+                        best_y = y
+        
+        return best_position
+    
+    def _strategy_best_fit_waste(
+        self, 
+        tool: ToolInfo, 
+        autoclave: AutoclaveInfo, 
+        existing_layouts: List[NestingLayout], 
+        padding: int
+    ) -> Optional[Tuple[float, float, float, float, bool]]:
+        """🚀 Strategia 2: Best-Fit minimizzando spreco spazio"""
+        
+        candidates = self._generate_smart_candidate_points(autoclave, existing_layouts, padding)
+        
+        best_position = None
+        best_waste = float('inf')
+        
+        # Prova entrambi gli orientamenti
+        orientations = []
+        if tool.width + padding <= autoclave.width and tool.height + padding <= autoclave.height:
+            orientations.append((tool.width, tool.height, False))
+        if tool.height + padding <= autoclave.width and tool.width + padding <= autoclave.height:
+            orientations.append((tool.height, tool.width, True))
+        
+        for width, height, rotated in orientations:
+            for x, y in candidates:
+                if x + width > autoclave.width or y + height > autoclave.height:
+                    continue
+                
+                if not self._has_overlap(x, y, width, height, existing_layouts):
+                    waste = self._calculate_wasted_space(x, y, width, height, existing_layouts, autoclave)
+                    if waste < best_waste:
+                        best_position = (x, y, width, height, rotated)
+                        best_waste = waste
+        
+        return best_position
+    
+    def _strategy_corner_fitting(
+        self, 
+        tool: ToolInfo, 
+        autoclave: AutoclaveInfo, 
+        existing_layouts: List[NestingLayout], 
+        padding: int
+    ) -> Optional[Tuple[float, float, float, float, bool]]:
+        """🚀 Strategia 3: Corner-Fitting per spazi negli angoli"""
+        
+        # Genera punti negli angoli degli oggetti esistenti
+        corner_points = set()
+        corner_points.add((padding, padding))  # Angolo origine
+        
+        for layout in existing_layouts:
+            # Angoli dell'oggetto
+            corners = [
+                (layout.x + layout.width + padding, layout.y),
+                (layout.x, layout.y + layout.height + padding),
+                (layout.x + layout.width + padding, layout.y + layout.height + padding)
+            ]
+            corner_points.update(corners)
+        
+        # Ordina per bottom-left
+        corner_list = sorted(corner_points, key=lambda p: (p[1], p[0]))
+        
+        # Prova orientamenti
+        orientations = []
+        if tool.width + padding <= autoclave.width and tool.height + padding <= autoclave.height:
+            orientations.append((tool.width, tool.height, False))
+        if tool.height + padding <= autoclave.width and tool.width + padding <= autoclave.height:
+            orientations.append((tool.height, tool.width, True))
+        
+        for width, height, rotated in orientations:
+            for x, y in corner_list:
+                if x + width <= autoclave.width and y + height <= autoclave.height:
+                    if not self._has_overlap(x, y, width, height, existing_layouts):
+                        return (x, y, width, height, rotated)
+        
+        return None
+    
+    def _strategy_gap_filling(
+        self, 
+        tool: ToolInfo, 
+        autoclave: AutoclaveInfo, 
+        existing_layouts: List[NestingLayout], 
+        padding: int
+    ) -> Optional[Tuple[float, float, float, float, bool]]:
+        """🚀 Strategia 4: Gap-Filling per riempire spazi residui"""
+        
+        # Identifica gap (spazi vuoti tra oggetti)
+        gaps = self._identify_gaps(existing_layouts, autoclave, padding)
+        
+        # Prova orientamenti
+        orientations = []
+        if tool.width + padding <= autoclave.width and tool.height + padding <= autoclave.height:
+            orientations.append((tool.width, tool.height, False))
+        if tool.height + padding <= autoclave.width and tool.width + padding <= autoclave.height:
+            orientations.append((tool.height, tool.width, True))
+        
+        for gap_x, gap_y, gap_w, gap_h in gaps:
+            for width, height, rotated in orientations:
+                if width <= gap_w and height <= gap_h:
+                    # Posiziona nell'angolo bottom-left del gap
+                    x, y = gap_x, gap_y
+                    if not self._has_overlap(x, y, width, height, existing_layouts):
+                        return (x, y, width, height, rotated)
+        
+        return None
+    
+    def _build_skyline(self, layouts: List[NestingLayout], autoclave: AutoclaveInfo) -> List[Tuple[float, float]]:
+        """Costruisce la skyline (contorno superiore) degli oggetti posizionati"""
+        if not layouts:
+            return [(0, 0), (autoclave.width, 0)]
+        
+        # Punti critici della skyline
+        events = []
+        for layout in layouts:
+            events.append((layout.x, layout.y + layout.height, 'start'))
+            events.append((layout.x + layout.width, layout.y + layout.height, 'end'))
+        
+        events.sort()
+        
+        skyline = []
+        current_height = 0
+        
+        for x, height, event_type in events:
+            if height > current_height:
+                skyline.append((x, height))
+                current_height = height
+        
+        # Aggiungi fine autoclave
+        skyline.append((autoclave.width, 0))
+        
+        return skyline
+    
+    def _find_skyline_y(self, x_start: float, x_end: float, skyline: List[Tuple[float, float]], padding: int) -> float:
+        """Trova l'altezza Y lungo la skyline per l'intervallo [x_start, x_end]"""
+        max_y = padding
+        
+        for x, y in skyline:
+            if x_start <= x <= x_end:
+                max_y = max(max_y, y + padding)
+        
+        return max_y
+    
+    def _has_overlap(self, x: float, y: float, width: float, height: float, layouts: List[NestingLayout]) -> bool:
+        """Verifica se un rettangolo si sovrappone con i layout esistenti"""
+        for layout in layouts:
+            if not (x + width <= layout.x or x >= layout.x + layout.width or 
+                   y + height <= layout.y or y >= layout.y + layout.height):
+                return True
+        return False
+    
+    def _calculate_wasted_space(self, x: float, y: float, width: float, height: float, 
+                              layouts: List[NestingLayout], autoclave: AutoclaveInfo) -> float:
+        """Calcola lo spazio sprecato intorno a una posizione"""
+        # Calcola l'area degli spazi vuoti adiacenti che diventano inutilizzabili
+        wasted = 0
+        
+        # Spazio sopra
+        space_above = autoclave.height - (y + height)
+        if space_above > 0 and space_above < 100:  # Spazio piccolo = spreco
+            wasted += space_above * width
+        
+        # Spazio a destra
+        space_right = autoclave.width - (x + width)
+        if space_right > 0 and space_right < 100:  # Spazio piccolo = spreco
+            wasted += space_right * height
+        
+        return wasted
+    
+    def _identify_gaps(self, layouts: List[NestingLayout], autoclave: AutoclaveInfo, padding: int) -> List[Tuple[float, float, float, float]]:
+        """Identifica spazi vuoti (gap) tra gli oggetti posizionati"""
+        if not layouts:
+            return [(padding, padding, autoclave.width - 2*padding, autoclave.height - 2*padding)]
+        
+        gaps = []
+        
+        # Griglia semplificata per identificare spazi vuoti
+        grid_size = 50  # mm
+        
+        for y in range(padding, int(autoclave.height), grid_size):
+            for x in range(padding, int(autoclave.width), grid_size):
+                # Verifica se questo punto è libero
+                point_free = True
+                for layout in layouts:
+                    if (layout.x <= x <= layout.x + layout.width and 
+                        layout.y <= y <= layout.y + layout.height):
+                        point_free = False
+                        break
+                
+                if point_free:
+                    # Calcola dimensioni del gap partendo da questo punto
+                    gap_width = min(grid_size, autoclave.width - x)
+                    gap_height = min(grid_size, autoclave.height - y)
+                    gaps.append((x, y, gap_width, gap_height))
+        
+        return gaps
+    
+    def _compact_layout(self, layouts: List[NestingLayout], autoclave: AutoclaveInfo, padding: int) -> List[NestingLayout]:
+        """
+        🔧 NUOVO v1.4.17-DEMO: Compatta il layout eliminando spazi vuoti
+        """
+        if not layouts:
+            return layouts
+        
+        # Ordina per y crescente, poi x crescente
+        sorted_layouts = sorted(layouts, key=lambda l: (l.y, l.x))
+        
+        compacted = []
+        for layout in sorted_layouts:
+            # Trova la posizione più bassa possibile per questo layout
+            best_y = padding
+            
+            for existing in compacted:
+                # Se c'è sovrapposizione sull'asse X
+                if not (layout.x + layout.width <= existing.x or layout.x >= existing.x + existing.width):
+                    # Posiziona sopra questo layout esistente
+                    candidate_y = existing.y + existing.height + padding
+                    best_y = max(best_y, candidate_y)
+            
+            # Verifica che non esca dai bordi
+            if best_y + layout.height <= autoclave.height:
+                compacted_layout = NestingLayout(
+                    odl_id=layout.odl_id,
+                    x=layout.x,
+                    y=best_y,
+                    width=layout.width,
+                    height=layout.height,
+                    weight=layout.weight,
+                    rotated=layout.rotated,
+                    lines_used=layout.lines_used
+                )
+                compacted.append(compacted_layout)
+            else:
+                # Non può essere compattato, mantieni posizione originale
+                compacted.append(layout)
+        
+        return compacted
 
-    # 🎯 NUOVO v1.4.16-DEMO: Post-processing per eliminare overlap
     def _post_process_overlaps(
         self, 
         solution: NestingSolution, 
@@ -1364,103 +1711,49 @@ class NestingModel:
         autoclave: AutoclaveInfo
     ) -> NestingSolution:
         """
-        Post-processing per rilevare e correggere sovrapposizioni nel layout.
-        
-        Args:
-            solution: Soluzione da verificare e correggere
-            tools: Lista completa dei tool
-            autoclave: Informazioni dell'autoclave
-            
-        Returns:
-            Soluzione corretta o marcata come invalid se persistono overlap
+        🎯 NUOVO v1.4.16-DEMO: Post-processa la soluzione per rilevare e correggere overlap
         """
-        
-        # 1. Controlla se ci sono sovrapposizioni
-        overlaps = self.check_overlap(solution.layouts)
-        
-        if not overlaps:
-            # Nessuna sovrapposizione, layout valido
-            self.logger.info("✅ Layout validato: nessuna sovrapposizione rilevata")
+        if not solution.layouts:
             return solution
         
-        self.logger.warning(f"🔴 Rilevate {len(overlaps)} sovrapposizioni nel layout")
+        # Rileva overlap
+        overlaps = self.check_overlap(solution.layouts)
         
-        # 2. Se c'erano overlap e non era stato usato fallback, prova BL-FFD
-        if not solution.metrics.fallback_used:
-            self.logger.info("🎯 Tentativo correzione overlap con algoritmo BL-FFD")
+        if overlaps:
+            self.logger.warning(f"🎯 Rilevati {len(overlaps)} overlap nel layout")
+            solution.metrics.invalid = True
             
-            # Estrai i tool dalla soluzione attuale
-            positioned_tools = []
-            for layout in solution.layouts:
-                # Trova il tool corrispondente
-                for tool in tools:
-                    if tool.odl_id == layout.odl_id:
-                        positioned_tools.append(tool)
-                        break
-            
-            # Applica BL-FFD con padding considerato
-            corrected_layouts = self._apply_bl_ffd_algorithm(
-                positioned_tools, 
-                autoclave,
-                self.parameters.min_distance_mm
-            )
-            
-            # Verifica se BL-FFD ha risolto gli overlap
-            corrected_overlaps = self.check_overlap(corrected_layouts)
-            
-            if not corrected_overlaps:
-                # BL-FFD ha risolto i problemi!
-                self.logger.info("✅ BL-FFD ha risolto le sovrapposizioni")
+            # Prova a correggere con BL-FFD
+            try:
+                # Converti layouts in ToolInfo per riprocessamento
+                tools_to_reposition = []
+                for layout in solution.layouts:
+                    tool = next((t for t in tools if t.odl_id == layout.odl_id), None)
+                    if tool:
+                        tools_to_reposition.append(tool)
                 
-                # Ricalcola metriche
-                total_area = autoclave.width * autoclave.height
-                used_area = sum(l.width * l.height for l in corrected_layouts)
-                total_weight = sum(l.weight for l in corrected_layouts)
-                total_lines = sum(l.lines_used for l in corrected_layouts)
+                # Riapplica BL-FFD per correggere overlap
+                corrected_layouts = self._apply_bl_ffd_algorithm(
+                    tools_to_reposition, 
+                    autoclave, 
+                    padding=self.parameters.min_distance_mm
+                )
                 
-                area_pct = (used_area / total_area * 100) if total_area > 0 else 0
-                vacuum_util_pct = (total_lines / self.parameters.vacuum_lines_capacity * 100) if self.parameters.vacuum_lines_capacity > 0 else 0
-                # 🔄 NUOVO v1.4.17-DEMO: Formula efficienza corretta Z = 0.8·area + 0.2·vacuum
-                efficiency_score = 0.8 * area_pct + 0.2 * vacuum_util_pct
+                # Verifica se la correzione ha eliminato gli overlap
+                corrected_overlaps = self.check_overlap(corrected_layouts)
                 
-                # Aggiorna la soluzione
-                solution.layouts = corrected_layouts
-                solution.metrics.area_pct = area_pct
-                solution.metrics.vacuum_util_pct = vacuum_util_pct
-                solution.metrics.lines_used = total_lines
-                solution.metrics.total_weight = total_weight
-                solution.metrics.positioned_count = len(corrected_layouts)
-                solution.metrics.efficiency_score = efficiency_score
-                solution.metrics.invalid = False
-                solution.algorithm_status += "_BL_FFD_CORRECTED"
-                solution.message += " [Overlap corretti con BL-FFD]"
-                
-                return solution
-            else:
-                self.logger.warning(f"⚠️ BL-FFD non ha risolto tutti gli overlap ({len(corrected_overlaps)} rimasti)")
+                if len(corrected_overlaps) < len(overlaps):
+                    self.logger.info(f"🎯 Correzione overlap: {len(overlaps)} → {len(corrected_overlaps)}")
+                    solution.layouts = corrected_layouts
+                    solution.metrics.invalid = len(corrected_overlaps) > 0
+                    
+                    # Ricalcola metriche
+                    total_area = sum(l.width * l.height for l in corrected_layouts)
+                    autoclave_area = autoclave.width * autoclave.height
+                    solution.metrics.area_pct = (total_area / autoclave_area) * 100.0 if autoclave_area > 0 else 0.0
+                    solution.metrics.positioned_count = len(corrected_layouts)
+                    
+            except Exception as e:
+                self.logger.error(f"🎯 Errore nella correzione overlap: {e}")
         
-        # 3. Se persistono overlap, marca il layout come invalid
-        self.logger.error(f"🔴 Layout INVALID: {len(overlaps)} sovrapposizioni non risolte")
-        
-        # Aggiungi informazioni dettagliate sugli overlap
-        overlap_details = []
-        for piece_a, piece_b in overlaps:
-            overlap_details.append({
-                'odl_a': piece_a.odl_id,
-                'odl_b': piece_b.odl_id,
-                'area_a': f"{piece_a.width}x{piece_a.height}mm",
-                'area_b': f"{piece_b.width}x{piece_b.height}mm",
-                'pos_a': f"({piece_a.x}, {piece_a.y})",
-                'pos_b': f"({piece_b.x}, {piece_b.y})"
-            })
-        
-        # Marca la soluzione come invalid
-        solution.metrics.invalid = True
-        solution.algorithm_status += "_INVALID_OVERLAPS"
-        solution.message += f" [ATTENZIONE: {len(overlaps)} sovrapposizioni rilevate]"
-        
-        # Aggiungi i dettagli degli overlap alla soluzione per il frontend
-        if not hasattr(solution, 'overlaps'):
-            solution.overlaps = overlap_details
-        
-        return solution 
+        return solution

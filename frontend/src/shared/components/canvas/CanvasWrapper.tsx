@@ -130,6 +130,13 @@ interface CanvasWrapperProps {
   className?: string;
   scaleX?: number;
   scaleY?: number;
+  x?: number;
+  y?: number;
+  draggable?: boolean;
+  onDragStart?: () => void;
+  onDragEnd?: (e: any) => void;
+  onMouseMove?: (e: any) => void;
+  onMouseLeave?: () => void;
   loadingDelay?: number;
 }
 
@@ -139,7 +146,14 @@ const CanvasWrapper = React.forwardRef<any, CanvasWrapperProps>(({
   children,
   className = "",
   scaleX = 1,
-  scaleY = 1
+  scaleY = 1,
+  x = 0,
+  y = 0,
+  draggable = false,
+  onDragStart,
+  onDragEnd,
+  onMouseMove,
+  onMouseLeave
 }, ref) => {
   const { loaded, error } = useKonvaLoader();
   
@@ -181,6 +195,13 @@ const CanvasWrapper = React.forwardRef<any, CanvasWrapperProps>(({
         height={height}
         scaleX={scaleX}
         scaleY={scaleY}
+        x={x}
+        y={y}
+        draggable={draggable}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onMouseMove={onMouseMove}
+        onMouseLeave={onMouseLeave}
       >
         {children}
       </SafeStage>

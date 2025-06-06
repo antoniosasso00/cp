@@ -53,7 +53,7 @@ export function DashboardShortcuts({ userRole, className = "" }: DashboardShortc
       title: 'Nesting Attivi',
       description: 'Visualizza i nesting in corso',
       icon: Package,
-      href: '/dashboard/curing/nesting',
+      href: '/nesting',
       color: 'bg-purple-500 hover:bg-purple-600',
       available: true
     },
@@ -121,7 +121,7 @@ export function DashboardShortcuts({ userRole, className = "" }: DashboardShortc
       title: 'Nesting Attivi',
       description: 'Visualizza i nesting in corso',
       icon: Package,
-      href: '/dashboard/curing/nesting',
+      href: '/nesting',
       color: 'bg-purple-500 hover:bg-purple-600',
       available: true
     },

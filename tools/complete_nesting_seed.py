@@ -32,6 +32,18 @@ try:
     from models.parte import Parte
     from models.tool import Tool
     from models.odl import ODL
+    from models.batch_nesting import BatchNesting
+    # 🔧 IMPORTA TUTTI I MODELLI per assicurarsi che le tabelle vengano create
+    from models.nesting_result import NestingResult
+    from models.report import Report
+    from models.schedule_entry import ScheduleEntry
+    from models.state_log import StateLog
+    from models.system_log import SystemLog
+    from models.tempo_fase import TempoFase
+    from models.tempo_produzione import TempoProduzione
+    from models.standard_time import StandardTime
+    from models.odl_log import ODLLog
+    from models.batch_history import BatchHistory
     import random
 except ImportError as e:
     print(f"❌ Errore import: {e}")
@@ -66,112 +78,42 @@ class CompleteNestingSeed:
         logger.info("🧹 Pulizia dati test esistenti...")
         
         try:
-            # Rimuovi ODL di test (vari pattern)
-            test_patterns = [
-                "%test%", "%TEST%", "%Test%",
-                "%DEMO%", "%demo%", "%Demo%",
-                "%edge case%", "%Edge case%",
-                "%AeroTest%", "%EdgeTest%", "%ROT-%",
-                "%v1.5.0%", "%v2.0.0%", "%nesting%"
-            ]
+            # 🔧 PRIMA: Crea le tabelle se non esistono
+            logger.info("📋 Creazione tabelle database...")
+            Base.metadata.create_all(bind=engine)
             
-            total_odl_deleted = 0
-            for pattern in test_patterns:
-                odl_to_delete = self.db.query(ODL).filter(ODL.note.like(pattern)).all()
-                for odl in odl_to_delete:
-                    self.db.delete(odl)
-                    total_odl_deleted += 1
-            
-            # Rimuovi tool di test
-            tool_patterns = [
-                "TOOL-WING-%", "TOOL-ENGINE-%", "TOOL-LANDING-%",
-                "TOOL-CONTROL-%", "TOOL-FUEL-%", "TOOL-CABIN-%",
-                "TOOL-AVIONICS-%", "TOOL-THERMAL-%", "TOOL-GIANT-%",
-                "TOOL-VACUUM-%", "TOOL-STRESS-%", "TOOL-LOWEFF-%", 
-                "TOOL-HAPPY-%", "TOOL-ROT-%", "TOOL-STRUCT-%",
-                "TOOL-ELEC-%", "TOOL-MECH-%"
-            ]
-            
-            total_tools_deleted = 0
-            for pattern in tool_patterns:
-                tools_to_delete = self.db.query(Tool).filter(Tool.part_number_tool.like(pattern)).all()
-                for tool in tools_to_delete:
-                    self.db.delete(tool)
-                    total_tools_deleted += 1
-            
-            # Rimuovi parti di test
-            part_patterns = [
-                "WING-%", "ENGINE-%", "LANDING-%", "CONTROL-%", 
-                "FUEL-%", "CABIN-%", "AVIONICS-%", "THERMAL-%", 
-                "GIANT-%", "VACUUM-%", "STRESS-%", "LOW-%", 
-                "HAPPY-%", "TEST-%", "STRUCT-%", "ELEC-%", "MECH-%"
-            ]
-            
-            total_parts_deleted = 0
-            for pattern in part_patterns:
-                parts_to_delete = self.db.query(Parte).filter(Parte.part_number.like(pattern)).all()
-                for part in parts_to_delete:
-                    self.db.delete(part)
-                    total_parts_deleted += 1
-            
-            # Rimuovi cataloghi di test
-            catalogs_to_delete = self.db.query(Catalogo).filter(
-                Catalogo.categoria.like("%Test%") |
-                Catalogo.categoria.like("%Edge%") |
-                Catalogo.categoria.like("%Demo%") |
-                Catalogo.sotto_categoria.like("%test%") |
-                Catalogo.sotto_categoria.like("%demo%") |
-                Catalogo.categoria.like("%Strutturale%") |
-                Catalogo.categoria.like("%Propulsione%") |
-                Catalogo.categoria.like("%Elettronica%") |
-                Catalogo.categoria.like("%Meccanica%") |
-                Catalogo.categoria.like("%Controlli%")
-            ).all()
-            
-            total_catalogs_deleted = len(catalogs_to_delete)
-            for catalog in catalogs_to_delete:
-                self.db.delete(catalog)
-            
-            # Rimuovi autoclavi di test
-            test_autoclavi = self.db.query(Autoclave).filter(
-                Autoclave.nome.like("%Test%") |
-                Autoclave.nome.like("%DEMO%") |
-                Autoclave.nome.like("%Edge%") |
-                Autoclave.codice.like("%TEST%") |
-                Autoclave.codice.like("%EDGE%") |
-                Autoclave.codice.like("%DEMO%") |
-                Autoclave.nome.like("%Nesting%") |
-                Autoclave.codice.like("%NEST%")
-            ).all()
-            
-            total_autoclavi_deleted = len(test_autoclavi)
-            for autoclave in test_autoclavi:
-                self.db.delete(autoclave)
-            
-            # Rimuovi cicli cura di test
-            test_cicli = self.db.query(CicloCura).filter(
-                CicloCura.nome.like("%Test%") |
-                CicloCura.nome.like("%DEMO%") |
-                CicloCura.nome.like("%Edge%") |
-                CicloCura.nome.like("%Aeronautico%") |
-                CicloCura.nome.like("%Automotive%") |
-                CicloCura.nome.like("%Marine%")
-            ).all()
-            
-            total_cicli_deleted = len(test_cicli)
-            for ciclo in test_cicli:
-                self.db.delete(ciclo)
-            
-            self.db.commit()
-            
-            logger.info(f"✅ Pulizia completata:")
-            logger.info(f"   📋 ODL eliminati: {total_odl_deleted}")
-            logger.info(f"   🔧 Tools eliminati: {total_tools_deleted}")
-            logger.info(f"   📦 Parti eliminate: {total_parts_deleted}")
-            logger.info(f"   📚 Cataloghi eliminati: {total_catalogs_deleted}")
-            logger.info(f"   🏭 Autoclavi eliminate: {total_autoclavi_deleted}")
-            logger.info(f"   🔄 Cicli cura eliminati: {total_cicli_deleted}")
-            
+            # 🔧 Verifica se ci sono dati da pulire
+            try:
+                # Test se le tabelle esistono e hanno dati
+                batch_count = self.db.query(BatchNesting).count()
+                odl_count = self.db.query(ODL).count()
+                tool_count = self.db.query(Tool).count()
+                
+                if batch_count == 0 and odl_count == 0 and tool_count == 0:
+                    logger.info("ℹ️ Database vuoto, nessuna pulizia necessaria")
+                    return
+                    
+                logger.info(f"📊 Dati esistenti: {batch_count} batch, {odl_count} ODL, {tool_count} tools")
+                
+                # Elimina tutti i dati esistenti per ricominciare da zero
+                logger.info("🗑️ Eliminazione completa dati esistenti...")
+                
+                # Elimina in ordine per rispettare i constraint
+                self.db.query(BatchNesting).delete()
+                self.db.query(ODL).delete()
+                self.db.query(Tool).delete()
+                self.db.query(Parte).delete()
+                self.db.query(Catalogo).delete()
+                self.db.query(Autoclave).delete()
+                self.db.query(CicloCura).delete()
+                
+                self.db.commit()
+                logger.info("✅ Pulizia completa completata")
+                
+            except Exception as e:
+                logger.info(f"ℹ️ Errore durante pulizia (probabilmente database vuoto): {str(e)}")
+                self.db.rollback()
+                
         except Exception as e:
             logger.error(f"💥 Errore durante pulizia: {str(e)}")
             self.db.rollback()

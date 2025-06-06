@@ -64,8 +64,8 @@ export default function NewNestingPage() {
   const [selectedOdl, setSelectedOdl] = useState<string[]>([]);
   const [selectedAutoclave, setSelectedAutoclave] = useState<string>('');
   const [parametri, setParametri] = useState<NestingParametri>({
-    padding_mm: 20,
-    min_distance_mm: 15,
+    padding_mm: 1,
+    min_distance_mm: 1,
     priorita_area: true,
     accorpamento_odl: false
   });
@@ -314,7 +314,7 @@ export default function NewNestingPage() {
                 value={parametri.padding_mm}
                 onChange={(value) => setParametri(prev => ({
                   ...prev,
-                  padding_mm: Number(value) || 20
+                  padding_mm: Number(value) || 1
                 }))}
                 min={5}
                 max={100}

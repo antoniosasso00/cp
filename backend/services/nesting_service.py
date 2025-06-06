@@ -1,34 +1,47 @@
+"""
+🔧 SERVIZIO NESTING UNIFICATO
+=============================
+
+Servizio consolidato per il nesting 2D con OR-Tools che include:
+1. Algoritmi di nesting avanzati (OR-Tools + fallback greedy)
+2. Validazioni estese del sistema
+3. Gestione robustezza e fallback automatico
+4. Creazione automatica batch nel database
+5. Error handling avanzato
+
+Consolidato da NestingService + RobustNestingService
+Autore: CarbonPilot Development Team
+Data: 2025-06-05
+"""
+
 import logging
+import json
+import uuid
 import math
-from typing import List, Dict, Any, Tuple, Optional
+from datetime import datetime
+from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from ortools.sat.python import cp_model
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from models.odl import ODL
 from models.tool import Tool
 from models.parte import Parte
 from models.ciclo_cura import CicloCura
-from models.autoclave import Autoclave
+from models.autoclave import Autoclave, StatoAutoclaveEnum
+from models.batch_nesting import BatchNesting, StatoBatchNestingEnum
 
 # Configurazione logger
 logger = logging.getLogger(__name__)
 
 @dataclass
-class ToolDimensions:
-    """Classe per rappresentare le dimensioni di un tool"""
-    width: float
-    height: float
-    weight: float
-    ciclo_cura_id: Optional[int]
-    
-@dataclass
 class NestingParameters:
     """Parametri per l'algoritmo di nesting"""
-    padding_mm: int = 15  # Ridotto da 20 a 15mm per permettere più pezzi
-    min_distance_mm: int = 10  # Ridotto da 15 a 10mm per margini più realistici
-    vacuum_lines_capacity: int = 10  # Numero linee vuoto disponibili
-    priorita_area: bool = True
+    padding_mm: int = 1  # 🚀 OTTIMIZZAZIONE: Padding ultra-ottimizzato 1mm
+    min_distance_mm: int = 1  # 🚀 OTTIMIZZAZIONE: Distanza ultra-ottimizzata 1mm
+    vacuum_lines_capacity: int = 20  # 🚀 OTTIMIZZAZIONE: Aumentato per maggiore flessibilità
+    priorita_area: bool = True  # Priorità area o numero tool
     
 @dataclass
 class ToolPosition:
@@ -40,7 +53,7 @@ class ToolPosition:
     height: float
     peso: float
     rotated: bool = False  # Indica se il tool è ruotato di 90°
-    lines_used: int = 1  # Nuovo: numero di linee vuoto utilizzate
+    lines_used: int = 1  # Numero di linee vuoto utilizzate
     
 @dataclass
 class NestingResult:
@@ -50,12 +63,12 @@ class NestingResult:
     total_weight: float
     used_area: float
     total_area: float
-    area_pct: float  # Nuovo: percentuale area utilizzata
-    lines_used: int  # Nuovo: totale linee vuoto utilizzate
+    area_pct: float  # Percentuale area utilizzata
+    lines_used: int  # Totale linee vuoto utilizzate
     efficiency: float
     success: bool
     algorithm_status: str
-    
+
 def fallback_greedy_nesting(
     odl_data: List[Dict[str, Any]], 
     autoclave_data: Dict[str, Any], 
@@ -66,9 +79,9 @@ def fallback_greedy_nesting(
     """
     logger.info("🔄 Attivazione algoritmo fallback greedy")
     
-    # Dimensioni del piano autoclave
-    plane_width = autoclave_data['larghezza_piano']
-    plane_height = autoclave_data['lunghezza'] 
+    # ✅ FIX CRITICO: Dimensioni del piano autoclave CORRETTE
+    plane_width = autoclave_data['lunghezza']          # Larghezza = lunghezza autoclave
+    plane_height = autoclave_data['larghezza_piano']   # Altezza = larghezza piano
     max_weight = autoclave_data['max_load_kg']
     
     # Ordina per dimensione asse lungo decrescente (first-fit decreasing)
@@ -93,8 +106,8 @@ def fallback_greedy_nesting(
         tool_weight = odl['tool_weight']
         odl_id = odl['odl_id']
         
-        # Numero di linee vuoto per questo tool (simulato, per ora 1 per tutti)
-        tool_lines = 1
+        # Numero di linee vuoto per questo tool
+        tool_lines = odl.get('lines_needed', 1)
         
         # Verifica vincoli globali
         if total_weight + tool_weight > max_weight:
@@ -195,17 +208,259 @@ def fallback_greedy_nesting(
     )
 
 class NestingService:
-    """Servizio per l'algoritmo di nesting 2D con OR-Tools"""
+    """Servizio unificato per il nesting 2D con robustezza e gestione avanzata"""
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
+        self.fallback_strategies = {
+            'NO_ODL_AVAILABLE': self._handle_no_odl,
+            'NO_AUTOCLAVE_AVAILABLE': self._handle_no_autoclave,
+            'ALGORITHM_FAILED': self._handle_algorithm_failure,
+            'POSITIONING_FAILED': self._handle_positioning_failure,
+            'DATA_CORRUPTION': self._handle_data_corruption
+        }
+    
+    def validate_system_prerequisites(self, db: Session) -> Dict[str, Any]:
+        """Valida i prerequisiti del sistema per il nesting"""
+        validation_result = {
+            'valid': True,
+            'issues': [],
+            'warnings': [],
+            'statistics': {}
+        }
         
+        try:
+            # 1. Verifica ODL disponibili
+            odl_attesa_cura = db.query(ODL).filter(ODL.status == 'Attesa Cura').count()
+            validation_result['statistics']['odl_attesa_cura'] = odl_attesa_cura
+            
+            if odl_attesa_cura == 0:
+                validation_result['valid'] = False
+                validation_result['issues'].append({
+                    'type': 'NO_ODL_AVAILABLE',
+                    'message': 'Nessun ODL in stato "Attesa Cura"',
+                    'severity': 'CRITICAL'
+                })
+            elif odl_attesa_cura < 2:
+                validation_result['warnings'].append({
+                    'type': 'LOW_ODL_COUNT',
+                    'message': f'Solo {odl_attesa_cura} ODL disponibili - efficienza ridotta',
+                    'severity': 'WARNING'
+                })
+            
+            # 2. Verifica autoclavi disponibili
+            autoclavi_disponibili = db.query(Autoclave).filter(
+                Autoclave.stato == StatoAutoclaveEnum.DISPONIBILE
+            ).count()
+            validation_result['statistics']['autoclavi_disponibili'] = autoclavi_disponibili
+            
+            if autoclavi_disponibili == 0:
+                validation_result['valid'] = False
+                validation_result['issues'].append({
+                    'type': 'NO_AUTOCLAVE_AVAILABLE',
+                    'message': 'Nessuna autoclave disponibile',
+                    'severity': 'CRITICAL'
+                })
+            
+            # 3. Verifica integrità dati ODL
+            odl_con_problemi = db.query(ODL).filter(
+                (ODL.parte_id == None) | (ODL.tool_id == None)
+            ).count()
+            
+            if odl_con_problemi > 0:
+                validation_result['warnings'].append({
+                    'type': 'DATA_INTEGRITY',
+                    'message': f'{odl_con_problemi} ODL con dati mancanti',
+                    'severity': 'WARNING'
+                })
+            
+            # 4. Verifica tool con dimensioni
+            tools_senza_dimensioni = db.query(Tool).filter(
+                (Tool.larghezza_piano == None) | (Tool.lunghezza_piano == None)
+            ).count()
+            
+            if tools_senza_dimensioni > 0:
+                validation_result['warnings'].append({
+                    'type': 'MISSING_DIMENSIONS',
+                    'message': f'{tools_senza_dimensioni} tool senza dimensioni',
+                    'severity': 'WARNING'
+                })
+            
+            logger.info(f"Validazione prerequisiti completata: {validation_result['valid']}")
+            return validation_result
+            
+        except Exception as e:
+            logger.error(f"Errore durante validazione prerequisiti: {str(e)}")
+            validation_result['valid'] = False
+            validation_result['issues'].append({
+                'type': 'VALIDATION_ERROR',
+                'message': f'Errore di validazione: {str(e)}',
+                'severity': 'CRITICAL'
+            })
+            return validation_result
+    
+    def fix_system_issues(self, db: Session, validation_result: Dict[str, Any]) -> bool:
+        """Tenta di risolvere automaticamente i problemi identificati"""
+        fixed_issues = []
+        
+        try:
+            for issue in validation_result.get('issues', []):
+                issue_type = issue['type']
+                
+                if issue_type == 'NO_AUTOCLAVE_AVAILABLE':
+                    # Aggiorna autoclavi non guaste a disponibili
+                    updated = db.query(Autoclave).filter(
+                        Autoclave.stato != StatoAutoclaveEnum.GUASTO
+                    ).update({
+                        'stato': StatoAutoclaveEnum.DISPONIBILE,
+                        'updated_at': func.now()
+                    })
+                    
+                    if updated > 0:
+                        fixed_issues.append(f"Aggiornate {updated} autoclavi a disponibili")
+                        logger.info(f"Auto-fix: {updated} autoclavi rese disponibili")
+                
+                elif issue_type == 'NO_ODL_AVAILABLE':
+                    # Log per debug - in produzione potresti voler creare ODL test
+                    logger.warning("Nessun ODL disponibile - richiede intervento manuale")
+            
+            if fixed_issues:
+                db.commit()
+                logger.info(f"Issues risolti automaticamente: {fixed_issues}")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Errore durante auto-fix: {str(e)}")
+            return False
+    
+    def generate_robust_nesting(
+        self, 
+        db: Session, 
+        odl_ids: List[int], 
+        autoclave_ids: List[int], 
+        parameters: NestingParameters
+    ) -> Dict[str, Any]:
+        """Genera un nesting robusto con gestione errori avanzata"""
+        
+        result = {
+            'success': False,
+            'batch_id': '',
+            'message': '',
+            'positioned_tools': [],
+            'excluded_odls': [],
+            'efficiency': 0.0,
+            'total_weight': 0.0,
+            'algorithm_status': 'STARTING',
+            'validation_report': None,
+            'fixes_applied': []
+        }
+        
+        try:
+            # 1. Validazione prerequisiti
+            logger.info("🔍 Validazione prerequisiti sistema...")
+            validation = self.validate_system_prerequisites(db)
+            result['validation_report'] = validation
+            
+            # 2. Tentativo di fix automatico se necessario
+            if not validation['valid']:
+                logger.info("⚙️ Tentativo risoluzione automatica problemi...")
+                if self.fix_system_issues(db, validation):
+                    result['fixes_applied'].append("Auto-fix applicato con successo")
+                    # Re-validazione dopo fix
+                    validation = self.validate_system_prerequisites(db)
+                    result['validation_report'] = validation
+            
+            # 3. Se ancora non valido, usa strategia fallback
+            if not validation['valid']:
+                logger.warning("⚠️ Sistema non valido - applicazione strategia fallback")
+                return self._apply_fallback_strategy(db, validation, result)
+            
+            # 4. Validazione input
+            validated_odl_ids = self._validate_odl_list(db, odl_ids)
+            validated_autoclave_ids = self._validate_autoclave_list(db, autoclave_ids)
+            
+            if not validated_odl_ids:
+                result['message'] = "Nessun ODL valido fornito"
+                result['algorithm_status'] = 'NO_VALID_ODL'
+                return result
+                
+            if not validated_autoclave_ids:
+                result['message'] = "Nessuna autoclave valida fornita"
+                result['algorithm_status'] = 'NO_VALID_AUTOCLAVE'
+                return result
+            
+            # 5. Esecuzione nesting per ogni autoclave
+            best_result = None
+            best_efficiency = 0
+            best_autoclave_id = None
+            
+            for autoclave_id in validated_autoclave_ids:
+                logger.info(f"🚀 Tentativo nesting su autoclave {autoclave_id}")
+                
+                nesting_result = self.generate_nesting(
+                    db, validated_odl_ids, autoclave_id, parameters
+                )
+                
+                if nesting_result.success and nesting_result.efficiency > best_efficiency:
+                    best_result = nesting_result
+                    best_efficiency = nesting_result.efficiency
+                    best_autoclave_id = autoclave_id
+                    logger.info(f"✅ Miglior risultato trovato: {best_efficiency:.1f}% su autoclave {autoclave_id}")
+            
+            # 6. Gestione risultato
+            if best_result and best_result.success:
+                # Crea batch nel database
+                batch_id = self._create_robust_batch(db, best_result, best_autoclave_id, parameters)
+                
+                if batch_id:
+                    result.update({
+                        'success': True,
+                        'batch_id': batch_id,
+                        'message': f'Nesting completato con successo su autoclave {best_autoclave_id}',
+                        'positioned_tools': [
+                            {
+                                'odl_id': tool.odl_id,
+                                'x': tool.x,
+                                'y': tool.y,
+                                'width': tool.width,
+                                'height': tool.height,
+                                'peso': tool.peso,
+                                'rotated': tool.rotated,
+                                'lines_used': tool.lines_used
+                            } for tool in best_result.positioned_tools
+                        ],
+                        'excluded_odls': best_result.excluded_odls,
+                        'efficiency': best_result.efficiency,
+                        'total_weight': best_result.total_weight,
+                        'algorithm_status': best_result.algorithm_status
+                    })
+                else:
+                    result['message'] = "Errore nella creazione del batch"
+                    result['algorithm_status'] = 'BATCH_CREATION_FAILED'
+            else:
+                result['message'] = "Nessun nesting valido trovato per le autoclavi fornite"
+                result['algorithm_status'] = 'NO_VALID_SOLUTION'
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Errore nel nesting robusto: {str(e)}")
+            result.update({
+                'message': f'Errore imprevisto: {str(e)}',
+                'algorithm_status': 'UNEXPECTED_ERROR'
+            })
+            return result
+
     def get_odl_data(self, db: Session, odl_ids: List[int]) -> List[Dict[str, Any]]:
         """
         Recupera i dati necessari per gli ODL specificati
         """
         try:
             odl_data = []
+            logger.info(f"Caricamento dati per ODL: {odl_ids}")
             
             for odl_id in odl_ids:
                 # Carica ODL con tutte le relazioni necessarie
@@ -331,9 +586,9 @@ class NestingService:
         Esegue l'algoritmo di nesting 2D utilizzando OR-Tools CP-SAT con timeout adaptivo e fallback greedy
         """
         try:
-            # Dimensioni del piano autoclave
-            plane_width = autoclave_data['larghezza_piano']
-            plane_height = autoclave_data['lunghezza'] 
+            # ✅ FIX CRITICO: Dimensioni del piano autoclave CORRETTE
+            plane_width = autoclave_data['lunghezza']          # Larghezza = lunghezza autoclave
+            plane_height = autoclave_data['larghezza_piano']   # Altezza = larghezza piano
             max_weight = autoclave_data['max_load_kg']
             
             self.logger.info(f"Piano autoclave: {plane_width}x{plane_height}mm, peso max: {max_weight}kg")
@@ -801,4 +1056,188 @@ class NestingService:
             
         except Exception as e:
             self.logger.error(f"Errore nella generazione nesting: {str(e)}")
-            raise 
+            raise
+    
+    def _validate_odl_list(self, db: Session, odl_ids: List[int]) -> List[int]:
+        """Valida la lista di ODL e restituisce solo quelli validi"""
+        try:
+            valid_odls = db.query(ODL).filter(
+                ODL.id.in_(odl_ids),
+                ODL.status == 'Attesa Cura'
+            ).all()
+            
+            valid_ids = [odl.id for odl in valid_odls]
+            logger.info(f"ODL validati: {len(valid_ids)}/{len(odl_ids)} - IDs: {valid_ids}")
+            return valid_ids
+            
+        except Exception as e:
+            logger.error(f"Errore validazione ODL: {str(e)}")
+            return []
+    
+    def _validate_autoclave_list(self, db: Session, autoclave_ids: List[int]) -> List[int]:
+        """Valida la lista di autoclavi e restituisce solo quelle valide"""
+        try:
+            valid_autoclavi = db.query(Autoclave).filter(
+                Autoclave.id.in_(autoclave_ids),
+                Autoclave.stato == StatoAutoclaveEnum.DISPONIBILE
+            ).all()
+            
+            valid_ids = [autoclave.id for autoclave in valid_autoclavi]
+            logger.info(f"Autoclavi validate: {len(valid_ids)}/{len(autoclave_ids)}")
+            return valid_ids
+            
+        except Exception as e:
+            logger.error(f"Errore validazione autoclavi: {str(e)}")
+            return []
+    
+    def _create_robust_batch(
+        self, 
+        db: Session, 
+        nesting_result: NestingResult, 
+        autoclave_id: int,
+        parameters: NestingParameters
+    ) -> Optional[str]:
+        """Crea un batch robusto nel database"""
+        try:
+            autoclave = db.query(Autoclave).filter(Autoclave.id == autoclave_id).first()
+            if not autoclave:
+                logger.error(f"Autoclave {autoclave_id} non trovata")
+                return None
+            
+            # Genera nome univoco per il batch
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            batch_name = f"Robust Nesting {autoclave.nome} {timestamp}"
+            
+            # Prepara posizioni tool per JSON
+            tool_positions = []
+            for tool in nesting_result.positioned_tools:
+                tool_positions.append({
+                    'odl_id': tool.odl_id,
+                    'x': float(tool.x),
+                    'y': float(tool.y),
+                    'width': float(tool.width),
+                    'height': float(tool.height),
+                    'peso': float(tool.peso),
+                    'rotated': bool(tool.rotated),
+                    'lines_used': int(tool.lines_used)
+                })
+            
+            configurazione_json = {
+                # ✅ DIMENSIONI CORRETTE (fix precedente)
+                'canvas_width': float(autoclave.lunghezza or 3000),        # Width = lunghezza autoclave
+                'canvas_height': float(autoclave.larghezza_piano or 2000), # Height = larghezza piano
+                'tool_positions': tool_positions,
+                'plane_assignments': {str(tool.odl_id): 1 for tool in nesting_result.positioned_tools},
+                'autoclave_mm': [
+                    float(autoclave.lunghezza or 3000),        # Larghezza autoclave in mm
+                    float(autoclave.larghezza_piano or 2000)   # Altezza autoclave in mm
+                ],
+                'bounding_px': [
+                    800,  # Larghezza container canvas in px (default)
+                    600   # Altezza container canvas in px (default)
+                ]
+            }
+            
+            # Parametri completi
+            parametri = {
+                'padding_mm': float(parameters.padding_mm),
+                'min_distance_mm': float(parameters.min_distance_mm),
+                'priorita_area': bool(parameters.priorita_area),
+                'accorpamento_odl': False,
+                'use_secondary_plane': False,
+                'max_weight_per_plane_kg': None
+            }
+            
+            # Crea batch nel database con i campi corretti
+            new_batch = BatchNesting(
+                nome=batch_name,
+                autoclave_id=autoclave_id,
+                odl_ids=[tool.odl_id for tool in nesting_result.positioned_tools],
+                configurazione_json=configurazione_json,
+                parametri=parametri,
+                numero_nesting=len(nesting_result.positioned_tools),
+                peso_totale_kg=int(nesting_result.total_weight),
+                area_totale_utilizzata=int(nesting_result.used_area / 100),  # Converte da mm² a cm²
+                valvole_totali_utilizzate=int(nesting_result.lines_used),
+                efficiency=float(nesting_result.efficiency),
+                stato=StatoBatchNestingEnum.SOSPESO.value,  # Usa il valore string dell'enum
+                creato_da_utente='SYSTEM_ROBUST',
+                creato_da_ruolo='SYSTEM'
+            )
+            
+            db.add(new_batch)
+            db.commit()
+            db.refresh(new_batch)
+            
+            logger.info(f"✅ Batch robusto creato: {new_batch.id}")
+            return str(new_batch.id)
+            
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Errore creazione batch robusto: {str(e)}")
+            return None
+    
+    def _apply_fallback_strategy(
+        self, 
+        db: Session, 
+        validation_result: Dict[str, Any], 
+        result: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Applica strategie di fallback per problemi critici"""
+        try:
+            for issue in validation_result.get('issues', []):
+                issue_type = issue['type']
+                if issue_type in self.fallback_strategies:
+                    handler = self.fallback_strategies[issue_type]
+                    result = handler(db, issue, result)
+                    break
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Errore nell'applicazione strategia fallback: {str(e)}")
+            result.update({
+                'message': f'Errore strategia fallback: {str(e)}',
+                'algorithm_status': 'FALLBACK_ERROR'
+            })
+            return result
+    
+    def _handle_no_odl(self, db: Session, issue: Dict, result: Dict) -> Dict:
+        """Gestisce il caso di nessun ODL disponibile"""
+        result.update({
+            'message': 'Nessun ODL in attesa di cura disponibile per il nesting',
+            'algorithm_status': 'NO_ODL_AVAILABLE'
+        })
+        return result
+    
+    def _handle_no_autoclave(self, db: Session, issue: Dict, result: Dict) -> Dict:
+        """Gestisce il caso di nessuna autoclave disponibile"""
+        result.update({
+            'message': 'Nessuna autoclave disponibile per il nesting',
+            'algorithm_status': 'NO_AUTOCLAVE_AVAILABLE'
+        })
+        return result
+    
+    def _handle_algorithm_failure(self, db: Session, issue: Dict, result: Dict) -> Dict:
+        """Gestisce il fallimento dell'algoritmo principale"""
+        result.update({
+            'message': 'Algoritmo di nesting principale fallito - usare parametri meno restrittivi',
+            'algorithm_status': 'ALGORITHM_FAILED'
+        })
+        return result
+    
+    def _handle_positioning_failure(self, db: Session, issue: Dict, result: Dict) -> Dict:
+        """Gestisce il fallimento del posizionamento tool"""
+        result.update({
+            'message': 'Impossibile posizionare tool nell\'autoclave - verificare dimensioni',
+            'algorithm_status': 'POSITIONING_FAILED'
+        })
+        return result
+    
+    def _handle_data_corruption(self, db: Session, issue: Dict, result: Dict) -> Dict:
+        """Gestisce la corruzione dei dati"""
+        result.update({
+            'message': 'Dati ODL o autoclave corrotti - verificare integrità database',
+            'algorithm_status': 'DATA_CORRUPTION'
+        })
+        return result 

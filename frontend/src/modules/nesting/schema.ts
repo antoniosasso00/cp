@@ -2,8 +2,8 @@ import { z } from 'zod'
 
 // Schema di validazione per i parametri di nesting
 export const nestingParametriSchema = z.object({
-  padding_mm: z.number().min(5, "Padding minimo 5mm").max(100, "Padding massimo 100mm"),
-  min_distance_mm: z.number().min(5, "Distanza minima 5mm").max(50, "Distanza massima 50mm"),
+  padding_mm: z.number().min(1, "Padding minimo 1mm").max(100, "Padding massimo 100mm"),
+  min_distance_mm: z.number().min(1, "Distanza minima 1mm").max(50, "Distanza massima 50mm"),
   priorita_area: z.boolean(),
   accorpamento_odl: z.boolean()
 })
@@ -18,9 +18,10 @@ export const nestingCreateSchema = z.object({
 export type NestingParametriFormValues = z.infer<typeof nestingParametriSchema>
 export type NestingCreateFormValues = z.infer<typeof nestingCreateSchema>
 
+// Valori di default ottimizzati per massima efficienza
 export const nestingParametriDefaultValues: NestingParametriFormValues = {
-  padding_mm: 20,
-  min_distance_mm: 15,
+  padding_mm: 1,  // 🚀 OTTIMIZZAZIONE: Ultra-aggressivo 1mm
+  min_distance_mm: 1,  // 🚀 OTTIMIZZAZIONE: Ultra-aggressivo 1mm
   priorita_area: true,
   accorpamento_odl: false
 }

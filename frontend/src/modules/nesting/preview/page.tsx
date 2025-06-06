@@ -55,6 +55,10 @@ import NestingCanvas from '../result/[batch_id]/NestingCanvas'
 interface NestingParameters {
   padding_mm: number
   min_distance_mm: number
+  vacuum_lines_capacity: number
+  allow_heuristic: boolean
+  timeout_override: number | null
+  heavy_piece_threshold_kg: number
 }
 
 interface NestingPreviewData {
@@ -177,9 +181,13 @@ export default function NestingPreviewPage() {
   // =============== STATES ===============
   
   // Parametri configurabili
-  const [parameters, setParameters] = useState<NestingParameters>({
-    padding_mm: 20,
-    min_distance_mm: 15
+  const [parameters, setParameters] = useState({
+    padding_mm: 1,  // 🚀 OTTIMIZZAZIONE: Ultra-aggressivo 1mm
+    min_distance_mm: 1,  // 🚀 OTTIMIZZAZIONE: Ultra-aggressivo 1mm
+    vacuum_lines_capacity: 20,  // 🚀 OTTIMIZZAZIONE: Aumentato per flessibilità
+    allow_heuristic: true,
+    timeout_override: null,
+    heavy_piece_threshold_kg: 50.0
   })
 
   // Selezioni utente
@@ -451,8 +459,8 @@ export default function NestingPreviewPage() {
       const result = await response.json()
       
       toast({
-        title: "✅ Batch Creato",
-        description: `Batch ${result.batch_id} creato con successo`,
+        title: "✅ Nesting Generato",
+        description: `Nesting ${result.batch_id} generato con successo`,
         variant: "default",
       })
       
@@ -479,8 +487,12 @@ export default function NestingPreviewPage() {
     setPreviewData(null)
     setLastError(null)
     setParameters({
-      padding_mm: 20,
-      min_distance_mm: 15
+      padding_mm: 1,
+      min_distance_mm: 1,
+      vacuum_lines_capacity: 20,
+      allow_heuristic: true,
+      timeout_override: null,
+      heavy_piece_threshold_kg: 50.0
     })
   }
 
@@ -1092,12 +1104,12 @@ export default function NestingPreviewPage() {
                 {isConfirmingBatch ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Conferma...
+                    Generando...
                   </>
                 ) : (
                   <>
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Conferma Batch
+                    <Zap className="h-4 w-4 mr-2" />
+                    Genera Nesting
                   </>
                 )}
               </Button>
