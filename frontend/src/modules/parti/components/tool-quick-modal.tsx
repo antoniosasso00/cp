@@ -190,8 +190,19 @@ export default function ToolQuickModal({ isOpen, onClose, onSuccess }: ToolQuick
               type="number"
               min="0.1"
               step="0.1"
-              value={formData.lunghezza_piano}
-              onChange={e => handleChange('lunghezza_piano', e.target.value ? Number(e.target.value) : 0)}
+              value={formData.lunghezza_piano || ''}
+              onChange={e => {
+                const value = e.target.value
+                if (value === '') {
+                  // Permetti campo vuoto temporaneamente
+                  handleChange('lunghezza_piano', '')
+                } else {
+                  const numValue = Number(value)
+                  if (!isNaN(numValue) && numValue > 0) {
+                    handleChange('lunghezza_piano', numValue)
+                  }
+                }
+              }}
               className="col-span-3"
             />
             {errors.lunghezza_piano && (
@@ -208,8 +219,19 @@ export default function ToolQuickModal({ isOpen, onClose, onSuccess }: ToolQuick
               type="number"
               min="0.1"
               step="0.1"
-              value={formData.larghezza_piano}
-              onChange={e => handleChange('larghezza_piano', e.target.value ? Number(e.target.value) : 0)}
+              value={formData.larghezza_piano || ''}
+              onChange={e => {
+                const value = e.target.value
+                if (value === '') {
+                  // Permetti campo vuoto temporaneamente
+                  handleChange('larghezza_piano', '')
+                } else {
+                  const numValue = Number(value)
+                  if (!isNaN(numValue) && numValue > 0) {
+                    handleChange('larghezza_piano', numValue)
+                  }
+                }
+              }}
               className="col-span-3"
             />
             {errors.larghezza_piano && (

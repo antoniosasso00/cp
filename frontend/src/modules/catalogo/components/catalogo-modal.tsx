@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { CatalogoResponse, CatalogoCreate, CatalogoUpdate, catalogApi } from '@/lib/api'
 import { FormField, FormWrapper } from '@/shared/components/form'
 import { catalogoSchema, CatalogoFormValues, catalogoDefaultValues } from '../schema'
-import { Plus, Pencil, AlertTriangle } from 'lucide-react'
+import { Plus, Pencil, AlertTriangle, X, Loader2, Save } from 'lucide-react'
 
 interface CatalogoModalProps {
   isOpen: boolean
@@ -141,25 +141,26 @@ export default function CatalogoModal({ isOpen, onClose, onSuccess, item }: Cata
       // Solo modalità creazione
       const createData = data as CatalogoCreate
       await catalogApi.createCatalogItem(createData)
+      
+      // Reset del form PRIMA del toast per evitare interferenze
+      form.reset(catalogoDefaultValues)
+      
       toast({
         variant: 'success',
         title: 'Creato e pronto per il prossimo',
         description: `Part number ${data.part_number} creato con successo. Form resettato per un nuovo inserimento.`
       })
       
-      // Reset del form per un nuovo inserimento
-      form.reset(catalogoDefaultValues)
-      
-      // Refresh automatico dopo operazione
-      router.refresh()
-      
-      // Focus sul primo campo
+      // Focus immediato sul primo campo
       setTimeout(() => {
         const partNumberInput = document.querySelector('input[name="part_number"]') as HTMLInputElement
         if (partNumberInput) {
           partNumberInput.focus()
         }
-      }, 100)
+      }, 50)
+      
+      // Aggiorna la lista in background SENZA causare re-render che chiudono il dialog
+      // NON chiamare onSuccess() qui perché potrebbe causare la chiusura
       
     } catch (error: unknown) {
       console.error('Errore durante il salvataggio (Salva e nuovo):', error)
@@ -179,8 +180,8 @@ export default function CatalogoModal({ isOpen, onClose, onSuccess, item }: Cata
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[500px] h-[80vh] flex flex-col p-0">
+        <DialogHeader className="px-6 py-4 border-b shrink-0">
           <DialogTitle className="flex items-center gap-2">
             {item ? (
               <>
@@ -196,109 +197,165 @@ export default function CatalogoModal({ isOpen, onClose, onSuccess, item }: Cata
           </DialogTitle>
         </DialogHeader>
         
-        <FormWrapper
-          form={form}
-          onSubmit={onSubmit}
-          isLoading={isSubmitting}
-          submitText={item ? "Aggiorna" : "Crea Part Number"}
-          showCancel={true}
-          onCancel={onClose}
-          showSaveAndNew={!item}
-          onSaveAndNew={handleSaveAndNew}
-          saveAndNewText="Salva e Nuovo"
-          cardClassName="border-0 shadow-none"
-          headerClassName="hidden"
-        >
-          <div className="space-y-1">
-            <FormField
-              label="Part Number"
-              name="part_number"
-              value={form.watch('part_number')}
-              onChange={(value) => form.setValue('part_number', value as string)}
-              placeholder="es. PN001"
-              required
-              disabled={Boolean(item && !isPartNumberEditable)}
-              error={form.formState.errors.part_number?.message}
-            />
-            
-            {item && (
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleTogglePartNumberEdit}
-                  className="text-xs"
-                >
-                  {isPartNumberEditable ? 'Blocca modifica' : 'Abilita modifica Part Number'}
-                </Button>
-              </div>
-            )}
-            
-            {item && isPartNumberEditable && (
-              <Alert variant="destructive" className="mt-2">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertDescription className="text-xs">
-                  ⚠️ Modificare il Part Number aggiornerà tutti i riferimenti nel sistema
-                </AlertDescription>
-              </Alert>
-            )}
-          </div>
-
-          <FormField
-            label="Descrizione"
-            name="descrizione"
-            value={form.watch('descrizione')}
-            onChange={(value) => form.setValue('descrizione', value as string)}
-            placeholder="Descrizione del part number"
-            required
-            error={form.formState.errors.descrizione?.message}
-          />
-
-          <div className="grid grid-cols-2 gap-4">
-            <FormField
-              label="Categoria"
-              name="categoria"
-              value={form.watch('categoria')}
-              onChange={(value) => form.setValue('categoria', value as string)}
-              placeholder="es. Valvole"
-              error={form.formState.errors.categoria?.message}
-            />
-
-            <FormField
-              label="Sotto-categoria"
-              name="sotto_categoria"
-              value={form.watch('sotto_categoria')}
-              onChange={(value) => form.setValue('sotto_categoria', value as string)}
-              placeholder="es. Valvole a sfera"
-              error={form.formState.errors.sotto_categoria?.message}
-            />
-          </div>
-
-          <FormField
-            label="Note"
-            name="note"
-            type="textarea"
-            value={form.watch('note')}
-            onChange={(value) => form.setValue('note', value as string)}
-            placeholder="Note aggiuntive (opzionale)"
-            rows={3}
-            error={form.formState.errors.note?.message}
-          />
-
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div className="space-y-0.5">
-              <label className="text-sm font-medium">Attivo</label>
-              <p className="text-xs text-muted-foreground">
-                Disabilita per nascondere il part number dalle selezioni
-              </p>
+        <div className="flex-1 overflow-y-auto px-6">
+          <FormWrapper
+            form={form}
+            onSubmit={onSubmit}
+            isLoading={isSubmitting}
+            submitText={item ? "Aggiorna" : "Crea Part Number"}
+            showCancel={false}
+            showSaveAndNew={false}
+            cardClassName="border-0 shadow-none"
+            headerClassName="hidden"
+            contentClassName="py-6"
+            footerClassName="hidden"
+          >
+            <div className="space-y-1">
+              <FormField
+                label="Part Number"
+                name="part_number"
+                value={form.watch('part_number')}
+                onChange={(value) => form.setValue('part_number', value as string)}
+                placeholder="es. PN001"
+                required
+                disabled={Boolean(item && !isPartNumberEditable)}
+                error={form.formState.errors.part_number?.message}
+              />
+              
+              {item && (
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleTogglePartNumberEdit}
+                    className="text-xs"
+                  >
+                    {isPartNumberEditable ? 'Blocca modifica' : 'Abilita modifica Part Number'}
+                  </Button>
+                </div>
+              )}
+              
+              {item && isPartNumberEditable && (
+                <Alert variant="destructive" className="mt-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription className="text-xs">
+                    ⚠️ Modificare il Part Number aggiornerà tutti i riferimenti nel sistema
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
-            <Switch
-              checked={form.watch('attivo') || false}
-              onCheckedChange={(checked) => form.setValue('attivo', Boolean(checked))}
+
+            <FormField
+              label="Descrizione"
+              name="descrizione"
+              value={form.watch('descrizione')}
+              onChange={(value) => form.setValue('descrizione', value as string)}
+              placeholder="Descrizione del part number"
+              required
+              error={form.formState.errors.descrizione?.message}
             />
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                label="Categoria"
+                name="categoria"
+                value={form.watch('categoria')}
+                onChange={(value) => form.setValue('categoria', value as string)}
+                placeholder="es. Valvole"
+                error={form.formState.errors.categoria?.message}
+              />
+
+              <FormField
+                label="Sotto-categoria"
+                name="sotto_categoria"
+                value={form.watch('sotto_categoria')}
+                onChange={(value) => form.setValue('sotto_categoria', value as string)}
+                placeholder="es. Valvole a sfera"
+                error={form.formState.errors.sotto_categoria?.message}
+              />
+            </div>
+
+            <FormField
+              label="Note"
+              name="note"
+              type="textarea"
+              value={form.watch('note')}
+              onChange={(value) => form.setValue('note', value as string)}
+              placeholder="Note aggiuntive (opzionale)"
+              rows={3}
+              error={form.formState.errors.note?.message}
+            />
+
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div className="space-y-0.5">
+                <label className="text-sm font-medium">Attivo</label>
+                <p className="text-xs text-muted-foreground">
+                  Disabilita per nascondere il part number dalle selezioni
+                </p>
+              </div>
+              <Switch
+                checked={form.watch('attivo') || false}
+                onCheckedChange={(checked) => form.setValue('attivo', Boolean(checked))}
+              />
+            </div>
+          </FormWrapper>
+        </div>
+        
+        {/* Footer con pulsanti fissi */}
+        <div className="px-6 py-4 border-t shrink-0 bg-background">
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="w-full sm:w-auto"
+            >
+              <X className="h-4 w-4 mr-2" />
+              Annulla
+            </Button>
+            
+            {!item && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  form.handleSubmit(handleSaveAndNew)(e)
+                }}
+                disabled={isSubmitting}
+                className="w-full sm:w-auto"
+              >
+                {isSubmitting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Salva e Nuovo
+              </Button>
+            )}
+            
+            <Button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                form.handleSubmit(onSubmit)(e)
+              }}
+              disabled={isSubmitting}
+              className="w-full sm:w-auto"
+            >
+              {isSubmitting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-2" />
+              )}
+              {item ? "Aggiorna" : "Crea Part Number"}
+            </Button>
           </div>
-        </FormWrapper>
+        </div>
       </DialogContent>
     </Dialog>
   )

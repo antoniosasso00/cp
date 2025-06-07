@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -68,6 +69,7 @@ export default function ODLPage() {
   const [filter, setFilter] = useState<{parte_id?: number, tool_id?: number, status?: string}>({})
   const [modalOpen, setModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<ODLResponse | null>(null)
+  const router = useRouter()
   const { toast } = useToast()
   
   // Ref per prevenire chiamate multiple simultanee
@@ -186,6 +188,15 @@ export default function ODLPage() {
   const handleEditClick = (item: ODLResponse) => {
     setEditingItem(item)
     setModalOpen(true)
+  }
+
+  // ✅ FIX: Funzione per chiudere modal con refresh completo della pagina
+  const handleModalClose = () => {
+    setModalOpen(false)
+    // Refresh completo ma gentile che preserva lo stato React
+    router.refresh()
+    // Reload dei dati per assicurarsi che siano aggiornati
+    setTimeout(() => fetchODLs(), 100)
   }
 
   const handleDeleteClick = async (id: number) => {
@@ -419,7 +430,7 @@ export default function ODLPage() {
 
             <ODLModal
         isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={handleModalClose}
         item={editingItem}
         onSuccess={() => {
           fetchODLs()

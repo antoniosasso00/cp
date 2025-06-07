@@ -241,8 +241,18 @@ export default function ParteQuickModal({
               id="num_valvole_richieste"
               type="number"
               min="1"
-              value={formData.num_valvole_richieste}
-              onChange={(e) => handleChange('num_valvole_richieste', parseInt(e.target.value) || 1)}
+              value={formData.num_valvole_richieste || ''}
+              onChange={(e) => {
+                const value = e.target.value
+                if (value === '') {
+                  handleChange('num_valvole_richieste', 1) // Default per campo obbligatorio
+                } else {
+                  const numValue = parseInt(value)
+                  if (!isNaN(numValue) && numValue >= 1) {
+                    handleChange('num_valvole_richieste', numValue)
+                  }
+                }
+              }}
               className={errors.num_valvole_richieste ? 'border-red-500' : ''}
             />
             {errors.num_valvole_richieste && (

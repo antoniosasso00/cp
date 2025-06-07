@@ -163,8 +163,19 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
                           step="1"
                           min="0"
                           placeholder="3000"
-                          {...field} 
-                          onChange={e => field.onChange(Number(e.target.value))}
+                          {...field}
+                          value={field.value || ''}
+                          onChange={e => {
+                            const value = e.target.value
+                            if (value === '') {
+                              field.onChange(null)
+                            } else {
+                              const numValue = Number(value)
+                              if (!isNaN(numValue) && numValue >= 0) {
+                                field.onChange(numValue)
+                              }
+                            }
+                          }}
                         />
                       </FormControl>
                       <FormMessage />
@@ -184,8 +195,19 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
                           step="1"
                           min="0"
                           placeholder="1500"
-                          {...field} 
-                          onChange={e => field.onChange(Number(e.target.value))}
+                          {...field}
+                          value={field.value || ''}
+                          onChange={e => {
+                            const value = e.target.value
+                            if (value === '') {
+                              field.onChange(null)
+                            } else {
+                              const numValue = Number(value)
+                              if (!isNaN(numValue) && numValue >= 0) {
+                                field.onChange(numValue)
+                              }
+                            }
+                          }}
                         />
                       </FormControl>
                       <FormMessage />
@@ -205,8 +227,19 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
                           step="1"
                           min="0"
                           placeholder="4"
-                          {...field} 
-                          onChange={e => field.onChange(Number(e.target.value))}
+                          {...field}
+                          value={field.value || ''}
+                          onChange={e => {
+                            const value = e.target.value
+                            if (value === '') {
+                              field.onChange(null)
+                            } else {
+                              const numValue = Number(value)
+                              if (!isNaN(numValue) && numValue >= 0) {
+                                field.onChange(numValue)
+                              }
+                            }
+                          }}
                         />
                       </FormControl>
                       <FormMessage />
@@ -258,9 +291,20 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
                     <FormLabel>Temperatura Max (°C)</FormLabel>
                     <FormControl>
                       <Input 
-                        type="number" 
-                        {...field} 
-                        onChange={e => field.onChange(Number(e.target.value))}
+                        type="number"
+                        {...field}
+                        value={field.value || ''}
+                        onChange={e => {
+                          const value = e.target.value
+                          if (value === '') {
+                            field.onChange(null)
+                          } else {
+                            const numValue = Number(value)
+                            if (!isNaN(numValue) && numValue >= 0) {
+                              field.onChange(numValue)
+                            }
+                          }
+                        }}
                       />
                     </FormControl>
                     <FormMessage />
@@ -276,9 +320,20 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
                     <FormLabel>Pressione Max (bar)</FormLabel>
                     <FormControl>
                       <Input 
-                        type="number" 
-                        {...field} 
-                        onChange={e => field.onChange(Number(e.target.value))}
+                        type="number"
+                        {...field}
+                        value={field.value || ''}
+                        onChange={e => {
+                          const value = e.target.value
+                          if (value === '') {
+                            field.onChange(null)
+                          } else {
+                            const numValue = Number(value)
+                            if (!isNaN(numValue) && numValue >= 0) {
+                              field.onChange(numValue)
+                            }
+                          }
+                        }}
                       />
                     </FormControl>
                     <FormMessage />
@@ -300,8 +355,19 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
                       step="0.1"
                       min="0"
                       placeholder="1000"
-                      {...field} 
-                      onChange={e => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                      {...field}
+                      value={field.value || ''}
+                      onChange={e => {
+                        const value = e.target.value
+                        if (value === '') {
+                          field.onChange(null)
+                        } else {
+                          const numValue = Number(value)
+                          if (!isNaN(numValue) && numValue >= 0) {
+                            field.onChange(numValue)
+                          }
+                        }
+                      }}
                     />
                   </FormControl>
                   <FormMessage />
@@ -331,9 +397,25 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
                   <FormLabel>Anno Produzione</FormLabel>
                   <FormControl>
                     <Input 
-                      type="number" 
-                      {...field} 
-                      onChange={e => field.onChange(Number(e.target.value))}
+                      type="number"
+                      min="1900"
+                      max="2030"
+                      placeholder="es. 2020"
+                      {...field}
+                      value={field.value || ''}
+                      onChange={e => {
+                        const value = e.target.value
+                        if (value === '') {
+                          field.onChange(null)
+                        } else {
+                          const numValue = Number(value)
+                          if (!isNaN(numValue)) {
+                            // Permetti qualsiasi numero durante la digitazione
+                            // La validazione finale sarà gestita dallo schema del form
+                            field.onChange(numValue)
+                          }
+                        }
+                      }}
                     />
                   </FormControl>
                   <FormMessage />

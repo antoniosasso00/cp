@@ -11,8 +11,8 @@ interface FormFieldProps {
   label: string
   name: string
   type?: 'text' | 'email' | 'password' | 'number' | 'tel' | 'url' | 'textarea'
-  value: string | number | undefined
-  onChange: (value: string | number) => void
+  value: string | number | undefined | null
+  onChange: (value: string | number | null) => void
   onBlur?: () => void
   placeholder?: string
   disabled?: boolean
@@ -26,6 +26,7 @@ interface FormFieldProps {
   min?: number // per number input
   max?: number // per number input
   step?: number // per number input
+  allowEmpty?: boolean // per campi numerici opzionali
 }
 
 export function FormField({
@@ -46,17 +47,63 @@ export function FormField({
   rows = 3,
   min,
   max,
-  step
+  step,
+  allowEmpty = false
 }: FormFieldProps) {
+  
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const newValue = type === 'number' ? parseFloat(e.target.value) || 0 : e.target.value
-    onChange(newValue)
+    const inputValue = e.target.value
+    
+    if (type === 'number') {
+      // Se il campo è vuoto
+      if (inputValue === '' || inputValue === null) {
+        // Per campi opzionali o che permettono valori vuoti, restituisci null
+        if (allowEmpty || !required) {
+          onChange(null)
+        } else {
+          // Per campi obbligatori, mantieni il valore vuoto temporaneamente
+          // Il validation dello schema gestirà l'errore
+          onChange(null)
+        }
+        return
+      }
+      
+      // Converti a numero
+      const numericValue = parseFloat(inputValue)
+      
+      // Se la conversione fallisce (es. testo non numerico)
+      if (isNaN(numericValue)) {
+        // Mantieni il valore attuale se non è valido, per permettere editing
+        // Il validation dello schema gestirà l'errore
+        return
+      }
+      
+      // Valore numerico valido
+      onChange(numericValue)
+    } else {
+      // Campi di testo normali
+      onChange(inputValue)
+    }
+  }
+
+  // Gestione del valore da mostrare nell'input
+  const getDisplayValue = () => {
+    if (type === 'number') {
+      // Se il valore è null o undefined, mostra stringa vuota
+      if (value === null || value === undefined) {
+        return ''
+      }
+      // Altrimenti mostra il valore numerico
+      return String(value)
+    }
+    // Per campi di testo, mostra il valore o stringa vuota
+    return value ?? ''
   }
 
   const commonProps = {
     id: name,
     name,
-    value: value ?? '',
+    value: getDisplayValue(),
     onChange: handleChange,
     onBlur,
     placeholder,

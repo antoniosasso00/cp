@@ -460,8 +460,18 @@ export default function ODLModalImproved({
                     type="number"
                     min="1"
                     max="10"
-                    value={formData.priorita}
-                    onChange={(e) => setFormData(prev => ({ ...prev, priorita: parseInt(e.target.value) || 1 }))}
+                    value={formData.priorita || ''}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      if (value === '') {
+                        setFormData(prev => ({ ...prev, priorita: 1 })) // Default per campo obbligatorio
+                      } else {
+                        const numValue = parseInt(value)
+                        if (!isNaN(numValue) && numValue >= 1 && numValue <= 10) {
+                          setFormData(prev => ({ ...prev, priorita: numValue }))
+                        }
+                      }
+                    }}
                   />
                 </div>
 

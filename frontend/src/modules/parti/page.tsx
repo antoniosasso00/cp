@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -29,6 +30,7 @@ export default function PartiPage() {
   const [filter, setFilter] = useState<{part_number?: string}>({})
   const [modalOpen, setModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<ParteResponse | null>(null)
+  const router = useRouter()
   const { toast } = useToast()
 
   const loadData = async () => {
@@ -60,6 +62,15 @@ export default function PartiPage() {
   const handleEditClick = (item: ParteResponse) => {
     setEditingItem(item)
     setModalOpen(true)
+  }
+
+  // ✅ FIX: Funzione per chiudere modal con refresh completo della pagina
+  const handleModalClose = () => {
+    setModalOpen(false)
+    // Refresh completo ma gentile che preserva lo stato React
+    router.refresh()
+    // Reload dei dati per assicurarsi che siano aggiornati
+    setTimeout(() => loadData(), 100)
   }
 
   const handleDeleteClick = async (id: number) => {
@@ -123,10 +134,10 @@ export default function PartiPage() {
           <TableCaption>Lista delle parti in produzione</TableCaption>
           <TableHeader>
             <TableRow>
-              <TableHead>ID</TableHead>
               <TableHead>Part Number</TableHead>
               <TableHead>Descrizione</TableHead>
               <TableHead className="text-center">Valvole</TableHead>
+              <TableHead>Ciclo di Cura</TableHead>
               <TableHead>Tools</TableHead>
               <TableHead className="text-right">Azioni</TableHead>
             </TableRow>
@@ -141,11 +152,19 @@ export default function PartiPage() {
             ) : (
               filteredParti.map(item => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.id}</TableCell>
                   <TableCell>{item.part_number}</TableCell>
                   <TableCell className="max-w-xs truncate">{item.descrizione_breve}</TableCell>
                   <TableCell className="text-center">
                     {item.num_valvole_richieste}
+                  </TableCell>
+                  <TableCell>
+                    {item.ciclo_cura ? (
+                      <Badge variant="outline">
+                        {item.ciclo_cura.nome}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     {item.tools.length > 0 ? (
@@ -191,7 +210,7 @@ export default function PartiPage() {
 
       <ParteModal 
         isOpen={modalOpen} 
-        onClose={() => setModalOpen(false)} 
+        onClose={handleModalClose}
         item={editingItem} 
         onSuccess={() => {
           loadData()

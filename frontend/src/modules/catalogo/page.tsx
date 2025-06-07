@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,6 +40,7 @@ export default function CatalogoPage() {
   const [editingItem, setEditingItem] = useState<CatalogoResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isSearching, setIsSearching] = useState(false)
+  const router = useRouter()
   const { toast } = useToast()
 
   // Debounce della ricerca per ottimizzare le chiamate API
@@ -91,6 +93,15 @@ export default function CatalogoPage() {
   const handleEditClick = (item: CatalogoResponse) => {
     setEditingItem(item)
     setModalOpen(true)
+  }
+
+  // ✅ FIX: Funzione per chiudere modal con refresh completo della pagina
+  const handleModalClose = () => {
+    setModalOpen(false)
+    // Refresh completo ma gentile che preserva lo stato React
+    router.refresh()
+    // Reload dei dati per assicurarsi che siano aggiornati
+    setTimeout(() => fetchCatalogo(debouncedSearchQuery), 100)
   }
 
   const handleDeleteClick = async (partNumber: string) => {
@@ -310,7 +321,7 @@ export default function CatalogoPage() {
 
       <CatalogoModal 
         isOpen={modalOpen} 
-        onClose={() => setModalOpen(false)} 
+        onClose={handleModalClose}
         item={editingItem} 
         onSuccess={() => {
           fetchCatalogo(debouncedSearchQuery)

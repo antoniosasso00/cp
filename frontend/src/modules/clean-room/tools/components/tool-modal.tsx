@@ -309,8 +309,19 @@ export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolMo
                         type="number" 
                         step="0.1"
                         min="0.1"
-                        {...field} 
-                        onChange={e => field.onChange(Number(e.target.value))}
+                        {...field}
+                        value={field.value || ''}
+                        onChange={e => {
+                          const value = e.target.value
+                          if (value === '') {
+                            field.onChange(null)
+                          } else {
+                            const numValue = Number(value)
+                            if (!isNaN(numValue) && numValue > 0) {
+                              field.onChange(numValue)
+                            }
+                          }
+                        }}
                         onFocus={() => handleFocus('lunghezza_piano')}
                       />
                     </FormControl>
@@ -330,8 +341,19 @@ export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolMo
                         type="number" 
                         step="0.1"
                         min="0.1"
-                        {...field} 
-                        onChange={e => field.onChange(Number(e.target.value))}
+                        {...field}
+                        value={field.value || ''}
+                        onChange={e => {
+                          const value = e.target.value
+                          if (value === '') {
+                            field.onChange(null)
+                          } else {
+                            const numValue = Number(value)
+                            if (!isNaN(numValue) && numValue > 0) {
+                              field.onChange(numValue)
+                            }
+                          }
+                        }}
                         onFocus={() => handleFocus('larghezza_piano')}
                       />
                     </FormControl>
@@ -357,7 +379,17 @@ export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolMo
                         placeholder="Es. 12.4"
                         {...field} 
                         value={field.value ?? ''}
-                        onChange={e => field.onChange(e.target.value ? Number(e.target.value) : null)}
+                        onChange={e => {
+                          const value = e.target.value
+                          if (value === '') {
+                            field.onChange(null)
+                          } else {
+                            const numValue = Number(value)
+                            if (!isNaN(numValue) && numValue >= 0) {
+                              field.onChange(numValue)
+                            }
+                          }
+                        }}
                         onFocus={() => handleFocus('peso')}
                       />
                     </FormControl>

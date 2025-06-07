@@ -79,6 +79,21 @@ export default function CicloCuraQuickModal({ isOpen, onClose, onSuccess }: Cicl
     }
   }
 
+  // Funzione helper per gestire campi numerici migliorati
+  const handleNumberChange = (field: string, inputValue: string, defaultValue?: number) => {
+    if (inputValue === '') {
+      // Permetti campo vuoto temporaneamente
+      handleChange(field, '')
+    } else {
+      const numValue = Number(inputValue)
+      if (!isNaN(numValue) && numValue > 0) {
+        handleChange(field, numValue)
+      } else if (defaultValue !== undefined && numValue === 0) {
+        handleChange(field, defaultValue)
+      }
+    }
+  }
+
   const validateForm = () => {
     try {
       const dataToValidate = {
@@ -216,8 +231,8 @@ export default function CicloCuraQuickModal({ isOpen, onClose, onSuccess }: Cicl
               id="temperatura_stasi1"
               type="number"
               min="1"
-              value={formData.temperatura_stasi1}
-              onChange={e => handleChange('temperatura_stasi1', e.target.value ? Number(e.target.value) : 0)}
+              value={formData.temperatura_stasi1 || ''}
+              onChange={e => handleNumberChange('temperatura_stasi1', e.target.value)}
               className="col-span-3"
             />
             {errors.temperatura_stasi1 && (
@@ -234,8 +249,8 @@ export default function CicloCuraQuickModal({ isOpen, onClose, onSuccess }: Cicl
               type="number"
               min="0"
               step="0.1"
-              value={formData.pressione_stasi1}
-              onChange={e => handleChange('pressione_stasi1', e.target.value ? Number(e.target.value) : 0)}
+              value={formData.pressione_stasi1 || ''}
+              onChange={e => handleNumberChange('pressione_stasi1', e.target.value)}
               className="col-span-3"
             />
             {errors.pressione_stasi1 && (
@@ -251,8 +266,8 @@ export default function CicloCuraQuickModal({ isOpen, onClose, onSuccess }: Cicl
               id="durata_stasi1"
               type="number"
               min="1"
-              value={formData.durata_stasi1}
-              onChange={e => handleChange('durata_stasi1', e.target.value ? Number(e.target.value) : 0)}
+              value={formData.durata_stasi1 || ''}
+              onChange={e => handleNumberChange('durata_stasi1', e.target.value)}
               className="col-span-3"
             />
             {errors.durata_stasi1 && (
@@ -292,8 +307,8 @@ export default function CicloCuraQuickModal({ isOpen, onClose, onSuccess }: Cicl
                   id="temperatura_stasi2"
                   type="number"
                   min="1"
-                  value={formData.temperatura_stasi2}
-                  onChange={e => handleChange('temperatura_stasi2', e.target.value ? Number(e.target.value) : 0)}
+                  value={formData.temperatura_stasi2 || ''}
+                  onChange={e => handleNumberChange('temperatura_stasi2', e.target.value)}
                   className="col-span-3"
                 />
                 {errors.temperatura_stasi2 && (
@@ -310,8 +325,8 @@ export default function CicloCuraQuickModal({ isOpen, onClose, onSuccess }: Cicl
                   type="number"
                   min="0"
                   step="0.1"
-                  value={formData.pressione_stasi2}
-                  onChange={e => handleChange('pressione_stasi2', e.target.value ? Number(e.target.value) : 0)}
+                  value={formData.pressione_stasi2 || ''}
+                  onChange={e => handleNumberChange('pressione_stasi2', e.target.value)}
                   className="col-span-3"
                 />
                 {errors.pressione_stasi2 && (
@@ -327,8 +342,8 @@ export default function CicloCuraQuickModal({ isOpen, onClose, onSuccess }: Cicl
                   id="durata_stasi2"
                   type="number"
                   min="1"
-                  value={formData.durata_stasi2}
-                  onChange={e => handleChange('durata_stasi2', e.target.value ? Number(e.target.value) : 0)}
+                  value={formData.durata_stasi2 || ''}
+                  onChange={e => handleNumberChange('durata_stasi2', e.target.value)}
                   className="col-span-3"
                 />
                 {errors.durata_stasi2 && (

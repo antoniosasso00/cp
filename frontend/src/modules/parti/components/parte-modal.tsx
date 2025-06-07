@@ -23,7 +23,7 @@ import {
   Tool,
   CicloCura,
 } from '@/lib/api'
-import { Loader2, Pencil, AlertTriangle, Plus } from 'lucide-react'
+import { Loader2, Pencil, AlertTriangle, Plus, Search, X, Save } from 'lucide-react'
 import SmartCatalogoSelect from './smart-catalogo-select'
 import SmartCicloCuraSelect from './smart-ciclo-cura-select'
 import SmartToolsSelect from './smart-tools-select'
@@ -61,7 +61,7 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
   const [formData, setFormData] = useState<ParteFormData>({
     part_number: '',
     descrizione_breve: '',
-    num_valvole_richieste: 1,
+    num_valvole_richieste: 2,
     note_produzione: null,
     ciclo_cura_id: null,
     tool_ids: []
@@ -79,12 +79,25 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
   const [cicliCura, setCicliCura] = useState<CicloCura[]>([])
   const [isLoadingOptions, setIsLoadingOptions] = useState(false)
   
+  // ✅ NUOVO: Stato per la ricerca dei tools
+  const [toolSearchQuery, setToolSearchQuery] = useState('')
+  
   const router = useRouter()
   const { toast } = useToast()
 
   // Stati per i modal di creazione rapida
   const [toolModalOpen, setToolModalOpen] = useState(false)
   const [cicloCuraModalOpen, setCicloCuraModalOpen] = useState(false)
+  
+  // ✅ NUOVO: Filtro dei tools in base alla ricerca
+  const filteredTools = tools.filter(tool => {
+    if (!toolSearchQuery) return true
+    const query = toolSearchQuery.toLowerCase()
+    return (
+      tool.part_number_tool?.toLowerCase().includes(query) ||
+      tool.descrizione?.toLowerCase().includes(query)
+    )
+  })
   
   // Carica opzioni per i dropdown
   const loadOptions = async () => {
@@ -114,6 +127,8 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
   useEffect(() => {
     if (isOpen) {
       loadOptions()
+      // ✅ Reset della ricerca quando si apre il modal
+      setToolSearchQuery('')
     }
   }, [isOpen])
 
@@ -132,7 +147,7 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
       setFormData({
         part_number: '',
         descrizione_breve: '',
-        num_valvole_richieste: 1,
+        num_valvole_richieste: 2,
         note_produzione: null,
         ciclo_cura_id: null,
         tool_ids: []
@@ -308,39 +323,32 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
       }
       await partsApi.createPart(createData)
       
-      toast({
-        variant: 'success',
-        title: 'Creata e pronta per la prossima',
-        description: `Parte ${formData.part_number} creata con successo. Form resettato per un nuovo inserimento.`
-      })
-
-      // Reset del form per un nuovo inserimento
+      // Reset del form PRIMA del toast per evitare interferenze
       setFormData({
         part_number: '',
         descrizione_breve: '',
-        num_valvole_richieste: 1,
+        num_valvole_richieste: 2,
         note_produzione: null,
         ciclo_cura_id: null,
         tool_ids: []
       })
       setErrors({})
 
-      // ✅ FIX 1: Refresh automatico dopo operazione
-      router.refresh()
-      
-      // ✅ FIX 2: Aggiorna i dati senza chiudere il modal
-      startTransition(() => {
-        onSuccess() // Questo aggiorna la lista principale
+      toast({
+        variant: 'success',
+        title: 'Creata e pronta per la prossima',
+        description: `Parte ${formData.part_number} creata con successo. Form resettato per un nuovo inserimento.`
       })
       
-      // NON chiudiamo il modal - rimane aperto per il prossimo inserimento
-      // Il focus viene automaticamente messo sul primo campo
+      // Focus immediato sul primo campo
       setTimeout(() => {
         const partNumberInput = document.getElementById('part_number') as HTMLInputElement
         if (partNumberInput) {
           partNumberInput.focus()
         }
-      }, 100)
+      }, 50)
+      
+      // NON chiamare refresh o onSuccess() qui per evitare re-render che chiudono il dialog
       
     } catch (error: unknown) {
       console.error('Errore durante il salvataggio:', error)
@@ -384,12 +392,14 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-[700px] h-[85vh] flex flex-col p-0">
+          <DialogHeader className="px-6 py-4 border-b shrink-0">
             <DialogTitle>
               {item ? `Modifica Parte: ${item.id}` : 'Crea Nuova Parte'}
             </DialogTitle>
           </DialogHeader>
+          
+          <div className="flex-1 overflow-y-auto px-6 py-4">
 
           <div className="grid gap-4 py-4">
             {/* ✅ FIX 3: Part Number con possibilità di modifica */}
@@ -480,8 +490,18 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
               id="num_valvole_richieste"
               type="number"
               min="1"
-              value={formData.num_valvole_richieste}
-              onChange={e => handleChange('num_valvole_richieste', parseInt(e.target.value) || 1)}
+              value={formData.num_valvole_richieste || ''}
+              onChange={e => {
+                const value = e.target.value
+                if (value === '' || value === null) {
+                  handleChange('num_valvole_richieste', 2) // Default per campo obbligatorio
+                } else {
+                  const numValue = parseInt(value)
+                  if (!isNaN(numValue)) {
+                    handleChange('num_valvole_richieste', numValue)
+                  }
+                }
+              }}
               onFocus={() => handleFocus('num_valvole_richieste')}
               className="col-span-3"
             />
@@ -525,8 +545,26 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
                 ) : tools.length === 0 ? (
                   <p className="text-sm text-muted-foreground p-2">Nessun tool disponibile</p>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-40 overflow-y-auto border rounded-md p-2">
-                    {tools.map(tool => (
+                  <>
+                    {/* ✅ NUOVO: Campo di ricerca per i tools */}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        placeholder="Cerca tools per part number o descrizione..."
+                        value={toolSearchQuery}
+                        onChange={(e) => setToolSearchQuery(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                    
+                    {/* Lista dei tools con messaggio se nessun risultato */}
+                    {filteredTools.length === 0 ? (
+                      <p className="text-sm text-muted-foreground p-2 text-center">
+                        Nessun tool trovato per "{toolSearchQuery}"
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-40 overflow-y-auto border rounded-md p-2">
+                        {filteredTools.map(tool => (
                       <label
                         key={tool.id}
                         className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded cursor-pointer"
@@ -550,7 +588,9 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
                         </span>
                       </label>
                     ))}
-                  </div>
+                      </div>
+                    )}
+                  </>
                 )}
                 {errors.tool_ids && (
                   <p className="text-sm text-destructive">{errors.tool_ids}</p>
@@ -573,30 +613,62 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
               />
             </div>
           </div>
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting || isPending}>
-              Annulla
-            </Button>
-            
-            {/* ✅ FIX 2: Pulsante "Salva e Nuovo" visibile solo in modalità creazione */}
-            {!item && (
-              <Button 
-                type="button" 
-                variant="secondary" 
-                onClick={handleSaveAndNew} 
+          </div>
+          
+          {/* Footer con pulsanti fissi */}
+          <div className="px-6 py-4 border-t shrink-0 bg-background">
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
                 disabled={isSubmitting || isPending}
-                className="gap-2"
+                className="w-full sm:w-auto"
               >
-                <Plus className="h-4 w-4" />
-                Salva e Nuovo
+                <X className="h-4 w-4 mr-2" />
+                Annulla
               </Button>
-            )}
-            
-            <Button type="button" onClick={handleSubmit} disabled={isSubmitting || isPending}>
-              {isSubmitting || isPending ? 'Salvataggio...' : item ? 'Aggiorna' : 'Crea'}
-            </Button>
-          </DialogFooter>
+              
+              {!item && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    handleSaveAndNew()
+                  }}
+                  disabled={isSubmitting || isPending}
+                  className="w-full sm:w-auto"
+                >
+                  {isSubmitting || isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-2" />
+                  )}
+                  Salva e Nuovo
+                </Button>
+              )}
+              
+              <Button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  handleSubmit()
+                }}
+                disabled={isSubmitting || isPending}
+                className="w-full sm:w-auto"
+              >
+                {isSubmitting || isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                {item ? "Aggiorna" : "Crea Parte"}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

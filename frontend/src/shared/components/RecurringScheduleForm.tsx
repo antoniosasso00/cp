@@ -312,8 +312,18 @@ const RecurringScheduleForm: React.FC<RecurringScheduleFormProps> = ({
               type="number"
               min="1"
               max="1000"
-              value={formData.pieces_per_month}
-              onChange={(e) => handleFieldChange('pieces_per_month', Number(e.target.value))}
+              value={formData.pieces_per_month || ''}
+              onChange={(e) => {
+                const value = e.target.value
+                if (value === '') {
+                  handleFieldChange('pieces_per_month', 1) // Default
+                } else {
+                  const numValue = Number(value)
+                  if (!isNaN(numValue) && numValue >= 1 && numValue <= 1000) {
+                    handleFieldChange('pieces_per_month', numValue)
+                  }
+                }
+              }}
               className="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
               required
             />

@@ -312,11 +312,18 @@ export default function NewBatchPage() {
                 <Input
                   id="padding"
                   type="number"
-                  value={nestingParams.padding_mm}
-                  onChange={(e) => setNestingParams(prev => ({
-                    ...prev,
-                    padding_mm: parseInt(e.target.value) || 1
-                  }))}
+                  value={nestingParams.padding_mm || ''}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === '') {
+                      setNestingParams(prev => ({ ...prev, padding_mm: 1 })) // Default
+                    } else {
+                      const numValue = parseInt(value)
+                      if (!isNaN(numValue) && numValue >= 1 && numValue <= 50) {
+                        setNestingParams(prev => ({ ...prev, padding_mm: numValue }))
+                      }
+                    }
+                  }}
                   min="1"
                   max="50"
                 />
@@ -327,11 +334,18 @@ export default function NewBatchPage() {
                 <Input
                   id="distance"
                   type="number"
-                  value={nestingParams.min_distance_mm}
-                  onChange={(e) => setNestingParams(prev => ({
-                    ...prev,
-                    min_distance_mm: parseInt(e.target.value) || 1
-                  }))}
+                  value={nestingParams.min_distance_mm || ''}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === '') {
+                      setNestingParams(prev => ({ ...prev, min_distance_mm: 1 })) // Default
+                    } else {
+                      const numValue = parseInt(value)
+                      if (!isNaN(numValue) && numValue >= 1 && numValue <= 30) {
+                        setNestingParams(prev => ({ ...prev, min_distance_mm: numValue }))
+                      }
+                    }
+                  }}
                   min="1"
                   max="30"
                 />
