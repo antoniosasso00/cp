@@ -55,12 +55,21 @@ router = APIRouter(
 def create_odl(odl: ODLCreate, db: Session = Depends(get_db)):
     """
     Crea un nuovo ordine di lavoro (ODL) con le seguenti informazioni:
+    - **numero_odl**: Numero ODL inserito manualmente (es. 2024001) - deve essere univoco
     - **parte_id**: ID della parte associata all'ODL
     - **tool_id**: ID del tool utilizzato per l'ODL
     - **priorita**: livello di priorità dell'ordine (default 1)
     - **status**: stato dell'ordine ("Preparazione", "Laminazione", "Attesa Cura", "Cura", "Finito")
     - **note**: note aggiuntive (opzionale)
     """
+    # Verifica che il numero_odl non esista già
+    existing_odl = db.query(ODL).filter(ODL.numero_odl == odl.numero_odl).first()
+    if existing_odl:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail=f"Numero ODL '{odl.numero_odl}' già presente, inserisci un valore diverso."
+        )
+    
     # Verifica che la parte esista
     parte = db.query(Parte).filter(Parte.id == odl.parte_id).first()
     if not parte:
@@ -233,6 +242,18 @@ def update_odl(odl_id: int, odl: ODLUpdate, db: Session = Depends(get_db)):
         )
     
     try:
+        # Verifica unicità numero_odl se viene aggiornato
+        if odl.numero_odl and odl.numero_odl != db_odl.numero_odl:
+            existing_odl = db.query(ODL).filter(
+                ODL.numero_odl == odl.numero_odl,
+                ODL.id != odl_id
+            ).first()
+            if existing_odl:
+                raise HTTPException(
+                    status_code=http_status.HTTP_409_CONFLICT,
+                    detail=f"Numero ODL '{odl.numero_odl}' già presente, inserisci un valore diverso."
+                )
+        
         # Verifica che la parte esista se viene aggiornata
         if odl.parte_id is not None:
             parte = db.query(Parte).filter(Parte.id == odl.parte_id).first()

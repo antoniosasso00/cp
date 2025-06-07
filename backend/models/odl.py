@@ -8,6 +8,10 @@ class ODL(Base, TimestampMixin):
     
     id = Column(Integer, primary_key=True, index=True)
     
+    # Campo numero ODL manuale (obbligatorio e univoco)
+    numero_odl = Column(String(50), unique=True, nullable=False, index=True,
+                       doc="Numero ODL inserito manualmente dall'utente (es. 2024001)")
+    
     # Relazione con la parte (obbligatoria)
     parte_id = Column(Integer, ForeignKey('parti.id'), nullable=False, index=True,
                     doc="ID della parte associata all'ordine di lavoro")
@@ -52,4 +56,4 @@ class ODL(Base, TimestampMixin):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     
     def __repr__(self):
-        return f"<ODL(id={self.id}, parte_id={self.parte_id}, tool_id={self.tool_id}, status='{self.status}')>" 
+        return f"<ODL(id={self.id}, numero_odl='{self.numero_odl}', parte_id={self.parte_id}, tool_id={self.tool_id}, status='{self.status}')>" 

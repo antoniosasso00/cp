@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 // Schema di validazione per ODL
 export const odlSchema = z.object({
+  numero_odl: z.string().min(1, "Numero ODL obbligatorio").max(50, "Numero ODL troppo lungo"),
   parte_id: z.number().min(1, "Seleziona una parte valida"),
   tool_id: z.number().min(1, "Seleziona un tool valido"),
   priorita: z.number().min(1, "Priorità minima 1").max(10, "Priorità massima 10"),
@@ -14,6 +15,7 @@ export const odlSchema = z.object({
 export type ODLFormValues = z.infer<typeof odlSchema>
 
 export const odlDefaultValues: ODLFormValues = {
+  numero_odl: "",
   parte_id: 0,
   tool_id: 0,
   priorita: 1,

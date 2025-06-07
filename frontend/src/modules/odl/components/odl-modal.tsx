@@ -40,6 +40,7 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
       // Se stiamo modificando, prendiamo i dati esistenti
       if (item) {
         form.reset({
+          numero_odl: item.numero_odl,
           parte_id: item.parte_id,
           tool_id: item.tool_id,
           priorita: item.priorita,
@@ -130,11 +131,70 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
       onClose()
     } catch (error) {
       console.error('Errore nel salvataggio dell\'ODL:', error)
+      
+      // Gestione errore 409 per numero ODL duplicato
+      if (error instanceof Error && error.message.includes('409')) {
+        toast({
+          variant: 'destructive',
+          title: 'Numero ODL già presente',
+          description: 'Il numero ODL inserito è già utilizzato. Inserisci un valore diverso.',
+        })
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Errore',
+          description: 'Impossibile salvare l\'ODL. Verifica i dati e riprova.',
+        })
+      }
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // ✅ FIX: Funzione "Salva e Nuovo" - reset form e mantiene dialog aperto
+  const handleSaveAndNew = async (data: ODLFormValues) => {
+    try {
+      setIsSaving(true)
+      
+      // Solo in modalità creazione (non aggiornamento)
+      await odlApi.createODL(data as ODLCreate)
+      
+      // Reset del form PRIMA del toast per evitare interferenze
+      form.reset(odlDefaultValues)
+      
       toast({
-        variant: 'destructive',
-        title: 'Errore',
-        description: 'Impossibile salvare l\'ODL. Verifica i dati e riprova.',
+        variant: 'success',
+        title: 'Creato e pronto per il prossimo',
+        description: `ODL ${data.numero_odl} creato con successo. Form resettato per un nuovo inserimento.`,
       })
+      
+      // Focus immediato sul primo campo
+      setTimeout(() => {
+        const numeroOdlInput = document.querySelector('input[name="numero_odl"]') as HTMLInputElement
+        if (numeroOdlInput) {
+          numeroOdlInput.focus()
+        }
+      }, 50)
+      
+      // NON chiamare onSuccess() o onClose() per mantenere il dialog aperto
+      
+    } catch (error) {
+      console.error('Errore nel salvataggio dell\'ODL:', error)
+      
+      // Gestione errore 409 per numero ODL duplicato
+      if (error instanceof Error && error.message.includes('409')) {
+        toast({
+          variant: 'destructive',
+          title: 'Numero ODL già presente',
+          description: 'Il numero ODL inserito è già utilizzato. Inserisci un valore diverso.',
+        })
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Errore',
+          description: 'Impossibile salvare l\'ODL. Verifica i dati e riprova.',
+        })
+      }
     } finally {
       setIsSaving(false)
     }
@@ -195,7 +255,22 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
             onCancel={onClose}
             cardClassName="border-0 shadow-none"
             headerClassName="hidden"
+            showSaveAndNew={!item}
+            onSaveAndNew={handleSaveAndNew}
+            saveAndNewText="Salva e Nuovo"
           >
+            <FormField
+              label="Numero ODL"
+              name="numero_odl"
+              type="text"
+              value={form.watch('numero_odl')}
+              onChange={(value) => form.setValue('numero_odl', value as string)}
+              placeholder="es. 2024001"
+              required
+              error={form.formState.errors.numero_odl?.message}
+              description="Numero identificativo univoco dell'ODL"
+            />
+
             <FormSelect
               label="Parte"
               name="parte_id"

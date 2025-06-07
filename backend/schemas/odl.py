@@ -4,6 +4,7 @@ from datetime import datetime
 
 # Schema base per le proprietà comuni
 class ODLBase(BaseModel):
+    numero_odl: str = Field(..., min_length=1, max_length=50, description="Numero ODL inserito manualmente (es. 2024001)")
     parte_id: int = Field(..., description="ID della parte associata all'ordine di lavoro")
     tool_id: int = Field(..., description="ID del tool utilizzato per l'ordine di lavoro")
     priorita: int = Field(1, ge=1, description="Priorità dell'ordine di lavoro (numero più alto = priorità maggiore)")
@@ -20,6 +21,7 @@ class ODLCreate(ODLBase):
 
 # Schema per gli aggiornamenti
 class ODLUpdate(BaseModel):
+    numero_odl: Optional[str] = Field(None, min_length=1, max_length=50, description="Numero ODL inserito manualmente (es. 2024001)")
     parte_id: Optional[int] = Field(None, description="ID della parte associata all'ordine di lavoro")
     tool_id: Optional[int] = Field(None, description="ID del tool utilizzato per l'ordine di lavoro")
     priorita: Optional[int] = Field(None, ge=1, description="Priorità dell'ordine di lavoro (numero più alto = priorità maggiore)")

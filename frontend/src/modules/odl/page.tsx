@@ -232,6 +232,7 @@ export default function ODLPage() {
     
     const searchLower = query.toLowerCase()
     return items.filter(item => (
+      item.numero_odl.toLowerCase().includes(searchLower) ||
       item.id.toString().includes(searchLower) ||
       item.parte.part_number.toLowerCase().includes(searchLower) ||
       item.tool.part_number_tool.toLowerCase().includes(searchLower) ||
@@ -341,6 +342,7 @@ export default function ODLPage() {
             <TableCaption>Lista degli ordini di lavoro attivi in produzione</TableCaption>
             <TableHeader>
               <TableRow>
+                <TableHead>Numero ODL</TableHead>
                 <TableHead>Part Number</TableHead>
                 <TableHead>Tool</TableHead>
                 <TableHead className="text-center">Priorità</TableHead>
@@ -352,7 +354,7 @@ export default function ODLPage() {
             <TableBody>
               {filteredODLs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
+                  <TableCell colSpan={7} className="text-center py-8">
                     {searchQuery ? 
                       'Nessun ordine di lavoro trovato con i criteri di ricerca' : 
                       'Nessun ordine di lavoro attivo trovato'
@@ -362,6 +364,11 @@ export default function ODLPage() {
               ) : (
                 filteredODLs.map(item => (
                   <TableRow key={item.id}>
+                    <TableCell>
+                      <span className="font-mono font-medium text-primary">
+                        {item.numero_odl}
+                      </span>
+                    </TableCell>
                     <TableCell>
                       <div className="flex flex-col">
                         <span className="font-medium">{item.parte.part_number}</span>

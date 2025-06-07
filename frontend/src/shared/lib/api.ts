@@ -590,6 +590,7 @@ export const autoclavesApi = {
 
 // Tipi per ODL
 export interface ODLBase {
+  numero_odl: string;
   parte_id: number;
   tool_id: number;
   priorita: number;
