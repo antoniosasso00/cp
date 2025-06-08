@@ -46,53 +46,27 @@ export function ODLHistoryTable({
       setLoading(true)
       setError(null)
       
-      // Costruisci i parametri di filtro
-      const params: any = {
-        limit: maxItems * 2, // Prendiamo più dati per permettere il filtro locale
-        skip: 0
+      // Filtri per la ricerca
+      const filters: any = {}
+      if (statusFilter) filters.status = statusFilter
+      if (searchTerm) filters.search = searchTerm
+      if (dateRange && dateRange !== 'all') {
+        const days = parseInt(dateRange)
+        const cutoffDate = new Date()
+        cutoffDate.setDate(cutoffDate.getDate() - days)
+        filters.date_from = cutoffDate.toISOString().split('T')[0]
       }
       
-      // CONTROLLO SICUREZZA: verifica che statusFilter non sia undefined
-      if (statusFilter && statusFilter.trim() !== '') {
-        params.status = statusFilter
-      }
+      const data = await odlApi.fetchODLs(filters)
       
-      const data = await odlApi.fetchODLs(params)
-      
-      // Filtro locale per search term e date range
-      let filteredData = data
-      
-      // CONTROLLO SICUREZZA: verifica che searchTerm non sia undefined
-      if (searchTerm && searchTerm.trim() !== '') {
-        const searchLower = searchTerm.toLowerCase()
-        filteredData = filteredData.filter(odl => 
-          odl.parte?.part_number?.toLowerCase().includes(searchLower) ||
-          odl.parte?.descrizione_breve?.toLowerCase().includes(searchLower) ||
-          odl.tool?.part_number_tool?.toLowerCase().includes(searchLower) ||
-          odl.id?.toString().includes(searchLower)
+      // Ordina per data di creazione (più recenti prima) e limita
+      const sortedData = data
+        .sort((a, b) => 
+          new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         )
-      }
+        .slice(0, maxItems)
       
-      // Filtro per data (ultimi N giorni) - CONTROLLO SICUREZZA
-      if (dateRange && dateRange !== 'all' && dateRange.trim() !== '') {
-        const daysAgo = parseInt(dateRange)
-        if (!isNaN(daysAgo)) {
-          const cutoffDate = new Date()
-          cutoffDate.setDate(cutoffDate.getDate() - daysAgo)
-          
-          filteredData = filteredData.filter(odl => 
-            odl.created_at && new Date(odl.created_at) >= cutoffDate
-          )
-        }
-      }
-      
-      // Ordina per data di creazione (più recenti prima)
-      filteredData.sort((a, b) => 
-        new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
-      )
-      
-      // Limita al numero massimo richiesto
-      setOdlList(filteredData.slice(0, maxItems))
+      setOdlList(sortedData)
       
     } catch (err) {
       console.error('Errore nel caricamento dello storico ODL:', err)
@@ -100,6 +74,49 @@ export function ODLHistoryTable({
     } finally {
       setLoading(false)
     }
+  }
+
+  // Funzione per analizzare l'univocità parte-tool
+  const analyzePartToolUniqueness = (items: ODLResponse[]) => {
+    const partToTools = new Map<string, Set<string>>()
+    const toolToParts = new Map<string, Set<string>>()
+    
+    // Analizza le relazioni parte-tool
+    items.forEach(item => {
+      const partNumber = item.parte.part_number
+      const toolNumber = item.tool.part_number_tool
+      
+      if (!partToTools.has(partNumber)) {
+        partToTools.set(partNumber, new Set())
+      }
+      partToTools.get(partNumber)!.add(toolNumber)
+      
+      if (!toolToParts.has(toolNumber)) {
+        toolToParts.set(toolNumber, new Set())
+      }
+      toolToParts.get(toolNumber)!.add(partNumber)
+    })
+    
+    // Determina quando mostrare il tool
+    const shouldShowTool = new Set<string>()
+    
+    items.forEach(item => {
+      const partNumber = item.parte.part_number
+      const toolNumber = item.tool.part_number_tool
+      const odlKey = `${partNumber}-${toolNumber}`
+      
+      // Mostra tool se:
+      // 1. Una parte ha più tool diversi
+      // 2. Un tool è usato per più parti diverse
+      const partHasMultipleTools = partToTools.get(partNumber)!.size > 1
+      const toolHasMultipleParts = toolToParts.get(toolNumber)!.size > 1
+      
+      if (partHasMultipleTools || toolHasMultipleParts) {
+        shouldShowTool.add(odlKey)
+      }
+    })
+    
+    return shouldShowTool
   }
 
   useEffect(() => {
@@ -233,58 +250,62 @@ export function ODLHistoryTable({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ODL</TableHead>
-                  <TableHead>Parte</TableHead>
-                  <TableHead>Tool</TableHead>
-                  <TableHead>Stato</TableHead>
-                  <TableHead>Priorità</TableHead>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Azioni</TableHead>
+                  <TableHead className="w-16">ODL</TableHead>
+                  <TableHead className="min-w-[280px]">Parte & Tool</TableHead>
+                  <TableHead className="w-24 text-center">Stato</TableHead>
+                  <TableHead className="w-20 text-center">Priorità</TableHead>
+                  <TableHead className="w-32">Data</TableHead>
+                  <TableHead className="w-16 text-center">Azioni</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {odlList.filter(odl => odl?.id).map((odl) => ( // FILTRO SICUREZZA: solo ODL con ID valido
-                  <TableRow key={odl.id} className="hover:bg-muted/50">
-                    <TableCell className="font-medium">
-                      #{odl.id}
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium text-sm">
-                          {odl.parte?.part_number || 'N/A'}
+                {(() => {
+                  const toolVisibilityMap = analyzePartToolUniqueness(odlList)
+                  return odlList.filter(odl => odl?.id).map((odl) => ( // FILTRO SICUREZZA: solo ODL con ID valido
+                    <TableRow key={odl.id} className="hover:bg-muted/50">
+                      <TableCell className="font-medium">
+                        <span className="font-mono text-sm">#{odl.id}</span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex flex-col">
+                            <span className="font-medium text-sm">
+                              {odl.parte?.part_number || 'N/A'}
+                            </span>
+                            <span className="text-xs text-muted-foreground leading-tight max-w-[240px]">
+                              {odl.parte?.descrizione_breve || 'Descrizione non disponibile'}
+                            </span>
+                          </div>
+                          {toolVisibilityMap.has(`${odl.parte?.part_number}-${odl.tool?.part_number_tool}`) && (
+                            <div className="text-xs">
+                              <span className="bg-slate-100 px-2 py-0.5 rounded text-muted-foreground">
+                                Tool: {odl.tool?.part_number_tool || 'N/A'}
+                              </span>
+                            </div>
+                          )}
                         </div>
-                        <div className="text-xs text-muted-foreground truncate max-w-[150px]">
-                          {odl.parte?.descrizione_breve || 'Descrizione non disponibile'}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        {odl.tool?.part_number_tool || 'N/A'}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {getStatusBadge(odl.status || 'Sconosciuto')}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-xs">
-                        P{odl.priorita || 0}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {odl.created_at ? formatDate(odl.created_at) : 'Data non disponibile'}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {getStatusBadge(odl.status || 'Sconosciuto')}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="outline" className="text-xs">
+                          P{odl.priorita || 0}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {odl.created_at ? formatDate(odl.created_at) : 'Data non disponibile'}
+                      </TableCell>
+                      <TableCell className="text-center">
                         <Link href={`/dashboard/shared/odl/${odl.id}`}>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
                             <FileText className="h-3 w-3" />
                           </Button>
                         </Link>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                })()}
               </TableBody>
             </Table>
             

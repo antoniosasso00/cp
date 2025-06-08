@@ -1,9 +1,9 @@
 'use client';
 
 import React from 'react';
-import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Clock, AlertTriangle, Info, TrendingUp, TrendingDown } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { AlertTriangle, Info, Clock, TrendingUp, TrendingDown } from 'lucide-react';
 
 // Tipi per i dati temporali degli stati
 export interface ODLStateTimestamp {
@@ -48,49 +48,79 @@ interface OdlProgressBarProps {
   onTimelineClick?: () => void;
 }
 
-// Configurazione colori e ordine degli stati con durata media stimata
+// Configurazione colori e ordine degli stati con palette moderna e intuitiva
 const STATI_CONFIG = {
   'Preparazione': { 
-    color: 'bg-gray-400', 
-    textColor: 'text-gray-700',
+    color: 'bg-slate-500', // Più professionale del grigio 
+    gradientFrom: 'from-slate-400',
+    gradientTo: 'to-slate-600',
+    textColor: 'text-slate-700',
+    lightBg: 'bg-slate-50',
+    borderColor: 'border-slate-200',
     order: 1,
     icon: '📋',
-    durata_media: 30 // minuti
+    durata_media: 30,
+    description: 'Setup e preparazione materiali'
   },
   'Laminazione': { 
     color: 'bg-blue-500', 
+    gradientFrom: 'from-blue-400',
+    gradientTo: 'to-blue-600',
     textColor: 'text-blue-700',
+    lightBg: 'bg-blue-50',
+    borderColor: 'border-blue-200',
     order: 2,
     icon: '🔧',
-    durata_media: 120
+    durata_media: 120,
+    description: 'Processo di laminazione'
   },
   'In Coda': { 
-    color: 'bg-orange-400', 
-    textColor: 'text-orange-700',
+    color: 'bg-amber-500', // Più elegante dell'arancione
+    gradientFrom: 'from-amber-400',
+    gradientTo: 'to-amber-600',
+    textColor: 'text-amber-700',
+    lightBg: 'bg-amber-50',
+    borderColor: 'border-amber-200',
     order: 2.5,
     icon: '⏳',
-    durata_media: 60
+    durata_media: 60,
+    description: 'In attesa di tool disponibili'
   },
   'Attesa Cura': { 
     color: 'bg-yellow-500', 
+    gradientFrom: 'from-yellow-400',
+    gradientTo: 'to-yellow-600',
     textColor: 'text-yellow-700',
+    lightBg: 'bg-yellow-50',
+    borderColor: 'border-yellow-200',
     order: 3,
     icon: '⏱️',
-    durata_media: 240
+    durata_media: 240,
+    description: 'In attesa di autoclave'
   },
   'Cura': { 
     color: 'bg-red-500', 
+    gradientFrom: 'from-red-400',
+    gradientTo: 'to-red-600',
     textColor: 'text-red-700',
+    lightBg: 'bg-red-50',
+    borderColor: 'border-red-200',
     order: 4,
     icon: '🔥',
-    durata_media: 360
+    durata_media: 360,
+    description: 'Processo di cura in autoclave'
   },
   'Finito': { 
-    color: 'bg-green-500', 
-    textColor: 'text-green-700',
+    color: 'bg-emerald-500', // Verde più moderno
+    gradientFrom: 'from-emerald-400',
+    gradientTo: 'to-emerald-600',
+    textColor: 'text-emerald-700',
+    lightBg: 'bg-emerald-50',
+    borderColor: 'border-emerald-200',
     order: 5,
     icon: '✅',
-    durata_media: 0
+    durata_media: 0,
+    description: 'Processo completato'
   }
 };
 
@@ -414,94 +444,78 @@ export function OdlProgressBar({
           </div>
         )}
 
-        {/* Barra di progresso segmentata bilanciata */}
+        {/* Barra di progresso compatta per tabelle */}
         <div className="relative">
-          <div className="flex h-6 bg-gray-200 rounded-lg overflow-hidden">
+          {/* Progress Bar Compatta */}
+          <div className="flex h-4 bg-gray-100 rounded-md overflow-hidden">
             {segmenti.length > 0 ? (
               segmenti.map((segmento, index) => {
                 const config = STATI_CONFIG[segmento.stato as keyof typeof STATI_CONFIG];
                 const isCurrentState = segmento.stato === sanitizedOdl.status;
-                const hasSignificantDifference = Math.abs(segmento.percentuale - segmento.percentualeOriginale) > 5;
+                const isLastSegment = index === segmenti.length - 1;
+                
+                // Calcola scostamento dalla media standard
+                const durataEffettiva = segmento.durata_minuti || 0;
+                const durataStandard = config?.durata_media || 0;
+                const scostamentoPerc = durataStandard > 0 ? ((durataEffettiva - durataStandard) / durataStandard) * 100 : 0;
+                const isRitardo = scostamentoPerc > 20;
+                const isVeloce = scostamentoPerc < -20;
                 
                 return (
                   <Tooltip key={index}>
                     <TooltipTrigger asChild>
                       <div
                         className={`
-                          ${config?.color || 'bg-gray-400'} 
-                          transition-all duration-300 hover:opacity-80
-                          ${isCurrentState ? 'ring-2 ring-blue-500 ring-opacity-50' : ''}
-                          ${segmento.isEstimated ? 'opacity-75 border-2 border-dashed border-white' : ''}
-                          ${hasSignificantDifference ? 'border-l-2 border-r-2 border-yellow-400' : ''}
+                          relative transition-all duration-300 hover:brightness-105 cursor-pointer
+                          ${isCurrentState 
+                            ? `bg-gradient-to-r ${config?.gradientFrom} ${config?.gradientTo}` 
+                            : config?.color || 'bg-gray-400'
+                          }
+                          ${segmento.isEstimated ? 'opacity-60' : ''}
+                          ${!isLastSegment ? 'border-r border-white/20' : ''}
                         `}
                         style={{ width: `${segmento.percentuale}%` }}
-                      />
+                      >
+                        {/* Indicatore stato attivo minimalista */}
+                        {isCurrentState && (
+                          <div className="absolute inset-y-0 right-0 w-0.5 bg-white/90" />
+                        )}
+                        
+                        {/* Indicatore performance */}
+                        {segmento.fonte_dati === 'tempo_fase' && (isRitardo || isVeloce) && (
+                          <div className={`absolute top-0 right-0 w-1 h-1 rounded-full ${isRitardo ? 'bg-red-400' : 'bg-green-400'}`} />
+                        )}
+                      </div>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <div className="text-center">
-                        <div className="font-medium">
+                      <div className="text-sm">
+                        <div className="font-medium mb-1">
                           {config?.icon} {segmento.stato}
-                          {segmento.isEstimated && <span className="text-blue-400 ml-1">(stimato)</span>}
-                          {isCurrentState && <span className="text-green-400 ml-1">• ATTIVO</span>}
+                          {isCurrentState && <span className="text-blue-400 ml-1">• ATTIVO</span>}
+                        </div>
+                        
+                        <div className="text-xs space-y-1">
+                          <div>Durata: <span className="font-medium">{formatDurata(durataEffettiva)}</span></div>
+                          
+                          {durataStandard > 0 && (
+                            <div>
+                              Standard: {formatDurata(durataStandard)}
+                              {segmento.fonte_dati === 'tempo_fase' && Math.abs(scostamentoPerc) > 20 && (
+                                <span className={`ml-1 ${isRitardo ? 'text-red-500' : 'text-green-500'}`}>
+                                  ({isRitardo ? '↗' : '↘'}{Math.abs(scostamentoPerc).toFixed(0)}%)
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          
                           {segmento.fonte_dati === 'tempo_fase' && (
-                            <span className="text-green-500 ml-1">⚡ Preciso</span>
+                            <div className="text-green-600">⚡ Preciso</div>
+                          )}
+                          
+                          {segmento.isEstimated && (
+                            <div className="text-blue-500">📈 Stimato</div>
                           )}
                         </div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          <div>Durata: {formatDurata(segmento.durata_minuti || 0)}</div>
-                          <div>Visualizzazione: {segmento.percentuale.toFixed(1)}%</div>
-                          {segmento.fonte_dati && (
-                            <div className={`mt-1 ${
-                              segmento.fonte_dati === 'tempo_fase' 
-                                ? 'text-green-600' 
-                                : 'text-gray-600'
-                            }`}>
-                              Fonte: {segmento.fonte_dati === 'tempo_fase' ? 'Tracciamento Preciso' : 'Log Stati'}
-                            </div>
-                          )}
-                          {hasSignificantDifference && (
-                            <div className="text-yellow-600">
-                              Reale: {segmento.percentualeOriginale.toFixed(1)}% 
-                              <br />
-                              <span className="text-xs">(bilanciato per leggibilità)</span>
-                            </div>
-                          )}
-                        </div>
-                        {segmento.inizio && !segmento.isEstimated && (
-                          <div className="text-xs text-muted-foreground mt-1">
-                            Inizio: {new Date(segmento.inizio).toLocaleDateString('it-IT', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </div>
-                        )}
-                        {segmento.fine && !segmento.isEstimated && (
-                          <div className="text-xs text-muted-foreground">
-                            Fine: {new Date(segmento.fine).toLocaleDateString('it-IT', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </div>
-                        )}
-                        {config && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            Media tipica: {formatDurata(config.durata_media)}
-                            {segmento.fonte_dati === 'tempo_fase' && segmento.durata_minuti && (
-                              <div className={`mt-1 ${
-                                Math.abs((segmento.durata_minuti - config.durata_media) / config.durata_media) > 0.2
-                                  ? (segmento.durata_minuti > config.durata_media ? 'text-red-500' : 'text-green-500')
-                                  : 'text-gray-500'
-                              }`}>
-                                {segmento.durata_minuti > config.durata_media ? '↗' : '↘'} 
-                                {Math.abs(((segmento.durata_minuti - config.durata_media) / config.durata_media) * 100).toFixed(0)}% vs media
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </div>
                     </TooltipContent>
                   </Tooltip>
@@ -509,101 +523,13 @@ export function OdlProgressBar({
               })
             ) : (
               <div className="w-full bg-gray-300 flex items-center justify-center">
-                <span className="text-xs text-gray-600">Stato sconosciuto</span>
+                <span className="text-xs text-gray-500">Nessun dato</span>
               </div>
             )}
           </div>
-
-          {/* Indicatore stato corrente */}
-          {(currentTimestamp && !currentTimestamp.fine) || usingEstimatedData && (
-            <div className="absolute -top-1 -bottom-1 right-0 w-1 bg-blue-600 rounded-full animate-pulse" />
-          )}
         </div>
 
-        {/* Legenda dettagliata con statistiche */}
-        {showDetails && segmenti.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
-            {Object.entries(STATI_CONFIG).map(([stato, config]) => {
-              const segmento = segmenti.find(s => s.stato === stato);
-              const isActive = segmento !== undefined;
-              const isCurrent = stato === sanitizedOdl.status;
-              const durataEffettiva = segmento?.durata_minuti || 0;
-              const durataMedia = config.durata_media;
-              const scostamentoStato = durataEffettiva - durataMedia;
-              const hasScostamento = Math.abs(scostamentoStato) > durataMedia * 0.2; // >20% scostamento
-              
-              return (
-                <div 
-                  key={stato}
-                  className={`
-                    flex flex-col p-2 rounded border
-                    ${isActive ? 'bg-gray-50 border-gray-200' : 'opacity-50 border-gray-100'}
-                    ${isCurrent ? 'ring-2 ring-blue-300 bg-blue-50' : ''}
-                  `}
-                >
-                  <div className="flex items-center gap-1 mb-1">
-                    <div 
-                      className={`w-3 h-3 rounded-sm ${config.color} ${segmento?.isEstimated ? 'opacity-75 border border-dashed border-gray-400' : ''}`}
-                    />
-                    <span className={`text-xs ${isActive ? 'font-medium' : ''}`}>
-                      {config.icon} {stato}
-                    </span>
-                  </div>
-                  
-                  {segmento && (
-                    <div className="space-y-1">
-                      <div className="flex justify-between">
-                        <span className="text-xs text-muted-foreground">Durata:</span>
-                        <span className="text-xs font-medium">
-                          {formatDurata(durataEffettiva)}
-                          {segmento.isEstimated && <span className="text-blue-400">*</span>}
-                        </span>
-                      </div>
-                      
-                      {!segmento.isEstimated && hasScostamento && (
-                        <div className={`text-xs ${scostamentoStato > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                          {scostamentoStato > 0 ? '+' : ''}{formatDurata(Math.abs(scostamentoStato))} vs media
-                        </div>
-                      )}
-                      
-                      <div className="text-xs text-gray-400">
-                        Media: {formatDurata(durataMedia)}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
 
-        {/* Note informative */}
-        {usingEstimatedData && (
-          <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 p-2 rounded">
-            <Info className="h-4 w-4" />
-            <span>
-              Dati temporali stimati - La timeline dettagliata sarà disponibile dopo il primo cambio di stato
-              {durataTotale > 0 && ` (tempo dall'inizio: ${formatDurata(durataTotale)})`}
-            </span>
-          </div>
-        )}
-
-        {segmenti.some(s => Math.abs(s.percentuale - s.percentualeOriginale) > 5) && (
-          <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 p-2 rounded">
-            <Info className="h-4 w-4" />
-            <span>
-              Le proporzioni sono state bilanciate per migliorare la leggibilità. 
-              I valori reali sono mostrati nei tooltip dei segmenti.
-            </span>
-          </div>
-        )}
-
-        {durataTotale === 0 && !usingEstimatedData && (
-          <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 p-2 rounded">
-            <AlertTriangle className="h-4 w-4" />
-            <span>Dati temporali incompleti - Alcuni timestamp potrebbero mancare</span>
-          </div>
-        )}
       </div>
     </TooltipProvider>
   );

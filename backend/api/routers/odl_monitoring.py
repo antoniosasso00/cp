@@ -528,6 +528,42 @@ def get_odl_progress(odl_id: int, db: Session = Depends(get_db)):
                         "fonte_dati": "tempo_fase"
                     })
         
+        # ✅ FIX CRITICO: Aggiungi fasi TempoFase mancanti non coperte dalla timeline
+        for tempo_fase in tempi_fasi:
+            stato_corrispondente = {
+                "preparazione": "Preparazione",
+                "laminazione": "Laminazione", 
+                "attesa_cura": "Attesa Cura",
+                "cura": "Cura"
+            }.get(tempo_fase.fase)
+            
+            if stato_corrispondente:
+                # Controlla se questo stato è già presente nei timestamps
+                stato_gia_presente = any(t["stato"] == stato_corrispondente for t in timestamps_stati)
+                
+                if not stato_gia_presente:
+                    # Aggiungi la fase mancante
+                    inizio = tempo_fase.inizio_fase.isoformat()
+                    fine = tempo_fase.fine_fase.isoformat() if tempo_fase.fine_fase else None
+                    durata_minuti = tempo_fase.durata_minuti
+                    
+                    # Se la fase non è completata, calcola durata corrente
+                    if not fine and not durata_minuti:
+                        durata_corrente = int((datetime.now() - tempo_fase.inizio_fase).total_seconds() / 60)
+                        durata_minuti = durata_corrente
+                    
+                    timestamps_stati.append({
+                        "stato": stato_corrispondente,
+                        "inizio": inizio,
+                        "fine": fine,
+                        "durata_minuti": durata_minuti,
+                        "fonte_dati": "tempo_fase"
+                    })
+        
+        # Ordina i timestamps per ordine logico delle fasi
+        ordine_stati = {"Preparazione": 1, "Laminazione": 2, "In Coda": 3, "Attesa Cura": 4, "Cura": 5, "Finito": 6}
+        timestamps_stati.sort(key=lambda x: ordine_stati.get(x["stato"], 999))
+        
         # Calcola tempo totale stimato
         tempo_totale_stimato = None
         if len(timestamps_stati) > 0:

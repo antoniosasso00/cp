@@ -71,6 +71,49 @@ export function ODLHistoryTableLazy({
     fetchODLHistory()
   }, [maxItems])
 
+  // Funzione per analizzare l'univocità parte-tool
+  const analyzePartToolUniqueness = (items: ODLResponse[]) => {
+    const partToTools = new Map<string, Set<string>>()
+    const toolToParts = new Map<string, Set<string>>()
+    
+    // Analizza le relazioni parte-tool
+    items.forEach(item => {
+      const partNumber = item.parte.part_number
+      const toolNumber = item.tool.part_number_tool
+      
+      if (!partToTools.has(partNumber)) {
+        partToTools.set(partNumber, new Set())
+      }
+      partToTools.get(partNumber)!.add(toolNumber)
+      
+      if (!toolToParts.has(toolNumber)) {
+        toolToParts.set(toolNumber, new Set())
+      }
+      toolToParts.get(toolNumber)!.add(partNumber)
+    })
+    
+    // Determina quando mostrare il tool
+    const shouldShowTool = new Set<string>()
+    
+    items.forEach(item => {
+      const partNumber = item.parte.part_number
+      const toolNumber = item.tool.part_number_tool
+      const odlKey = `${partNumber}-${toolNumber}`
+      
+      // Mostra tool se:
+      // 1. Una parte ha più tool diversi
+      // 2. Un tool è usato per più parti diverse
+      const partHasMultipleTools = partToTools.get(partNumber)!.size > 1
+      const toolHasMultipleParts = toolToParts.get(toolNumber)!.size > 1
+      
+      if (partHasMultipleTools || toolHasMultipleParts) {
+        shouldShowTool.add(odlKey)
+      }
+    })
+    
+    return shouldShowTool
+  }
+
   // Configurazione colonne per LazyBigTable
   const columns = [
     {
@@ -78,46 +121,46 @@ export function ODLHistoryTableLazy({
       label: 'ODL',
       sortable: true,
       filterable: true,
-      width: 'w-20',
+      width: 'w-16',
       render: (value: any) => (
-        <span className="font-medium">#{value}</span>
+        <span className="font-mono text-sm">#{value}</span>
       )
     },
     {
       key: 'parte',
-      label: 'Parte',
+      label: 'Parte & Tool',
       sortable: true,
       filterable: true,
-      width: 'w-48',
-      render: (value: any) => (
-        <div>
-          <div className="font-medium text-sm">
-            {value?.part_number || 'N/A'}
+      width: 'min-w-[280px]',
+      render: (value: any, row: any) => {
+        const toolVisibilityMap = analyzePartToolUniqueness(odlList)
+        return (
+          <div className="space-y-1">
+            <div className="flex flex-col">
+              <span className="font-medium text-sm">
+                {value?.part_number || 'N/A'}
+              </span>
+              <span className="text-xs text-muted-foreground leading-tight max-w-[240px]">
+                {value?.descrizione_breve || 'Descrizione non disponibile'}
+              </span>
+            </div>
+            {toolVisibilityMap.has(`${value?.part_number}-${row.tool?.part_number_tool}`) && (
+              <div className="text-xs">
+                <span className="bg-slate-100 px-2 py-0.5 rounded text-muted-foreground">
+                  Tool: {row.tool?.part_number_tool || 'N/A'}
+                </span>
+              </div>
+            )}
           </div>
-          <div className="text-xs text-muted-foreground truncate max-w-[180px]">
-            {value?.descrizione_breve || 'Descrizione non disponibile'}
-          </div>
-        </div>
-      )
-    },
-    {
-      key: 'tool',
-      label: 'Tool',
-      sortable: true,
-      filterable: true,
-      width: 'w-32',
-      render: (value: any) => (
-        <div className="text-sm">
-          {value?.part_number_tool || 'N/A'}
-        </div>
-      )
+        )
+      }
     },
     {
       key: 'status',
       label: 'Stato',
       sortable: true,
       filterable: true,
-      width: 'w-32',
+      width: 'w-24',
       render: (value: string) => {
         const statusConfig = {
           'Preparazione': { variant: 'secondary', color: 'bg-gray-500' },
@@ -173,11 +216,11 @@ export function ODLHistoryTableLazy({
       label: 'Azioni',
       sortable: false,
       filterable: false,
-      width: 'w-20',
+      width: 'w-16',
       render: (value: any, row: any) => (
-        <div className="flex gap-1">
+        <div className="text-center">
           <Link href={`/dashboard/shared/odl/${row.id}`}>
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
               <FileText className="h-3 w-3" />
             </Button>
           </Link>

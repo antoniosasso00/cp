@@ -276,8 +276,52 @@ export default function ODLPage() {
       (item.note && item.note.toLowerCase().includes(searchLower))
     ))
   }
+
+  // Funzione per analizzare l'univocità parte-tool
+  const analyzePartToolUniqueness = (items: ODLResponse[]) => {
+    const partToTools = new Map<string, Set<string>>()
+    const toolToParts = new Map<string, Set<string>>()
+    
+    // Analizza le relazioni parte-tool
+    items.forEach(item => {
+      const partNumber = item.parte.part_number
+      const toolNumber = item.tool.part_number_tool
+      
+      if (!partToTools.has(partNumber)) {
+        partToTools.set(partNumber, new Set())
+      }
+      partToTools.get(partNumber)!.add(toolNumber)
+      
+      if (!toolToParts.has(toolNumber)) {
+        toolToParts.set(toolNumber, new Set())
+      }
+      toolToParts.get(toolNumber)!.add(partNumber)
+    })
+    
+    // Determina quando mostrare il tool
+    const shouldShowTool = new Set<string>()
+    
+    items.forEach(item => {
+      const partNumber = item.parte.part_number
+      const toolNumber = item.tool.part_number_tool
+      const odlKey = `${partNumber}-${toolNumber}`
+      
+      // Mostra tool se:
+      // 1. Una parte ha più tool diversi
+      // 2. Un tool è usato per più parti diverse
+      const partHasMultipleTools = partToTools.get(partNumber)!.size > 1
+      const toolHasMultipleParts = toolToParts.get(toolNumber)!.size > 1
+      
+      if (partHasMultipleTools || toolHasMultipleParts) {
+        shouldShowTool.add(odlKey)
+      }
+    })
+    
+    return shouldShowTool
+  }
   
   const filteredODLs = filterODLs(odls, searchQuery)
+  const toolVisibilityMap = analyzePartToolUniqueness(filteredODLs)
 
   // Render dello stato di errore
   if (error && !isLoading) {
@@ -401,19 +445,18 @@ export default function ODLPage() {
                     aria-label="Seleziona tutti gli ODL"
                   />
                 </TableHead>
-                <TableHead>Numero ODL</TableHead>
-                <TableHead>Part Number</TableHead>
-                <TableHead>Tool</TableHead>
-                <TableHead className="text-center">Priorità</TableHead>
-                <TableHead className="w-64">Avanzamento</TableHead>
-                <TableHead>Note</TableHead>
-                <TableHead className="text-right">Azioni</TableHead>
+                <TableHead className="w-24">Numero ODL</TableHead>
+                <TableHead className="min-w-[300px]">Parte & Dettagli</TableHead>
+                <TableHead className="w-32 text-center">Stato & Priorità</TableHead>
+                <TableHead className="w-72">Avanzamento</TableHead>
+                <TableHead className="w-48">Note & Data</TableHead>
+                <TableHead className="w-20 text-right">Azioni</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredODLs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8">
+                  <TableCell colSpan={7} className="text-center py-8">
                     {searchQuery ? 
                       'Nessun ordine di lavoro trovato con i criteri di ricerca' : 
                       'Nessun ordine di lavoro attivo trovato'
@@ -422,7 +465,7 @@ export default function ODLPage() {
                 </TableRow>
               ) : (
                 filteredODLs.map(item => (
-                  <TableRow key={item.id}>
+                  <TableRow key={item.id} className="hover:bg-muted/25">
                     <TableCell>
                       <Checkbox
                         checked={selectedODLs.has(item.id)}
@@ -431,50 +474,90 @@ export default function ODLPage() {
                       />
                     </TableCell>
                     <TableCell>
-                      <span className="font-mono font-medium text-primary">
+                      <span className="font-mono font-bold text-primary text-lg">
                         {item.numero_odl}
                       </span>
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{item.parte.part_number}</span>
-                        <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                          {item.parte.descrizione_breve}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{item.tool.part_number_tool}</span>
-                        {item.tool.descrizione && (
-                          <span className="text-xs text-muted-foreground truncate max-w-[150px]">
-                            {item.tool.descrizione}
+                      <div className="space-y-2">
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-base">{item.parte.part_number}</span>
+                          <span className="text-sm text-muted-foreground leading-tight max-w-[280px]">
+                            {item.parte.descrizione_breve}
                           </span>
+                        </div>
+                        {toolVisibilityMap.has(`${item.parte.part_number}-${item.tool.part_number_tool}`) && (
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="bg-slate-100 px-2 py-1 rounded-md font-medium">
+                              Tool: {item.tool.part_number_tool}
+                            </span>
+                            {item.tool.descrizione && (
+                              <span className="text-muted-foreground truncate max-w-[120px]">
+                                {item.tool.descrizione}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
-                      <div className="flex flex-col items-center gap-1">
-                        <span className="text-lg">{getPriorityIcon(item.priorita)}</span>
-                        <Badge variant={getPriorityBadgeVariant(item.priorita)}>
-                          Priorità {item.priorita}
+                      <div className="space-y-2">
+                        <Badge 
+                          variant={item.status === 'Finito' ? 'secondary' : 
+                                  item.status === 'Cura' ? 'destructive' :
+                                  item.status === 'Attesa Cura' ? 'default' : 'outline'}
+                          className="text-xs font-medium"
+                        >
+                          {item.status}
                         </Badge>
+                        <div className="flex items-center justify-center gap-1">
+                          <span className="text-sm">{getPriorityIcon(item.priorita)}</span>
+                          <Badge variant={getPriorityBadgeVariant(item.priorita)} className="text-xs">
+                            P{item.priorita}
+                          </Badge>
+                        </div>
                       </div>
                     </TableCell>
-                    <TableCell className="w-64">
+                    <TableCell>
                       <OdlProgressWrapper 
                         odlId={item.id}
                         showDetails={false}
-                        className="min-h-[40px]"
+                        className="min-h-[50px]"
                       />
                     </TableCell>
-                    <TableCell className="max-w-[200px] truncate">
-                      {item.note || '-'}
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="text-sm max-w-[180px]">
+                          {item.note ? (
+                            <span className="text-muted-foreground"
+                                  style={{
+                                    display: '-webkit-box',
+                                    WebkitLineClamp: 2,
+                                    WebkitBoxOrient: 'vertical',
+                                    overflow: 'hidden',
+                                    lineHeight: '1.3'
+                                  }}>
+                              {item.note}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/60 italic">Nessuna nota</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {new Date(item.created_at).toLocaleDateString('it-IT', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
