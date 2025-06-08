@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ODLResponse, odlApi } from '@/lib/api'
+import { ODLResponse, odlApi, phaseTimesApi, TempoFaseResponse } from '@/lib/api'
 import { formatDateTime } from '@/lib/utils'
 import { 
   Loader2, 
@@ -16,7 +16,12 @@ import {
   ArrowRight,
   CheckCircle,
   AlertTriangle,
-  Wrench
+  Wrench,
+  Clock,
+  Play,
+  Timer,
+  Undo2,
+  AlertCircle
 } from 'lucide-react'
 import {
   Dialog,
@@ -37,15 +42,64 @@ const getStatusBadgeVariant = (status: string) => {
   return variants[status] || "default"
 }
 
+// Colori dei bottoni in base allo stato (aggiornato con arancione per Attesa Cura)
+const getButtonColor = (status: string) => {
+  const colors: Record<string, string> = {
+    "Preparazione": "bg-blue-500 hover:bg-blue-600 text-white", // Blu per avviare laminazione
+    "Laminazione": "bg-orange-500 hover:bg-orange-600 text-white", // Arancione per attesa cura
+  }
+  return colors[status] || "bg-gray-500 hover:bg-gray-600 text-white"
+}
+
+// Colore per pulsanti di rollback
+const getRollbackButtonColor = () => "bg-gray-500 hover:bg-gray-600 text-white"
+
+// Formatta la durata dal sistema tempo fasi
+const formatDurataFase = (tempoFase: TempoFaseResponse | undefined): string => {
+  if (!tempoFase) return "N/A"
+  
+  // Se la fase è completata, usa la durata calcolata
+  if (tempoFase.durata_minuti !== null && tempoFase.durata_minuti !== undefined) {
+    const minuti = tempoFase.durata_minuti
+    if (minuti < 60) {
+      return `${minuti}m`
+    }
+    const ore = Math.floor(minuti / 60)
+    const min = minuti % 60
+    return min > 0 ? `${ore}h ${min}m` : `${ore}h`
+  }
+  
+  // Se la fase è in corso, calcola il tempo trascorso
+  if (tempoFase.inizio_fase && !tempoFase.fine_fase) {
+    const inizio = new Date(tempoFase.inizio_fase)
+    const ora = new Date()
+    const diffMs = ora.getTime() - inizio.getTime()
+    const minuti = Math.floor(diffMs / (1000 * 60))
+    
+    if (minuti < 60) {
+      return `${minuti}m`
+    }
+    const ore = Math.floor(minuti / 60)
+    const min = minuti % 60
+    return min > 0 ? `${ore}h ${min}m` : `${ore}h`
+  }
+  
+  return "N/A"
+}
+
 export default function ProduzionePage() {
   const [odlList, setOdlList] = useState<ODLResponse[]>([])
+  const [tempoFasiMap, setTempoFasiMap] = useState<Record<number, TempoFaseResponse[]>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedODL, setSelectedODL] = useState<ODLResponse | null>(null)
   const [isAdvancing, setIsAdvancing] = useState(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [showRollbackDialog, setShowRollbackDialog] = useState(false)
   const [nextStatus, setNextStatus] = useState<"Laminazione" | "Attesa Cura" | null>(null)
-  const { toast } = useToast()
+  const [rollbackStatus, setRollbackStatus] = useState<"Preparazione" | "Laminazione" | null>(null)
+  const [currentTime, setCurrentTime] = useState(new Date())
+  const { toast } = useStandardToast()
 
   const fetchData = async () => {
     try {
@@ -57,6 +111,21 @@ export default function ProduzionePage() {
         odl.status === "Preparazione" || odl.status === "Laminazione"
       )
       setOdlList(relevantOdl)
+      
+      // Carica i tempi fasi per ogni ODL
+      const tempoFasiData: Record<number, TempoFaseResponse[]> = {}
+      
+      for (const odl of relevantOdl) {
+        try {
+          const tempoFasi = await phaseTimesApi.fetchPhaseTimes({ odl_id: odl.id })
+          tempoFasiData[odl.id] = tempoFasi
+        } catch (error) {
+          console.error(`Errore nel caricamento tempo fasi per ODL ${odl.id}:`, error)
+          tempoFasiData[odl.id] = []
+        }
+      }
+      
+      setTempoFasiMap(tempoFasiData)
       
     } catch (error) {
       console.error('Errore nel caricamento dei dati:', error)
@@ -72,18 +141,45 @@ export default function ProduzionePage() {
 
   useEffect(() => {
     fetchData()
+    
+    // Aggiornamento periodico del tempo ogni 30 secondi
+    const interval = setInterval(() => {
+      setCurrentTime(new Date())
+    }, 30000)
+    
+    return () => clearInterval(interval)
   }, [])
 
-  // Filtra i dati in base alla ricerca
+  // Filtra i dati in base alla ricerca migliorata
   const filteredOdl = odlList.filter(odl => {
     const searchLower = searchQuery.toLowerCase()
     return (
+      // Ricerca per numero ODL
+      odl.numero_odl?.toLowerCase()?.includes(searchLower) ||
+      // Ricerca per part number
       odl.parte?.part_number?.toLowerCase()?.includes(searchLower) ||
-      String(odl.id).includes(searchLower) ||
-      odl.status.toLowerCase().includes(searchLower) ||
-      (odl.note && odl.note.toLowerCase().includes(searchLower))
+      // Ricerca per descrizione breve
+      odl.parte?.descrizione_breve?.toLowerCase()?.includes(searchLower) ||
+      // Ricerca per ID ODL
+      String(odl.id).includes(searchLower)
     )
   })
+
+  // Separa gli ODL per stato
+  const odlPreparazione = filteredOdl.filter(odl => odl.status === "Preparazione")
+  const odlLaminazione = filteredOdl.filter(odl => odl.status === "Laminazione")
+
+  // Ottieni il tempo della fase di preparazione per un ODL
+  const getTempoPreparazione = (odlId: number): TempoFaseResponse | undefined => {
+    const tempoFasi = tempoFasiMap[odlId] || []
+    return tempoFasi.find(tf => tf.fase === "preparazione" && !tf.fine_fase)
+  }
+
+  // Ottieni il tempo della fase di laminazione per un ODL
+  const getTempoLaminazione = (odlId: number): TempoFaseResponse | undefined => {
+    const tempoFasi = tempoFasiMap[odlId] || []
+    return tempoFasi.find(tf => tf.fase === "laminazione" && !tf.fine_fase)
+  }
 
   // Determina il prossimo stato possibile per un ODL
   const getNextStatus = (currentStatus: string): "Laminazione" | "Attesa Cura" | null => {
@@ -97,7 +193,19 @@ export default function ProduzionePage() {
     }
   }
 
-  // Gestisce il cambio stato
+  // Determina lo stato precedente per rollback
+  const getPreviousStatus = (currentStatus: string): "Preparazione" | "Laminazione" | null => {
+    switch (currentStatus) {
+      case "Laminazione":
+        return "Preparazione"
+      case "Attesa Cura":
+        return "Laminazione"
+      default:
+        return null
+    }
+  }
+
+  // Gestisce il cambio stato (avanzamento)
   const handleStatusChange = async (odl: ODLResponse, newStatus: "Laminazione" | "Attesa Cura") => {
     setIsAdvancing(true)
     try {
@@ -105,7 +213,7 @@ export default function ProduzionePage() {
       
       toast({
         title: '✅ Stato aggiornato con successo',
-        description: `ODL #${odl.id} è passato da "${odl.status}" a "${newStatus}"`,
+        description: `ODL #${odl.numero_odl} è passato da "${odl.status}" a "${newStatus}"`,
       })
       
       // Ricarica i dati automaticamente
@@ -144,13 +252,67 @@ export default function ProduzionePage() {
     }
   }
 
-  // Apre il dialog di conferma
+  // Gestisce il rollback dello stato (compatibile con tempo fasi)
+  const handleRollback = async (odl: ODLResponse, previousStatus: "Preparazione" | "Laminazione") => {
+    setIsAdvancing(true)
+    try {
+      // Usa l'API admin che gestisce automaticamente il tempo fasi
+      await odlApi.updateStatusAdmin(odl.id, previousStatus)
+      
+      toast({
+        title: '🔄 Rollback completato',
+        description: `ODL #${odl.numero_odl} è tornato da "${odl.status}" a "${previousStatus}"`,
+      })
+      
+      // Ricarica i dati automaticamente
+      await fetchData()
+      
+    } catch (error: any) {
+      console.error('Errore nel rollback dello stato:', error)
+      
+      let errorMessage = 'Impossibile eseguire il rollback dello stato ODL.'
+      
+      if (error.response?.status === 404) {
+        errorMessage = 'ODL non trovato. Potrebbe essere stato eliminato.'
+      } else if (error.response?.status === 400) {
+        errorMessage = error.response?.data?.detail || 'Rollback non consentito.'
+      } else if (error.response?.status === 422) {
+        errorMessage = 'Dati non validi per il rollback.'
+      }
+      
+      toast({
+        variant: 'destructive',
+        title: '❌ Errore rollback',
+        description: errorMessage,
+      })
+      
+      await fetchData()
+      
+    } finally {
+      setIsAdvancing(false)
+      setShowRollbackDialog(false)
+      setSelectedODL(null)
+      setRollbackStatus(null)
+    }
+  }
+
+  // Apre il dialog di conferma per avanzamento
   const openConfirmDialog = (odl: ODLResponse) => {
     const next = getNextStatus(odl.status)
     if (next) {
       setSelectedODL(odl)
       setNextStatus(next)
       setShowConfirmDialog(true)
+    }
+  }
+
+  // Apre il dialog di conferma per rollback
+  const openRollbackDialog = (odl: ODLResponse) => {
+    const previous = getPreviousStatus(odl.status)
+    if (previous) {
+      setSelectedODL(odl)
+      setRollbackStatus(previous)
+      setShowRollbackDialog(true)
     }
   }
 
@@ -162,6 +324,262 @@ export default function ProduzionePage() {
     }
     return descriptions[`${currentStatus}->${nextStatus}`] || "Cambio di stato dell'ODL."
   }
+
+  // Ottiene il testo descrittivo per il rollback
+  const getRollbackDescription = (currentStatus: string, previousStatus: string) => {
+    const descriptions: Record<string, string> = {
+      "Laminazione->Preparazione": "L'ODL tornerà dalla laminazione alla fase di preparazione. La fase di laminazione corrente verrà chiusa automaticamente.",
+      "Attesa Cura->Laminazione": "L'ODL tornerà dall'attesa cura alla laminazione. Verrà riaperta una nuova fase di laminazione."
+    }
+    return descriptions[`${currentStatus}->${previousStatus}`] || "Rollback dello stato dell'ODL con gestione automatica delle fasi."
+  }
+
+  // Componente per la tabella degli ODL in Preparazione
+  const PreparazioneTable = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Play className="h-5 w-5 text-blue-500" />
+          ODL in Preparazione ({odlPreparazione.length})
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        {odlPreparazione.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground px-6">
+            <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+            <p className="text-lg font-medium">Nessun ODL in Preparazione</p>
+            <p className="text-sm">Non ci sono ODL pronti per la laminazione al momento.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableCaption className="px-6">ODL pronti per avviare la laminazione</TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-24 px-3">ODL</TableHead>
+                  <TableHead className="w-36 px-3">Part Number</TableHead>
+                  <TableHead className="min-w-40 px-3">Descrizione</TableHead>
+                  <TableHead className="w-36 px-3 hidden lg:table-cell">Tool</TableHead>
+                  <TableHead className="w-32 px-3">Stato</TableHead>
+                  <TableHead className="w-24 px-3 text-center">Tempo</TableHead>
+                  <TableHead className="w-16 text-center px-2">Pr.</TableHead>
+                  <TableHead className="w-40 text-center px-3">Azioni</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {odlPreparazione.map(odl => (
+                  <TableRow key={odl.id}>
+                    <TableCell className="font-mono text-sm px-3 font-medium">
+                      <div className="truncate" title={odl.numero_odl}>
+                        {odl.numero_odl}
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-mono text-sm px-3">
+                      {odl.parte?.part_number ? (
+                        <div className="text-foreground truncate" title={odl.parte.part_number}>
+                          {odl.parte.part_number}
+                        </div>
+                      ) : (
+                        <span className="text-red-500 font-medium text-sm">⚠️ N/A</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="px-3">
+                      <div className="text-sm truncate" title={odl.parte?.descrizione_breve || "Descrizione non disponibile"}>
+                        {odl.parte?.descrizione_breve ? (
+                          <span className="text-foreground">{odl.parte.descrizione_breve}</span>
+                        ) : (
+                          <span className="text-red-500 font-medium">⚠️ N/A</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-mono text-sm px-3 hidden lg:table-cell">
+                      {odl.tool?.part_number_tool ? (
+                        <div className="text-foreground truncate" title={odl.tool.part_number_tool}>
+                          {odl.tool.part_number_tool}
+                        </div>
+                      ) : (
+                        <span className="text-red-500 font-medium text-sm">⚠️ N/A</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="px-3">
+                      <Badge variant="secondary" className="text-sm px-3 py-1">
+                        {odl.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-center px-3">
+                      <div className="flex items-center justify-center gap-1 text-sm font-mono">
+                        <Clock className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-foreground font-medium" key={currentTime.getTime()}>
+                          {formatDurataFase(getTempoPreparazione(odl.id))}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center px-2">
+                      <Badge variant={odl.priorita > 5 ? "destructive" : odl.priorita > 3 ? "warning" : "secondary"} className="text-sm px-2 py-1">
+                        {odl.priorita}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-center px-3">
+                      <Button
+                        size="sm"
+                        onClick={() => openConfirmDialog(odl)}
+                        disabled={isAdvancing || !odl.parte || !odl.tool}
+                        className={`flex items-center gap-2 w-full justify-center ${getButtonColor(odl.status)}`}
+                        title={!odl.parte || !odl.tool ? "Dati ODL incompleti" : "Avvia Laminazione"}
+                      >
+                        {isAdvancing ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <Play className="h-4 w-4" />
+                            <span className="truncate">Laminazione</span>
+                          </>
+                        )}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+
+  // Componente per la tabella degli ODL in Laminazione
+  const LaminazioneTable = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Timer className="h-5 w-5 text-green-500" />
+          ODL in Laminazione ({odlLaminazione.length})
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        {odlLaminazione.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground px-6">
+            <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+            <p className="text-lg font-medium">Nessun ODL in Laminazione</p>
+            <p className="text-sm">Non ci sono ODL attualmente in laminazione.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableCaption className="px-6">ODL attualmente in laminazione con tempo trascorso dal sistema tempo fasi</TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-24 px-3">ODL</TableHead>
+                  <TableHead className="w-36 px-3">Part Number</TableHead>
+                  <TableHead className="min-w-40 px-3">Descrizione</TableHead>
+                  <TableHead className="w-36 px-3 hidden lg:table-cell">Tool</TableHead>
+                  <TableHead className="w-32 px-3">Stato</TableHead>
+                  <TableHead className="w-24 px-3 text-center">Tempo</TableHead>
+                  <TableHead className="w-16 text-center px-2">Pr.</TableHead>
+                  <TableHead className="w-52 text-center px-3">Azioni</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {odlLaminazione.map(odl => {
+                  const tempoLaminazione = getTempoLaminazione(odl.id)
+                  const previousStatus = getPreviousStatus(odl.status)
+                  return (
+                    <TableRow key={odl.id}>
+                      <TableCell className="font-mono text-sm px-3 font-medium">
+                        <div className="truncate" title={odl.numero_odl}>
+                          {odl.numero_odl}
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-mono text-sm px-3">
+                        {odl.parte?.part_number ? (
+                          <div className="text-foreground truncate" title={odl.parte.part_number}>
+                            {odl.parte.part_number}
+                          </div>
+                        ) : (
+                          <span className="text-red-500 font-medium text-sm">⚠️ N/A</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="px-3">
+                        <div className="text-sm truncate" title={odl.parte?.descrizione_breve || "Descrizione non disponibile"}>
+                          {odl.parte?.descrizione_breve ? (
+                            <span className="text-foreground">{odl.parte.descrizione_breve}</span>
+                          ) : (
+                            <span className="text-red-500 font-medium">⚠️ N/A</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-mono text-sm px-3 hidden lg:table-cell">
+                        {odl.tool?.part_number_tool ? (
+                          <div className="text-foreground truncate" title={odl.tool.part_number_tool}>
+                            {odl.tool.part_number_tool}
+                          </div>
+                        ) : (
+                          <span className="text-red-500 font-medium text-sm">⚠️ N/A</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="px-3">
+                        <Badge variant="default" className="text-sm px-3 py-1">
+                          {odl.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-center px-3">
+                        <div className="flex items-center justify-center gap-1 text-sm font-mono">
+                          <Clock className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-foreground font-medium" key={currentTime.getTime()}>
+                            {formatDurataFase(tempoLaminazione)}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center px-2">
+                        <Badge variant={odl.priorita > 5 ? "destructive" : odl.priorita > 3 ? "warning" : "secondary"} className="text-sm px-2 py-1">
+                          {odl.priorita}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-center px-3">
+                        <div className="flex gap-1">
+                          {/* Pulsante Rollback */}
+                          {previousStatus && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openRollbackDialog(odl)}
+                              disabled={isAdvancing}
+                              className={`flex items-center gap-1 ${getRollbackButtonColor()}`}
+                              title={`Torna a ${previousStatus}`}
+                            >
+                              <Undo2 className="h-3 w-3" />
+                            </Button>
+                          )}
+                          
+                          {/* Pulsante Avanzamento */}
+                          <Button
+                            size="sm"
+                            onClick={() => openConfirmDialog(odl)}
+                            disabled={isAdvancing || !odl.parte || !odl.tool}
+                            className={`flex items-center gap-2 flex-1 justify-center ${getButtonColor(odl.status)}`}
+                            title={!odl.parte || !odl.tool ? "Dati ODL incompleti" : "Completa Laminazione"}
+                          >
+                            {isAdvancing ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <>
+                                <CheckCircle className="h-4 w-4" />
+                                <span className="truncate">Attesa Cura</span>
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
 
   return (
     <div className="space-y-6">
@@ -182,17 +600,17 @@ export default function ProduzionePage() {
         </Button>
       </div>
 
-      {/* Filtro di ricerca */}
+      {/* Filtro di ricerca migliorato */}
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
         <Input
-          placeholder="Cerca ODL per codice, part number o stato..."
+          placeholder="Cerca per ODL, Part Number o Descrizione..."
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           className="max-w-sm"
         />
         <div className="flex gap-2 text-sm text-muted-foreground">
-          <Badge variant="secondary">Preparazione: {odlList.filter(o => o.status === "Preparazione").length}</Badge>
-          <Badge variant="default">Laminazione: {odlList.filter(o => o.status === "Laminazione").length}</Badge>
+          <Badge variant="secondary">Preparazione: {odlPreparazione.length}</Badge>
+          <Badge variant="default">Laminazione: {odlLaminazione.length}</Badge>
         </div>
       </div>
 
@@ -200,122 +618,25 @@ export default function ProduzionePage() {
       {isLoading ? (
         <div className="flex justify-center py-8">
           <Loader2 className="h-8 w-8 animate-spin" />
-          <span className="ml-2">Caricamento ODL...</span>
+          <span className="ml-2">Caricamento ODL e tempi fasi...</span>
         </div>
       ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="h-5 w-5" />
-                              ODL Clean Room ({filteredOdl.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {filteredOdl.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-                <p className="text-lg font-medium">Nessun ODL trovato</p>
-                <p className="text-sm">Non ci sono ODL in Preparazione o Laminazione al momento.</p>
-              </div>
-            ) : (
-              <Table>
-                                  <TableCaption>ODL gestibili dal ruolo Clean Room</TableCaption>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ODL</TableHead>
-                    <TableHead>Part Number</TableHead>
-                    <TableHead>Descrizione</TableHead>
-                    <TableHead>Tool</TableHead>
-                    <TableHead>Stato Attuale</TableHead>
-                    <TableHead>Priorità</TableHead>
-                    <TableHead>Ultimo Aggiornamento</TableHead>
-                    <TableHead className="text-center">Azioni</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredOdl.map(odl => {
-                    const nextStatus = getNextStatus(odl.status)
-                    return (
-                      <TableRow key={odl.id}>
-                        <TableCell className="font-medium">#{odl.id}</TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {odl.parte?.part_number ? (
-                            <span className="text-foreground">{odl.parte.part_number}</span>
-                          ) : (
-                            <span className="text-red-500 font-medium">⚠️ Mancante</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="max-w-xs">
-                          <div className="truncate" title={odl.parte?.descrizione_breve || "Descrizione non disponibile"}>
-                            {odl.parte?.descrizione_breve ? (
-                              <span className="text-foreground">{odl.parte.descrizione_breve}</span>
-                            ) : (
-                              <span className="text-red-500 font-medium">⚠️ Mancante</span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {odl.tool?.part_number_tool ? (
-                            <span className="text-foreground">{odl.tool.part_number_tool}</span>
-                          ) : (
-                            <span className="text-red-500 font-medium">⚠️ Mancante</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={getStatusBadgeVariant(odl.status)}>
-                            {odl.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={odl.priorita > 5 ? "destructive" : odl.priorita > 3 ? "warning" : "secondary"}>
-                            {odl.priorita}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {formatDateTime(odl.updated_at)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {nextStatus ? (
-                            <Button
-                              size="sm"
-                              onClick={() => openConfirmDialog(odl)}
-                              disabled={isAdvancing || !odl.parte || !odl.tool}
-                              className="flex items-center gap-2"
-                              title={!odl.parte || !odl.tool ? "Dati ODL incompleti" : `Avanza a ${nextStatus}`}
-                            >
-                              {isAdvancing ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <>
-                                  <ArrowRight className="h-3 w-3" />
-                                  {nextStatus}
-                                </>
-                              )}
-                            </Button>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">
-                              <CheckCircle className="h-4 w-4 inline mr-1" />
-                              Completato
-                            </span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+        <div className="space-y-6">
+          {/* Tabella ODL in Preparazione */}
+          <PreparazioneTable />
+          
+          {/* Tabella ODL in Laminazione */}
+          <LaminazioneTable />
+        </div>
       )}
 
-      {/* Dialog di conferma */}
+      {/* Dialog di conferma per avanzamento */}
       <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Conferma Avanzamento ODL</DialogTitle>
             <DialogDescription>
-              Stai per far avanzare l'ODL #{selectedODL?.id} dallo stato "{selectedODL?.status}" a "{nextStatus}".
+              Stai per far avanzare l'ODL {selectedODL?.numero_odl} dallo stato "{selectedODL?.status}" a "{nextStatus}".
             </DialogDescription>
           </DialogHeader>
           
@@ -354,6 +675,66 @@ export default function ProduzionePage() {
                 <>
                   <CheckCircle className="mr-2 h-4 w-4" />
                   Conferma Avanzamento
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog di conferma per rollback */}
+      <Dialog open={showRollbackDialog} onOpenChange={setShowRollbackDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-orange-500" />
+              Conferma Rollback ODL
+            </DialogTitle>
+            <DialogDescription>
+              Stai per fare il rollback dell'ODL {selectedODL?.numero_odl} dallo stato "{selectedODL?.status}" a "{rollbackStatus}".
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="p-4 bg-muted rounded-lg">
+              <h4 className="font-medium mb-2">Dettagli ODL:</h4>
+              <div className="space-y-1 text-sm">
+                <p><strong>Part Number:</strong> {selectedODL?.parte?.part_number}</p>
+                <p><strong>Descrizione:</strong> {selectedODL?.parte?.descrizione_breve}</p>
+                <p><strong>Tool:</strong> {selectedODL?.tool?.part_number_tool}</p>
+                <p><strong>Priorità:</strong> {selectedODL?.priorita}</p>
+              </div>
+            </div>
+            
+            <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertCircle className="h-4 w-4 text-orange-600" />
+                <p className="text-sm font-medium text-orange-800">Attenzione: Operazione di rollback</p>
+              </div>
+              <p className="text-sm text-orange-700">
+                {selectedODL && rollbackStatus && getRollbackDescription(selectedODL.status, rollbackStatus)}
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRollbackDialog(false)}>
+              Annulla
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={() => selectedODL && rollbackStatus && handleRollback(selectedODL, rollbackStatus)}
+              disabled={isAdvancing}
+            >
+              {isAdvancing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Rollback...
+                </>
+              ) : (
+                <>
+                  <Undo2 className="mr-2 h-4 w-4" />
+                  Conferma Rollback
                 </>
               )}
             </Button>

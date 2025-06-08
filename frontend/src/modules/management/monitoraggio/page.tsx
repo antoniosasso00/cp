@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -33,6 +33,7 @@ import { Label } from '@/components/ui/label'
 import { catalogApi, phaseTimesApi, odlApi, CatalogoResponse } from '@/lib/api'
 import { formatDuration, formatDateTime } from '@/lib/utils'
 import TempoFaseModal from '../../clean-room/tempi/components/tempo-fase-modal'
+import TempiPreparazioneMonitor from '@/shared/components/TempiPreparazioneMonitor'
 
 // Tipi per le statistiche
 interface StatisticheFasi {
@@ -63,6 +64,7 @@ const formatDurationLocal = (minutes: number | null): string => {
 
 const translateFase = (fase: string): string => {
   const translations: Record<string, string> = {
+    'preparazione': 'Preparazione',
     'laminazione': 'Laminazione',
     'attesa_cura': 'Attesa Cura',
     'cura': 'Cura'
@@ -72,6 +74,7 @@ const translateFase = (fase: string): string => {
 
 const getFaseBadgeVariant = (fase: string) => {
   const variants: Record<string, "default" | "secondary" | "destructive" | "outline" | "success" | "warning"> = {
+    "preparazione": "secondary",
     "laminazione": "default",
     "attesa_cura": "warning",
     "cura": "destructive",
@@ -97,7 +100,7 @@ export default function MonitoraggioPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<any | null>(null)
   
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
 
   const fetchData = async () => {
     try {
@@ -180,7 +183,7 @@ export default function MonitoraggioPage() {
 
   const calcolaStatisticheGenerali = (): StatisticheResponse => {
     const previsioni: StatisticheFasi = {}
-    const fasi = ['laminazione', 'attesa_cura', 'cura']
+    const fasi = ['preparazione', 'laminazione', 'attesa_cura', 'cura']
     
     fasi.forEach(fase => {
       const tempiPerFase = tempiFasi.filter(t => 
@@ -471,6 +474,13 @@ export default function MonitoraggioPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Monitoraggio Tempi Preparazione */}
+      <TempiPreparazioneMonitor 
+        maxItems={8}
+        autoRefresh={true}
+        refreshInterval={45000}
+      />
 
       {/* Tabs principali */}
       <Tabs defaultValue="statistiche" className="space-y-6">

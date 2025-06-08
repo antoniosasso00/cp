@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -53,7 +53,7 @@ export default function ReportsPage() {
   const [filterOdl, setFilterOdl] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
 
   // Carica la lista dei report esistenti
   const fetchExistingReports = async () => {

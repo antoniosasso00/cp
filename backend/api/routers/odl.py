@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Mappa per convertire stato ODL a tipo fase
 STATO_A_FASE = {
+    "Preparazione": "preparazione",
     "Laminazione": "laminazione",
     "Attesa Cura": "attesa_cura",
     "Cura": "cura"
@@ -208,6 +209,110 @@ async def get_odl_pending_nesting(db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante il recupero degli ODL in attesa di nesting."
+        )
+
+@router.delete("/bulk", status_code=http_status.HTTP_200_OK,
+               summary="Elimina multipli ordini di lavoro")
+def delete_multiple_odl(
+    odl_ids: List[int] = Body(..., description="Lista degli ID degli ODL da eliminare"),
+    confirm: bool = Query(False, description="Conferma eliminazione (obbligatorio per ODL finiti)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Elimina multipli ordini di lavoro tramite i loro ID.
+    
+    Per ODL in stato "Finito", è richiesta la conferma esplicita tramite il parametro 'confirm=true'.
+    
+    Restituisce un report dettagliato delle operazioni eseguite.
+    """
+    if not odl_ids:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Lista degli ID ODL non può essere vuota"
+        )
+    
+    # Recupera tutti gli ODL da eliminare
+    db_odls = db.query(ODL).filter(ODL.id.in_(odl_ids)).all()
+    
+    if not db_odls:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Nessun ODL trovato con gli ID specificati"
+        )
+    
+    # Verifica ODL finiti senza conferma
+    finished_odls = [odl for odl in db_odls if odl.status == "Finito"]
+    if finished_odls and not confirm:
+        finished_ids = [str(odl.id) for odl in finished_odls]
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=f"Per eliminare ODL in stato 'Finito' (IDs: {', '.join(finished_ids)}) è richiesta la conferma esplicita. Aggiungi il parametro 'confirm=true' alla richiesta."
+        )
+    
+    # Risultati dell'operazione
+    deleted_count = 0
+    errors = []
+    deleted_ids = []
+    
+    try:
+        for db_odl in db_odls:
+            try:
+                # Log dell'operazione per audit
+                SystemLogService.log_odl_operation(
+                    db=db,
+                    operation_type="ODL_DELETE_BULK",
+                    user_role=UserRole.ADMIN,  # Default admin per eliminazione
+                    details={
+                        "odl_id": db_odl.id,
+                        "status": db_odl.status,
+                        "parte_id": db_odl.parte_id,
+                        "tool_id": db_odl.tool_id,
+                        "confirmed": confirm,
+                        "bulk_operation": True
+                    },
+                    result="SUCCESS",
+                    user_id="sistema"
+                )
+                
+                db.delete(db_odl)
+                deleted_count += 1
+                deleted_ids.append(db_odl.id)
+                
+                logger.info(f"✅ ODL {db_odl.id} (stato: {db_odl.status}) eliminato con successo (bulk)")
+                
+            except Exception as e:
+                error_msg = f"Errore eliminazione ODL {db_odl.id}: {str(e)}"
+                errors.append(error_msg)
+                logger.error(error_msg)
+        
+        # Commit solo se non ci sono errori
+        if not errors:
+            db.commit()
+        else:
+            db.rollback()
+            raise HTTPException(
+                status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Errori durante l'eliminazione: {'; '.join(errors)}"
+            )
+        
+        logger.info(f"✅ Eliminazione multipla completata: {deleted_count} ODL eliminati")
+        
+        return {
+            "message": f"Eliminazione completata con successo",
+            "deleted_count": deleted_count,
+            "deleted_ids": deleted_ids,
+            "total_requested": len(odl_ids),
+            "errors": errors
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Errore generale durante l'eliminazione multipla: {str(e)}")
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Si è verificato un errore durante l'eliminazione multipla degli ODL."
         )
 
 @router.get("/{odl_id}", response_model=ODLRead, 
@@ -417,6 +522,8 @@ def delete_odl(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Si è verificato un errore durante l'eliminazione dell'ODL."
         )
+
+
 
 @router.post("/check-queue", 
              summary="Controlla e aggiorna automaticamente la coda degli ODL")

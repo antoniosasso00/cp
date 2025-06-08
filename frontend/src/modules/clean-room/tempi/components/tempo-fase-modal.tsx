@@ -35,7 +35,7 @@ export default function TempoFaseModal({
 
   // Form state
   const [odlId, setOdlId] = useState<number | string>("");
-  const [fase, setFase] = useState<"laminazione" | "attesa_cura" | "cura">("laminazione");
+  const [fase, setFase] = useState<"preparazione" | "laminazione" | "attesa_cura" | "cura">("laminazione");
   const [inizioFase, setInizioFase] = useState<string>("");
   const [fineFase, setFineFase] = useState<string>("");
   const [note, setNote] = useState<string>("");
@@ -213,13 +213,14 @@ export default function TempoFaseModal({
             <Label htmlFor="fase">Fase</Label>
             <Select 
               value={fase} 
-              onValueChange={(value: "laminazione" | "attesa_cura" | "cura") => setFase(value)} 
+              onValueChange={(value: "preparazione" | "laminazione" | "attesa_cura" | "cura") => setFase(value)} 
               disabled={isEditing}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Seleziona una fase" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="preparazione">Preparazione</SelectItem>
                 <SelectItem value="laminazione">Laminazione</SelectItem>
                 <SelectItem value="attesa_cura">Attesa Cura</SelectItem>
                 <SelectItem value="cura">Cura</SelectItem>

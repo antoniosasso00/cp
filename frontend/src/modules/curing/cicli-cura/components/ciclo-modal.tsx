@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -31,7 +31,7 @@ interface CicloModalProps {
 }
 
 export function CicloModal({ open, onOpenChange, editingItem, onSuccess }: CicloModalProps) {
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
   const [isLoading, setIsLoading] = useState(false)
 
   const form = useForm<CicloFormValues>({

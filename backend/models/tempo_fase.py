@@ -14,7 +14,7 @@ class TempoFase(Base, TimestampMixin):
     
     # Tipo di fase
     fase = Column(
-        Enum("laminazione", "attesa_cura", "cura", name="tipo_fase"),
+        Enum("preparazione", "laminazione", "attesa_cura", "cura", name="tipo_fase"),
         nullable=False,
         doc="Tipo di fase di produzione monitorata"
     )

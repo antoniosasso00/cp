@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -32,7 +32,7 @@ export default function MonitoraggioPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('performance')
   const [error, setError] = useState<string | null>(null)
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
 
   // Filtri globali condivisi tra tutti i tabs
   const [filtri, setFiltri] = useState<FiltriGlobali>({

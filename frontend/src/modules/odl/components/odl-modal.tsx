@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Tool, ParteResponse, ODLResponse, ODLCreate, ODLUpdate, odlApi, toolsApi, partsApi } from '@/lib/api'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Loader2, AlertTriangle } from 'lucide-react'
@@ -20,7 +20,7 @@ type ODLModalProps = {
 }
 
 const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
   const [tools, setTools] = useState<Tool[]>([])
   const [parti, setParti] = useState<ParteResponse[]>([])
   const [filteredTools, setFilteredTools] = useState<Tool[]>([])
@@ -74,6 +74,11 @@ const ODLModal = ({ isOpen, onClose, item, onSuccess }: ODLModalProps) => {
         const currentToolId = form.watch('tool_id')
         if (currentToolId && currentToolId !== 0 && !toolIds.includes(currentToolId)) {
           form.setValue('tool_id', 0)
+        }
+        
+        // ✅ AUTO-SELEZIONE: Se c'è solo un tool disponibile, selezionalo automaticamente
+        if (filtered.length === 1 && (currentToolId === 0 || !currentToolId)) {
+          form.setValue('tool_id', filtered[0].id)
         }
       } else {
         setFilteredTools([])

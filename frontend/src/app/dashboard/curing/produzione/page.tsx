@@ -1,1 +1,0 @@
-export { default } from '@/modules/curing/produzione/page' 

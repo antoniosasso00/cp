@@ -7,13 +7,13 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Loader2, Package2, Calendar, Filter, RefreshCw, Eye, Plus, ChevronDown, ChevronRight } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { batchNestingApi, BatchNestingList } from '@/lib/api'
 
 export default function NestingListPage() {
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
   const router = useRouter()
   
   // Stati per i dati

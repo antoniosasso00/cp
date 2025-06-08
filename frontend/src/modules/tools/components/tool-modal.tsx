@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useRouter } from 'next/navigation'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { FormField as UIFormField, FormControl, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
@@ -30,7 +30,7 @@ interface ToolModalProps {
 
 export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolModalProps) {
   const router = useRouter()
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
   const [isLoading, setIsLoading] = useState(false)
   const [isPending, startTransition] = useTransition()
 

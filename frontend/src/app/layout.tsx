@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google'
 import { Toaster } from '@/shared/components/ui/toaster'
 import { ThemeProvider } from '@/shared/components/theme-provider'
 import { ThemeToggle } from '@/shared/components/ui/theme-toggle'
+import StandardToastProvider from '@/shared/components/StandardToastProvider'
 import { ApiErrorProvider } from '@/shared/components/ApiErrorProvider'
 import { RoleGuard } from '@/shared/components/RoleGuard'
 import { SWRProvider } from '@/shared/components/providers/SWRProvider'
@@ -41,6 +42,7 @@ export default function RootLayout({
                   {children}
                 </AppSidebarLayout>
                 <Toaster />
+                <StandardToastProvider />
               </RoleGuard>
             </ApiErrorProvider>
           </SWRProvider>

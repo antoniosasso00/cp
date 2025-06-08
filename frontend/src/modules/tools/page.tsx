@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useToast } from '@/components/ui/use-toast'
+import { useCrudToast } from '@/shared/hooks/use-standard-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -30,7 +30,7 @@ export default function ToolsPage() {
   const [editingItem, setEditingItem] = useState<ToolWithStatus | null>(null)
   const [isSyncing, setIsSyncing] = useState(false)
   const [isPending, startTransition] = useTransition()
-  const { toast } = useToast()
+  const crud = useCrudToast()
 
   const { 
     tools, 
@@ -62,21 +62,14 @@ export default function ToolsPage() {
 
     try {
       await toolsApi.deleteTool(id)
-      toast({
-        title: 'Eliminato',
-        description: 'Tool eliminato con successo.',
-      })
+      crud.success('Eliminazione', 'tool', id)
       
       startTransition(() => {
         refresh()
       })
     } catch (error) {
       console.error('Errore durante l\'eliminazione del tool:', error)
-      toast({
-        variant: 'destructive',
-        title: 'Errore',
-        description: 'Impossibile eliminare il tool.',
-      })
+      crud.error('Eliminazione', 'tool', id)
     }
   }
 
@@ -84,17 +77,10 @@ export default function ToolsPage() {
     try {
       setIsSyncing(true)
       await syncStatus()
-      toast({
-        title: 'Sincronizzazione completata',
-        description: 'Stato dei tool aggiornato con successo.',
-      })
+      crud.success('Sincronizzazione', 'stato tool', undefined, 'Tutti i tool aggiornati')
     } catch (error) {
       console.error('Errore nella sincronizzazione:', error)
-      toast({
-        variant: 'destructive',
-        title: 'Errore',
-        description: 'Impossibile sincronizzare lo stato dei tool.',
-      })
+      crud.error('Sincronizzazione', 'stato tool', undefined, 'Verificare la connessione')
     } finally {
       setIsSyncing(false)
     }

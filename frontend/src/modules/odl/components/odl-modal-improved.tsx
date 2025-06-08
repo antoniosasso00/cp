@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -64,6 +64,7 @@ export default function ODLModalImproved({
   editingItem 
 }: ODLModalImprovedProps) {
   const [formData, setFormData] = useState<ODLCreate>({
+    numero_odl: "",
     parte_id: 0,
     tool_id: 0,
     priorita: 1,
@@ -90,7 +91,7 @@ export default function ODLModalImproved({
   // Debounce della ricerca parti
   const debouncedParteSearch = useDebounceValue(parteSearchQuery, 300)
   
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
 
   // Carica dati iniziali
   useEffect(() => {
@@ -103,6 +104,7 @@ export default function ODLModalImproved({
   useEffect(() => {
     if (editingItem) {
       setFormData({
+        numero_odl: editingItem.numero_odl,
         parte_id: editingItem.parte_id,
         tool_id: editingItem.tool_id,
         priorita: editingItem.priorita,
@@ -116,6 +118,7 @@ export default function ODLModalImproved({
     } else {
       // Reset form per nuovo ODL
       setFormData({
+        numero_odl: "",
         parte_id: 0,
         tool_id: 0,
         priorita: 1,

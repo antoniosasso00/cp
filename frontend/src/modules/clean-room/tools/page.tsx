@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -30,7 +30,7 @@ export default function ToolsPage() {
   const [editingItem, setEditingItem] = useState<ToolWithStatus | null>(null)
   const [isSyncing, setIsSyncing] = useState(false)
   const [isPending, startTransition] = useTransition()
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
 
   const { 
     tools, 

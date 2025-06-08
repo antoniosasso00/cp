@@ -393,13 +393,16 @@ def get_odl_timeline(odl_id: int, db: Session = Depends(get_db)):
 def get_odl_progress(odl_id: int, db: Session = Depends(get_db)):
     """
     Restituisce i dati ottimizzati per la visualizzazione della barra di progresso temporale.
-    Include solo i timestamp degli stati e le durate necessarie per il rendering.
+    Include i timestamp degli stati e le durate necessarie per il rendering.
+    
+    ✅ NOVITÀ: Integra i tempi di preparazione dal modello TempoFase per maggiore precisione.
     
     Se non ci sono log disponibili, restituisce comunque i dati base dell'ODL
     per permettere la visualizzazione stimata nel frontend.
     """
     try:
         from models.odl import ODL
+        from models.tempo_fase import TempoFase
         from datetime import datetime
         
         # Recupera l'ODL
@@ -410,70 +413,171 @@ def get_odl_progress(odl_id: int, db: Session = Depends(get_db)):
                 detail=f"ODL con ID {odl_id} non trovato"
             )
         
-        # ✅ CORREZIONE: Usa StateTrackingService invece di ODLLogService
-        # per recuperare i cambi di stato con timestamp precisi
+        # ✅ NOVITÀ: Recupera i tempi delle fasi da TempoFase
+        tempi_fasi = db.query(TempoFase).filter(
+            TempoFase.odl_id == odl_id
+        ).order_by(TempoFase.inizio_fase).all()
         
-        # Recupera la timeline degli stati
+        # Mappa i tempi delle fasi per stato
+        tempi_fase_per_stato = {}
+        for tempo_fase in tempi_fasi:
+            stato_corrispondente = {
+                "preparazione": "Preparazione",
+                "laminazione": "Laminazione", 
+                "attesa_cura": "Attesa Cura",
+                "cura": "Cura"
+            }.get(tempo_fase.fase)
+            
+            if stato_corrispondente:
+                tempi_fase_per_stato[stato_corrispondente] = tempo_fase
+        
+        # Recupera la timeline degli stati da StateTrackingService
         timeline_stati = StateTrackingService.ottieni_timeline_stati(db=db, odl_id=odl_id)
         
         # Calcola i timestamp per ogni stato
         timestamps_stati = []
         
-        # Se ci sono cambi di stato, elaborali
+        # Se ci sono cambi di stato, elaborali e integra con TempoFase
         if timeline_stati and len(timeline_stati) > 0:
             for i, evento in enumerate(timeline_stati):
-                if i < len(timeline_stati) - 1:
-                    # Non è l'ultimo evento, calcola durata fino al prossimo
-                    prossimo_evento = timeline_stati[i + 1]
-                    durata_delta = prossimo_evento["timestamp"] - evento["timestamp"]
-                    durata_minuti = int(durata_delta.total_seconds() / 60)
+                stato = evento["stato_nuovo"]
+                
+                # ✅ INTEGRAZIONE: Prova prima a usare TempoFase, poi fallback a StateLog
+                if stato in tempi_fase_per_stato:
+                    tempo_fase = tempi_fase_per_stato[stato]
+                    
+                    # Usa i dati precisi di TempoFase
+                    inizio = tempo_fase.inizio_fase.isoformat()
+                    fine = tempo_fase.fine_fase.isoformat() if tempo_fase.fine_fase else None
+                    durata_minuti = tempo_fase.durata_minuti
+                    
+                    # Se la fase non è completata, calcola durata corrente
+                    if not fine and not durata_minuti:
+                        durata_corrente = int((datetime.now() - tempo_fase.inizio_fase).total_seconds() / 60)
+                        durata_minuti = durata_corrente
                     
                     timestamps_stati.append({
-                        "stato": evento["stato_nuovo"],
-                        "inizio": evento["timestamp"].isoformat(),
-                        "fine": prossimo_evento["timestamp"].isoformat(),
-                        "durata_minuti": durata_minuti
+                        "stato": stato,
+                        "inizio": inizio,
+                        "fine": fine,
+                        "durata_minuti": durata_minuti,
+                        "fonte_dati": "tempo_fase"  # Indica che proviene da TempoFase
                     })
+                    
                 else:
-                    # Ultimo evento - stato corrente
-                    if odl.status != 'Finito':
-                        durata_corrente = int((datetime.now() - evento["timestamp"]).total_seconds() / 60)
+                    # ✅ FALLBACK: Usa la logica originale basata su StateLog
+                    if i < len(timeline_stati) - 1:
+                        # Non è l'ultimo evento, calcola durata fino al prossimo
+                        prossimo_evento = timeline_stati[i + 1]
+                        durata_delta = prossimo_evento["timestamp"] - evento["timestamp"]
+                        durata_minuti = int(durata_delta.total_seconds() / 60)
+                        
                         timestamps_stati.append({
-                            "stato": evento["stato_nuovo"],
+                            "stato": stato,
                             "inizio": evento["timestamp"].isoformat(),
-                            "fine": None,
-                            "durata_minuti": durata_corrente
+                            "fine": prossimo_evento["timestamp"].isoformat(),
+                            "durata_minuti": durata_minuti,
+                            "fonte_dati": "state_log"  # Indica che proviene da StateLog
                         })
                     else:
-                        # ODL finito
-                        timestamps_stati.append({
-                            "stato": evento["stato_nuovo"],
-                            "inizio": evento["timestamp"].isoformat(),
-                            "fine": evento["timestamp"].isoformat(),
-                            "durata_minuti": 0
-                        })
+                        # Ultimo evento - stato corrente
+                        if odl.status != 'Finito':
+                            durata_corrente = int((datetime.now() - evento["timestamp"]).total_seconds() / 60)
+                            timestamps_stati.append({
+                                "stato": stato,
+                                "inizio": evento["timestamp"].isoformat(),
+                                "fine": None,
+                                "durata_minuti": durata_corrente,
+                                "fonte_dati": "state_log"
+                            })
+                        else:
+                            # ODL finito
+                            timestamps_stati.append({
+                                "stato": stato,
+                                "inizio": evento["timestamp"].isoformat(),
+                                "fine": evento["timestamp"].isoformat(),
+                                "durata_minuti": 0,
+                                "fonte_dati": "state_log"
+                            })
+        
+        # ✅ NOVITÀ: Se non ci sono dati StateLog ma ci sono TempoFase, usa solo quelli
+        elif tempi_fasi:
+            for tempo_fase in tempi_fasi:
+                stato_corrispondente = {
+                    "preparazione": "Preparazione",
+                    "laminazione": "Laminazione", 
+                    "attesa_cura": "Attesa Cura",
+                    "cura": "Cura"
+                }.get(tempo_fase.fase)
+                
+                if stato_corrispondente:
+                    inizio = tempo_fase.inizio_fase.isoformat()
+                    fine = tempo_fase.fine_fase.isoformat() if tempo_fase.fine_fase else None
+                    durata_minuti = tempo_fase.durata_minuti
+                    
+                    # Se la fase non è completata, calcola durata corrente
+                    if not fine and not durata_minuti:
+                        durata_corrente = int((datetime.now() - tempo_fase.inizio_fase).total_seconds() / 60)
+                        durata_minuti = durata_corrente
+                    
+                    timestamps_stati.append({
+                        "stato": stato_corrispondente,
+                        "inizio": inizio,
+                        "fine": fine,
+                        "durata_minuti": durata_minuti,
+                        "fonte_dati": "tempo_fase"
+                    })
         
         # Calcola tempo totale stimato
         tempo_totale_stimato = None
         if len(timestamps_stati) > 0:
-            tempo_totale_stimato = sum(t["durata_minuti"] for t in timestamps_stati)
+            tempo_totale_stimato = sum(t["durata_minuti"] or 0 for t in timestamps_stati)
         else:
             # Fallback: calcola durata dall'inizio dell'ODL
             durata_dall_inizio = int((datetime.now() - odl.created_at).total_seconds() / 60)
             tempo_totale_stimato = durata_dall_inizio
+        
+        # ✅ NOVITÀ: Aggiungi informazioni sui tempi di preparazione
+        fonte_tempo_preparazione = None
+        tempo_preparazione_minuti = None
+        
+        for timestamp in timestamps_stati:
+            if timestamp["stato"] == "Preparazione" and timestamp["fonte_dati"] == "tempo_fase":
+                fonte_tempo_preparazione = "preciso"
+                tempo_preparazione_minuti = timestamp["durata_minuti"]
+                break
+        
+        if not fonte_tempo_preparazione:
+            for timestamp in timestamps_stati:
+                if timestamp["stato"] == "Preparazione":
+                    fonte_tempo_preparazione = "stimato"
+                    tempo_preparazione_minuti = timestamp["durata_minuti"]
+                    break
         
         progress_data = {
             "id": odl_id,
             "status": odl.status,
             "created_at": odl.created_at.isoformat(),
             "updated_at": odl.updated_at.isoformat(),
-            "timestamps": timestamps_stati,  # Può essere vuoto, il frontend gestirà il fallback
+            "timestamps": timestamps_stati,
             "tempo_totale_stimato": tempo_totale_stimato,
-            "has_timeline_data": len(timestamps_stati) > 0  # Flag per indicare se ci sono dati reali
+            "has_timeline_data": len(timestamps_stati) > 0,
+            # ✅ NOVITÀ: Dati specifici per preparazione
+            "tempo_preparazione": {
+                "minuti": tempo_preparazione_minuti,
+                "fonte": fonte_tempo_preparazione,
+                "disponibile": tempo_preparazione_minuti is not None
+            },
+            "fonti_dati": {
+                "tempo_fasi_count": len(tempi_fasi),
+                "state_logs_count": len(timeline_stati) if timeline_stati else 0,
+                "integrazione_attiva": len(tempi_fasi) > 0
+            }
         }
         
         if len(timestamps_stati) > 0:
-            logger.info(f"Restituiti dati di progresso per ODL {odl_id} con {len(timestamps_stati)} timestamps")
+            fonti_usate = set(t["fonte_dati"] for t in timestamps_stati)
+            logger.info(f"Restituiti dati di progresso per ODL {odl_id} con {len(timestamps_stati)} timestamps (fonti: {fonti_usate})")
         else:
             logger.info(f"Restituiti dati di progresso per ODL {odl_id} senza timeline (fallback mode)")
         

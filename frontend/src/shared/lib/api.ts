@@ -729,6 +729,36 @@ export const odlApi = {
     }
   },
 
+  // ✅ deleteMultiple → deleteMultipleODL
+  deleteMultipleODL: async (ids: number[], confirm: boolean = false): Promise<{
+    message: string;
+    deleted_count: number;
+    deleted_ids: number[];
+    total_requested: number;
+    errors: string[];
+  }> => {
+    try {
+      console.log(`🗑️ Eliminazione multipla ODL ${ids.join(', ')} (confirm: ${confirm})`);
+      const queryParam = confirm ? '?confirm=true' : '';
+      
+      // Usa axios con il body come array diretto per la richiesta DELETE
+      const response = await api.request({
+        method: 'DELETE',
+        url: `/odl/bulk${queryParam}`,
+        data: ids,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log(`✅ Eliminazione multipla completata: ${response.data.deleted_count}/${response.data.total_requested}`);
+      return response.data;
+    } catch (error) {
+      console.error(`❌ Errore eliminazione multipla ODL:`, error);
+      throw error;
+    }
+  },
+
   // ✅ checkQueue → checkODLQueue
   checkODLQueue: async (): Promise<{
     message: string;
@@ -862,7 +892,7 @@ export const odlApi = {
 // Tipi base per TempoFase
 export interface TempoFaseBase {
   odl_id: number;
-  fase: "laminazione" | "attesa_cura" | "cura";
+  fase: "preparazione" | "laminazione" | "attesa_cura" | "cura";
   inizio_fase: string;
   fine_fase?: string | null;
   durata_minuti?: number | null;
@@ -880,7 +910,7 @@ export interface TempoFaseResponse extends TempoFaseBase {
 }
 
 export interface PrevisioneTempo {
-  fase: "laminazione" | "attesa_cura" | "cura";
+  fase: "preparazione" | "laminazione" | "attesa_cura" | "cura";
   media_minuti: number;
   numero_osservazioni: number;
 }
@@ -930,8 +960,8 @@ export const phaseTimesApi = {
     // Dati fittizi per ogni fase
     const previsioni: Record<string, PrevisioneTempo> = {};
     
-    // Recupera statistiche per ogni fase
-    for (const fase of ['laminazione', 'attesa_cura', 'cura']) {
+    // Recupera statistiche per ogni fase, inclusa preparazione
+    for (const fase of ['preparazione', 'laminazione', 'attesa_cura', 'cura']) {
       try {
         const result = await apiRequest<PrevisioneTempo>(
           `/tempo-fasi/previsioni/${fase}?part_number=${partNumber}${queryParams.toString() ? `&${queryParams.toString()}` : ''}`
@@ -1430,52 +1460,9 @@ export const batchNestingApi = {
 };
 
 // ✅ NUOVO: API per la produzione
-export interface ProduzioneODLResponse {
-  attesa_cura: ODLResponse[];
-  in_cura: ODLResponse[];
-  statistiche: {
-    totale_attesa_cura: number;
-    totale_in_cura: number;
-    ultima_sincronizzazione: string;
-  };
-}
 
-export interface ProduzioneStatistiche {
-  odl_per_stato: Record<string, number>;
-  autoclavi: {
-    disponibili: number;
-    occupate: number;
-    totali: number;
-  };
-  batch_nesting: {
-    attivi: number;
-  };
-  produzione_giornaliera: {
-    odl_completati_oggi: number;
-    data: string;
-  };
-  timestamp: string;
-}
 
-export interface ProduzioneHealthCheck {
-  status: string;
-  database: string;
-  odl_totali: string;
-  autoclavi_totali: string;
-  timestamp: string;
-}
 
-// API Produzione
-export const produzioneApi = {
-  getODL: (): Promise<ProduzioneODLResponse> => 
-    apiRequest<ProduzioneODLResponse>('/produzione/odl'),
-
-  getStatistiche: (): Promise<ProduzioneStatistiche> => 
-    apiRequest<ProduzioneStatistiche>('/produzione/statistiche'),
-
-  getHealth: (): Promise<ProduzioneHealthCheck> => 
-    apiRequest<ProduzioneHealthCheck>('/produzione/health'),
-};
 
 // API Nesting
 export const nestingApi = {

@@ -2,15 +2,16 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { ODLResponse, odlApi } from '@/lib/api'
 import ODLModal from './components/odl-modal'
-import { BarraAvanzamentoODL, getPriorityInfo } from '@/components/BarraAvanzamentoODL'
-import { OdlProgressWrapper } from '@/components/ui/OdlProgressWrapper'
+import { BarraAvanzamentoODL, getPriorityInfo } from '@/shared/components/BarraAvanzamentoODL'
+import { OdlProgressWrapper } from '@/shared/components/ui/OdlProgressWrapper'
 // import { ConnectionHealthChecker } from '@/components/ui/ConnectionHealthChecker'
 import { 
   Loader2, 
@@ -69,14 +70,20 @@ export default function ODLPage() {
   const [filter, setFilter] = useState<{parte_id?: number, tool_id?: number, status?: string}>({})
   const [modalOpen, setModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<ODLResponse | null>(null)
+  
+  // Stati per selezione multipla
+  const [selectedODLs, setSelectedODLs] = useState<Set<number>>(new Set())
+  const [isDeleting, setIsDeleting] = useState(false)
+  
   const router = useRouter()
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
   
   // Ref per prevenire chiamate multiple simultanee
   const fetchingRef = useRef(false)
   const componentMountedRef = useRef(true)
 
-  const fetchODLs = useCallback(async (showLoadingState = true) => {
+  // Funzione per caricare i dati ODL
+  const loadODLs = useCallback(async () => {
     // Previeni chiamate multiple simultanee
     if (fetchingRef.current) {
       console.log('⏭️ Fetch già in corso, salto questa chiamata')
@@ -84,21 +91,12 @@ export default function ODLPage() {
     }
 
     fetchingRef.current = true
-    
-    if (showLoadingState) {
-      setIsLoading(true)
-    }
+    setIsLoading(true)
     setError(null)
 
     try {
       console.log('🔄 Inizio caricamento ODL...')
-      
-      // Timeout personalizzato per il caricamento
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 15000) // 15 secondi
-
       const data = await odlApi.fetchODLs(filter)
-      clearTimeout(timeoutId)
       
       // Verifica se il componente è ancora montato
       if (!componentMountedRef.current) {
@@ -110,71 +108,41 @@ export default function ODLPage() {
       const odlAttivi = data
         .filter(odl => odl.status !== "Finito")
         .sort((a, b) => {
-          // Ordina per data di creazione (dal più recente al più vecchio)
-          // Se non c'è created_at, usa l'ID come fallback
           const dateA = a.created_at ? new Date(a.created_at).getTime() : a.id
           const dateB = b.created_at ? new Date(b.created_at).getTime() : b.id
           return dateB - dateA
         })
       
       setODLs(odlAttivi)
-      setRetryCount(0) // Reset retry count on success
-      
       console.log(`✅ Caricati ${odlAttivi.length} ODL attivi (totali: ${data.length})`)
       
     } catch (error) {
       console.error('❌ Errore nel caricamento degli ODL:', error)
       
-      // Verifica se il componente è ancora montato
-      if (!componentMountedRef.current) {
-        return
-      }
+      if (!componentMountedRef.current) return
       
       const errorMessage = error instanceof Error ? error.message : 'Errore sconosciuto'
       setError(errorMessage)
       
-      // Retry automatico per errori di rete (max 3 tentativi)
-      if (retryCount < 3 && (
-        errorMessage.includes('connessione') || 
-        errorMessage.includes('network') || 
-        errorMessage.includes('timeout')
-      )) {
-        console.log(`🔄 Tentativo di retry ${retryCount + 1}/3 in 3 secondi...`)
-        setTimeout(() => {
-          if (componentMountedRef.current) {
-            setRetryCount(prev => prev + 1)
-            fetchODLs(false) // Non mostrare lo stato di loading per i retry
-          }
-        }, 3000)
-      } else {
-        // Solo un toast per errori definitivi
-        toast({
-          variant: 'destructive',
-          title: 'Errore nel caricamento',
-          description: 'Impossibile caricare gli ordini di lavoro. Verifica la connessione di rete.',
-        })
-      }
+      toast({
+        variant: 'destructive',
+        title: 'Errore nel caricamento',
+        description: 'Impossibile caricare gli ordini di lavoro. Verifica la connessione di rete.',
+      })
     } finally {
       fetchingRef.current = false
-      if (showLoadingState) {
-        setIsLoading(false)
-      }
+      setIsLoading(false)
     }
-  }, [filter, retryCount, toast])
+  }, [filter]) // Rimosso toast dalle dipendenze per prevenire il loop
 
   // Effect per il caricamento iniziale e quando cambia il filtro
   useEffect(() => {
-    componentMountedRef.current = true
-    fetchODLs()
-    
-    // Cleanup function
-    return () => {
-      componentMountedRef.current = false
-    }
-  }, [fetchODLs])
+    loadODLs()
+  }, [loadODLs])
 
-  // Cleanup on unmount
+  // Cleanup on unmount - gestisce solo lo stato di mount
   useEffect(() => {
+    componentMountedRef.current = true
     return () => {
       componentMountedRef.current = false
     }
@@ -190,13 +158,10 @@ export default function ODLPage() {
     setModalOpen(true)
   }
 
-  // ✅ FIX: Funzione per chiudere modal con refresh completo della pagina
   const handleModalClose = () => {
     setModalOpen(false)
-    // Refresh completo ma gentile che preserva lo stato React
-    router.refresh()
-    // Reload dei dati per assicurarsi che siano aggiornati
-    setTimeout(() => fetchODLs(), 100)
+    // Ricarica solo i dati ODL, senza refresh della pagina
+    loadODLs()
   }
 
   const handleDeleteClick = async (id: number) => {
@@ -211,7 +176,7 @@ export default function ODLPage() {
         title: 'Eliminato',
         description: `ODL con ID ${id} eliminato con successo.`,
       })
-      fetchODLs()
+      loadODLs()
     } catch (error) {
       console.error(`Errore durante l'eliminazione dell'ODL ${id}:`, error)
       toast({
@@ -222,9 +187,81 @@ export default function ODLPage() {
     }
   }
 
+  // Funzioni per selezione multipla
+  const handleSelectODL = (id: number, checked: boolean) => {
+    setSelectedODLs(prev => {
+      const newSet = new Set(prev)
+      if (checked) {
+        newSet.add(id)
+      } else {
+        newSet.delete(id)
+      }
+      return newSet
+    })
+  }
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedODLs(new Set(filteredODLs.map(odl => odl.id)))
+    } else {
+      setSelectedODLs(new Set())
+    }
+  }
+
+  const handleDeleteSelected = async () => {
+    if (selectedODLs.size === 0) return
+
+    const confirmMessage = `Sei sicuro di voler eliminare ${selectedODLs.size} ODL selezionati?`
+    if (!window.confirm(confirmMessage)) {
+      return
+    }
+
+    setIsDeleting(true)
+
+    try {
+      // Usa il nuovo endpoint per eliminazione multipla
+      const result = await odlApi.deleteMultipleODL(Array.from(selectedODLs))
+
+      // Toast di risultato basato sulla risposta del server
+      if (result.deleted_count === result.total_requested) {
+        toast({
+          variant: 'success',
+          title: 'Eliminazione completata',
+          description: `${result.deleted_count} ODL eliminati con successo.`,
+        })
+      } else if (result.deleted_count > 0) {
+        toast({
+          variant: 'default',
+          title: 'Eliminazione parziale',
+          description: `${result.deleted_count}/${result.total_requested} ODL eliminati. ${result.errors.length} errori.`,
+        })
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Errore eliminazione',
+          description: `Impossibile eliminare gli ODL selezionati.`,
+        })
+      }
+
+      // Pulisce la selezione e aggiorna la lista
+      setSelectedODLs(new Set())
+      loadODLs()
+
+    } catch (error) {
+      console.error('Errore eliminazione multipla:', error)
+      toast({
+        variant: 'destructive',
+        title: 'Errore',
+        description: 'Si è verificato un errore durante l\'eliminazione.',
+      })
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   const handleRetry = () => {
     setRetryCount(0)
-    fetchODLs()
+    loadODLs() // Reset del retry count
   }
 
   const filterODLs = (items: ODLResponse[], query: string) => {
@@ -288,12 +325,21 @@ export default function ODLPage() {
           </p>
         </div>
         <div className="flex gap-3">
-          <Link href="/dashboard/management/odl-monitoring">
-            <Button variant="outline" className="flex items-center gap-2">
-              <Activity className="h-4 w-4" />
-              Monitoraggio ODL
+          {selectedODLs.size > 0 && (
+            <Button 
+              variant="destructive" 
+              onClick={handleDeleteSelected}
+              disabled={isDeleting}
+              className="flex items-center gap-2"
+            >
+              {isDeleting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              Elimina {selectedODLs.size} selezionati
             </Button>
-          </Link>
+          )}
           <Button onClick={handleCreateClick} disabled={isLoading}>
             Nuovo ODL
           </Button>
@@ -312,6 +358,12 @@ export default function ODLPage() {
           />
         </div>
         <div className="flex items-center gap-4">
+          {selectedODLs.size > 0 && (
+            <div className="flex items-center gap-2 text-sm text-primary">
+              <CheckCircle2 className="h-4 w-4" />
+              <span>{selectedODLs.size} ODL selezionati</span>
+            </div>
+          )}
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <AlertCircle className="h-4 w-4" />
             <span>Mostrando solo ODL attivi</span>
@@ -321,7 +373,7 @@ export default function ODLPage() {
             <Button 
               variant="ghost" 
               size="sm" 
-              onClick={() => fetchODLs()}
+              onClick={() => loadODLs()}
               className="flex items-center gap-2"
             >
               <RefreshCw className="h-4 w-4" />
@@ -342,6 +394,13 @@ export default function ODLPage() {
             <TableCaption>Lista degli ordini di lavoro attivi in produzione</TableCaption>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-12">
+                  <Checkbox
+                    checked={selectedODLs.size === filteredODLs.length && filteredODLs.length > 0}
+                    onCheckedChange={handleSelectAll}
+                    aria-label="Seleziona tutti gli ODL"
+                  />
+                </TableHead>
                 <TableHead>Numero ODL</TableHead>
                 <TableHead>Part Number</TableHead>
                 <TableHead>Tool</TableHead>
@@ -354,7 +413,7 @@ export default function ODLPage() {
             <TableBody>
               {filteredODLs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8">
+                  <TableCell colSpan={8} className="text-center py-8">
                     {searchQuery ? 
                       'Nessun ordine di lavoro trovato con i criteri di ricerca' : 
                       'Nessun ordine di lavoro attivo trovato'
@@ -364,6 +423,13 @@ export default function ODLPage() {
               ) : (
                 filteredODLs.map(item => (
                   <TableRow key={item.id}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedODLs.has(item.id)}
+                        onCheckedChange={(checked) => handleSelectODL(item.id, checked as boolean)}
+                        aria-label={`Seleziona ODL ${item.numero_odl}`}
+                      />
+                    </TableCell>
                     <TableCell>
                       <span className="font-mono font-medium text-primary">
                         {item.numero_odl}
@@ -440,7 +506,7 @@ export default function ODLPage() {
         onClose={handleModalClose}
         item={editingItem}
         onSuccess={() => {
-          fetchODLs()
+          loadODLs()
           setModalOpen(false)
         }}
       />

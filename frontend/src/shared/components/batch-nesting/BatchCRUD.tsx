@@ -56,7 +56,7 @@ import {
   Autoclave,
   ODLResponse
 } from '@/lib/api';
-import { useToast } from '@/components/ui/use-toast';
+import { useStandardToast } from '@/shared/hooks/use-standard-toast';
 
 // Tipi per le props del componente
 interface BatchCRUDProps {
@@ -95,7 +95,7 @@ const BatchCRUD: React.FC<BatchCRUDProps> = ({
   isOpen = false,
   onOpenChange
 }) => {
-  const { toast } = useToast();
+  const { toast } = useStandardToast();
 
   // Stati per il form
   const [formData, setFormData] = useState<BatchNestingCreate>({

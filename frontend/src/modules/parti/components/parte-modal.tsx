@@ -3,7 +3,7 @@
 import { useState, useEffect, useTransition } from 'react'
 import { z } from 'zod'
 import { useRouter } from 'next/navigation'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -83,7 +83,7 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
   const [toolSearchQuery, setToolSearchQuery] = useState('')
   
   const router = useRouter()
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
 
   // Stati per i modal di creazione rapida
   const [toolModalOpen, setToolModalOpen] = useState(false)
@@ -113,11 +113,7 @@ export default function ParteModal({ isOpen, onClose, onSuccess, item }: ParteMo
       setCicliCura(cicliData)
     } catch (error) {
       console.error('Errore nel caricamento dei dati:', error)
-      toast({
-        variant: 'destructive',
-        title: 'Errore',
-        description: 'Impossibile caricare le opzioni. Riprova più tardi.'
-      })
+      toast({ title: 'Errore', description: 'Impossibile caricare le opzioni. Riprova più tardi.', variant: 'destructive' })
     } finally {
       setIsLoadingOptions(false)
     }

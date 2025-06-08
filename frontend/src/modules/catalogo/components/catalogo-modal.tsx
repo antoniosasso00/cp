@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useRouter } from 'next/navigation'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -27,7 +27,7 @@ export default function CatalogoModal({ isOpen, onClose, onSuccess, item }: Cata
   const [isPartNumberEditable, setIsPartNumberEditable] = useState(false)
   
   const router = useRouter()
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
 
   const form = useForm<CatalogoFormValues>({
     resolver: zodResolver(catalogoSchema),

@@ -1,6 +1,6 @@
 'use client'
 
-import { useApiErrorHandler } from '@/hooks/useApiErrorHandler'
+import { useApiErrorHandler } from '@/shared/hooks/useApiErrorHandler'
 
 interface ApiErrorProviderProps {
   children: React.ReactNode

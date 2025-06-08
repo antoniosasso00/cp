@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -41,7 +41,7 @@ export default function CatalogoPage() {
   const [error, setError] = useState<string | null>(null)
   const [isSearching, setIsSearching] = useState(false)
   const router = useRouter()
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
 
   // Debounce della ricerca per ottimizzare le chiamate API
   const debouncedSearchQuery = useDebounce(searchQuery, 300)

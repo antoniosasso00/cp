@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { useToast } from '@/components/ui/use-toast'
+import { useCrudToast } from '@/shared/hooks/use-standard-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -31,7 +31,7 @@ export default function PartiPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<ParteResponse | null>(null)
   const router = useRouter()
-  const { toast } = useToast()
+  const crud = useCrudToast()
 
   const loadData = async () => {
     try {
@@ -40,11 +40,7 @@ export default function PartiPage() {
       setParti(data)
     } catch (error) {
       console.error('Errore nel caricamento delle parti:', error)
-      toast({
-        variant: 'destructive',
-        title: 'Errore',
-        description: 'Impossibile caricare le parti.',
-      })
+      crud.error('Caricamento', 'parti', undefined, 'Verificare la connessione')
     } finally {
       setIsLoading(false)
     }
@@ -80,18 +76,11 @@ export default function PartiPage() {
 
     try {
       await partsApi.deletePart(id)
-      toast({
-        title: 'Eliminato',
-        description: 'Parte eliminata con successo.',
-      })
+      crud.success('Eliminazione', 'parte', id)
       loadData()
     } catch (error) {
       console.error('Errore durante l\'eliminazione della parte:', error)
-      toast({
-        variant: 'destructive',
-        title: 'Errore',
-        description: 'Impossibile eliminare la parte.',
-      })
+      crud.error('Eliminazione', 'parte', id)
     }
   }
 

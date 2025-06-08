@@ -15,6 +15,7 @@ import {
   CheckCircle
 } from 'lucide-react'
 import Link from 'next/link'
+import TempiPreparazioneMonitor from '@/shared/components/TempiPreparazioneMonitor'
 
 export default function DashboardPage() {
   useEffect(() => {
@@ -136,12 +137,7 @@ export default function DashboardPage() {
                 Statistiche
               </Button>
             </Link>
-            <Link href="/dashboard/curing/produzione">
-              <Button variant="outline" className="w-full justify-start">
-                <Activity className="h-4 w-4 mr-2" />
-                Produzione
-              </Button>
-            </Link>
+
           </CardContent>
         </Card>
 
@@ -171,6 +167,14 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Monitoraggio Tempi Preparazione */}
+      <TempiPreparazioneMonitor 
+        maxItems={5}
+        autoRefresh={true}
+        refreshInterval={60000}
+        className="col-span-full"
+      />
 
       {/* Stato Sistema */}
       <Card>

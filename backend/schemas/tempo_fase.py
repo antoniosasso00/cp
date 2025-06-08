@@ -5,6 +5,7 @@ from enum import Enum
 
 
 class TipoFase(str, Enum):
+    PREPARAZIONE = "preparazione"
     LAMINAZIONE = "laminazione"
     ATTESA_CURA = "attesa_cura"
     CURA = "cura"

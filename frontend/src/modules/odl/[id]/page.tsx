@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -68,7 +68,7 @@ const getFaseBadgeVariant = (fase: string) => {
 export default function ODLDetailsPage() {
   const params = useParams()
   const router = useRouter()
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
   const [odl, setOdl] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [tempoFasi, setTempoFasi] = useState<any[]>([])

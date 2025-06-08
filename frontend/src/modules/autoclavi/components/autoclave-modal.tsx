@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -53,7 +53,7 @@ interface AutoclaveModalProps {
 }
 
 export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: AutoclaveModalProps) {
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
   const [isLoading, setIsLoading] = useState(false)
 
   const form = useForm<AutoclaveFormValues>({

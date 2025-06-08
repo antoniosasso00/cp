@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Loader2, Package, Flame, AlertCircle, CheckCircle2, RefreshCw, Info, ChevronUp, ChevronDown, Eye, Zap, PlayCircle, Clock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -64,7 +64,7 @@ interface NestingParams {
 }
 
 export default function NestingPage() {
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
   const router = useRouter()
   
   // Stati per i dati

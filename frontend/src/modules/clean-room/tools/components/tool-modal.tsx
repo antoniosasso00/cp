@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useRouter } from 'next/navigation'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -42,7 +42,7 @@ interface ToolModalProps {
 
 export function ToolModal({ open, onOpenChange, editingItem, onSuccess }: ToolModalProps) {
   const router = useRouter()
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
   const [isLoading, setIsLoading] = useState(false)
   const [isPending, startTransition] = useTransition()
 

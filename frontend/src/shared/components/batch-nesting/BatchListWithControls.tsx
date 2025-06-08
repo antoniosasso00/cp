@@ -40,7 +40,7 @@ import {
 import BatchStatusSwitch from './BatchStatusSwitch';
 import BatchCRUD from './BatchCRUD';
 import { useRouter } from 'next/navigation';
-import { useToast } from '@/components/ui/use-toast';
+import { useStandardToast } from '@/shared/hooks/use-standard-toast';
 
 import { 
   BATCH_STATUS_COLORS,
@@ -77,7 +77,7 @@ export default function BatchListWithControls({
 }: BatchListWithControlsProps) {
 
   const router = useRouter();
-  const { toast } = useToast();
+  const { toast } = useStandardToast();
   
   // States
   const [batches, setBatches] = useState<BatchNestingList[]>([]);

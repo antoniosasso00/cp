@@ -17,6 +17,7 @@ import { Autoclave, ODLResponse } from '@/lib/api';
 import { useTheme } from 'next-themes';
 import ScheduleForm from './ScheduleForm';
 import RecurringScheduleForm from './RecurringScheduleForm';
+import { showSuccess, showError, showOperationResult } from '@/shared/services/toast-service';
 
 // Localizer ufficiale italiano per il calendario usando date-fns
 const localizer = dateFnsLocalizer({
@@ -182,10 +183,16 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
       await scheduleApi.delete(scheduleId);
       setSelectedEvent(null);
       fetchSchedules();
-      showToast('Schedulazione eliminata con successo', 'success');
+      showOperationResult('success', {
+        operation: 'Eliminazione',
+        entity: 'schedulazione'
+      });
     } catch (err) {
       console.error('Errore durante l\'eliminazione della schedulazione:', err);
-      showToast('Errore durante l\'eliminazione della schedulazione', 'error');
+      showOperationResult('error', {
+        operation: 'Eliminazione',
+        entity: 'schedulazione'
+      });
     }
   };
 
@@ -195,10 +202,10 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
       const date = formatDate(selectedDate);
       const result = await scheduleApi.autoGenerate(date);
       fetchSchedules();
-      showToast(`${result.count} schedulazioni generate automaticamente`, 'success');
+      showSuccess('Generazione Automatica Completata', `${result.count} schedulazioni generate automaticamente`);
     } catch (err) {
       console.error('Errore durante la generazione automatica:', err);
-      showToast('Errore durante la generazione automatica', 'error');
+      showError('Errore Generazione Automatica', 'Impossibile generare le schedulazioni automaticamente');
     }
   };
 
@@ -222,24 +229,16 @@ const CalendarSchedule: React.FC<CalendarScheduleProps> = ({ autoclavi, odlList 
           message = 'Schedulazione completata con successo';
           break;
       }
-      showToast(message, 'success');
+      showSuccess('Azione Completata', message);
     } catch (err) {
       console.error('Errore durante l\'azione dell\'operatore:', err);
-      showToast('Errore durante l\'esecuzione dell\'azione', 'error');
+      showError('Errore Azione Operatore', 'Impossibile eseguire l\'azione richiesta');
     } finally {
       setActionLoading(null);
     }
   };
 
-  // Funzione per mostrare toast (implementazione semplice)
-  const showToast = (message: string, type: 'success' | 'error') => {
-    // In una implementazione reale, useresti una libreria di toast
-    if (type === 'success') {
-      alert(`✅ ${message}`);
-    } else {
-      alert(`❌ ${message}`);
-    }
-  };
+  // Rimosso: ora usiamo il servizio standardizzato
 
   // Componente per il tooltip/azioni dell'evento
   const EventTooltip = ({ event }: { event: CalendarEvent }) => {

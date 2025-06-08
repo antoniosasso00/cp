@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { z } from 'zod'
 import { useRouter } from 'next/navigation'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -66,7 +66,7 @@ export default function ParteQuickModal({
   const [isLoadingTools, setIsLoadingTools] = useState(false)
   
   const router = useRouter()
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
 
   // Carica i tool disponibili
   const loadTools = async () => {
@@ -76,11 +76,7 @@ export default function ParteQuickModal({
       setTools(toolsRes)
     } catch (error) {
       console.error('Errore nel caricamento dei tool:', error)
-      toast({
-        variant: 'destructive',
-        title: 'Errore',
-        description: 'Impossibile caricare i tool disponibili.'
-      })
+      toast({ title: 'Errore', description: 'Impossibile caricare i tool disponibili.', variant: 'destructive' })
     } finally {
       setIsLoadingTools(false)
     }

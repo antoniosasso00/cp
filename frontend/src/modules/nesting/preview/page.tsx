@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import {
   Zap, 
   RotateCcw, 
@@ -176,7 +176,7 @@ function showEfficiencyWarning(efficiency: number, onRegenerate: () => void, onC
 
 export default function NestingPreviewPage() {
   const router = useRouter()
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
 
   // =============== STATES ===============
   

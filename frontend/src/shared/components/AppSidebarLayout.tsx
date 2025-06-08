@@ -62,12 +62,7 @@ const sidebarSections: SidebarSection[] = [
         icon: <ClipboardList className="h-4 w-4" />,
         roles: ['ADMIN', 'Management']
       },
-      {
-        title: "Monitoraggio ODL",
-        href: "/dashboard/management/odl-monitoring",
-        icon: <Activity className="h-4 w-4" />,
-        roles: ['ADMIN', 'Management']
-      }
+
     ],
     roles: ['ADMIN', 'Management']
   },
@@ -98,12 +93,7 @@ const sidebarSections: SidebarSection[] = [
         icon: <Package className="h-4 w-4" />,
         roles: ['ADMIN', 'Curing']
       },
-      {
-        title: "Monitoraggio ODL",
-        href: "/dashboard/curing/produzione",
-        icon: <Activity className="h-4 w-4" />,
-        roles: ['ADMIN', 'Curing']
-      },
+
       {
         title: "Autoclavi",
         href: "/autoclavi",

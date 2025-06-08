@@ -12,7 +12,7 @@ import { phaseTimesApi, odlApi, CatalogoResponse } from '@/lib/api'
 import { formatDateTime } from '@/lib/utils'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { AlertCircle } from 'lucide-react'
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -79,7 +79,7 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
   const [editNote, setEditNote] = useState('')
   const [isUpdating, setIsUpdating] = useState(false)
   
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
   const { confirm, ConfirmDialog } = useConfirmDialog()
 
   const fetchData = async () => {

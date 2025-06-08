@@ -28,6 +28,7 @@ interface TempoFaseStatistiche {
 
 // Mappa i nomi delle fasi per la visualizzazione
 const FASE_LABELS: Record<string, string> = {
+  'preparazione': 'Preparazione',
   'laminazione': 'Laminazione',
   'attesa_cura': 'Attesa Cura',
   'cura': 'Cura'
@@ -35,6 +36,7 @@ const FASE_LABELS: Record<string, string> = {
 
 // Colori per il grafico
 const FASE_COLORS: Record<string, string> = {
+  'preparazione': '#6366f1', // indigo-500
   'laminazione': '#10b981', // green-500
   'attesa_cura': '#f59e0b', // amber-500
   'cura': '#ef4444' // red-500

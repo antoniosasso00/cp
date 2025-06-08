@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 
-import { useToast } from '@/components/ui/use-toast'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import CanvasWrapper, { 
   Layer, 
   Rect, 
@@ -428,7 +428,7 @@ const ResponsiveCanvas: React.FC<{
   const [showTooltips, setShowTooltips] = useState<boolean>(true)
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null)
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false)
-  const { toast } = useToast()
+  const { toast } = useStandardToast()
   
   // Dimensioni autoclave in mm
   const autoclaveWidth = autoclave.lunghezza || 2000
@@ -523,10 +523,7 @@ const ResponsiveCanvas: React.FC<{
         link.click()
         document.body.removeChild(link)
         
-        toast({
-          title: "✅ Export completato",
-          description: "Layout salvato come PNG"
-        })
+        toast({ title: '✅ Export completato', description: 'Layout salvato come PNG', variant: 'success' })
       } catch (error) {
         console.error('Export error:', error)
         toast({
@@ -547,17 +544,8 @@ const ResponsiveCanvas: React.FC<{
       
       toast({
         title: `🔧 Tool ODL ${toolId}`,
-        description: (
-          <div className="space-y-1 text-sm">
-            <p><strong>Parte:</strong> {tool.part_number || 'N/A'}</p>
-            <p><strong>Nome:</strong> {tool.tool_nome || 'N/A'}</p>
-            <p><strong>Dimensioni:</strong> {tool.width} × {tool.height} mm</p>
-            <p><strong>Peso:</strong> {tool.peso} kg</p>
-            <p><strong>Posizione:</strong> X: {Math.round(tool.x)}, Y: {Math.round(tool.y)}</p>
-            <p><strong>Rotazione:</strong> {tool.rotated ? 'Sì ↻' : 'No'}</p>
-            {tool.excluded && <p className="text-red-600 font-semibold">⚠️ Escluso dal batch</p>}
-          </div>
-        ),
+        description: `Parte: ${tool.part_number || 'N/A'} • Nome: ${tool.tool_nome || 'N/A'} • Dimensioni: ${tool.width} × ${tool.height} mm • Peso: ${tool.peso} kg • Posizione: X: ${Math.round(tool.x)}, Y: ${Math.round(tool.y)} • Rotazione: ${tool.rotated ? 'Sì ↻' : 'No'}${tool.excluded ? ' ⚠️ Escluso dal batch' : ''}`,
+        variant: tool.excluded ? 'warning' : 'info',
         duration: 4000
       })
     }
