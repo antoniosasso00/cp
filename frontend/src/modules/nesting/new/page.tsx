@@ -131,18 +131,27 @@ export default function NewNestingPage() {
       setGenerating(true);
       setError(null);
       
-      // 🔍 DEBUG: Log dettagliato delle selezioni
-      console.log('=== DEBUG SELEZIONI ===');
-      console.log('ODL selezionati:', selectedOdl.length, selectedOdl);
-      console.log('Autoclavi selezionate:', selectedAutoclavi.length, selectedAutoclavi);
-      console.log('Lista autoclavi disponibili:', autoclaveList.map(a => `${a.id}-${a.nome}`));
-      console.log('Condizione multi-batch:', selectedAutoclavi.length > 1);
+      // 🚀 AEROSPACE PATTERN: Unified endpoint per tutti i casi
+      // Single-batch è semplicemente un sottocaso del multi-batch
+      console.log('');
+      console.log('🚀🚀🚀 === AEROSPACE UNIFIED NESTING === 🚀🚀🚀');
+      console.log(`📋 ODL selezionati: ${selectedOdl.length}`);
+      console.log(`🏭 Autoclavi target: ${selectedAutoclavi.length}`);
+      console.log(`📊 Modalità: ${selectedAutoclavi.length === 1 ? 'Single-Batch (subset of Multi)' : 'Multi-Batch'}`);
+      console.log('🎯 Endpoint: /api/batch_nesting/genera-multi (UNIFIED)');
+      console.log('');
+
+      // 🚀 SEMPRE genera-multi - elegante e robusto
+      console.log('🔍 PAYLOAD GENERA-MULTI:', {
+        odl_ids: selectedOdl,
+        parametri: {
+          padding_mm: parameters.padding_mm,
+          min_distance_mm: parameters.min_distance_mm
+        }
+      });
       
       let response;
-      
-      if (selectedAutoclavi.length > 1) {
-        // 🚀 MULTI-BATCH: Usa endpoint specifico con distribuzione intelligente ODL
-        console.log('🚀 CHIAMANDO ENDPOINT MULTI-BATCH per', selectedAutoclavi.length, 'autoclavi');
+      try {
         response = await batchNestingApi.generaMulti({
           odl_ids: selectedOdl,
           parametri: {
@@ -150,66 +159,116 @@ export default function NewNestingPage() {
             min_distance_mm: parameters.min_distance_mm
           }
         });
-      } else {
-        // Single batch: usa endpoint standard
-        console.log('🔄 CHIAMANDO ENDPOINT SINGLE-BATCH per autoclave', selectedAutoclavi[0]);
-        response = await batchNestingApi.genera({
-          odl_ids: selectedOdl,
-          autoclave_ids: selectedAutoclavi,
-          parametri: {
-            padding_mm: parameters.padding_mm,
-            min_distance_mm: parameters.min_distance_mm
-          }
-        });
+        console.log('✅ API CALL COMPLETATA');
+      } catch (apiError: any) {
+        console.error('❌ ERRORE CHIAMATA API:', apiError);
+        console.error('❌ API ERROR TYPE:', typeof apiError);
+        console.error('❌ API ERROR MESSAGE:', apiError?.message);
+        console.error('❌ API ERROR RESPONSE:', apiError?.response);
+        throw new Error(`Errore chiamata API aerospace: ${apiError?.message || 'Errore sconosciuto'}`);
       }
 
-      // 🔍 DEBUG: Log completo della risposta
-      console.log('=== RISPOSTA ENDPOINT ===');
-      console.log('Response object:', response);
-      console.log('Success:', response?.success);
-      console.log('Success count:', response?.success_count);
-      console.log('Total autoclavi:', response?.total_autoclavi);
-      console.log('Best batch ID:', response?.best_batch_id);
-      console.log('Batch results:', response?.batch_results);
+      console.log('📊 === ANALISI RISPOSTA BACKEND DETTAGLIATA === 📊');
+      console.log('🔍 RAW RESPONSE:', response);
+      console.log('🔍 RESPONSE TYPE:', typeof response);
+      console.log('🔍 RESPONSE KEYS:', response ? Object.keys(response) : 'null');
+      console.log('🔍 RESPONSE JSON:', JSON.stringify(response, null, 2));
+      
+      // ⚠️ IMMEDIATE CHECK: Se response è null/undefined, esci subito
+      if (!response) {
+        console.error('❌ RESPONSE È NULL/UNDEFINED!');
+        throw new Error('Nessuna risposta dal server');
+      }
 
-      if (response?.success) {
-        // Controllo per multi-batch reale
-        const isRealMultiBatch = selectedAutoclavi.length > 1 && 
-                                response?.success_count > 1 && 
-                                response?.batch_results?.length > 1;
+      // 🎯 DEBUGGING APPROFONDITO: Controllo ogni campo
+      const isSuccess = response?.success === true;
+      const bestBatchId = response?.best_batch_id;
+      
+      console.log(`🔍 DEBUGGING DETTAGLIATO SUCCESS CHECK:`);
+      console.log(`   response.success = ${response?.success} (type: ${typeof response?.success})`);
+      console.log(`   response.success === true = ${response?.success === true}`);
+      console.log(`   response.best_batch_id = ${response?.best_batch_id} (type: ${typeof response?.best_batch_id})`);
+      console.log(`   !!response.best_batch_id = ${!!response?.best_batch_id}`);
+      console.log(`   isSuccess = ${isSuccess}`);
+      console.log(`   bestBatchId = ${bestBatchId}`);
+      console.log(`   Success count: ${response?.success_count}`);
+      console.log(`   Message: ${response?.message}`);
+      console.log(`   is_real_multi_batch: ${response?.is_real_multi_batch}`);
+      console.log(`   unique_autoclavi_count: ${response?.unique_autoclavi_count}`);
+
+      // 🔧 FIX LOGICA SUCCESSO: Considera successo quando success=true E success_count > 0
+      // best_batch_id può essere null anche in caso di successo multi-batch
+      const successCount = response.success_count || 0;
+      const hasValidResults = successCount > 0;
+      
+      if (isSuccess && hasValidResults) {
+        // ✅ SUCCESSO: Il backend ha generato almeno un batch
+        const uniqueAutoclavi = response.unique_autoclavi_count || 0;
+        const isMultiAutoclave = uniqueAutoclavi > 1;
         
-        console.log('🔍 Is real multi-batch?', isRealMultiBatch);
-        console.log('🔍 Selected autoclavi:', selectedAutoclavi.length);
-        console.log('🔍 Success count:', response?.success_count);
-        console.log('🔍 Batch results length:', response?.batch_results?.length);
+        console.log('✅ NESTING RIUSCITO!');
+        console.log(`   Batch generati: ${successCount}`);
+        console.log(`   Autoclavi uniche: ${uniqueAutoclavi}`);
+        console.log(`   Multi-autoclave: ${isMultiAutoclave}`);
         
-        success(`${isRealMultiBatch ? 'Multi-batch' : 'Batch'} generato con successo!`);
+        // 🚀 SUCCESS TOAST
+        success(
+          isMultiAutoclave 
+            ? `Multi-batch completato: ${successCount} batch generati!`
+            : `Nesting completato con successo!`
+        );
         
-        // Redirect alla pagina risultati
-        if (isRealMultiBatch && response.best_batch_id) {
-          // Multi-batch reale: vai al best batch con parametro multi
-          console.log('🚀 Redirect to MULTI-BATCH result:', response.best_batch_id);
-          router.push(`/nesting/result/${response.best_batch_id}?multi=true`);
-        } else if (response.best_batch_id) {
-          // Single batch: vai al batch generato
-          console.log('🚀 Redirect to SINGLE-BATCH result:', response.best_batch_id);
-          router.push(`/nesting/result/${response.best_batch_id}`);
-        } else if (response.batch_id) {
-          // Fallback per compatibility
-          console.log('🚀 Redirect to FALLBACK result:', response.batch_id);
-          router.push(`/nesting/result/${response.batch_id}`);
-        } else {
-          // Fallback alla lista nesting
-          console.log('⚠️ No batch ID found, redirect to list');
-          router.push('/nesting');
+        // 🚀 REDIRECT ai risultati - Usa best_batch_id se disponibile, altrimenti primo batch
+        let redirectBatchId = bestBatchId;
+        if (!redirectBatchId && response.batch_results && response.batch_results.length > 0) {
+          // Fallback: usa il primo batch disponibile con successo
+          const firstSuccessfulBatch = response.batch_results.find((b: any) => b.success && b.batch_id);
+          redirectBatchId = firstSuccessfulBatch?.batch_id;
         }
+        
+        if (redirectBatchId) {
+          const routingParams = isMultiAutoclave ? '?multi=true' : '';
+          const redirectUrl = `/nesting/result/${redirectBatchId}${routingParams}`;
+          
+          console.log(`🚀 REDIRECT: ${redirectUrl}`);
+          router.push(redirectUrl);
+        } else {
+          // Fallback estremo: vai alla lista batch
+          console.log('⚠️ Nessun batch_id disponibile, redirect alla lista');
+          router.push('/nesting/list');
+        }
+        
+        console.log('✅ NESTING GENERATION COMPLETED');
+        return; // Esci con successo
       } else {
-        throw new Error(response?.message || 'Errore nella generazione');
+        // ❌ FALLIMENTO: Il backend non ha generato batch utilizzabili
+        console.log('❌❌❌ NESTING CONSIDERATO FALLITO - ANALISI DETTAGLIATA:');
+        console.log(`   Condizione 1 - isSuccess: ${isSuccess} (response.success === true: ${response?.success === true})`);
+        console.log(`   Condizione 2 - hasValidResults: ${hasValidResults} (success_count > 0: ${successCount > 0})`);
+        console.log(`   Condizione combinata (isSuccess && hasValidResults): ${isSuccess && hasValidResults}`);
+        console.log('');
+        console.log('   VALORI RAW:');
+        console.log(`   - response.success: ${response?.success}`);
+        console.log(`   - response.best_batch_id: ${response?.best_batch_id}`);
+        console.log(`   - response.success_count: ${response?.success_count}`);
+        console.log(`   - response.message: ${response?.message}`);
+        console.log('');
+        console.log('   MOTIVO FALLIMENTO:');
+        if (!isSuccess) {
+          console.log('   ❌ response.success non è true');
+        }
+        if (!hasValidResults) {
+          console.log('   ❌ success_count è 0 (nessun batch generato)');
+        }
+        
+        // Mostra il messaggio di errore dal backend
+        const errorMessage = response?.message || 'Errore nella generazione del nesting';
+        throw new Error(errorMessage);
       }
       
     } catch (err: any) {
-      console.error('Errore nella generazione:', err);
-      showError(err.message || 'Errore nella generazione del nesting');
+      console.error('❌❌❌ AEROSPACE ERROR:', err);
+      showError(`Errore generazione aerospace: ${err.message || 'Errore sconosciuto'}`);
     } finally {
       setGenerating(false);
     }
@@ -356,24 +415,49 @@ export default function NewNestingPage() {
               )}
 
               {selectedAutoclavi.length > 0 && (
-                <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
-                  <p className="text-sm text-green-800 font-medium mb-2">
-                    🚀 {selectedAutoclavi.length > 1 ? 'Multi-Batch' : 'Single-Batch'}: {selectedAutoclavi.length} autoclavi selezionate
+                <div className={`mt-4 p-3 rounded-lg border ${
+                  selectedAutoclavi.length > 1 
+                    ? 'bg-blue-50 border-blue-200' 
+                    : 'bg-green-50 border-green-200'
+                }`}>
+                  <p className={`text-sm font-medium mb-2 ${
+                    selectedAutoclavi.length > 1 
+                      ? 'text-blue-800' 
+                      : 'text-green-800'
+                  }`}>
+                    {selectedAutoclavi.length > 1 ? '🚀 MODALITÀ MULTI-BATCH ATTIVA' : '🔄 Single-Batch'}: {selectedAutoclavi.length} autoclavi selezionate
                   </p>
-                  <p className="text-xs text-green-700 mb-2">
+                  <p className={`text-xs mb-2 ${
+                    selectedAutoclavi.length > 1 
+                      ? 'text-blue-700' 
+                      : 'text-green-700'
+                  }`}>
                     {selectedAutoclavi.length > 1 
-                      ? 'Verrà generato un batch per ogni autoclave selezionata.'
+                      ? `Verrà generato un batch separato per ogni autoclave. Gli ODL verranno distribuiti automaticamente tra le ${selectedAutoclavi.length} autoclavi.`
                       : 'Verrà generato un batch per l\'autoclave selezionata.'
                     }
                   </p>
-                  <div className="text-xs text-green-600">
+                  {selectedAutoclavi.length > 1 && (
+                    <div className="text-xs text-blue-600 mb-2 font-medium">
+                      ⚡ Algoritmo: Distribuzione ciclica ODL + Aerospace nesting per ogni autoclave
+                    </div>
+                  )}
+                  <div className="text-xs text-gray-600 mb-2">
                     🔍 DEBUG: IDs selezionati: [{selectedAutoclavi.join(', ')}]
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {selectedAutoclavi.map((autoclaveId) => {
                       const autoclave = autoclaveList.find(a => a.id.toString() === autoclaveId);
                       return autoclave ? (
-                        <Badge key={autoclave.id} variant="secondary" className="text-xs">
+                        <Badge 
+                          key={autoclave.id} 
+                          variant="secondary" 
+                          className={`text-xs ${
+                            selectedAutoclavi.length > 1 
+                              ? 'bg-blue-100 text-blue-800' 
+                              : 'bg-green-100 text-green-800'
+                          }`}
+                        >
                           {autoclave.nome}
                         </Badge>
                       ) : null;

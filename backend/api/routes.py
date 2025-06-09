@@ -1,22 +1,23 @@
 from fastapi import APIRouter
-from api.routers.catalogo import router as catalogo_router
-from api.routers.parte import router as parte_router
-from api.routers.tool import router as tool_router
-from api.routers.autoclave import router as autoclave_router
-from api.routers.ciclo_cura import router as ciclo_cura_router
-from api.routers.odl import router as odl_router
-from api.routers.tempo_fasi import router as tempo_fasi_router
-from api.routers.schedule import router as schedule_router
-from api.routers.reports import router as reports_router
-from api.routers.odl_monitoring import router as odl_monitoring_router
-from api.routers.admin import router as admin_router
-from api.routers.system_logs import router as system_logs_router
-from api.routers.batch_nesting import router as batch_nesting_router
+from .routers.catalogo import router as catalogo_router
+from .routers.parte import router as parte_router
+from .routers.tool import router as tool_router
+from .routers.autoclave import router as autoclave_router
+from .routers.ciclo_cura import router as ciclo_cura_router
+from .routers.odl import router as odl_router
+from .routers.tempo_fasi import router as tempo_fasi_router
+from .routers.schedule import router as schedule_router
+from .routers.reports import router as reports_router
+from .routers.odl_monitoring import router as odl_monitoring_router
+from .routers.admin import router as admin_router
+from .routers.system_logs import router as system_logs_router
+# from .routers.batch_nesting_BACKUP import router as batch_nesting_router  # ← BACKUP ORIGINALE SOSPESO
+from .routers.batch_modular import router as batch_nesting_router  # ← ROUTER MODULARE ATTIVO
 
-from api.routers.nesting_result import router as nesting_result_router
-from api.routers.produzione import router as produzione_router
-from api.routers.standard_time import router as standard_time_router
-from api.routers.dashboard import router as dashboard_router
+from .routers.nesting_result import router as nesting_result_router
+from .routers.produzione import router as produzione_router
+from .routers.standard_time import router as standard_time_router
+from .routers.dashboard import router as dashboard_router
 
 router = APIRouter()
 

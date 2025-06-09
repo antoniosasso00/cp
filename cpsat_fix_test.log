@@ -1,0 +1,21 @@
+2025-06-10 00:52:02,228 - services.nesting.solver - INFO -    #1: ODL 1002 - 800.0x450.0mm, score: 288009.0
+2025-06-10 00:52:02,228 - services.nesting.solver - INFO -    #2: ODL 1010 - 650.0x500.0mm, score: 260011.2
+2025-06-10 00:52:02,228 - services.nesting.solver - INFO -    #3: ODL 1012 - 750.0x400.0mm, score: 240009.7
+2025-06-10 00:52:02,228 - services.nesting.solver - INFO -    #4: ODL 1008 - 550.0x400.0mm, score: 176008.1
+2025-06-10 00:52:02,228 - services.nesting.solver - INFO -    #5: ODL 1006 - 600.0x350.0mm, score: 168007.1
+2025-06-10 00:52:02,290 - __main__ - ERROR -    • Messaggio: Errore CP-SAT: 'ortools.sat.python.cp_model_helper.BoundedLinearExpression' object has no attribute 'index'
+2025-06-10 00:52:02,292 - __main__ - ERROR -    • Status: CP-SAT_ERROR
+2025-06-10 00:52:48,112 - services.nesting.solver - INFO -    #1: ODL 1002 - 800.0x450.0mm, score: 288009.0
+2025-06-10 00:52:48,112 - services.nesting.solver - INFO -    #2: ODL 1010 - 650.0x500.0mm, score: 260011.2
+2025-06-10 00:52:48,113 - services.nesting.solver - INFO -    #3: ODL 1012 - 750.0x400.0mm, score: 240009.7
+2025-06-10 00:52:48,113 - services.nesting.solver - INFO -    #4: ODL 1008 - 550.0x400.0mm, score: 176008.1
+2025-06-10 00:52:48,113 - services.nesting.solver - INFO -    #5: ODL 1006 - 600.0x350.0mm, score: 168007.1
+2025-06-10 00:52:48,173 - __main__ - ERROR -    • Messaggio: Errore CP-SAT: module 'ortools.sat.python.cp_model' has no attribute 'PORTFOLIO'
+2025-06-10 00:52:48,174 - __main__ - ERROR -    • Status: CP-SAT_ERROR
+2025-06-10 00:53:15,195 - services.nesting.solver - INFO -    #1: ODL 1002 - 800.0x450.0mm, score: 288009.0
+2025-06-10 00:53:15,196 - services.nesting.solver - INFO -    #2: ODL 1010 - 650.0x500.0mm, score: 260011.2
+2025-06-10 00:53:15,196 - services.nesting.solver - INFO -    #3: ODL 1012 - 750.0x400.0mm, score: 240009.7
+2025-06-10 00:53:15,196 - services.nesting.solver - INFO -    #4: ODL 1008 - 550.0x400.0mm, score: 176008.1
+2025-06-10 00:53:15,196 - services.nesting.solver - INFO -    #5: ODL 1006 - 600.0x350.0mm, score: 168007.1
+2025-06-10 00:53:15,317 - __main__ - ERROR -    • Messaggio: CP-SAT non ha trovato soluzione: 3
+2025-06-10 00:53:15,317 - __main__ - ERROR -    • Status: CP-SAT_3

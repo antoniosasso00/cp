@@ -199,40 +199,64 @@ export default function NestingPage() {
         description: `Elaborazione di ${selectedOdl.length} ODL su ${selectedAutoclavi.length} autoclave/i.`,
       })
 
+      console.log('🚀 MULTI-BATCH: Preparazione payload unificato');
+      console.log(`📋 ODL selezionati: ${selectedOdl.length}`);
+      console.log(`🏭 Autoclavi target: ${selectedAutoclavi.length}`);
+
+      // 🚀 SEMPRE usa endpoint multi-batch per consistenza e robustezza
       const payload = {
         odl_ids: selectedOdl.map(id => id.toString()),
-        autoclave_ids: selectedAutoclavi.map(id => id.toString()),
         parametri: {
           padding_mm: parametri.padding_mm,
-          min_distance_mm: parametri.min_distance_mm,
-          use_fallback: true,
-        allow_heuristic: true
+          min_distance_mm: parametri.min_distance_mm
         }
       }
 
-      console.log('📤 Payload inviato:', payload)
+      console.log('📤 Payload multi-batch inviato:', payload)
 
-      // ✅ RISOLTO: Usa la libreria API invece di fetch diretto
-      const result = await batchNestingApi.genera(payload)
-      console.log('✅ Nesting generato:', result)
+      // 🚀 USA ENDPOINT MULTI-BATCH per consistenza 
+      const result = await batchNestingApi.generaMulti(payload)
+      console.log('✅ Multi-batch response:', result)
 
-      if (result.success && result.batch_id) {
+      // 🔧 LOGICA SUCCESSO CORRETTA: Controlla success=true E success_count > 0
+      const isSuccess = result?.success === true;
+      const successCount = result?.success_count || 0;
+      const hasValidResults = successCount > 0;
+
+      if (isSuccess && hasValidResults) {
+        const uniqueAutoclavi = result.unique_autoclavi_count || 0;
+        const isMultiAutoclave = uniqueAutoclavi > 1;
+        
         toast({
-          title: 'Nesting generato con successo!',
+          title: isMultiAutoclave ? 'Multi-batch generato con successo!' : 'Nesting generato con successo!',
           description: `${result.message || 'Il nesting è stato creato correttamente.'} Reindirizzamento in corso...`,
         })
         
-        // ✅ AGGIORNA: Ricarica batch recenti prima del redirect
+        // 🚀 REDIRECT - Usa best_batch_id se disponibile, altrimenti primo batch
+        let redirectBatchId = result.best_batch_id;
+        if (!redirectBatchId && result.batch_results && result.batch_results.length > 0) {
+          const firstSuccessfulBatch = result.batch_results.find((b: any) => b.success && b.batch_id);
+          redirectBatchId = firstSuccessfulBatch?.batch_id;
+        }
+        
+        if (redirectBatchId) {
+          const routingParams = isMultiAutoclave ? '?multi=true' : '';
+          router.push(`/nesting/result/${redirectBatchId}${routingParams}`);
+        } else {
+          console.log('⚠️ Nessun batch_id disponibile, redirect alla lista');
+          router.push('/nesting/list');
+        }
+        
+        // ✅ AGGIORNA: Ricarica batch recenti
         try {
           const batchesData = await batchNestingApi.getAll({ limit: 10 })
           setRecentBatches(batchesData.slice(0, 5))
         } catch (error) {
           console.error('Errore nel ricaricamento batch:', error)
         }
-        
-        router.push(`/dashboard/curing/nesting/result/${result.batch_id}`)
       } else {
-        const errorMsg = result.message || 'Il nesting non è stato generato correttamente'
+        const errorMsg = result?.message || 'Il nesting non è stato generato correttamente'
+        console.log('❌ Multi-batch fallito:', { isSuccess, hasValidResults, successCount });
         throw new Error(errorMsg)
       }
 

@@ -1,0 +1,47 @@
+{
+  "test_timestamp": 1749474662.771374,
+  "optimization_version": "2.0",
+  "parameters_used": {
+    "padding_mm": 0.2,
+    "min_distance_mm": 0.2,
+    "vacuum_lines_capacity": 20,
+    "allow_heuristic": true,
+    "timeout_override": 90
+  },
+  "baseline_efficiency": 25.3,
+  "target_efficiency_range": "60-75%",
+  "results": [
+    {
+      "scenario": "MAROSO Efficienza Reale",
+      "autoclave_id": 3,
+      "efficiency": 0,
+      "success": false,
+      "error": "HTTP 422",
+      "api_time": 2.071822166442871
+    },
+    {
+      "scenario": "PANINI Alto Rendimento",
+      "autoclave_id": 1,
+      "efficiency": 0,
+      "success": false,
+      "error": "HTTP 422",
+      "api_time": 2.0477821826934814
+    },
+    {
+      "scenario": "ISMAR Compattazione",
+      "autoclave_id": 2,
+      "efficiency": 0,
+      "success": false,
+      "error": "HTTP 422",
+      "api_time": 2.0549449920654297
+    },
+    {
+      "scenario": "Multi-ODL Aerospace",
+      "autoclave_id": 1,
+      "efficiency": 0,
+      "success": false,
+      "error": "HTTP 422",
+      "api_time": 2.0552077293395996
+    }
+  ]
+}

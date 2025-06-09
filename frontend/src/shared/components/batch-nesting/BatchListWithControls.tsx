@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { 
   Clock, 
   PlayCircle, 
@@ -22,7 +23,10 @@ import {
   Edit,
   Trash2,
   Settings,
-  MoreVertical
+  MoreVertical,
+  CheckSquare,
+  Square,
+  Trash
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -95,6 +99,13 @@ export default function BatchListWithControls({
   const [crudMode, setCrudMode] = useState<'create' | 'edit' | 'view' | null>(null);
   const [showCrudDialog, setShowCrudDialog] = useState(false);
   const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
+
+  // 🗑️ NUOVI STATI PER SELEZIONE MULTIPLA E CLEANUP
+  const [selectedBatchIds, setSelectedBatchIds] = useState<string[]>([]);
+  const [isSelectAllChecked, setIsSelectAllChecked] = useState(false);
+  const [isDeletingMultiple, setIsDeletingMultiple] = useState(false);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
+  const [showCleanupDialog, setShowCleanupDialog] = useState(false);
 
   // Carica la lista dei batch
   const loadBatches = async () => {
@@ -277,6 +288,164 @@ export default function BatchListWithControls({
     setCrudMode(null);
   };
 
+  // 🗑️ FUNZIONI SELEZIONE MULTIPLA E CLEANUP
+
+  // Gestisce selezione singolo batch
+  const handleBatchSelection = (batchId: string, checked: boolean) => {
+    setSelectedBatchIds(prev => {
+      if (checked) {
+        return [...prev, batchId];
+      } else {
+        return prev.filter(id => id !== batchId);
+      }
+    });
+  };
+
+  // Gestisce selezione tutti i batch
+  const handleSelectAll = (checked: boolean) => {
+    setIsSelectAllChecked(checked);
+    if (checked) {
+      const allBatchIds = batches.map(batch => batch.id);
+      setSelectedBatchIds(allBatchIds);
+    } else {
+      setSelectedBatchIds([]);
+    }
+  };
+
+  // Elimina batch selezionati
+  const deleteSelectedBatches = async () => {
+    if (selectedBatchIds.length === 0) return;
+
+    const batchNames = selectedBatchIds.map(id => {
+      const batch = batches.find(b => b.id === id);
+      return batch?.nome || `Batch-${id.slice(0, 8)}`;
+    }).join(', ');
+
+    if (!window.confirm(`Sei sicuro di voler eliminare ${selectedBatchIds.length} batch selezionati?\n\n${batchNames}`)) {
+      return;
+    }
+
+    try {
+      setIsDeletingMultiple(true);
+      
+      // Verifica se ci sono batch che richiedono conferma
+      const batchesWithStatus = selectedBatchIds.map(id => {
+        const batch = batches.find(b => b.id === id);
+        return { id, stato: batch?.stato };
+      });
+      
+      const needConfirmation = batchesWithStatus.some(b => 
+        b.stato && ['confermato', 'loaded', 'cured'].includes(b.stato)
+      );
+
+      const result = await batchNestingApi.deleteMultipleBatch(selectedBatchIds, needConfirmation);
+      
+      toast({
+        title: "✅ Eliminazione completata",
+        description: result.message,
+      });
+
+      // Reset selezione
+      setSelectedBatchIds([]);
+      setIsSelectAllChecked(false);
+      
+      // Ricarica lista
+      loadBatches();
+      
+    } catch (err: any) {
+      console.error('❌ Errore eliminazione multipla:', err);
+      toast({
+        title: "❌ Errore",
+        description: err.message || "Errore durante l'eliminazione multipla",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeletingMultiple(false);
+    }
+  };
+
+  // Esegue cleanup automatico batch vecchi - RISOLVE PROBLEMA ISMAR
+  const executeCleanup = async (options = {}) => {
+    try {
+      setIsCleaningUp(true);
+      
+      const defaultOptions = {
+        days_threshold: 7,
+        stato_filter: 'SOSPESO',
+        dry_run: false,
+        ...options
+      };
+
+      const result = await batchNestingApi.cleanupOldBatches(defaultOptions);
+      
+      toast({
+        title: "🧹 Cleanup completato",
+        description: result.message,
+      });
+
+      // Se è stato rimosso almeno un batch da ISMAR, evidenzia il risultato
+      if (result.autoclavi_stats?.ISMAR?.batch_count > 0) {
+        toast({
+          title: "🎯 PROBLEMA ISMAR RISOLTO",
+          description: `Liberati ${result.autoclavi_stats.ISMAR.batch_count} batch da ISMAR - sovraccarico risolto!`,
+        });
+      }
+      
+      // Ricarica lista
+      loadBatches();
+      
+    } catch (err: any) {
+      console.error('❌ Errore cleanup:', err);
+      toast({
+        title: "❌ Errore cleanup",
+        description: err.message || "Errore durante il cleanup automatico",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCleaningUp(false);
+    }
+  };
+
+  // Mostra preview cleanup (dry run)
+  const previewCleanup = async () => {
+    try {
+      const result = await batchNestingApi.cleanupOldBatches({ dry_run: true });
+      
+      if (result.cleanup_stats.total_candidates === 0) {
+        toast({
+          title: "🧹 Nessun cleanup necessario",
+          description: "Non ci sono batch vecchi da pulire",
+        });
+        return;
+      }
+
+      const autoclaveNames = result.cleanup_stats.autoclavi_affected.join(', ');
+      const confirmMessage = `PREVIEW CLEANUP:\n\n` +
+        `• ${result.cleanup_stats.would_delete} batch sarebbero eliminati\n` +
+        `• Autoclavi interessate: ${autoclaveNames}\n` +
+        `• Soglia: batch SOSPESI > 7 giorni\n\n` +
+        `Vuoi procedere con il cleanup reale?`;
+
+      if (window.confirm(confirmMessage)) {
+        await executeCleanup();
+      }
+      
+    } catch (err: any) {
+      console.error('❌ Errore preview cleanup:', err);
+      toast({
+        title: "❌ Errore",
+        description: "Errore durante il preview cleanup",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Reset selezione quando cambiano i batch
+  useEffect(() => {
+    setSelectedBatchIds([]);
+    setIsSelectAllChecked(false);
+  }, [batches]);
+
   return (
     <Card className="w-full">
       <CardHeader>
@@ -287,11 +456,55 @@ export default function BatchListWithControls({
         <div className="flex justify-between items-center mt-2">
           <div className="text-sm text-gray-600">
             Gestisci i batch di nesting con controlli avanzati
+            {selectedBatchIds.length > 0 && (
+              <span className="ml-2 text-blue-600 font-medium">
+                ({selectedBatchIds.length} selezionati)
+              </span>
+            )}
           </div>
-          <Button onClick={openCreateBatch} className="flex items-center gap-2">
-            <Plus className="h-4 w-4" />
-            Nuovo Batch
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Controlli selezione multipla */}
+            {selectedBatchIds.length > 0 && (
+              <>
+                <Button 
+                  variant="destructive" 
+                  size="sm"
+                  onClick={deleteSelectedBatches}
+                  disabled={isDeletingMultiple}
+                  className="flex items-center gap-2"
+                >
+                  {isDeletingMultiple ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                  Elimina {selectedBatchIds.length}
+                </Button>
+              </>
+            )}
+            
+            {/* Cleanup automatico - RISOLVE PROBLEMA ISMAR */}
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={previewCleanup}
+              disabled={isCleaningUp}
+              className="flex items-center gap-2"
+              title="Cleanup automatico batch vecchi - RISOLVE PROBLEMA ISMAR"
+            >
+              {isCleaningUp ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash className="h-4 w-4" />
+              )}
+              🧹 Cleanup
+            </Button>
+            
+            <Button onClick={openCreateBatch} className="flex items-center gap-2">
+              <Plus className="h-4 w-4" />
+              Nuovo Batch
+            </Button>
+          </div>
         </div>
       </CardHeader>
 
@@ -362,6 +575,24 @@ export default function BatchListWithControls({
         {/* Lista Batch */}
         {!loading && batches.length > 0 && (
           <div className="space-y-4">
+            {/* 🗑️ Controllo Seleziona Tutto */}
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  checked={isSelectAllChecked}
+                  onCheckedChange={handleSelectAll}
+                  className="h-4 w-4"
+                />
+                <span className="text-sm font-medium">
+                  Seleziona tutti ({batches.length} batch)
+                </span>
+              </div>
+              {selectedBatchIds.length > 0 && (
+                <div className="text-sm text-blue-600">
+                  {selectedBatchIds.length} selezionati
+                </div>
+              )}
+            </div>
             {batches.map(batch => {
               const isExpanded = expandedBatch === batch.id;
               const StatusIcon = STATUS_ICONS[batch.stato];
@@ -373,6 +604,12 @@ export default function BatchListWithControls({
                     {/* Header Batch */}
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-3">
+                        {/* 🗑️ Checkbox selezione */}
+                        <Checkbox
+                          checked={selectedBatchIds.includes(batch.id)}
+                          onCheckedChange={(checked) => handleBatchSelection(batch.id, checked as boolean)}
+                          className="h-4 w-4"
+                        />
                         <StatusIcon className="h-5 w-5 text-gray-600" />
                         <div>
                           <div className="font-medium">

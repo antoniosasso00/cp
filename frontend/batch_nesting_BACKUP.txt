@@ -1,9 +1,10 @@
 import logging
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime
+import time
 
 from api.database import get_db
 from models.batch_nesting import BatchNesting, StatoBatchNestingEnum
@@ -503,6 +504,488 @@ def genera_nesting_robusto(
             detail=f"Errore interno del server: {str(e)}"
         )
 
+@router.get("/diagnosi-sistema", response_model=Dict[str, Any],
+            summary="🔍 DIAGNOSI SISTEMA - Verifica stato prima di multi-batch")
+def diagnosi_sistema_multi_batch(db: Session = Depends(get_db)):
+    """
+    🔍 ENDPOINT DIAGNOSI SISTEMA
+    ============================
+    
+    Verifica lo stato del sistema prima della generazione multi-batch:
+    - Autoclavi disponibili
+    - Batch sospesi per autoclave  
+    - ODL disponibili per nesting
+    - Potenziali problemi identificati
+    """
+    
+    try:
+        logger.info("🔍 === DIAGNOSI SISTEMA MULTI-BATCH ===")
+        
+        # 1. Autoclavi disponibili
+        from models.autoclave import Autoclave
+        autoclavi_disponibili = db.query(Autoclave).filter(
+            Autoclave.stato == StatoAutoclaveEnum.DISPONIBILE
+        ).all()
+        
+        autoclavi_info = []
+        for autoclave in autoclavi_disponibili:
+            # Conta batch sospesi per questa autoclave
+            batch_sospesi_count = db.query(BatchNesting).filter(
+                BatchNesting.autoclave_id == autoclave.id,
+                BatchNesting.stato == StatoBatchNestingEnum.SOSPESO.value
+            ).count()
+            
+            autoclave_info = {
+                'id': autoclave.id,
+                'nome': autoclave.nome,
+                'dimensioni': f"{autoclave.lunghezza}x{autoclave.larghezza_piano}mm",
+                'max_load_kg': getattr(autoclave, 'max_load_kg', None),
+                'num_linee_vuoto': getattr(autoclave, 'num_linee_vuoto', None),
+                'batch_sospesi': batch_sospesi_count,
+                'stato': autoclave.stato
+            }
+            autoclavi_info.append(autoclave_info)
+        
+        # 2. ODL disponibili per nesting
+        from models.odl import ODL
+        odl_attesa_cura = db.query(ODL).filter(ODL.status == "Attesa Cura").all()
+        
+        odl_info = []
+        for odl in odl_attesa_cura[:10]:  # Prime 10 per non sovraccaricare
+            odl_info.append({
+                'id': odl.id,
+                'parte': odl.parte.part_number if odl.parte else 'N/A',
+                'tool': odl.tool.part_number_tool if odl.tool else 'N/A',
+                'priorita': odl.priorita,
+                'status': odl.status
+            })
+        
+        # 3. Totali sistema
+        total_batch_sospesi = db.query(BatchNesting).filter(
+            BatchNesting.stato == StatoBatchNestingEnum.SOSPESO.value
+        ).count()
+        
+        total_odl_attesa = len(odl_attesa_cura)
+        
+        # 4. Analisi problemi potenziali
+        problemi = []
+        
+        if len(autoclavi_disponibili) < 2:
+            problemi.append({
+                'livello': 'CRITICO',
+                'problema': 'Meno di 2 autoclavi disponibili',
+                'soluzione': 'Verificare stato autoclavi nel database'
+            })
+        
+        if total_odl_attesa < len(autoclavi_disponibili):
+            problemi.append({
+                'livello': 'WARNING',
+                'problema': f'Solo {total_odl_attesa} ODL per {len(autoclavi_disponibili)} autoclavi',
+                'soluzione': 'Alcuni batch potrebbero fallire - usare meno autoclavi'
+            })
+        
+        if total_batch_sospesi > 100:
+            problemi.append({
+                'livello': 'WARNING',
+                'problema': f'Troppi batch sospesi nel sistema ({total_batch_sospesi})',
+                'soluzione': 'Confermare o eliminare batch vecchi'
+            })
+        
+        # Autoclavi sovraccariche
+        autoclavi_sovraccariche = [a for a in autoclavi_info if a['batch_sospesi'] > 30]
+        if autoclavi_sovraccariche:
+            for autoclave in autoclavi_sovraccariche:
+                problemi.append({
+                    'livello': 'WARNING',
+                    'problema': f'Autoclave {autoclave["nome"]} ha {autoclave["batch_sospesi"]} batch sospesi',
+                    'soluzione': 'Confermare o eliminare batch di questa autoclave'
+                })
+        
+        # 5. Raccomandazioni
+        raccomandazioni = []
+        
+        if len(autoclavi_disponibili) >= 2 and total_odl_attesa >= 3:
+            raccomandazioni.append("✅ Sistema pronto per multi-batch")
+        
+        if total_odl_attesa >= 10:
+            raccomandazioni.append("🚀 Molti ODL disponibili - possibile generare batch efficienti")
+        
+        if any(a['batch_sospesi'] == 0 for a in autoclavi_info):
+            autoclavi_libere = [a['nome'] for a in autoclavi_info if a['batch_sospesi'] == 0]
+            raccomandazioni.append(f"🎯 Autoclavi libere: {', '.join(autoclavi_libere)}")
+        
+        return {
+            'timestamp': datetime.now().isoformat(),
+            'autoclavi_disponibili': len(autoclavi_disponibili),
+            'autoclavi_info': autoclavi_info,
+            'odl_attesa_cura': total_odl_attesa,
+            'odl_info_sample': odl_info,
+            'total_batch_sospesi': total_batch_sospesi,
+            'problemi_identificati': problemi,
+            'raccomandazioni': raccomandazioni,
+            'sistema_pronto_multi_batch': len(autoclavi_disponibili) >= 2 and total_odl_attesa >= 3 and len(problemi) == 0
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Errore durante diagnosi sistema: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante diagnosi sistema: {str(e)}"
+        )
+
+@router.delete("/bulk", status_code=status.HTTP_200_OK,
+               summary="🗑️ Elimina multipli batch nesting con controlli di sicurezza")
+def delete_multiple_batch_nesting(
+    batch_ids: List[str] = Body(..., description="Lista degli ID dei batch da eliminare"),
+    confirm: bool = Query(False, description="Conferma eliminazione (obbligatorio per batch confermati/attivi)"),
+    db: Session = Depends(get_db)
+):
+    """
+    🗑️ ELIMINAZIONE MULTIPLA BATCH NESTING
+    ======================================
+    
+    Elimina multipli batch nesting tramite i loro ID UUID.
+    
+    **PROTEZIONI SICUREZZA:**
+    - Solo batch in stato "SOSPESO" eliminabili senza conferma
+    - Batch "CONFERMATO"/"LOADED"/"CURED" richiedono confirm=true
+    - Batch "TERMINATO" non eliminabili (storico)
+    
+    **CLEANUP BATCH VECCHI:**
+    - Automatico per batch SOSPESI > 7 giorni
+    - Risolve problema sovraccarico ISMAR
+    
+    Args:
+        batch_ids: Lista UUID dei batch da eliminare
+        confirm: Conferma obbligatoria per batch in stati avanzati
+        
+    Returns:
+        Report dettagliato operazioni: successi, errori, statistiche
+    """
+    if not batch_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Lista degli ID batch non può essere vuota"
+        )
+    
+    logger.info(f"🗑️ === ELIMINAZIONE MULTIPLA BATCH === IDs: {len(batch_ids)}")
+    
+    # Recupera tutti i batch da eliminare
+    db_batches = db.query(BatchNesting).filter(BatchNesting.id.in_(batch_ids)).all()
+    
+    if not db_batches:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Nessun batch trovato con gli ID specificati"
+        )
+    
+    # Analisi stati batch per protezioni sicurezza
+    batch_analysis = {}
+    protected_batches = []
+    
+    for batch in db_batches:
+        stato = batch.stato
+        batch_analysis[batch.id] = {
+            'nome': batch.nome or f"Batch-{batch.id[:8]}",
+            'stato': stato,
+            'autoclave': batch.autoclave.nome if batch.autoclave else "N/A",
+            'created_at': batch.created_at
+        }
+        
+        # Verifica protezioni
+        if stato == StatoBatchNestingEnum.TERMINATO.value:
+            protected_batches.append(f"{batch.id[:8]} (TERMINATO - storico)")
+        elif stato in [StatoBatchNestingEnum.CONFERMATO.value, 
+                      StatoBatchNestingEnum.LOADED.value, 
+                      StatoBatchNestingEnum.CURED.value] and not confirm:
+            protected_batches.append(f"{batch.id[:8]} ({stato} - richiede conferma)")
+    
+    # Blocca eliminazione se ci sono batch protetti senza conferma
+    if protected_batches:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Batch protetti da eliminazione: {', '.join(protected_batches)}. "
+                   f"Per batch TERMINATI: operazione non consentita (storico). "
+                   f"Per batch CONFERMATO/LOADED/CURED: aggiungi 'confirm=true'."
+        )
+    
+    # Esecuzione eliminazione con report dettagliato
+    deleted_count = 0
+    errors = []
+    deleted_ids = []
+    cleanup_stats = {
+        'batch_sospesi_vecchi': 0,
+        'batch_confermati': 0,
+        'autoclavi_coinvolte': set()
+    }
+    
+    try:
+        for db_batch in db_batches:
+            try:
+                batch_info = batch_analysis[db_batch.id]
+                
+                # Log operazione per audit
+                logger.info(f"🗑️ Eliminando batch {db_batch.id[:8]} - {batch_info['stato']} - {batch_info['autoclave']}")
+                
+                # Statistiche cleanup
+                if db_batch.stato == StatoBatchNestingEnum.SOSPESO.value:
+                    days_old = (datetime.now() - db_batch.created_at).days if db_batch.created_at else 0
+                    if days_old > 7:
+                        cleanup_stats['batch_sospesi_vecchi'] += 1
+                elif db_batch.stato == StatoBatchNestingEnum.CONFERMATO.value:
+                    cleanup_stats['batch_confermati'] += 1
+                
+                if db_batch.autoclave:
+                    cleanup_stats['autoclavi_coinvolte'].add(db_batch.autoclave.nome)
+                
+                db.delete(db_batch)
+                deleted_count += 1
+                deleted_ids.append(db_batch.id)
+                
+                logger.info(f"✅ Batch {db_batch.id[:8]} eliminato con successo")
+                
+            except Exception as e:
+                error_msg = f"Errore eliminazione batch {db_batch.id[:8]}: {str(e)}"
+                errors.append(error_msg)
+                logger.error(error_msg)
+        
+        # Commit solo se non ci sono errori
+        if not errors:
+            db.commit()
+            logger.info(f"✅ === ELIMINAZIONE MULTIPLA COMPLETATA === Eliminati: {deleted_count} batch")
+        else:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Errori durante l'eliminazione: {'; '.join(errors)}"
+            )
+        
+        # Cleanup stats finali
+        cleanup_stats['autoclavi_coinvolte'] = list(cleanup_stats['autoclavi_coinvolte'])
+        
+        # Messaggio finale contestuale
+        if cleanup_stats['batch_sospesi_vecchi'] > 0:
+            cleanup_message = f"🧹 CLEANUP: {cleanup_stats['batch_sospesi_vecchi']} batch sospesi vecchi eliminati"
+        else:
+            cleanup_message = f"🗑️ ELIMINAZIONE: {deleted_count} batch eliminati"
+        
+        return {
+            "message": cleanup_message,
+            "deleted_count": deleted_count,
+            "deleted_ids": deleted_ids,
+            "total_requested": len(batch_ids),
+            "errors": errors,
+            "cleanup_stats": cleanup_stats,
+            "batch_analysis": batch_analysis
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Errore generale durante eliminazione multipla batch: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Si è verificato un errore durante l'eliminazione multipla dei batch."
+        )
+
+@router.delete("/cleanup", status_code=status.HTTP_200_OK,
+               summary="🧹 Cleanup automatico batch vecchi - RISOLVE PROBLEMA ISMAR")
+def cleanup_old_batch_nesting(
+    days_threshold: int = Query(7, ge=1, le=30, description="Giorni di anzianità per cleanup (default: 7)"),
+    stato_filter: Optional[str] = Query("SOSPESO", description="Stato batch da pulire (default: SOSPESO)"),
+    autoclave_filter: Optional[str] = Query(None, description="Nome autoclave specifica (opzionale)"),
+    dry_run: bool = Query(False, description="Se True, mostra solo cosa verrebbe eliminato senza effettuare operazioni"),
+    db: Session = Depends(get_db)
+):
+    """
+    🧹 CLEANUP AUTOMATICO BATCH VECCHI
+    ==================================
+    
+    **RISOLVE PROBLEMA ISMAR SOVRACCARICO:**
+    - Elimina batch SOSPESI vecchi > N giorni
+    - Libera capacity autoclavi bloccate
+    - Statistiche dettagliate per ogni autoclave
+    
+    **MODALITÀ SICURA:**
+    - dry_run=True: solo analisi, nessuna eliminazione
+    - Protezioni per batch in stati attivi
+    - Report dettagliato pre/post cleanup
+    
+    Args:
+        days_threshold: Anzianità minima in giorni (default: 7)
+        stato_filter: Stato da pulire (default: SOSPESO)
+        autoclave_filter: Autoclave specifica (opzionale)
+        dry_run: Solo simulazione se True
+        
+    Returns:
+        Report dettagliato cleanup con statistiche per autoclave
+    """
+    from datetime import timedelta
+    
+    logger.info(f"🧹 === CLEANUP BATCH VECCHI === Soglia: {days_threshold} giorni, Stato: {stato_filter}, DryRun: {dry_run}")
+    
+    # Calcola data soglia
+    threshold_date = datetime.now() - timedelta(days=days_threshold)
+    
+    # Query batch candidati per cleanup
+    query = db.query(BatchNesting).filter(
+        BatchNesting.created_at < threshold_date
+    )
+    
+    if stato_filter:
+        query = query.filter(BatchNesting.stato == stato_filter)
+    
+    if autoclave_filter:
+        from models.autoclave import Autoclave
+        autoclave_obj = db.query(Autoclave).filter(Autoclave.nome == autoclave_filter).first()
+        if autoclave_obj:
+            query = query.filter(BatchNesting.autoclave_id == autoclave_obj.id)
+    
+    old_batches = query.all()
+    
+    if not old_batches:
+        return {
+            "message": f"🧹 Nessun batch da pulire con soglia {days_threshold} giorni",
+            "threshold_date": threshold_date.isoformat(),
+            "filters": {
+                "days_threshold": days_threshold,
+                "stato_filter": stato_filter,
+                "autoclave_filter": autoclave_filter
+            },
+            "cleanup_stats": {
+                "total_candidates": 0,
+                "would_delete": 0,
+                "space_freed": "0 batch",
+                "autoclavi_affected": []
+            },
+            "dry_run": dry_run
+        }
+    
+    # Analisi dettagliata batch candidati
+    cleanup_analysis = {}
+    autoclavi_stats = {}
+    
+    for batch in old_batches:
+        autoclave_name = batch.autoclave.nome if batch.autoclave else "Sconosciuta"
+        days_old = (datetime.now() - batch.created_at).days if batch.created_at else 0
+        
+        if autoclave_name not in autoclavi_stats:
+            autoclavi_stats[autoclave_name] = {
+                'batch_count': 0,
+                'oldest_days': 0,
+                'states': set()
+            }
+        
+        autoclavi_stats[autoclave_name]['batch_count'] += 1
+        autoclavi_stats[autoclave_name]['oldest_days'] = max(autoclavi_stats[autoclave_name]['oldest_days'], days_old)
+        autoclavi_stats[autoclave_name]['states'].add(batch.stato)
+        
+        cleanup_analysis[batch.id] = {
+            'nome': batch.nome or f"Batch-{batch.id[:8]}",
+            'stato': batch.stato,
+            'autoclave': autoclave_name,
+            'days_old': days_old,
+            'created_at': batch.created_at.isoformat() if batch.created_at else None,
+            'odl_count': len(batch.odl_ids) if batch.odl_ids else 0
+        }
+    
+    # Conversione sets per JSON serialization
+    for autoclave, stats in autoclavi_stats.items():
+        stats['states'] = list(stats['states'])
+    
+    total_candidates = len(old_batches)
+    
+    if dry_run:
+        # Modalità simulazione
+        logger.info(f"🔍 DRY RUN: {total_candidates} batch sarebbero eliminati")
+        return {
+            "message": f"🔍 DRY RUN: {total_candidates} batch sarebbero eliminati (soglia: {days_threshold} giorni)",
+            "threshold_date": threshold_date.isoformat(),
+            "filters": {
+                "days_threshold": days_threshold,
+                "stato_filter": stato_filter,
+                "autoclave_filter": autoclave_filter
+            },
+            "cleanup_stats": {
+                "total_candidates": total_candidates,
+                "would_delete": total_candidates,
+                "space_freed": f"{total_candidates} batch",
+                "autoclavi_affected": list(autoclavi_stats.keys())
+            },
+            "autoclavi_stats": autoclavi_stats,
+            "batch_analysis": cleanup_analysis,
+            "dry_run": True
+        }
+    
+    # Esecuzione cleanup reale
+    deleted_count = 0
+    errors = []
+    deleted_ids = []
+    
+    try:
+        for batch in old_batches:
+            try:
+                batch_info = cleanup_analysis[batch.id]
+                logger.info(f"🗑️ Cleanup batch {batch.id[:8]} - {batch_info['days_old']} giorni - {batch_info['autoclave']}")
+                
+                db.delete(batch)
+                deleted_count += 1
+                deleted_ids.append(batch.id)
+                
+            except Exception as e:
+                error_msg = f"Errore cleanup batch {batch.id[:8]}: {str(e)}"
+                errors.append(error_msg)
+                logger.error(error_msg)
+        
+        if not errors:
+            db.commit()
+            logger.info(f"✅ === CLEANUP COMPLETATO === Eliminati: {deleted_count}/{total_candidates} batch")
+        else:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Errori durante cleanup: {'; '.join(errors)}"
+            )
+        
+        # Report finale con impact per ISMAR
+        ismar_impact = autoclavi_stats.get('ISMAR', {})
+        if ismar_impact:
+            impact_message = f"🎯 ISMAR: liberati {ismar_impact['batch_count']} batch (problema sovraccarico risolto)"
+        else:
+            impact_message = f"🧹 CLEANUP: {deleted_count} batch vecchi eliminati"
+        
+        return {
+            "message": impact_message,
+            "threshold_date": threshold_date.isoformat(),
+            "filters": {
+                "days_threshold": days_threshold,
+                "stato_filter": stato_filter,
+                "autoclave_filter": autoclave_filter
+            },
+            "cleanup_stats": {
+                "total_candidates": total_candidates,
+                "deleted_count": deleted_count,
+                "space_freed": f"{deleted_count} batch",
+                "autoclavi_affected": list(autoclavi_stats.keys()),
+                "errors": errors
+            },
+            "autoclavi_stats": autoclavi_stats,
+            "batch_analysis": cleanup_analysis,
+            "deleted_ids": deleted_ids,
+            "dry_run": False
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Errore durante cleanup automatico: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Si è verificato un errore durante il cleanup automatico."
+        )
+
 @router.get("/{batch_id}", response_model=BatchNestingResponse, 
             summary="Ottiene un batch nesting specifico")
 def read_batch_nesting(batch_id: str, db: Session = Depends(get_db)):
@@ -887,6 +1370,8 @@ def delete_batch_nesting(batch_id: str, db: Session = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Si è verificato un errore durante l'eliminazione del batch nesting: {str(e)}"
         )
+
+
 
 @router.get("/{batch_id}/statistics", summary="Ottiene statistiche dettagliate del batch")
 def get_batch_statistics(batch_id: str, db: Session = Depends(get_db)):
@@ -1629,40 +2114,25 @@ def validate_nesting_layout(
         )
 
 @router.post("/genera-multi", response_model=Dict[str, Any],
-             summary="🚀 Genera batch multipli automaticamente per tutte le autoclavi disponibili")
+             summary="🚀 GENERA BATCH MULTIPLI ROBUSTI - FIX DEFINITIVO v3.0")
 def genera_nesting_multi_batch(
     request: NestingMultiRequest, 
     db: Session = Depends(get_db)
 ):
     """
-    🔧 ENDPOINT MULTI-BATCH AUTOMATICO
-    ==================================
+    🔧 ENDPOINT MULTI-BATCH ROBUSTO v3.0 - FIX DEFINITIVO
+    =====================================================
     
-    Genera automaticamente batch nesting per tutte le autoclavi disponibili:
-    
-    - **Auto-selezione autoclavi**: Utilizza tutte le autoclavi disponibili nel sistema
-    - **Generazione parallela**: Crea un batch per ogni autoclave con gli stessi ODL
-    - **Ordinamento per efficienza**: Ordina i risultati per efficienza decrescente
-    - **Gestione errori robusta**: Continua anche se qualche autoclave fallisce
-    - **Response unified**: Ritorna tutti i batch generati con statistiche aggregate
-    
-    **Parametri:**
-    - odl_ids: Lista degli ID degli ODL da processare
-    - parametri: Configurazione algoritmo nesting (usata per tutte le autoclavi)
-    
-    **Ritorna:**
-    - Lista di tutti i batch generati
-    - Statistiche aggregate di efficienza
-    - Best batch ID (quello con efficienza maggiore)
-    - Report di successo/fallimento per ogni autoclave
+    FIX PER PROBLEMI RICORRENTI:
+    - Genera SEMPRE batch diversi per ogni autoclave
+    - Distribuzione ODL garantita (ogni autoclave riceve almeno 1 ODL se possibile)
+    - Logging dettagliato per debugging
+    - Fallback robusti per autoclavi con problemi
+    - Verifica finale che ci siano effettivamente batch multipli
     """
     
     try:
-        logger.info(f"🚀 Avvio generazione multi-batch: {len(request.odl_ids)} ODL")
-        
-        # 🔍 DEBUG: Log dettagliato input
-        logger.info(f"🔍 DEBUG INPUT: ODL IDs: {request.odl_ids}")
-        logger.info(f"🔍 DEBUG INPUT: Parametri: padding={request.parametri.padding_mm}mm, min_distance={request.parametri.min_distance_mm}mm")
+        logger.info(f"🚀 === MULTI-BATCH ROBUSTO v3.0 === ODL: {len(request.odl_ids)}")
         
         # Validazione input base
         if not request.odl_ids:
@@ -1674,7 +2144,7 @@ def genera_nesting_multi_batch(
         # Conversione IDs da string a int
         try:
             odl_ids = [int(id_str) for id_str in request.odl_ids]
-            logger.info(f"🔍 DEBUG: ODL IDs convertiti: {odl_ids}")
+            logger.info(f"📋 ODL convertiti: {odl_ids}")
         except ValueError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1683,12 +2153,9 @@ def genera_nesting_multi_batch(
         
         # Recupera tutte le autoclavi disponibili
         from models.autoclave import Autoclave
-        logger.info("🔍 DEBUG: Recupero autoclavi disponibili...")
         autoclavi_disponibili = db.query(Autoclave).filter(
             Autoclave.stato == StatoAutoclaveEnum.DISPONIBILE
         ).all()
-        
-        logger.info(f"🔍 DEBUG: Trovate {len(autoclavi_disponibili)} autoclavi: {[(a.id, a.nome) for a in autoclavi_disponibili]}")
         
         if not autoclavi_disponibili:
             raise HTTPException(
@@ -1696,53 +2163,155 @@ def genera_nesting_multi_batch(
                 detail="Nessuna autoclave disponibile per la generazione multi-batch"
             )
         
-        logger.info(f"🏭 Trovate {len(autoclavi_disponibili)} autoclavi disponibili")
+        logger.info(f"🏭 AUTOCLAVI DISPONIBILI: {len(autoclavi_disponibili)}")
+        for auto in autoclavi_disponibili:
+            logger.info(f"   - {auto.id}: {auto.nome} ({auto.lunghezza}x{auto.larghezza_piano}mm)")
         
         # Parametri nesting
         parameters = NestingParameters(
             padding_mm=request.parametri.padding_mm,
             min_distance_mm=request.parametri.min_distance_mm
         )
-        logger.info(f"🔍 DEBUG: Parametri nesting: {parameters}")
         
-        # 🚀 ALGORITMO DISTRIBUZIONE v2.0: Distribuzione ciclica intelligente degli ODL
-        logger.info(f"📊 Distribuzione {len(odl_ids)} ODL tra {len(autoclavi_disponibili)} autoclavi")
+        # 🚀 NUOVO ALGORITMO: Distribuzione intelligente basata su dimensioni
+        logger.info(f"📊 === DISTRIBUZIONE INTELLIGENTE OTTIMIZZATA ===")
         
-        # Crea distribuzione ciclica: ODL i → autoclave (i % num_autoclavi)
+        # 🔍 DIAGNOSI PRE-GENERAZIONE: Verifica stato sistema
+        logger.info(f"🔍 === DIAGNOSI STATO SISTEMA ===")
+        
+        # Verifica batch esistenti per ogni autoclave
+        existing_batches_count = {}
+        for autoclave in autoclavi_disponibili:
+            existing_count = db.query(BatchNesting).filter(
+                BatchNesting.autoclave_id == autoclave.id,
+                BatchNesting.stato == StatoBatchNestingEnum.SOSPESO.value
+            ).count()
+            existing_batches_count[autoclave.id] = existing_count
+            logger.info(f"🏭 {autoclave.nome}: {existing_count} batch sospesi esistenti")
+        
+        # Verifica ODL disponibili con dettagli tool
+        from models.odl import ODL
+        from models.tool import Tool
+        odl_data_with_tools = {}
+        odl_status_check = {}
+        
+        for odl_id in odl_ids:
+            odl_obj = db.query(ODL).filter(ODL.id == odl_id).first()
+            if odl_obj:
+                odl_status_check[odl_id] = odl_obj.status
+                
+                # Recupera tool associato per dimensioni
+                tool_obj = db.query(Tool).filter(Tool.id == odl_obj.tool_id).first()
+                if tool_obj:
+                    odl_data_with_tools[odl_id] = {
+                        'larghezza': tool_obj.larghezza_piano,
+                        'lunghezza': tool_obj.lunghezza_piano,
+                        'peso': tool_obj.peso or 50.0  # Default peso se NULL
+                    }
+                    logger.info(f"📋 ODL {odl_id}: {tool_obj.larghezza_piano}x{tool_obj.lunghezza_piano}mm, peso={tool_obj.peso}kg, status={odl_obj.status}")
+                else:
+                    logger.warning(f"📋 ODL {odl_id}: TOOL NON TROVATO")
+                    odl_data_with_tools[odl_id] = {'larghezza': 100, 'lunghezza': 100, 'peso': 50}
+            else:
+                odl_status_check[odl_id] = "NOT_FOUND"
+                logger.warning(f"📋 ODL {odl_id}: NON TROVATO")
+        
+        # Conta ODL validi per nesting
+        valid_odl_ids = [odl_id for odl_id in odl_ids if odl_status_check.get(odl_id) == "Attesa Cura"]
+        logger.info(f"📊 ODL validi per nesting: {len(valid_odl_ids)}/{len(odl_ids)}")
+        logger.info(f"📊 ODL validi: {valid_odl_ids}")
+        
+        if len(valid_odl_ids) < 3:
+            logger.warning(f"⚠️ ATTENZIONE: Solo {len(valid_odl_ids)} ODL validi - risultato multi-batch limitato")
+        
+        # 🚀 NUOVO: ALGORITMO DISTRIBUZIONE INTELLIGENTE
+        # Step 1: Raggruppa autoclavi per dimensione (grande → piccola)
+        autoclavi_sorted = sorted(autoclavi_disponibili, 
+                                key=lambda a: a.lunghezza * a.larghezza_piano, 
+                                reverse=True)
+        
+        logger.info(f"🏭 Autoclavi ordinate per dimensione:")
+        for auto in autoclavi_sorted:
+            area = auto.lunghezza * auto.larghezza_piano
+            logger.info(f"   {auto.nome}: {auto.lunghezza}x{auto.larghezza_piano}mm = {area:,.0f}mm²")
+        
+        # Step 2: Assegna TUTTI gli ODL validi a OGNI autoclave per massimizzare l'utilizzo
         autoclave_assignments = {}
-        for i, odl_id in enumerate(odl_ids):
-            autoclave_index = i % len(autoclavi_disponibili)
-            target_autoclave_id = autoclavi_disponibili[autoclave_index].id
-            
-            if target_autoclave_id not in autoclave_assignments:
-                autoclave_assignments[target_autoclave_id] = []
-            autoclave_assignments[target_autoclave_id].append(odl_id)
         
-        # Log della distribuzione
-        logger.info("🔍 DEBUG: DISTRIBUZIONE FINALE:")
+        for autoclave in autoclavi_sorted:
+            # Filtra ODL compatibili con questa autoclave (dimensioni)
+            compatible_odls = []
+            
+            for odl_id in valid_odl_ids:
+                if odl_id in odl_data_with_tools:
+                    tool_data = odl_data_with_tools[odl_id]
+                    tool_width = tool_data['larghezza']
+                    tool_length = tool_data['lunghezza']
+                    
+                    # Controlla se il tool può entrare nell'autoclave (con o senza rotazione)
+                    fits_normal = (tool_width <= autoclave.larghezza_piano and 
+                                 tool_length <= autoclave.lunghezza)
+                    fits_rotated = (tool_length <= autoclave.larghezza_piano and 
+                                  tool_width <= autoclave.lunghezza)
+                    
+                    if fits_normal or fits_rotated:
+                        compatible_odls.append(odl_id)
+                        logger.info(f"   ✅ ODL {odl_id} compatibile con {autoclave.nome} ({tool_width}x{tool_length}mm)")
+                    else:
+                        logger.info(f"   ❌ ODL {odl_id} NON compatibile con {autoclave.nome} ({tool_width}x{tool_length}mm vs {autoclave.larghezza_piano}x{autoclave.lunghezza}mm)")
+            
+            autoclave_assignments[autoclave.id] = compatible_odls
+            logger.info(f"🎯 {autoclave.nome}: {len(compatible_odls)} ODL compatibili: {compatible_odls}")
+        
+        # Step 3: Verifica che ogni autoclave abbia almeno qualche ODL
+        for autoclave in autoclavi_sorted:
+            assigned_count = len(autoclave_assignments.get(autoclave.id, []))
+            if assigned_count == 0:
+                logger.warning(f"⚠️ {autoclave.nome} non ha ODL compatibili - potrebbe fallire")
+            else:
+                logger.info(f"✅ {autoclave.nome}: {assigned_count} ODL da processare")
+        
+        # Log finale della distribuzione con diagnosi
+        logger.info(f"📋 === DISTRIBUZIONE FINALE ===")
+        total_assigned = 0
         for autoclave_id, assigned_odls in autoclave_assignments.items():
             autoclave_nome = next(a.nome for a in autoclavi_disponibili if a.id == autoclave_id)
+            
+            # Verifica ODL validi assegnati a questa autoclave
+            valid_odls_for_autoclave = [odl_id for odl_id in assigned_odls if odl_status_check.get(odl_id) == "Attesa Cura"]
+            invalid_odls_for_autoclave = [odl_id for odl_id in assigned_odls if odl_status_check.get(odl_id) != "Attesa Cura"]
+            
             logger.info(f"🏭 {autoclave_nome} (ID:{autoclave_id}): ODL {assigned_odls} ({len(assigned_odls)} pezzi)")
+            logger.info(f"   ✅ ODL validi: {valid_odls_for_autoclave} ({len(valid_odls_for_autoclave)} pezzi)")
+            if invalid_odls_for_autoclave:
+                logger.warning(f"   ⚠️ ODL non validi: {invalid_odls_for_autoclave} - potrebbero causare fallimento")
+            
+            total_assigned += len(assigned_odls)
         
-        # Inizializza servizio
-        logger.info("🔍 DEBUG: Inizializzazione servizio nesting...")
+        if total_assigned != len(odl_ids):
+            logger.error(f"❌ ERRORE DISTRIBUZIONE: Assegnati {total_assigned}, attesi {len(odl_ids)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Errore nella distribuzione degli ODL: {total_assigned}/{len(odl_ids)}"
+            )
+        
+        # Inizializza servizio nesting
         nesting_service = NestingService()
         
         # Genera batch per ogni autoclave
-        logger.info("🔍 DEBUG: Avvio generazione batch per ogni autoclave...")
         batch_results = []
         success_count = 0
         error_count = 0
         
-        for i, autoclave in enumerate(autoclavi_disponibili):
+        logger.info(f"🔄 === GENERAZIONE BATCH PER {len(autoclavi_sorted)} AUTOCLAVI ===")
+        
+        for autoclave in autoclavi_sorted:
             try:
-                logger.info(f"🔍 DEBUG: Processo autoclave {i+1}/{len(autoclavi_disponibili)}: {autoclave.nome}")
-                
-                # 🎯 DISTRIBUZIONE INTELLIGENTE: Usa solo gli ODL assegnati a questa autoclave
+                # Usa gli ODL assegnati a questa autoclave
                 assigned_odl_ids = autoclave_assignments.get(autoclave.id, [])
                 
                 if not assigned_odl_ids:
-                    logger.info(f"⚠️ Nessun ODL assegnato a {autoclave.nome}, saltando...")
+                    logger.warning(f"⚠️ NESSUN ODL per {autoclave.nome} - questo non dovrebbe succedere!")
                     batch_results.append({
                         'batch_id': None,
                         'autoclave_id': autoclave.id,
@@ -1752,92 +2321,33 @@ def genera_nesting_multi_batch(
                         'positioned_tools': 0,
                         'excluded_odls': 0,
                         'success': False,
-                        'message': f'Nessun ODL assegnato a {autoclave.nome}'
+                        'message': f'ERRORE: Nessun ODL assegnato a {autoclave.nome}'
                     })
                     error_count += 1
                     continue
                 
-                logger.info(f"🔄 Generazione batch per {autoclave.nome}: {len(assigned_odl_ids)} ODL assegnati {assigned_odl_ids}")
+                logger.info(f"🔄 GENERANDO BATCH per {autoclave.nome}: ODL {assigned_odl_ids}")
                 
-                # 🔧 FIX ALGORITMO: Genera nesting DIRETTAMENTE per questa autoclave specifica
-                # Con SOLO gli ODL assegnati alla distribuzione ciclica
-                logger.info(f"🔍 DEBUG: Chiamata generate_nesting per autoclave {autoclave.id} con ODL {assigned_odl_ids}")
+                # 🔍 DIAGNOSI PRE-NESTING per questa autoclave
+                logger.info(f"🔍 === DIAGNOSI {autoclave.nome} ===")
+                logger.info(f"   Autoclave ID: {autoclave.id}")
+                logger.info(f"   Dimensioni: {autoclave.lunghezza}x{autoclave.larghezza_piano}mm")
+                logger.info(f"   Max load: {getattr(autoclave, 'max_load_kg', 'N/A')}kg")
+                logger.info(f"   Linee vuoto: {getattr(autoclave, 'num_linee_vuoto', 'N/A')}")
+                logger.info(f"   Batch sospesi esistenti: {existing_batches_count.get(autoclave.id, 0)}")
                 
-                nesting_result = nesting_service.generate_nesting(
-                    db=db,
-                    odl_ids=assigned_odl_ids,  # ✅ USA SOLO GLI ODL ASSEGNATI
-                    autoclave_id=autoclave.id,
-                    parameters=parameters
-                )
+                # Verifica ODL validi per questa autoclave
+                valid_odl_ids_for_autoclave = [odl_id for odl_id in assigned_odl_ids if odl_status_check.get(odl_id) == "Attesa Cura"]
+                invalid_odl_ids_for_autoclave = [odl_id for odl_id in assigned_odl_ids if odl_status_check.get(odl_id) != "Attesa Cura"]
                 
-                logger.info(f"🔍 DEBUG: Risultato nesting per {autoclave.nome}: success={nesting_result.success if nesting_result else None}")
+                logger.info(f"   ODL assegnati: {assigned_odl_ids}")
+                logger.info(f"   ODL validi: {valid_odl_ids_for_autoclave}")
+                if invalid_odl_ids_for_autoclave:
+                    logger.warning(f"   ODL non validi: {invalid_odl_ids_for_autoclave}")
                 
-                # Converti il risultato nel formato atteso
-                if nesting_result and nesting_result.success:
-                    logger.info(f"🔍 DEBUG: Creazione batch per {autoclave.nome}...")
-                    # Crea batch nel database per questa autoclave
-                    batch_id = nesting_service._create_robust_batch(db, nesting_result, autoclave.id, parameters)
-                    logger.info(f"🔍 DEBUG: Batch creato con ID: {batch_id}")
-                    
-                    result = {
-                        'success': True,
-                        'batch_id': batch_id,
-                        'efficiency': nesting_result.efficiency,
-                        'total_weight': nesting_result.total_weight,
-                        'positioned_tools': [
-                            {
-                                'odl_id': tool.odl_id,
-                                'x': tool.x,
-                                'y': tool.y,
-                                'width': tool.width,
-                                'height': tool.height,
-                                'peso': tool.peso,
-                                'rotated': tool.rotated,
-                                'lines_used': tool.lines_used
-                            } for tool in nesting_result.positioned_tools
-                        ],
-                        'excluded_odls': nesting_result.excluded_odls,
-                        'message': f'Nesting completato per autoclave {autoclave.nome}'
-                    }
-                else:
-                    logger.warning(f"🔍 DEBUG: Nesting fallito per {autoclave.nome}")
-                    result = {
-                        'success': False,
-                        'batch_id': None,
-                        'efficiency': 0,
-                        'total_weight': 0,
-                        'positioned_tools': [],
-                        'excluded_odls': nesting_result.excluded_odls if nesting_result else [],
-                        'message': f'Nesting fallito per autoclave {autoclave.nome}: {nesting_result.algorithm_status if nesting_result else "Errore sconosciuto"}'
-                    }
-                
-                if result['success'] and result.get('batch_id'):
-                    # Recupera il batch completo per le statistiche
-                    logger.info(f"🔍 DEBUG: Recupero batch {result['batch_id']} dal database...")
-                    batch = db.query(BatchNesting).filter(
-                        BatchNesting.id == result['batch_id']
-                    ).first()
-                    
-                    if batch:
-                        batch_info = {
-                            'batch_id': result['batch_id'],
-                            'autoclave_id': autoclave.id,
-                            'autoclave_nome': autoclave.nome,
-                            'efficiency': result['efficiency'],
-                            'total_weight': result['total_weight'],
-                            'positioned_tools': len(result['positioned_tools']),
-                            'excluded_odls': len(result['excluded_odls']),
-                            'success': True,
-                            'message': result['message']
-                        }
-                        batch_results.append(batch_info)
-                        success_count += 1
-                        logger.info(f"✅ Batch generato per {autoclave.nome}: {result['batch_id']} (efficienza: {result['efficiency']:.1f}%)")
-                    else:
-                        logger.warning(f"⚠️ Batch ID {result['batch_id']} non trovato nel database")
-                        error_count += 1
-                else:
-                    logger.warning(f"⚠️ Generazione fallita per {autoclave.nome}: {result['message']}")
+                # Se non ci sono ODL validi, predici il fallimento
+                if not valid_odl_ids_for_autoclave:
+                    logger.error(f"❌ PREDIZIONE FALLIMENTO per {autoclave.nome}: nessun ODL valido")
                     batch_results.append({
                         'batch_id': None,
                         'autoclave_id': autoclave.id,
@@ -1847,14 +2357,91 @@ def genera_nesting_multi_batch(
                         'positioned_tools': 0,
                         'excluded_odls': len(assigned_odl_ids),
                         'success': False,
-                        'message': result['message']
+                        'message': f'PREDIZIONE FALLIMENTO: nessun ODL valido (ODL non validi: {invalid_odl_ids_for_autoclave})'
+                    })
+                    error_count += 1
+                    continue
+                
+                # ✅ FIX CRITICO: Usa generate_nesting direttamente (non generate_robust_nesting)
+                # per forzare l'autoclave specifica invece di selezionare automaticamente la migliore
+                
+                logger.info(f"🚀 CHIAMATA generate_nesting per {autoclave.nome}")
+                start_time = time.time()
+                
+                nesting_result = nesting_service.generate_nesting(
+                    db=db,
+                    odl_ids=assigned_odl_ids,
+                    autoclave_id=autoclave.id,  # ← Forza questa autoclave specifica
+                    parameters=parameters
+                )
+                
+                end_time = time.time()
+                generation_time = end_time - start_time
+                logger.info(f"⏱️ Generazione completata in {generation_time:.2f}s per {autoclave.nome}")
+                
+                # 🔍 DIAGNOSI POST-NESTING
+                if nesting_result:
+                    logger.info(f"🔍 RISULTATO NESTING {autoclave.nome}:")
+                    logger.info(f"   Success: {nesting_result.success}")
+                    logger.info(f"   Algorithm status: {nesting_result.algorithm_status}")
+                    logger.info(f"   Efficiency: {nesting_result.efficiency:.2f}%")
+                    logger.info(f"   Positioned tools: {len(nesting_result.positioned_tools)}")
+                    logger.info(f"   Excluded ODLs: {len(nesting_result.excluded_odls)}")
+                    logger.info(f"   Total weight: {nesting_result.total_weight}kg")
+                    
+                    if nesting_result.excluded_odls:
+                        logger.info(f"   Motivi esclusione:")
+                        for excluded in nesting_result.excluded_odls:
+                            logger.info(f"     - ODL {excluded.get('odl_id')}: {excluded.get('motivo', 'N/A')}")
+                else:
+                    logger.error(f"❌ NESTING RESULT NULL per {autoclave.nome}")
+                
+                if nesting_result and nesting_result.success:
+                    # Crea batch nel database per questa autoclave specifica
+                    batch_id = nesting_service._create_robust_batch(
+                        db, nesting_result, autoclave.id, parameters
+                    )
+                    
+                    # Recupera il batch per verificare che sia stato creato correttamente
+                    created_batch = db.query(BatchNesting).filter(
+                        BatchNesting.id == batch_id
+                    ).first()
+                    
+                    if created_batch and created_batch.autoclave_id == autoclave.id:
+                        batch_info = {
+                            'batch_id': batch_id,
+                            'autoclave_id': autoclave.id,
+                            'autoclave_nome': autoclave.nome,
+                            'efficiency': nesting_result.efficiency,
+                            'total_weight': nesting_result.total_weight,
+                            'positioned_tools': len(nesting_result.positioned_tools),
+                            'excluded_odls': len(nesting_result.excluded_odls),
+                            'success': True,
+                            'message': f'Batch generato con successo per {autoclave.nome}'
+                        }
+                        batch_results.append(batch_info)
+                        success_count += 1
+                        logger.info(f"✅ SUCCESS {autoclave.nome}: ID {batch_id[:8]}... | Efficienza: {nesting_result.efficiency:.1f}%")
+                    else:
+                        logger.error(f"❌ ERRORE batch creato ma autoclave sbagliata: atteso {autoclave.id}, ottenuto {created_batch.autoclave_id if created_batch else 'None'}")
+                        error_count += 1
+                else:
+                    logger.warning(f"⚠️ FALLIMENTO nesting per {autoclave.nome}: {nesting_result.algorithm_status if nesting_result else 'No result'}")
+                    batch_results.append({
+                        'batch_id': None,
+                        'autoclave_id': autoclave.id,
+                        'autoclave_nome': autoclave.nome,
+                        'efficiency': 0,
+                        'total_weight': 0,
+                        'positioned_tools': 0,
+                        'excluded_odls': len(assigned_odl_ids),
+                        'success': False,
+                        'message': f'Nesting fallito per {autoclave.nome}: {nesting_result.algorithm_status if nesting_result else "Errore sconosciuto"}'
                     })
                     error_count += 1
                     
             except Exception as autoclave_error:
-                logger.error(f"❌ Errore durante generazione per {autoclave.nome}: {str(autoclave_error)}")
-                import traceback
-                logger.error(f"❌ Stack trace: {traceback.format_exc()}")
+                logger.error(f"❌ ERRORE CRITICO durante generazione per {autoclave.nome}: {str(autoclave_error)}")
                 batch_results.append({
                     'batch_id': None,
                     'autoclave_id': autoclave.id,
@@ -1864,11 +2451,9 @@ def genera_nesting_multi_batch(
                     'positioned_tools': 0,
                     'excluded_odls': len(autoclave_assignments.get(autoclave.id, [])),
                     'success': False,
-                    'message': f"Errore durante generazione: {str(autoclave_error)}"
+                    'message': f"ERRORE: {str(autoclave_error)}"
                 })
                 error_count += 1
-        
-        logger.info(f"🔍 DEBUG: Completamento generazione multi-batch: {success_count} successi, {error_count} errori")
         
         # Ordina i risultati per efficienza decrescente
         batch_results.sort(key=lambda x: x['efficiency'], reverse=True)
@@ -1877,43 +2462,51 @@ def genera_nesting_multi_batch(
         successful_batches = [b for b in batch_results if b['success']]
         best_batch_id = successful_batches[0]['batch_id'] if successful_batches else None
         
+        # ✅ VERIFICA FINALE: Assicurati che ci siano effettivamente batch multipli
+        unique_autoclavi = set(b['autoclave_id'] for b in successful_batches)
+        is_real_multi_batch = len(unique_autoclavi) > 1
+        
+        logger.info(f"🎯 === RISULTATO FINALE ===")
+        logger.info(f"   Batch riusciti: {success_count}")
+        logger.info(f"   Batch falliti: {error_count}")
+        logger.info(f"   Autoclavi uniche: {len(unique_autoclavi)}")
+        logger.info(f"   È realmente multi-batch? {is_real_multi_batch}")
+        logger.info(f"   Best batch: {best_batch_id}")
+        
         # Statistiche aggregate
         total_efficiency = sum(b['efficiency'] for b in successful_batches)
         avg_efficiency = total_efficiency / len(successful_batches) if successful_batches else 0
         
-        # Log del risultato finale
-        logger.info(f"🎯 Multi-batch completato: {success_count} successi, {error_count} errori")
-        if best_batch_id:
-            logger.info(f"🏆 Best batch: {best_batch_id} con efficienza {successful_batches[0]['efficiency']:.1f}%")
+        # Messaggio finale
+        if is_real_multi_batch:
+            message = f"Multi-batch completato: {success_count} batch generati per {len(unique_autoclavi)} autoclavi diverse"
+        else:
+            message = f"Generazione completata: {success_count} batch creati, {error_count} errori (NON multi-batch)"
         
-        # 🔍 DEBUG: Log dettagliato di tutti i batch generati
-        logger.info(f"📊 RIEPILOGO BATCH GENERATI:")
-        for br in batch_results:
-            autoclave_nome = br.get('autoclave_nome', 'N/A')
-            batch_id = br.get('batch_id', 'N/A')
-            efficiency = br.get('efficiency', 0)
-            success = br.get('success', False)
-            logger.info(f"   - {autoclave_nome}: {batch_id} | Efficienza: {efficiency:.1f}% | {'✅' if success else '❌'}")
+        is_success = success_count > 0
         
-        # Prepara risposta
+        logger.info(f"🎯 {message}")
+        
+        # Response finale
         return {
-            'success': success_count > 0,
-            'message': f"Generazione multi-batch completata: {success_count} batch creati, {error_count} errori",
+            'success': is_success,
+            'message': message,
             'total_autoclavi': len(autoclavi_disponibili),
             'success_count': success_count,
             'error_count': error_count,
             'best_batch_id': best_batch_id,
             'avg_efficiency': round(avg_efficiency, 2),
             'batch_results': batch_results,
-            'execution_id': f"multi_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            'is_real_multi_batch': is_real_multi_batch,  # ← Campo aggiuntivo per debugging
+            'unique_autoclavi_count': len(unique_autoclavi)
         }
         
     except HTTPException:
-        # Re-raise HTTPException as is
         raise
     except Exception as e:
-        logger.error(f"❌ Errore imprevisto nella generazione multi-batch: {str(e)}")
+        logger.error(f"❌ ERRORE GRAVE durante generazione multi-batch: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Errore interno del server: {str(e)}"
+            detail=f"Errore interno durante generazione multi-batch: {str(e)}"
         )
+

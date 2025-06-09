@@ -4,4 +4,6 @@ Servizi per la gestione dei batch nesting.
 
 from .log import BatchLogService
 
-__all__ = ["BatchLogService"] 
+__all__ = ["BatchLogService"]
+
+# Servizi batch nesting modularizzati 

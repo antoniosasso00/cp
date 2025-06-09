@@ -133,6 +133,9 @@ interface MultiBatchResponse {
   batch_results: BatchNestingResult[]
   execution_id?: string
   total_batches: number
+  is_partial_multi_batch?: boolean
+  batch_type?: string
+  total_attempted_autoclavi?: number
 }
 
 interface Props {
@@ -155,69 +158,210 @@ export default function NestingResultPage({ params }: Props) {
     loadMultiBatchData()
   }, [params.batch_id])
 
+  // ✅ ROBUST MULTI-BATCH DETECTION: Always try multi-batch first
+  const tryMultiBatchFirst = async (): Promise<MultiBatchResponse | null> => {
+    try {
+      console.log(`🚀 Trying multi-batch endpoint directly`)
+      const multiUrl = `/api/batch_nesting/result/${params.batch_id}?multi=true`
+      
+      const multiResponse = await fetch(multiUrl, {
+        headers: { 'Cache-Control': 'no-cache' }
+      })
+      
+      if (multiResponse.ok) {
+        const multiData: MultiBatchResponse = await multiResponse.json()
+        
+        // 🔧 FIX MULTI-BATCH PARZIALE: Considera anche batch singoli che erano parte di un tentativo multi-batch
+        const hasBatchResults = multiData.batch_results && multiData.batch_results.length > 0
+        const isPartialMultiBatch = multiData.is_partial_multi_batch || 
+                                   multiData.batch_type === "multi_partial" ||
+                                   (multiData.total_attempted_autoclavi || 0) > 1
+        
+        if (hasBatchResults && (multiData.batch_results.length > 1 || isPartialMultiBatch)) {
+          const batchType = multiData.batch_results.length > 1 ? 'MULTI-COMPLETO' : 'MULTI-PARZIALE'
+          console.log(`✅ Multi-batch FOUND: ${multiData.batch_results.length} batch (${batchType})`)
+          
+          if (isPartialMultiBatch) {
+            console.log(`🚨 MULTI-BATCH PARZIALE: ${multiData.batch_results.length}/${multiData.total_attempted_autoclavi || 0} autoclavi riuscite`)
+          }
+          
+          return multiData
+        } else {
+          console.log(`🔄 Multi-batch endpoint returned ${multiData.batch_results?.length || 0} batch - fallback to single`)
+          return null
+        }
+      } else {
+        console.log(`⚠️ Multi-batch endpoint failed: ${multiResponse.status}`)
+        return null
+      }
+    } catch (error) {
+      console.log(`⚠️ Multi-batch error:`, error)
+      return null
+    }
+  }
+
   const loadMultiBatchData = async () => {
     try {
       setLoading(true)
       setError(null)
 
-      console.log(`🔄 Caricamento dati per batch: ${params.batch_id}`)
+      console.log(`🔄 === ROBUST BATCH LOADING === ${params.batch_id}`)
 
-      // Prima prova a caricare come multi-batch
-      const multiUrl = `/api/batch_nesting/result/${params.batch_id}?multi=true`
-      console.log(`📡 Chiamata multi-batch: ${multiUrl}`)
+      // ✅ PHASE 1: TRY MULTI-BATCH FIRST (always)
+      console.log(`📡 Phase 1 - Multi-batch attempt`)
+      const multiBatchResult = await tryMultiBatchFirst()
       
-      const multiResponse = await fetch(multiUrl)
-      
-      if (multiResponse.ok) {
-        const multiData: MultiBatchResponse = await multiResponse.json()
-        console.log(`✅ Dati multi-batch ricevuti:`, multiData)
-        
-        // Verifica che ci siano risultati
-        if (!multiData.batch_results || multiData.batch_results.length === 0) {
-          throw new Error('Nessun batch trovato nei risultati multi-batch')
-        }
-        
-        setMultiBatchData(multiData)
-        
-        // Trova l'indice del batch corrente
-        const currentIndex = multiData.batch_results.findIndex(b => b.id === params.batch_id)
-        setSelectedBatchIndex(currentIndex >= 0 ? currentIndex : 0)
-        
-        console.log(`🎯 Batch selezionato: indice ${currentIndex >= 0 ? currentIndex : 0}`)
+      let finalResult: MultiBatchResponse
+
+      if (multiBatchResult) {
+        // ✅ Multi-batch found - use it
+        console.log(`✅ Using multi-batch data: ${multiBatchResult.batch_results.length} batches`)
+        finalResult = multiBatchResult
       } else {
-        console.log(`⚠️ Multi-batch fallito (${multiResponse.status}), tentativo fallback...`)
+        // ✅ PHASE 2: FALLBACK TO SINGLE BATCH
+        console.log(`📡 Phase 2 - Single batch fallback`)
+        const metadataUrl = `/api/batch_nesting/${params.batch_id}`
         
-        // Fallback: carica singolo batch usando l'endpoint esistente
-        const singleUrl = `/api/batch_nesting/${params.batch_id}`
-        console.log(`📡 Chiamata fallback: ${singleUrl}`)
+        const metadataResponse = await fetch(metadataUrl, {
+          headers: { 'Cache-Control': 'no-cache' }
+        })
         
-        const singleResponse = await fetch(singleUrl)
-        if (!singleResponse.ok) {
-          throw new Error(`HTTP ${singleResponse.status}: ${singleResponse.statusText}`)
+        if (!metadataResponse.ok) {
+          throw new Error(`Metadata error: ${metadataResponse.status}`)
         }
-
-        const singleBatch: BatchNestingResult = await singleResponse.json()
-        console.log(`✅ Dati singolo batch ricevuti:`, singleBatch)
         
-        // Normalizza i dati per compatibilità
-        if (singleBatch.efficiency && !singleBatch.metrics?.efficiency_percentage) {
-          singleBatch.metrics = {
-            ...singleBatch.metrics,
-            efficiency_percentage: singleBatch.efficiency
+        const baseBatch: BatchNestingResult = await metadataResponse.json()
+        console.log(`✅ Single batch loaded: ${baseBatch.autoclave?.nome}`)
+        
+        finalResult = { batch_results: [baseBatch], total_batches: 1 }
+      }
+
+      // ✅ PHASE 4: VALIDATE AND NORMALIZE DATA
+      const validBatches = finalResult.batch_results?.filter(batch => 
+        batch && batch.id && batch.autoclave_id
+      ) || []
+
+      // ✅ NORMALIZE DATA: Assicura compatibilità e calcoli corretti
+      const normalizedBatches = validBatches.map(batch => {
+        // Normalizza efficiency per compatibilità legacy
+        if (batch.efficiency && !batch.metrics?.efficiency_percentage) {
+          batch.metrics = {
+            ...batch.metrics,
+            efficiency_percentage: batch.efficiency
           }
         }
+        
+        // Assicura che ci siano i campi minimi per il rendering
+        if (!batch.metrics) {
+          batch.metrics = {
+            efficiency_percentage: batch.efficiency || 0,
+            total_area_used_mm2: batch.area_totale_utilizzata || 0,
+            total_weight_kg: batch.peso_totale_kg || 0
+          }
+        }
+        
+        // ✅ CALCOLO EFFICIENZA FALLBACK: Se l'efficienza è 0 ma ci sono tool posizionati
+        if ((!batch.metrics.efficiency_percentage || batch.metrics.efficiency_percentage === 0) && 
+            batch.configurazione_json?.tool_positions && 
+            batch.configurazione_json.tool_positions.length > 0) {
+          
+          const toolPositions = batch.configurazione_json.tool_positions
+          const autoclave = batch.autoclave
+          
+          if (autoclave && autoclave.lunghezza && autoclave.larghezza_piano) {
+            // Calcola area totale utilizzata dai tool
+            const totalToolArea = toolPositions.reduce((sum, tool) => {
+              return sum + (tool.width * tool.height)
+            }, 0)
+            
+            // Calcola area autoclave
+            const autoclaveArea = autoclave.lunghezza * autoclave.larghezza_piano
+            
+            // Calcola efficienza come percentuale
+            const calculatedEfficiency = (totalToolArea / autoclaveArea) * 100
+            
+            console.log(`🔧 CALCOLO EFFICIENZA FALLBACK:`)
+            console.log(`   Tool area: ${totalToolArea} mm²`)
+            console.log(`   Autoclave area: ${autoclaveArea} mm²`)
+            console.log(`   Efficienza calcolata: ${calculatedEfficiency.toFixed(1)}%`)
+            
+            batch.metrics.efficiency_percentage = Math.round(calculatedEfficiency * 10) / 10
+          }
+        }
+        
+        return batch
+      })
 
-        setMultiBatchData({
-          batch_results: [singleBatch],
-          total_batches: 1
+      console.log(`📊 Final validation: ${normalizedBatches.length} valid batches`)
+      
+      // Log efficienza per debug
+      normalizedBatches.forEach((batch, i) => {
+        const efficiency = batch.metrics?.efficiency_percentage || batch.efficiency || 0
+        console.log(`   Batch ${i+1} efficienza: ${efficiency}%`)
+      })
+
+      // ✅ PHASE 5: SET IMMUTABLE STATE
+      const immutableState: MultiBatchResponse = {
+        batch_results: normalizedBatches,
+        total_batches: normalizedBatches.length,
+        execution_id: finalResult.execution_id
+      }
+
+      setMultiBatchData(immutableState)
+      
+      const currentIndex = normalizedBatches.findIndex(b => b.id === params.batch_id)
+      setSelectedBatchIndex(currentIndex >= 0 ? currentIndex : 0)
+
+      // ✅ PHASE 6: DETERMINISTIC LOGGING & NOTIFICATIONS
+      const isMultiBatch = normalizedBatches.length > 1
+      const isPartialMultiBatch = finalResult.is_partial_multi_batch || 
+                                 finalResult.batch_type === "multi_partial" ||
+                                 (finalResult.total_attempted_autoclavi || 0) > 1
+      const uniqueAutoclavi = new Set(normalizedBatches.map(b => b.autoclave_id)).size
+      const totalAttempted = finalResult.total_attempted_autoclavi || uniqueAutoclavi
+
+      console.log(`🎯 === FINAL STATE ===`)
+      console.log(`   Type: ${isMultiBatch ? 'MULTI-BATCH' : (isPartialMultiBatch ? 'MULTI-BATCH PARZIALE' : 'SINGLE-BATCH')}`)
+      console.log(`   Batches: ${normalizedBatches.length}`)
+      console.log(`   Autoclavi riuscite: ${uniqueAutoclavi}`)
+      console.log(`   Autoclavi tentate: ${totalAttempted}`)
+      console.log(`   Selected: ${currentIndex >= 0 ? currentIndex : 0}`)
+
+      if (isMultiBatch) {
+        normalizedBatches.forEach((batch, i) => {
+          const autoclave = batch.autoclave?.nome || 'N/A'
+          const efficiency = batch.metrics?.efficiency_percentage || batch.efficiency || 0
+          console.log(`   ${i+1}. ${autoclave}: ${efficiency.toFixed(1)}%`)
         })
-        setSelectedBatchIndex(0)
-        console.log(`🔄 Dati normalizzati per single-batch`)
+
+        toast({
+          title: "🚀 Multi-Batch Confermato",
+          description: `${normalizedBatches.length} batch per ${uniqueAutoclavi} autoclavi diverse`,
+          duration: 4000,
+        })
+      } else if (isPartialMultiBatch) {
+        // 🆕 CASO MULTI-BATCH PARZIALE
+        const currentBatch = normalizedBatches[0]
+        const autoclave = currentBatch?.autoclave?.nome || 'N/A'
+        const efficiency = currentBatch?.metrics?.efficiency_percentage || currentBatch?.efficiency || 0
+        
+        console.log(`🚨 Multi-batch parziale confermato - ${autoclave}: ${efficiency.toFixed(1)}%`)
+        
+        toast({
+          title: "⚠️ Multi-Batch Parziale",
+          description: `1/${totalAttempted} autoclavi riuscite - Successo parziale su ${autoclave}`,
+          duration: 6000,
+        })
+      } else {
+        // Toast anche per single batch per confermare che i dati sono caricati
+        const currentBatch = normalizedBatches[0]
+        const efficiency = currentBatch?.metrics?.efficiency_percentage || currentBatch?.efficiency || 0
+        console.log(`🔄 Single-batch confermato - Efficienza: ${efficiency.toFixed(1)}%`)
       }
 
     } catch (err) {
-      console.error('❌ Errore nel caricamento batch:', err)
-      setError(err instanceof Error ? err.message : 'Errore sconosciuto nel caricamento dati')
+      console.error('❌ Fatal error:', err)
+      setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
       setLoading(false)
     }
@@ -354,14 +498,51 @@ export default function NestingResultPage({ params }: Props) {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              {multiBatchData.total_batches > 1 ? 'Risultati Multi-Batch' : 'Risultati Nesting'}
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              {(() => {
+                const isMultiBatch = multiBatchData.total_batches > 1
+                const isPartialMultiBatch = multiBatchData.is_partial_multi_batch || 
+                                           multiBatchData.batch_type === "multi_partial" ||
+                                           (multiBatchData.total_attempted_autoclavi || 0) > 1
+                
+                if (isMultiBatch) {
+                  return (
+                    <>
+                      🚀 Risultati Multi-Batch
+                      <Badge variant="secondary" className="bg-green-100 text-green-800 border-green-300">
+                        {multiBatchData.total_batches} Autoclavi
+                      </Badge>
+                    </>
+                  )
+                } else if (isPartialMultiBatch) {
+                  return (
+                    <>
+                      ⚠️ Multi-Batch Parziale
+                      <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 border-yellow-300">
+                        1/{multiBatchData.total_attempted_autoclavi} Riuscite
+                      </Badge>
+                    </>
+                  )
+                } else {
+                  return 'Risultati Nesting'
+                }
+              })()}
             </h1>
             <p className="text-gray-600">
-              {multiBatchData.total_batches > 1 
-                ? `${multiBatchData.total_batches} batch generati`
-                : 'Batch singolo'
-              } • {currentBatch?.autoclave?.nome || `Autoclave ${currentBatch?.autoclave_id}`}
+              {(() => {
+                const isMultiBatch = multiBatchData.total_batches > 1
+                const isPartialMultiBatch = multiBatchData.is_partial_multi_batch || 
+                                           multiBatchData.batch_type === "multi_partial" ||
+                                           (multiBatchData.total_attempted_autoclavi || 0) > 1
+                
+                if (isMultiBatch) {
+                  return `${multiBatchData.total_batches} batch generati per autoclavi diverse`
+                } else if (isPartialMultiBatch) {
+                  return `Successo parziale: solo ${currentBatch?.autoclave?.nome} completata con successo`
+                } else {
+                  return 'Batch singolo'
+                }
+              })()} • {currentBatch?.autoclave?.nome || `Autoclave ${currentBatch?.autoclave_id}`}
               {multiBatchData.execution_id && ` • ID: ${multiBatchData.execution_id}`}
             </p>
           </div>
@@ -371,18 +552,7 @@ export default function NestingResultPage({ params }: Props) {
         <div className="flex items-center gap-3">
           {currentBatch && getStatoBadge(currentBatch.stato)}
           
-          {/* Pulsante per forzare il caricamento di tutti i batch recenti */}
-          {multiBatchData?.total_batches === 1 && (
-            <Button
-              onClick={() => loadMultiBatchData()}
-              variant="outline"
-              size="sm"
-              className="text-xs"
-            >
-              <LayoutGrid className="h-3 w-3 mr-1" />
-              Mostra Altri Batch
-            </Button>
-          )}
+
           
           <Button
             onClick={handleConfirmBatch}

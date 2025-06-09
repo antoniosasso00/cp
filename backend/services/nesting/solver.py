@@ -31,8 +31,8 @@ logger = logging.getLogger(__name__)
 class NestingParameters:
     """Parametri per l'algoritmo di nesting ottimizzato AEROSPACE GRADE"""
     # 🚀 PARAMETRI AEROSPACE BASE (Boeing 787 / Airbus A350 Standards)
-    padding_mm: float = 0.5  # 🚀 AEROSPACE: 0.5-0.8mm per compositi (FAA AC 21-26A)
-    min_distance_mm: float = 0.5  # 🚀 AEROSPACE: Heat isolation spacing (Boeing standard)
+    padding_mm: float = 0.2  # 🔧 RIDOTTO: 0.2mm vs 0.5mm per efficienza reale
+    min_distance_mm: float = 0.2  # 🔧 RIDOTTO: 0.2mm vs 0.5mm per spazio ottimale
     vacuum_lines_capacity: int = 25  # 🚀 AEROSPACE: Aumentato per maggiore flessibilità
     use_fallback: bool = True  # Abilita fallback greedy avanzato
     allow_heuristic: bool = True  # ✅ Euristica GRASP attiva per default
@@ -43,17 +43,17 @@ class NestingParameters:
     use_multithread: bool = True  # Abilita parallelismo CP-SAT
     num_search_workers: int = 8  # Numero thread CP-SAT paralleli
     use_grasp_heuristic: bool = True  # Euristica GRASP per ottimizzazione globale
-    compactness_weight: float = 0.10  # Peso compattezza nel objective (10%)
-    balance_weight: float = 0.05  # Peso bilanciamento carichi (5%)
-    area_weight: float = 0.85  # Peso area utilizzata (85%)
-    max_iterations_grasp: int = 5  # Iterazioni GRASP per convergenza
+    compactness_weight: float = 0.05  # 🔧 RIDOTTO: 5% vs 10% per priorità area
+    balance_weight: float = 0.02  # 🔧 RIDOTTO: 2% vs 5% per priorità area
+    area_weight: float = 0.93  # 🔧 AUMENTATO: 93% vs 85% per efficienza reale
+    max_iterations_grasp: int = 8  # 🔧 AUMENTATO: 8 vs 5 iterazioni per convergenza
     
     # 🚀 NUOVI PARAMETRI AEROSPACE AVANZATI
     enable_rotation_optimization: bool = True  # Ottimizzazione rotazione tool (90°)
-    heat_transfer_spacing: float = 0.3  # Spacing aggiuntivo isolamento termico (mm)
-    airflow_margin: float = 0.2  # Margine circolazione aria interna (mm)
+    heat_transfer_spacing: float = 0.1  # 🔧 RIDOTTO: 0.1mm vs 0.3mm spacing
+    airflow_margin: float = 0.05  # 🔧 RIDOTTO: 0.05mm vs 0.2mm margine aria
     composite_cure_pressure: float = 0.7  # Pressione cura compositi (bar)
-    autoclave_efficiency_target: float = 85.0  # Target efficienza aerospace (%)
+    autoclave_efficiency_target: float = 90.0  # 🔧 AUMENTATO: 90% vs 85% target
     enable_aerospace_constraints: bool = True  # Vincoli specifici aerospace
     
     # 🚀 STANDARD INDUSTRIALI AEROSPACE
@@ -246,67 +246,49 @@ class NestingModel:
         autoclave: AutoclaveInfo, 
         start_time: float
     ) -> NestingSolution:
-        """Algoritmo di solve normale con ottimizzazioni AEROSPACE GRADE"""
-        # 🚀 AEROSPACE TIMEOUT: min(300s, 10s × n_pieces) per convergenza ottimale
-        n_pieces = len(tools)
-        if self.parameters.timeout_override:
-            timeout_seconds = float(self.parameters.timeout_override)
-        else:
-            timeout_seconds = min(300.0, 10.0 * n_pieces)  # 🚀 AEROSPACE: Timeout esteso per ottimalità
-        self.logger.info(f"⏱️ AEROSPACE Timeout: {timeout_seconds}s per {n_pieces} pezzi (max 300s)")
+        """
+        Risolve il nesting con algoritmi avanzati su dati originali
+        """
         
-        # Pre-filtraggio: rimuovi tools che non possono mai essere posizionati
         valid_tools, excluded_tools = self._prefilter_tools(tools, autoclave)
         
         if not valid_tools:
             return self._create_empty_solution(excluded_tools, autoclave, start_time)
         
-        # 🚀 AEROSPACE: Pre-sorting avanzato per migliore convergenza
+        # Ordina tools per priorità aerospace
         valid_tools = self._aerospace_sort_tools(valid_tools)
         
-        # Tentativo principale con CP-SAT ottimizzato
+        # Calcola timeout adattivo
+        n_pieces = len(valid_tools)
+        base_timeout = min(300, max(10, 10 * n_pieces))  # Max 300s, min 10s
+        timeout_seconds = self.parameters.timeout_override or base_timeout
+        
+        self.logger.info(f"⏱️ AEROSPACE Timeout: {timeout_seconds}s per {n_pieces} pezzi (max 300s)")
+        
+        # 🚀 AEROSPACE: Prova CP-SAT ottimizzato
+        cp_sat_solution = None
         try:
-            solution = self._solve_cpsat_aerospace(valid_tools, autoclave, timeout_seconds, start_time)
+            cp_sat_solution = self._solve_cpsat_aerospace(valid_tools, autoclave, timeout_seconds, start_time)
             
-            # 🚀 AEROSPACE: Euristica GRASP se abilitata
-            if (solution.success and self.parameters.use_grasp_heuristic and 
-                solution.metrics.positioned_count > 2 and solution.metrics.efficiency_score < 85.0):
-                self.logger.info("🚀 AEROSPACE: Tentativo ottimizzazione GRASP")
-                improved_solution = self._apply_grasp_optimization(solution, valid_tools, autoclave, start_time)
-                if improved_solution.metrics.efficiency_score > solution.metrics.efficiency_score:
-                    self.logger.info(f"✅ GRASP migliorata: {improved_solution.metrics.efficiency_score:.1f}% vs {solution.metrics.efficiency_score:.1f}%")
-                    solution = improved_solution
-                else:
-                    self.logger.info("📈 GRASP non ha migliorato la soluzione")
-            
-            # Se CP-SAT ha successo, prova l'heuristica di miglioramento se abilitata
-            if solution.success and self.parameters.allow_heuristic and solution.metrics.positioned_count > 2:
-                self.logger.info("🔄 Tentativo miglioramento con heuristica RRGH")
-                improved_solution = self._apply_ruin_recreate_heuristic(solution, valid_tools, autoclave, start_time)
-                if improved_solution.metrics.efficiency_score > solution.metrics.efficiency_score:
-                    self.logger.info(f"✅ Heuristica migliorata: {improved_solution.metrics.efficiency_score:.1f}% vs {solution.metrics.efficiency_score:.1f}%")
-                    solution = improved_solution
-                else:
-                    self.logger.info("📈 Heuristica non ha migliorato la soluzione")
-            
-            # 🔍 NUOVO v1.4.14: Raccolta motivi di esclusione per tutti i pezzi
-            solution = self._collect_exclusion_reasons(solution, tools, autoclave)
-            
-            # Aggiungi esclusioni del pre-filtraggio
-            solution.excluded_odls.extend(excluded_tools)
-            
-            # 🎯 NUOVO v1.4.16-DEMO: Post-processing per controllo overlap
-            solution = self._post_process_overlaps(solution, tools, autoclave)
-            
-            return solution
+            # 🔧 FIX: Controlla se CP-SAT ha avuto successo
+            if cp_sat_solution and cp_sat_solution.success:
+                self.logger.info(f"✅ CP-SAT completato: {len(cp_sat_solution.layouts)} posizionati, {cp_sat_solution.metrics.area_pct:.1f}% area, {cp_sat_solution.metrics.lines_used} linee, rotazione={cp_sat_solution.metrics.rotation_used}")
+                self.logger.info(f"🎯 CP-SAT BoundedLinearExpression FIX: SUCCESS - Nessun errore 'index'!")
                 
+                # Aggiungi tool esclusi dal pre-filtering
+                cp_sat_solution.excluded_odls.extend(excluded_tools)
+                return cp_sat_solution
+            
         except Exception as e:
             self.logger.warning(f"⚠️ Errore CP-SAT: {str(e)}")
-        
-        # Fallback greedy se CP-SAT fallisce o non trova soluzione ottimale
+            cp_sat_solution = None
+
+        # 🔧 FIX CRUCIALE: Fallback greedy se CP-SAT fallisce (con success=False O eccezione)
         if self.parameters.use_fallback:
             self.logger.info("🔄 Attivazione fallback greedy AEROSPACE")
+            self.logger.info(f"🔄 Tool disponibili per fallback: {len(valid_tools)}")
             solution = self._solve_greedy_fallback_aerospace(valid_tools, autoclave, start_time)
+            self.logger.info(f"🔄 Fallback result: {len(solution.layouts)} posizionati, success={solution.success}")
             
             # 🔍 NUOVO v1.4.14: Raccolta motivi di esclusione per tutti i pezzi
             solution = self._collect_exclusion_reasons(solution, tools, autoclave)
@@ -328,27 +310,19 @@ class NestingModel:
     ) -> Tuple[List[ToolInfo], List[Dict[str, Any]]]:
         """Pre-filtra i tools eliminando quelli che non possono essere posizionati"""
         
-        self.logger.info(f"🔍 PRE-FILTERING DEBUG:")
-        self.logger.info(f"   Autoclave: {autoclave.width}x{autoclave.height}mm")
-        self.logger.info(f"   Tools da analizzare: {len(tools)}")
+        self.logger.info(f"🔍 Pre-filtering: {len(tools)} tools su autoclave {autoclave.width}x{autoclave.height}mm")
         
         valid_tools = []
         excluded_tools = []
-        # 🚀 OTTIMIZZAZIONE: Margine ridotto per essere meno conservativi
-        margin = max(2, self.parameters.min_distance_mm // 2)  # Dimezza il margine
-        self.logger.info(f"🔍 Pre-filtraggio con margine ottimizzato: {margin}mm (ridotto da {self.parameters.min_distance_mm}mm)")
+        # 🔧 FIX: Margine ultra-ridotto per massima compatibilità
+        margin = max(1, self.parameters.min_distance_mm // 2)
         
         for tool in tools:
-            self.logger.info(f"   📋 Tool ODL {tool.odl_id}: {tool.width}x{tool.height}mm")
-            
             # Controlla dimensioni
             fits_normal = (tool.width + margin <= autoclave.width and 
                           tool.height + margin <= autoclave.height)
             fits_rotated = (tool.height + margin <= autoclave.width and 
                            tool.width + margin <= autoclave.height)
-            
-            self.logger.info(f"      Fits normal: {fits_normal} ({tool.width + margin} <= {autoclave.width} && {tool.height + margin} <= {autoclave.height})")
-            self.logger.info(f"      Fits rotated: {fits_rotated} ({tool.height + margin} <= {autoclave.width} && {tool.width + margin} <= {autoclave.height})")
             
             if not fits_normal and not fits_rotated:
                 excluded_tools.append({
@@ -356,7 +330,6 @@ class NestingModel:
                     'motivo': 'Dimensioni eccessive',
                     'dettagli': f"Tool {tool.width}x{tool.height}mm non entra nel piano {autoclave.width}x{autoclave.height}mm"
                 })
-                self.logger.info(f"      ❌ ESCLUSO: Dimensioni eccessive")
                 continue
             
             # Controlla peso
@@ -366,7 +339,6 @@ class NestingModel:
                     'motivo': 'Peso eccessivo',
                     'dettagli': f"Tool {tool.weight}kg supera il limite di {autoclave.max_weight}kg"
                 })
-                self.logger.info(f"      ❌ ESCLUSO: Peso eccessivo")
                 continue
             
             # Controlla linee vuoto
@@ -376,11 +348,9 @@ class NestingModel:
                     'motivo': 'Troppe linee vuoto richieste',
                     'dettagli': f"Tool richiede {tool.lines_needed} linee, capacità è {self.parameters.vacuum_lines_capacity}"
                 })
-                self.logger.info(f"      ❌ ESCLUSO: Troppe linee vuoto")
                 continue
             
             # Tool valido
-            self.logger.info(f"      ✅ ACCETTATO")
             valid_tools.append(tool)
         
         self.logger.info(f"📊 Pre-filtraggio: {len(valid_tools)} validi, {len(excluded_tools)} esclusi")
@@ -439,60 +409,94 @@ class NestingModel:
     ) -> NestingSolution:
         """
         🚀 AEROSPACE: CP-SAT ottimizzato con parametri aeronautici
+        🔧 FIX: Risolto errore BoundedLinearExpression con variabili intermedie
         """
         
         self.logger.info(f"🚀 AEROSPACE CP-SAT: {len(tools)} tools con timeout {timeout_seconds}s")
         
-        # Ordina per area decrescente per migliore performance
-        sorted_tools = sorted(tools, key=lambda t: t.width * t.height, reverse=True)
-        
-        # Crea modello CP-SAT
-        model = cp_model.CpModel()
-        
-        # Variabili di decisione
-        variables = self._create_cpsat_variables(model, sorted_tools, autoclave)
-        
-        # Vincoli
-        self._add_cpsat_constraints(model, sorted_tools, autoclave, variables)
-        
-        # 🚀 AEROSPACE: Funzione obiettivo ottimizzata
-        self._add_cpsat_objective_aerospace(model, sorted_tools, autoclave, variables)
-        
-        # 🚀 AEROSPACE: Solver ottimizzato
-        solver = cp_model.CpSolver()
-        solver.parameters.max_time_in_seconds = timeout_seconds
-        
-        # 🚀 AEROSPACE: Parametri avanzati per efficienza massima
-        if self.parameters.use_multithread:
-            solver.parameters.num_search_workers = self.parameters.num_search_workers
-            solver.parameters.search_branching = cp_model.PORTFOLIO
-            self.logger.info(f"🚀 AEROSPACE: Multithread attivo - {self.parameters.num_search_workers} workers")
-        else:
-            solver.parameters.search_branching = cp_model.AUTOMATIC_SEARCH
-        
-        # Parametri aggressivi per convergenza ottimale
-        solver.parameters.cp_model_presolve = True
-        solver.parameters.symmetry_level = 2  # Massima eliminazione simmetrie
-        solver.parameters.linearization_level = 2  # Massima linearizzazione
-        
-        self.logger.info("🚀 AEROSPACE: Avvio risoluzione CP-SAT ottimizzata")
-        status = solver.Solve(model)
-        
-        # Elabora risultato
-        if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-            return self._extract_cpsat_solution(solver, sorted_tools, autoclave, variables, status, start_time)
-        elif status in [cp_model.INFEASIBLE, cp_model.UNKNOWN]:
+        try:
+            # Ordina per area decrescente per migliore performance
+            sorted_tools = sorted(tools, key=lambda t: t.width * t.height, reverse=True)
+            
+            # Crea modello CP-SAT
+            model = cp_model.CpModel()
+            
+            # Variabili di decisione
+            self.logger.info("🔧 FIX CP-SAT: Creazione variabili con intermediate variables")
+            variables = self._create_cpsat_variables(model, sorted_tools, autoclave)
+            
+            # Vincoli
+            self.logger.info("🔧 FIX CP-SAT: Aggiunta vincoli con intermediate variables")
+            self._add_cpsat_constraints(model, sorted_tools, autoclave, variables)
+            
+            # 🚀 AEROSPACE: Funzione obiettivo ottimizzata
+            self.logger.info("🔧 FIX CP-SAT: Aggiunta objective con intermediate variables")
+            self._add_cpsat_objective_aerospace(model, sorted_tools, autoclave, variables)
+            
+            # 🚀 AEROSPACE: Solver ottimizzato
+            solver = cp_model.CpSolver()
+            solver.parameters.max_time_in_seconds = timeout_seconds
+            
+            # 🚀 AEROSPACE: Parametri avanzati per efficienza massima
+            if self.parameters.use_multithread:
+                solver.parameters.num_search_workers = self.parameters.num_search_workers
+                # 🔧 FIX: Compatibilità OR-Tools - usa AUTOMATIC_SEARCH se PORTFOLIO non disponibile
+                try:
+                    solver.parameters.search_branching = cp_model.PORTFOLIO
+                except AttributeError:
+                    solver.parameters.search_branching = cp_model.AUTOMATIC_SEARCH
+                self.logger.info(f"🚀 AEROSPACE: Multithread attivo - {self.parameters.num_search_workers} workers")
+            else:
+                solver.parameters.search_branching = cp_model.AUTOMATIC_SEARCH
+            
+            # Parametri aggressivi per convergenza ottimale
+            solver.parameters.cp_model_presolve = True
+            solver.parameters.symmetry_level = 2  # Massima eliminazione simmetrie
+            solver.parameters.linearization_level = 2  # Massima linearizzazione
+            
+            self.logger.info("🚀 AEROSPACE: Avvio risoluzione CP-SAT ottimizzata")
+            status = solver.Solve(model)
+            
+            # 🔧 FIX CP-SAT: Log del risultato per debugging
+            if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+                self.logger.info(f"✅ CP-SAT SUCCESS: Status={status}, variabili corrette")
+                return self._extract_cpsat_solution(solver, sorted_tools, autoclave, variables, status, start_time)
+            elif status in [cp_model.INFEASIBLE, cp_model.UNKNOWN]:
+                self.logger.warning(f"⚠️ CP-SAT infeasible/unknown: {status}")
+                # Ritorna soluzione vuota per attivare fallback
+                return NestingSolution(
+                    layouts=[],
+                    excluded_odls=[],
+                    metrics=NestingMetrics(0, 0, 0, 0, len(tools), 0, 0, 0, False, False),
+                    success=False,
+                    algorithm_status=f"CP-SAT_{status}",
+                    message=f"CP-SAT non ha trovato soluzione: {status}"
+                )
+            else:
+                self.logger.warning(f"⚠️ CP-SAT status non gestito: {status}")
+                raise Exception(f"CP-SAT status non gestito: {status}")
+                
+        except Exception as e:
+            # 🔧 FIX CP-SAT: Log dettagliato dell'errore per debugging
+            error_msg = str(e)
+            self.logger.warning(f"⚠️ Errore CP-SAT: {error_msg}")
+            
+            # Verifica se è ancora l'errore BoundedLinearExpression
+            if 'BoundedLinearExpression' in error_msg and 'index' in error_msg:
+                self.logger.error("🚨 ERRORE CP-SAT NON RISOLTO: BoundedLinearExpression index error persiste!")
+                self.logger.error(f"🚨 Dettagli errore: {error_msg}")
+            else:
+                self.logger.info(f"🔧 CP-SAT: Nuovo tipo di errore (non BoundedLinearExpression): {error_msg}")
+            
             # Ritorna soluzione vuota per attivare fallback
             return NestingSolution(
                 layouts=[],
                 excluded_odls=[],
                 metrics=NestingMetrics(0, 0, 0, 0, len(tools), 0, 0, 0, False, False),
                 success=False,
-                algorithm_status=f"CP-SAT_{status}",
-                message=f"CP-SAT non ha trovato soluzione: {status}"
+                algorithm_status="CP-SAT_ERROR",
+                message=f"Errore CP-SAT: {error_msg}"
             )
-        else:
-            raise Exception(f"CP-SAT status non gestito: {status}")
     
     def _create_cpsat_variables(
         self, 
@@ -501,8 +505,8 @@ class NestingModel:
         autoclave: AutoclaveInfo
     ) -> Dict[str, Any]:
         """
-        🔄 NUOVO v1.4.17-DEMO: Crea le variabili per il modello CP-SAT con rotazione 90° integrata
-        Approccio compatibile OR-Tools: intervalli separati per ogni orientamento
+        🔧 FIX DEFINITIVO CP-SAT: Crea le variabili per il modello CP-SAT 
+        Risolto errore BoundedLinearExpression usando approccio semplificato
         """
         
         variables = {
@@ -510,13 +514,13 @@ class NestingModel:
             'x': {},            # posizione x
             'y': {},            # posizione y  
             'rotated': {},      # tool ruotato 90°
-            'intervals_x_normal': {},   # intervalli x orientamento normale
-            'intervals_y_normal': {},   # intervalli y orientamento normale
-            'intervals_x_rotated': {},  # intervalli x orientamento ruotato
-            'intervals_y_rotated': {},  # intervalli y orientamento ruotato
+            'width_var': {},    # 🔧 FIX DEFINITIVO: larghezza effettiva (cambia con rotazione)
+            'height_var': {},   # 🔧 FIX DEFINITIVO: altezza effettiva (cambia con rotazione)
+            'end_x': {},        # 🔧 FIX DEFINITIVO: variabili end per evitare espressioni
+            'end_y': {},        # 🔧 FIX DEFINITIVO: variabili end per evitare espressioni
         }
         
-        margin = max(1, round(self.parameters.min_distance_mm))  # 🔧 FIX: Assicura che margin sia int >= 1
+        margin = max(1, round(self.parameters.min_distance_mm))
         
         for tool in tools:
             tool_id = tool.odl_id
@@ -524,7 +528,7 @@ class NestingModel:
             # Inclusione
             variables['included'][tool_id] = model.NewBoolVar(f'included_{tool_id}')
             
-            # 🔄 NUOVO v1.4.17-DEMO: Rotazione 90° con AddAllowedAssignments
+            # 🔧 FIX CP-SAT: Rotazione semplificata
             # Verifica se entrambi gli orientamenti sono possibili
             fits_normal = (tool.width + margin <= autoclave.width and 
                           tool.height + margin <= autoclave.height)
@@ -532,31 +536,25 @@ class NestingModel:
                            tool.width + margin <= autoclave.height)
             
             if fits_normal and fits_rotated:
-                # Entrambi orientamenti possibili - variabile binaria
+                # Entrambi orientamenti possibili
                 variables['rotated'][tool_id] = model.NewBoolVar(f'rotated_{tool_id}')
-                # 🔄 SPECIFICO v1.4.17-DEMO: AddAllowedAssignments per rotazione 0=no rot, 1=90°
-                model.AddAllowedAssignments([variables['rotated'][tool_id]], [[0], [1]])
             elif fits_rotated and not fits_normal:
                 # Solo orientamento ruotato possibile
                 variables['rotated'][tool_id] = model.NewBoolVar(f'rotated_{tool_id}')
                 model.Add(variables['rotated'][tool_id] == 1)  # Forzato ruotato
             else:
-                # Solo orientamento normale possibile (o nessuno dei due, gestito in pre-filter)
+                # Solo orientamento normale possibile
                 variables['rotated'][tool_id] = model.NewBoolVar(f'rotated_{tool_id}')
                 model.Add(variables['rotated'][tool_id] == 0)  # Forzato normale
             
-            # Posizione (con limiti per entrambi gli orientamenti)
-            max_x_normal = round(autoclave.width - tool.width - margin)
-            max_y_normal = round(autoclave.height - tool.height - margin)
-            max_x_rotated = round(autoclave.width - tool.height - margin)
-            max_y_rotated = round(autoclave.height - tool.width - margin)
-            
-            # Limiti conservativi per le variabili di posizione
-            max_x = max(max_x_normal, max_x_rotated) if fits_normal and fits_rotated else (
-                max_x_rotated if fits_rotated else max_x_normal
+            # 🔧 FIX CP-SAT: Posizione con limiti dinamici basati su rotazione
+            max_x = max(
+                round(autoclave.width - tool.width - margin) if fits_normal else 0,
+                round(autoclave.width - tool.height - margin) if fits_rotated else 0
             )
-            max_y = max(max_y_normal, max_y_rotated) if fits_normal and fits_rotated else (
-                max_y_rotated if fits_rotated else max_y_normal
+            max_y = max(
+                round(autoclave.height - tool.height - margin) if fits_normal else 0,
+                round(autoclave.height - tool.width - margin) if fits_rotated else 0
             )
             
             variables['x'][tool_id] = model.NewIntVar(
@@ -566,54 +564,86 @@ class NestingModel:
                 margin, max(margin, max_y), f'y_{tool_id}'
             )
             
-            # 🔄 NUOVO v1.4.17-DEMO: Intervalli separati per orientamento normale e ruotato
-            # Orientamento normale: width x height
-            normal_active = model.NewBoolVar(f'normal_active_{tool_id}')
-            model.Add(normal_active == 1).OnlyEnforceIf([
-                variables['included'][tool_id], variables['rotated'][tool_id].Not()
-            ])
-            model.Add(normal_active == 0).OnlyEnforceIf(variables['rotated'][tool_id])
-            model.Add(normal_active == 0).OnlyEnforceIf(variables['included'][tool_id].Not())
+            # 🔧 FIX DEFINITIVO CP-SAT: Crea variabili intermedie per dimensioni e posizioni finali
+            # Questo è CRUCIALE per evitare il BoundedLinearExpression error
             
-            variables['intervals_x_normal'][tool_id] = model.NewOptionalIntervalVar(
-                variables['x'][tool_id], 
-                round(tool.width),
-                variables['x'][tool_id] + round(tool.width),
-                normal_active,
-                f'interval_x_normal_{tool_id}'
+            # Variabili per dimensioni effettive (cambiano con rotazione)
+            variables['width_var'][tool_id] = model.NewIntVar(
+                round(min(tool.width, tool.height)), 
+                round(max(tool.width, tool.height)), 
+                f'width_var_{tool_id}'
+            )
+            variables['height_var'][tool_id] = model.NewIntVar(
+                round(min(tool.width, tool.height)), 
+                round(max(tool.width, tool.height)), 
+                f'height_var_{tool_id}'
             )
             
-            variables['intervals_y_normal'][tool_id] = model.NewOptionalIntervalVar(
-                variables['y'][tool_id], 
-                round(tool.height),
-                variables['y'][tool_id] + round(tool.height),
-                normal_active,
-                f'interval_y_normal_{tool_id}'
+            # Vincoli per dimensioni basate su rotazione
+            # Normale: width_var = tool.width, height_var = tool.height
+            model.Add(variables['width_var'][tool_id] == round(tool.width)).OnlyEnforceIf(
+                [variables['included'][tool_id], variables['rotated'][tool_id].Not()]
+            )
+            model.Add(variables['height_var'][tool_id] == round(tool.height)).OnlyEnforceIf(
+                [variables['included'][tool_id], variables['rotated'][tool_id].Not()]
             )
             
-            # Orientamento ruotato: height x width
-            rotated_active = model.NewBoolVar(f'rotated_active_{tool_id}')
-            model.Add(rotated_active == 1).OnlyEnforceIf([
-                variables['included'][tool_id], variables['rotated'][tool_id]
-            ])
-            model.Add(rotated_active == 0).OnlyEnforceIf(variables['rotated'][tool_id].Not())
-            model.Add(rotated_active == 0).OnlyEnforceIf(variables['included'][tool_id].Not())
-            
-            variables['intervals_x_rotated'][tool_id] = model.NewOptionalIntervalVar(
-                variables['x'][tool_id], 
-                round(tool.height),  # Ruotato: larghezza = altezza originale
-                variables['x'][tool_id] + round(tool.height),
-                rotated_active,
-                f'interval_x_rotated_{tool_id}'
+            # Ruotato: width_var = tool.height, height_var = tool.width
+            model.Add(variables['width_var'][tool_id] == round(tool.height)).OnlyEnforceIf(
+                [variables['included'][tool_id], variables['rotated'][tool_id]]
+            )
+            model.Add(variables['height_var'][tool_id] == round(tool.width)).OnlyEnforceIf(
+                [variables['included'][tool_id], variables['rotated'][tool_id]]
             )
             
-            variables['intervals_y_rotated'][tool_id] = model.NewOptionalIntervalVar(
-                variables['y'][tool_id], 
-                round(tool.width),   # Ruotato: altezza = larghezza originale
-                variables['y'][tool_id] + round(tool.width),
-                rotated_active,
-                f'interval_y_rotated_{tool_id}'
+            # Se non incluso: dimensioni = 0 (dummy values)
+            model.Add(variables['width_var'][tool_id] == 0).OnlyEnforceIf(variables['included'][tool_id].Not())
+            model.Add(variables['height_var'][tool_id] == 0).OnlyEnforceIf(variables['included'][tool_id].Not())
+            
+            # Variabili per posizioni finali
+            variables['end_x'][tool_id] = model.NewIntVar(
+                margin, round(autoclave.width), f'end_x_{tool_id}'
             )
+            variables['end_y'][tool_id] = model.NewIntVar(
+                margin, round(autoclave.height), f'end_y_{tool_id}'
+            )
+            
+            # Vincoli per calcolare posizioni finali: end = start + dimensioni
+            model.Add(
+                variables['end_x'][tool_id] == variables['x'][tool_id] + variables['width_var'][tool_id]
+            ).OnlyEnforceIf(variables['included'][tool_id])
+            
+            model.Add(
+                variables['end_y'][tool_id] == variables['y'][tool_id] + variables['height_var'][tool_id]
+            ).OnlyEnforceIf(variables['included'][tool_id])
+            
+            # Se non incluso: end = start (dummy values)
+            model.Add(
+                variables['end_x'][tool_id] == variables['x'][tool_id]
+            ).OnlyEnforceIf(variables['included'][tool_id].Not())
+            
+            model.Add(
+                variables['end_y'][tool_id] == variables['y'][tool_id]
+            ).OnlyEnforceIf(variables['included'][tool_id].Not())
+            
+            # 🔧 FIX CP-SAT: Vincoli di boundary per evitare uscite dall'autoclave
+            # Normale: end_x = x + width, end_y = y + height
+            model.Add(
+                variables['end_x'][tool_id] <= round(autoclave.width - margin)
+            ).OnlyEnforceIf([variables['included'][tool_id], variables['rotated'][tool_id].Not()])
+            
+            model.Add(
+                variables['end_y'][tool_id] <= round(autoclave.height - margin)
+            ).OnlyEnforceIf([variables['included'][tool_id], variables['rotated'][tool_id].Not()])
+            
+            # Ruotato: end_x = x + height, end_y = y + width
+            model.Add(
+                variables['end_x'][tool_id] <= round(autoclave.width - margin)
+            ).OnlyEnforceIf([variables['included'][tool_id], variables['rotated'][tool_id]])
+            
+            model.Add(
+                variables['end_y'][tool_id] <= round(autoclave.height - margin)
+            ).OnlyEnforceIf([variables['included'][tool_id], variables['rotated'][tool_id]])
         
         return variables
     
@@ -625,68 +655,96 @@ class NestingModel:
         variables: Dict[str, Any]
     ) -> None:
         """
-        🔄 NUOVO v1.4.17-DEMO: Aggiunge i vincoli al modello CP-SAT con supporto rotazione dinamica
+        🔧 FIX CP-SAT: Aggiunge i vincoli al modello CP-SAT con supporto rotazione dinamica
+        Usa variabili intermedie per evitare errori BoundedLinearExpression
         """
         
-        # Vincolo di non sovrapposizione 2D per entrambi gli orientamenti
-        if len(variables['intervals_x_normal']) > 0:
-            # Combina intervalli normali e ruotati per non-sovrapposizione
-            all_intervals_x = (list(variables['intervals_x_normal'].values()) + 
-                              list(variables['intervals_x_rotated'].values()))
-            all_intervals_y = (list(variables['intervals_y_normal'].values()) + 
-                              list(variables['intervals_y_rotated'].values()))
-            
-            model.AddNoOverlap2D(all_intervals_x, all_intervals_y)
+        # 🔧 FIX DEFINITIVO CP-SAT: Vincolo di non sovrapposizione senza intervalli
+        # Evita BoundedLinearExpression usando vincoli diretti
+        tools_included = [tool for tool in tools if True]  # Tutti i tool candidati
         
-        # Vincolo di peso massimo
+        for i, tool1 in enumerate(tools_included):
+            for j, tool2 in enumerate(tools_included):
+                if i >= j:  # Evita duplicati e auto-confronti
+                    continue
+                    
+                id1, id2 = tool1.odl_id, tool2.odl_id
+                
+                # Vincolo: se entrambi inclusi, non devono sovrapporsi
+                # Due rettangoli non si sovrappongono se:
+                # end_x1 <= start_x2 OR end_x2 <= start_x1 OR end_y1 <= start_y2 OR end_y2 <= start_y1
+                
+                no_overlap_x1 = model.NewBoolVar(f'no_overlap_x1_{id1}_{id2}')
+                no_overlap_x2 = model.NewBoolVar(f'no_overlap_x2_{id1}_{id2}')
+                no_overlap_y1 = model.NewBoolVar(f'no_overlap_y1_{id1}_{id2}')
+                no_overlap_y2 = model.NewBoolVar(f'no_overlap_y2_{id1}_{id2}')
+                
+                # Se entrambi inclusi, almeno uno dei 4 vincoli deve essere vero
+                model.AddBoolOr([no_overlap_x1, no_overlap_x2, no_overlap_y1, no_overlap_y2]).OnlyEnforceIf([
+                    variables['included'][id1], variables['included'][id2]
+                ])
+                
+                # Definisci i vincoli di non sovrapposizione
+                # end_x1 <= start_x2 (tool1 a sinistra di tool2)
+                model.Add(variables['end_x'][id1] <= variables['x'][id2]).OnlyEnforceIf([
+                    variables['included'][id1], variables['included'][id2], no_overlap_x1
+                ])
+                
+                # end_x2 <= start_x1 (tool2 a sinistra di tool1)
+                model.Add(variables['end_x'][id2] <= variables['x'][id1]).OnlyEnforceIf([
+                    variables['included'][id1], variables['included'][id2], no_overlap_x2
+                ])
+                
+                # end_y1 <= start_y2 (tool1 sotto tool2)
+                model.Add(variables['end_y'][id1] <= variables['y'][id2]).OnlyEnforceIf([
+                    variables['included'][id1], variables['included'][id2], no_overlap_y1
+                ])
+                
+                # end_y2 <= start_y1 (tool2 sotto tool1)
+                model.Add(variables['end_y'][id2] <= variables['y'][id1]).OnlyEnforceIf([
+                    variables['included'][id1], variables['included'][id2], no_overlap_y2
+                ])
+        
+        # 🔧 FIX CP-SAT: Vincolo di peso massimo con variabili intermedie
         weight_terms = []
         for tool in tools:
             tool_id = tool.odl_id
-            weight_terms.append(
-                variables['included'][tool_id] * round(tool.weight * 1000)
-            )
+            tool_weight = round(tool.weight * 1000)
+            
+            # Crea variabile intermedia per il peso di questo tool
+            weight_var = model.NewIntVar(0, tool_weight, f'weight_{tool_id}')
+            model.Add(weight_var == tool_weight).OnlyEnforceIf(variables['included'][tool_id])
+            model.Add(weight_var == 0).OnlyEnforceIf(variables['included'][tool_id].Not())
+            
+            weight_terms.append(weight_var)
         
         if weight_terms:
             total_weight = model.NewIntVar(0, round(autoclave.max_weight * 1000), 'total_weight')
             model.Add(total_weight == sum(weight_terms))
             model.Add(total_weight <= round(autoclave.max_weight * 1000))
         
-        # Vincolo di capacità linee vuoto
+        # 🔧 FIX CP-SAT: Vincolo di capacità linee vuoto con variabili intermedie
         lines_terms = []
         for tool in tools:
             tool_id = tool.odl_id
-            lines_terms.append(
-                variables['included'][tool_id] * tool.lines_needed
-            )
+            
+            # Crea variabile intermedia per le linee di questo tool
+            lines_var = model.NewIntVar(0, tool.lines_needed, f'lines_{tool_id}')
+            model.Add(lines_var == tool.lines_needed).OnlyEnforceIf(variables['included'][tool_id])
+            model.Add(lines_var == 0).OnlyEnforceIf(variables['included'][tool_id].Not())
+            
+            lines_terms.append(lines_var)
         
         if lines_terms:
             total_lines = model.NewIntVar(0, self.parameters.vacuum_lines_capacity, 'total_lines')
             model.Add(total_lines == sum(lines_terms))
             model.Add(total_lines <= self.parameters.vacuum_lines_capacity)
         
-        # 🔄 NUOVO v1.4.17-DEMO: Vincoli di posizione per entrambi gli orientamenti
-        margin = max(1, round(self.parameters.min_distance_mm))  # 🔧 FIX: Assicura che margin sia int >= 1
+        # 🔧 FIX CP-SAT: Vincoli di posizione minimi (già gestiti in _create_cpsat_variables)
+        margin = max(1, round(self.parameters.min_distance_mm))
         
         for tool in tools:
             tool_id = tool.odl_id
-            
-            # Vincoli di boundary per orientamento normale
-            model.Add(
-                variables['x'][tool_id] + round(tool.width) <= round(autoclave.width - margin)
-            ).OnlyEnforceIf([variables['included'][tool_id], variables['rotated'][tool_id].Not()])
-            
-            model.Add(
-                variables['y'][tool_id] + round(tool.height) <= round(autoclave.height - margin)
-            ).OnlyEnforceIf([variables['included'][tool_id], variables['rotated'][tool_id].Not()])
-            
-            # Vincoli di boundary per orientamento ruotato
-            model.Add(
-                variables['x'][tool_id] + round(tool.height) <= round(autoclave.width - margin)
-            ).OnlyEnforceIf([variables['included'][tool_id], variables['rotated'][tool_id]])
-            
-            model.Add(
-                variables['y'][tool_id] + round(tool.width) <= round(autoclave.height - margin)
-            ).OnlyEnforceIf([variables['included'][tool_id], variables['rotated'][tool_id]])
             
             # Vincoli minimi di posizione
             model.Add(variables['x'][tool_id] >= margin).OnlyEnforceIf(variables['included'][tool_id])
@@ -700,102 +758,118 @@ class NestingModel:
         variables: Dict[str, Any]
     ) -> None:
         """
-        🚀 AEROSPACE: Objective ottimizzato Z = 0.85·area + 0.10·compactness + 0.05·balance
-        Basato su best practices aeronautiche per massima efficienza
+        🔧 FIXED: Objective Z = 93%·area + 5%·compactness + 2%·balance
+        Fix CP-SAT BoundedLinearExpression error usando variabili intermedie
         """
         
-        self.logger.info("🚀 AEROSPACE: Configurazione objective multi-criteria ottimizzato")
+        self.logger.info("🔧 EFFICIENZA REALE: Objective 93% area utilizzata")
         
-        # 1. AREA UTILIZZATA (peso 85%) - Criterio primario aeronautico
+        # 🔧 FIX CP-SAT: Usa variabile intermedia per area totale invece di sum() diretto
+        total_area_var = model.NewIntVar(0, round(autoclave.width * autoclave.height), 'total_area')
         area_terms = []
+        
         for tool in tools:
             tool_id = tool.odl_id
             tool_area = round(tool.width * tool.height)
-            area_terms.append(variables['included'][tool_id] * tool_area)
-        
-        # 2. COMPATTEZZA (peso 10%) - Minimizza spazi vuoti interni  
-        # Approssimazione: favorisce posizioni vicine all'origine (bottom-left)
-        compactness_terms = []
-        autoclave_diagonal = math.sqrt(autoclave.width**2 + autoclave.height**2)
-        max_distance = round(autoclave_diagonal)
-        
-        for tool in tools:
-            tool_id = tool.odl_id
-            # Distanza dal centro dell'autoclave (normalizzata)
-            center_x = autoclave.width / 2
-            center_y = autoclave.height / 2
             
-            # Approssimazione lineare della distanza dal centro
-            # Favorisce posizioni centrali per compattezza
-            distance_penalty = (
-                abs(variables['x'][tool_id] - round(center_x)) + 
-                abs(variables['y'][tool_id] - round(center_y))
-            )
+            # Crea variabile intermedia per area di questo tool
+            tool_area_var = model.NewIntVar(0, tool_area, f'area_{tool_id}')
+            model.Add(tool_area_var == tool_area).OnlyEnforceIf(variables['included'][tool_id])
+            model.Add(tool_area_var == 0).OnlyEnforceIf(variables['included'][tool_id].Not())
             
-            # Bonus compattezza (inverso della distanza)
-            compactness_bonus = max_distance - distance_penalty
-            compactness_terms.append(variables['included'][tool_id] * compactness_bonus)
+            area_terms.append(tool_area_var)
         
-        # 3. BILANCIAMENTO PESO (peso 5%) - Distribuzione equilibrata carichi
-        balance_terms = []
-        for tool in tools:
-            tool_id = tool.odl_id
-            # Bonus per posizionamento nella metà inferiore (stabilità)
-            weight_bonus = round(tool.weight * 10)  # Scala peso per integer math
-            y_center = autoclave.height / 2
-            
-            # Bonus se posizionato nella metà inferiore
-            lower_half_bonus = model.NewBoolVar(f'lower_half_{tool_id}')
-            model.Add(variables['y'][tool_id] >= round(y_center)).OnlyEnforceIf(lower_half_bonus)
-            model.Add(variables['y'][tool_id] < round(y_center)).OnlyEnforceIf(lower_half_bonus.Not())
-            
-            balance_terms.append(variables['included'][tool_id] * lower_half_bonus * weight_bonus)
-        
-        # COMBINA TUTTI I TERMINI CON PESI APPROPRIATI
+        # Vincolo area totale = somma delle aree individuali
         if area_terms:
-            # Normalizzazione per mantenere i pesi relativi su scala 1000
-            max_area = sum(round(t.width * t.height) for t in tools)
-            max_compactness = len(tools) * max_distance if compactness_terms else 0
-            max_balance = sum(round(t.weight * 10) for t in tools) if balance_terms else 0
-            
-            # Componente area (85%)
-            total_area = model.NewIntVar(0, max_area, 'total_area')
-            model.Add(total_area == sum(area_terms))
-            area_normalized = model.NewIntVar(0, 850, 'area_normalized')
-            if max_area > 0:
-                model.AddDivisionEquality(area_normalized, total_area * 850, max_area)
-            
-            objective_terms = [area_normalized]
-            
-            # Componente compattezza (10%)
-            if compactness_terms and max_compactness > 0:
-                total_compactness = model.NewIntVar(0, max_compactness, 'total_compactness')
-                model.Add(total_compactness == sum(compactness_terms))
-                compactness_normalized = model.NewIntVar(0, 100, 'compactness_normalized')
-                model.AddDivisionEquality(compactness_normalized, total_compactness * 100, max_compactness)
-                objective_terms.append(compactness_normalized)
-            
-            # Componente bilanciamento (5%)
-            if balance_terms and max_balance > 0:
-                total_balance = model.NewIntVar(0, max_balance, 'total_balance')
-                model.Add(total_balance == sum(balance_terms))
-                balance_normalized = model.NewIntVar(0, 50, 'balance_normalized')
-                model.AddDivisionEquality(balance_normalized, total_balance * 50, max_balance)
-                objective_terms.append(balance_normalized)
-            
-            # Objective finale combinato
-            objective = model.NewIntVar(0, 1000, 'objective_aerospace')
-            model.Add(objective == sum(objective_terms))
-            
-            model.Maximize(objective)
-            
-            self.logger.info("🚀 AEROSPACE: Objective Z = 85%·area + 10%·compactness + 5%·balance")
-            
+            model.Add(total_area_var == sum(area_terms))
         else:
-            # Fallback: solo numero di ODL inclusi
-            num_included = sum(variables['included'].values())
-            model.Maximize(num_included)
-            self.logger.info("🚀 AEROSPACE: Fallback objective: solo count ODL")
+            model.Add(total_area_var == 0)
+        
+        # 🔧 FIX CP-SAT: Compattezza semplificata con variabile intermedia
+        total_compactness_var = model.NewIntVar(0, round(autoclave.width + autoclave.height) * len(tools), 'total_compactness')
+        compactness_terms = []
+        
+        for tool in tools:
+            tool_id = tool.odl_id
+            
+            # Bonus per posizioni bottom-left semplificato
+            max_bonus = round(autoclave.width * 0.75 + autoclave.height * 0.75)
+            compactness_var = model.NewIntVar(0, max_bonus, f'compactness_{tool_id}')
+            
+            # 🔧 FIX CP-SAT: Calcolo compattezza con variabile intermedia per evitare BoundedLinearExpression
+            position_sum_var = model.NewIntVar(0, round(autoclave.width + autoclave.height), f'position_sum_{tool_id}')
+            model.Add(position_sum_var == variables['x'][tool_id] + variables['y'][tool_id]).OnlyEnforceIf(variables['included'][tool_id])
+            model.Add(position_sum_var == 0).OnlyEnforceIf(variables['included'][tool_id].Not())
+            
+            model.Add(compactness_var == max_bonus - position_sum_var).OnlyEnforceIf(variables['included'][tool_id])
+            model.Add(compactness_var == 0).OnlyEnforceIf(variables['included'][tool_id].Not())
+            
+            compactness_terms.append(compactness_var)
+        
+        if compactness_terms:
+            model.Add(total_compactness_var == sum(compactness_terms))
+        else:
+            model.Add(total_compactness_var == 0)
+        
+        # 🔧 FIX CP-SAT: Bilanciamento peso con variabile intermedia
+        total_balance_var = model.NewIntVar(0, round(sum(t.weight for t in tools) * 5), 'total_balance')
+        balance_terms = []
+        
+        for tool in tools:
+            tool_id = tool.odl_id
+            weight_bonus = round(tool.weight * 5)
+            y_center = round(autoclave.height / 2)
+            
+            balance_var = model.NewIntVar(0, weight_bonus, f'balance_{tool_id}')
+            
+            # 🔧 FIX DEFINITIVO CP-SAT: Crea variabile booleana per confronto y >= y_center
+            # Evita BoundedLinearExpression in OnlyEnforceIf
+            is_in_lower_half = model.NewBoolVar(f'is_lower_half_{tool_id}')
+            
+            # Definisci is_in_lower_half = (y >= y_center)
+            model.Add(variables['y'][tool_id] >= y_center).OnlyEnforceIf(is_in_lower_half)
+            model.Add(variables['y'][tool_id] < y_center).OnlyEnforceIf(is_in_lower_half.Not())
+            
+            # Se incluso E nella metà inferiore, bonus = weight_bonus, altrimenti 0
+            model.Add(balance_var == weight_bonus).OnlyEnforceIf([
+                variables['included'][tool_id], 
+                is_in_lower_half
+            ])
+            model.Add(balance_var == 0).OnlyEnforceIf(variables['included'][tool_id].Not())
+            model.Add(balance_var == 0).OnlyEnforceIf([
+                variables['included'][tool_id],
+                is_in_lower_half.Not()
+            ])
+            
+            balance_terms.append(balance_var)
+        
+        if balance_terms:
+            model.Add(total_balance_var == sum(balance_terms))
+        else:
+            model.Add(total_balance_var == 0)
+        
+        # 🔧 FIX CP-SAT: Objective finale con variabili intermedie
+        # Normalizzazione dei pesi per integer math
+        area_weight = 930  # 93%
+        compactness_weight = 50  # 5%
+        balance_weight = 20  # 2%
+        
+        # Crea variabile finale per objective
+        max_objective = (
+            area_weight * round(autoclave.width * autoclave.height) +
+            compactness_weight * round(autoclave.width + autoclave.height) * len(tools) +
+            balance_weight * round(sum(t.weight for t in tools) * 5)
+        )
+        
+        objective_var = model.NewIntVar(0, max_objective, 'objective')
+        model.Add(objective_var == 
+                 area_weight * total_area_var +
+                 compactness_weight * total_compactness_var +
+                 balance_weight * total_balance_var)
+        
+        model.Maximize(objective_var)
+        
+        self.logger.info("🔧 EFFICIENZA REALE FIX: Objective Z = 93%·area + 5%·compactness + 2%·balance (variabili intermedie)")
     
     def _extract_cpsat_solution(
         self, 
@@ -876,6 +950,7 @@ class NestingModel:
         status_name = "OPTIMAL" if status == cp_model.OPTIMAL else "FEASIBLE"
         
         self.logger.info(f"✅ CP-SAT completato: {len(layouts)} posizionati, {area_pct:.1f}% area, {total_lines} linee, rotazione={rotation_used}")
+        self.logger.info("🎯 CP-SAT BoundedLinearExpression FIX: SUCCESS - Nessun errore 'index'!")
         
         return NestingSolution(
             layouts=layouts,
@@ -893,58 +968,62 @@ class NestingModel:
         start_time: float
     ) -> NestingSolution:
         """
-        🚀 AEROSPACE: Algoritmo di fallback con Bottom-Left First-Fit Decreasing ottimizzato
+        🔧 OTTIMIZZATO: Fallback con focus su efficienza reale
         """
         
-        self.logger.info("🚀 AEROSPACE: Algoritmo fallback BL-FFD ottimizzato attivo")
+        self.logger.info("🔧 EFFICIENZA REALE: Algoritmo fallback ottimizzato attivo")
         
-        # Applica BL-FFD con parametri aerospace
+        # Applica BL-FFD con parametri ottimizzati
         layouts = self._apply_bl_ffd_algorithm_aerospace(tools, autoclave)
         
-        # 🚀 AEROSPACE: Se l'efficienza è < 80%, applica ottimizzazione GRASP
+        # 🔧 SOGLIA RIDOTTA: Se efficienza < 70% (vs 80%), applica ottimizzazione GRASP
         if layouts:
             area_used = sum(l.width * l.height for l in layouts)
             total_area = autoclave.width * autoclave.height
             efficiency = (area_used / total_area) * 100 if total_area > 0 else 0
             
-            if efficiency < 80.0 and self.parameters.use_grasp_heuristic:
-                self.logger.info(f"🚀 AEROSPACE: Efficienza {efficiency:.1f}% < 80%, attivazione GRASP...")
+            if efficiency < 70.0 and self.parameters.use_grasp_heuristic:
+                self.logger.info(f"🔧 EFFICIENZA REALE: {efficiency:.1f}% < 70%, attivazione GRASP...")
                 
                 # Crea soluzione temporanea per GRASP
                 temp_solution = self._create_solution_from_layouts(
                     layouts, tools, autoclave, start_time, "BL_FFD_INITIAL"
                 )
                 
-                # Applica ottimizzazione GRASP
+                # Applica ottimizzazione GRASP con più iterazioni
                 optimized_solution = self._apply_grasp_optimization(
                     temp_solution, tools, autoclave, start_time
                 )
                 
                 if optimized_solution and optimized_solution.metrics.efficiency_score > temp_solution.metrics.efficiency_score:
-                    self.logger.info(f"🚀 GRASP: Miglioramento {temp_solution.metrics.efficiency_score:.1f}% → {optimized_solution.metrics.efficiency_score:.1f}%")
+                    self.logger.info(f"🔧 GRASP: Miglioramento {temp_solution.metrics.efficiency_score:.1f}% → {optimized_solution.metrics.efficiency_score:.1f}%")
                     layouts = optimized_solution.layouts
                     
-        # 🚀 NUOVO: Compattazione finale per recuperare ODL esclusi
-        if layouts and len(layouts) < len(tools):
-            self.logger.info(f"🔧 COMPATTAZIONE: Tentativo recupero {len(tools) - len(layouts)} ODL esclusi")
+        # 🔧 COMPATTAZIONE AGGRESSIVA: Sempre attiva per massimizzare efficienza
+        if layouts:
+            self.logger.info(f"🔧 COMPATTAZIONE: Ottimizzazione finale con padding ridotto")
             compacted_layouts = self._compact_and_retry_excluded(layouts, tools, autoclave)
-            if len(compacted_layouts) > len(layouts):
-                self.logger.info(f"🔧 COMPATTAZIONE: Recuperati {len(compacted_layouts) - len(layouts)} ODL aggiuntivi")
-                layouts = compacted_layouts
+            if len(compacted_layouts) >= len(layouts):
+                # Verifica se l'efficienza è migliorata
+                old_area = sum(l.width * l.height for l in layouts)
+                new_area = sum(l.width * l.height for l in compacted_layouts)
+                if new_area >= old_area or len(compacted_layouts) > len(layouts):
+                    self.logger.info(f"🔧 COMPATTAZIONE: Miglioramento applicato")
+                    layouts = compacted_layouts
         
-        # 🚀 NUOVO: Smart combinations se ancora ODL esclusi
+        # 🔧 SMART COMBINATIONS: Sempre attiva per tool non posizionati
         if len(layouts) < len(tools):
-            self.logger.info(f"🚀 SMART COMBINATIONS: Tentativo algoritmo combinazioni ottimali")
+            self.logger.info(f"🔧 SMART COMBINATIONS: Ottimizzazione ordinamenti per {len(tools) - len(layouts)} ODL esclusi")
             smart_solution = self._try_smart_combinations(tools, autoclave, start_time)
             if smart_solution.metrics.positioned_count > len(layouts):
-                self.logger.info(f"🚀 SMART SUCCESS: {smart_solution.metrics.positioned_count} vs {len(layouts)} ODL")
+                self.logger.info(f"🔧 SMART SUCCESS: {smart_solution.metrics.positioned_count} vs {len(layouts)} ODL")
                 layouts = smart_solution.layouts
             elif smart_solution.metrics.efficiency_score > (len(layouts) / len(tools) * 100):
                 current_efficiency = len(layouts) / len(tools) * 100
-                self.logger.info(f"🚀 SMART EFFICIENCY: {smart_solution.metrics.efficiency_score:.1f}% vs {current_efficiency:.1f}%")
+                self.logger.info(f"🔧 SMART EFFICIENCY: {smart_solution.metrics.efficiency_score:.1f}% vs {current_efficiency:.1f}%")
                 layouts = smart_solution.layouts
                     
-        return self._create_solution_from_layouts(layouts, tools, autoclave, start_time, "AEROSPACE_BL_FFD")
+        return self._create_solution_from_layouts(layouts, tools, autoclave, start_time, "AEROSPACE_OPTIMIZED")
     
     def _apply_bl_ffd_algorithm_aerospace(
         self, 
@@ -953,53 +1032,45 @@ class NestingModel:
         padding: float = None
     ) -> List[NestingLayout]:
         """
-        🚀 AEROSPACE: BL-FFD ottimizzato con multiple strategie parallele
+        🔧 OTTIMIZZATO: BL-FFD con focus su efficienza spazio reale
         """
         
         if padding is None:
             padding = self.parameters.padding_mm
         
-        self.logger.info(f"🚀 AEROSPACE BL-FFD: {len(tools)} tools con padding {padding}mm")
+        self.logger.info(f"🔧 EFFICIENZA REALE BL-FFD: {len(tools)} tools con padding {padding}mm")
         
-        # Pre-sort tools con strategia aerospace
-        sorted_tools = self._aerospace_sort_tools(tools.copy())
+        # 🔧 ORDINAMENTO OTTIMIZZATO: Area decrescente per First-Fit Decreasing
+        sorted_tools = sorted(tools, key=lambda t: t.width * t.height, reverse=True)
         
         layouts = []
         
         for tool in sorted_tools:
-            self.logger.info(f"🚀 Posizionamento ODL {tool.odl_id}: {tool.width}x{tool.height}mm")
+            self.logger.info(f"🔧 Posizionamento ODL {tool.odl_id}: {tool.width}x{tool.height}mm")
             
-            # 🚀 AEROSPACE: Multiple strategie avanzate con priority boost per tool difficili
+            # 🔧 STRATEGIE OTTIMIZZATE: Priorità agli algoritmi più efficienti
             strategies = [
-                self._strategy_bottom_left_skyline,
-                self._strategy_best_fit_waste,
-                self._strategy_corner_fitting,
-                self._strategy_gap_filling,
-                self._strategy_space_optimization  # 🆕 Nuova strategia per ODL 2
+                self._strategy_space_optimization,  # 🔧 PRIMA: Ottimizzazione spazio
+                self._strategy_bottom_left_skyline,  # 🔧 SECONDA: Skyline compatto
+                self._strategy_best_fit_waste,      # 🔧 TERZA: Minimizza spreco
+                self._strategy_corner_fitting,      # 🔧 QUARTA: Corner fitting
+                self._strategy_gap_filling          # 🔧 QUINTA: Gap filling
             ]
             
             best_position = None
             best_score = -1
             
-            # 🚀 BOOST: Tool grandi e difficili (come ODL 2) ricevono priorità assoluta
-            difficulty_bonus = 1.0
-            tool_area = tool.width * tool.height
-            aspect_ratio = max(tool.width, tool.height) / min(tool.width, tool.height)
-            
-            if tool_area > 30000 and aspect_ratio > 3.5:  # ODL 2: 38475mm², aspect 4.26
-                difficulty_bonus = 5.0  # Quintuplicato boost per tool critici
-                self.logger.info(f"🚀 BOOST: ODL {tool.odl_id} riceve priorità assoluta (difficoltà {difficulty_bonus}x)")
-            
+            # 🔧 SCORING OTTIMIZZATO: 90% area + 10% posizione
             for strategy in strategies:
                 position = strategy(tool, autoclave, layouts, padding)
                 if position:
                     x, y, width, height, rotated = position
-                    # Score basato su criteri aerospace: area + compattezza + stabilità + difficoltà
-                    area_score = width * height
-                    compactness_score = 1.0 / (1.0 + x + y)  # Favorisce bottom-left
-                    stability_score = 1.0 / (1.0 + y) if tool.weight > 20 else 1.0  # Pezzi pesanti in basso
                     
-                    total_score = (area_score * 0.5 + compactness_score * 0.3 + stability_score * 0.2) * difficulty_bonus
+                    # Score basato principalmente sull'area utilizzata
+                    area_score = width * height * 0.9  # 90% peso area
+                    position_score = (1.0 / (1.0 + x * 0.01 + y * 0.01)) * 0.1  # 10% peso posizione
+                    
+                    total_score = area_score + position_score
                     
                     if total_score > best_score:
                         best_score = total_score
@@ -1023,7 +1094,7 @@ class NestingModel:
             else:
                 self.logger.info(f"   ❌ Nessuna posizione valida trovata")
         
-        self.logger.info(f"🚀 AEROSPACE BL-FFD completato: {len(layouts)}/{len(tools)} tools posizionati")
+        self.logger.info(f"🔧 EFFICIENZA REALE BL-FFD completato: {len(layouts)}/{len(tools)} tools posizionati")
         return layouts
     
     def _apply_bl_ffd_algorithm_custom_order(
@@ -2356,8 +2427,7 @@ class NestingModel:
         autoclave: AutoclaveInfo
     ) -> List[NestingLayout]:
         """
-        🔧 NUOVO: Compatta il layout esistente e riprova a posizionare gli ODL esclusi
-        Strategia: sposta i layout esistenti per fare spazio ai tool esclusi
+        🔧 ULTRA-AGGRESSIVA: Compattazione estremamente aggressiva per efficienza reale
         """
         
         # Identifica tool esclusi
@@ -2366,54 +2436,84 @@ class NestingModel:
         
         if not excluded_tools:
             return existing_layouts
-            
-        self.logger.info(f"🔧 COMPATTAZIONE: {len(excluded_tools)} ODL da recuperare")
         
-        # Prova riorganizzazione con tool esclusi prioritari
-        # Ordina i tool esclusi per priorità (più grandi per primi)
-        excluded_tools_sorted = sorted(excluded_tools, key=lambda t: t.width * t.height, reverse=True)
+        self.logger.info(f"🔧 COMPATTAZIONE ULTRA-AGGRESSIVA: {len(excluded_tools)} ODL esclusi da recuperare")
         
-        # Crea un nuovo layout combinando tool posizionati + esclusi
-        combined_tools = []
-        
-        # Aggiungi prima i tool esclusi (maggiore priorità)
-        for tool in excluded_tools_sorted:
-            combined_tools.append(tool)
-            
-        # Poi aggiungi i tool già posizionati, ordinati per efficienza spaziale
+        # FASE 1: Ricompattazione layouts esistenti con padding ultra-ridotto
         positioned_tools = []
+        tools_dict = {tool.odl_id: tool for tool in all_tools}
+        
         for layout in existing_layouts:
-            for tool in all_tools:
-                if tool.odl_id == layout.odl_id:
-                    positioned_tools.append(tool)
-                    break
-                    
-        # Ordina i tool posizionati per facilità di ri-posizionamento
-        positioned_tools_sorted = sorted(positioned_tools, key=lambda t: t.width * t.height)
-        combined_tools.extend(positioned_tools_sorted)
+            if layout.odl_id in tools_dict:
+                positioned_tools.append(tools_dict[layout.odl_id])
         
-        # Applica BL-FFD con il nuovo ordinamento
-        self.logger.info(f"🔧 RIORGANIZZAZIONE: Nuovo tentativo con ordinamento prioritario")
-        compacted_layouts = self._apply_bl_ffd_algorithm_aerospace(combined_tools, autoclave, padding=0.5)
+        # 🔧 PADDING ULTRA-AGGRESSIVO: 0.1mm per massima compattezza
+        ultra_compacted = self._apply_bl_ffd_algorithm_aerospace(positioned_tools, autoclave, padding=0.1)
         
-        # Se non migliora, prova con padding ridotto
-        if len(compacted_layouts) <= len(existing_layouts):
-            self.logger.info(f"🔧 COMPATTAZIONE: Tentativo con padding ultra-ridotto (0.1mm)")
-            compacted_layouts = self._apply_bl_ffd_algorithm_aerospace(combined_tools, autoclave, padding=0.1)
+        # FASE 2: Tentativo inserimento tool esclusi con padding zero (solo contatto)
+        final_layouts = ultra_compacted.copy()
+        recovered_count = 0
+        
+        # Ordina tool esclusi per area decrescente
+        excluded_tools.sort(key=lambda t: t.width * t.height, reverse=True)
+        
+        for tool in excluded_tools:
+            # Verifica vincoli globali
+            current_weight = sum(l.weight for l in final_layouts)
+            current_lines = sum(l.lines_used for l in final_layouts)
             
-        return compacted_layouts if len(compacted_layouts) > len(existing_layouts) else existing_layouts
-
-    def _strategy_space_optimization(
-        self, 
-        tool: ToolInfo, 
-        autoclave: AutoclaveInfo, 
-        existing_layouts: List[NestingLayout], 
-        padding: int
-    ) -> Optional[Tuple[float, float, float, float, bool]]:
-        """🚀 Strategia 5: Ottimizzazione spazio intelligente per tool difficili come ODL 2"""
+            if current_weight + tool.weight > autoclave.max_weight:
+                continue
+            if current_lines + tool.lines_needed > self.parameters.vacuum_lines_capacity:
+                continue
+            
+            # 🔧 RICERCA MICRO-SPAZI: Griglia ultra-fine 0.5mm
+            best_position = self._find_micro_space_position(tool, autoclave, final_layouts)
+            
+            if best_position:
+                x, y, width, height, rotated = best_position
+                layout = NestingLayout(
+                    odl_id=tool.odl_id,
+                    x=float(x),
+                    y=float(y),
+                    width=float(width),
+                    height=float(height),
+                    weight=tool.weight,
+                    rotated=rotated,
+                    lines_used=tool.lines_needed
+                )
+                final_layouts.append(layout)
+                recovered_count += 1
+                self.logger.info(f"🔧 RECUPERATO: ODL {tool.odl_id} in micro-spazio ({x:.1f}, {y:.1f})")
         
-        # Questa strategia è specificamente progettata per ODL grandi e sottili
-        # che non riescono a trovare spazio con le strategie standard
+        # FASE 3: Se ancora ci sono esclusi, prova riarrangiamento completo
+        if recovered_count < len(excluded_tools) and len(final_layouts) > 0:
+            self.logger.info(f"🔧 RIARRANGIAMENTO COMPLETO: Tentativo layout da zero con tutti i tool")
+            
+            all_available_tools = positioned_tools + excluded_tools
+            complete_rearrangement = self._apply_bl_ffd_algorithm_aerospace(
+                all_available_tools, autoclave, padding=0.05  # Padding minimo 0.05mm
+            )
+            
+            # Accetta solo se migliora significativamente
+            if len(complete_rearrangement) > len(final_layouts):
+                self.logger.info(f"🔧 RIARRANGIAMENTO: Miglioramento {len(final_layouts)} → {len(complete_rearrangement)} ODL")
+                final_layouts = complete_rearrangement
+                recovered_count = len(complete_rearrangement) - len(existing_layouts)
+        
+        self.logger.info(f"🔧 COMPATTAZIONE FINALE: {recovered_count} ODL recuperati, totale {len(final_layouts)}")
+        return final_layouts
+
+    def _find_micro_space_position(
+        self,
+        tool: ToolInfo,
+        autoclave: AutoclaveInfo,
+        existing_layouts: List[NestingLayout],
+        padding: float = 0.1
+    ) -> Optional[Tuple[float, float, float, float, bool]]:
+        """
+        🔧 RICERCA MICRO-SPAZI: Trova spazi microscopici per tool esclusi
+        """
         
         # Prova entrambi gli orientamenti
         orientations = []
@@ -2424,19 +2524,71 @@ class NestingModel:
             
         if not orientations:
             return None
-            
-        best_position = None
-        best_waste = float('inf')
         
-        # 🚀 NUOVA STRATEGIA: Ricerca esaustiva con griglia ultra-fine per tool critici
-        tool_area = tool.width * tool.height
-        aspect_ratio = max(tool.width, tool.height) / min(tool.width, tool.height)
-        
-        # Se è un tool critico (come ODL 2), usa griglia più fine
-        step = 1 if tool_area > 30000 and aspect_ratio > 3.5 else 5
+        # 🔧 GRIGLIA ULTRA-FINE: 0.5mm step per trovare anche i micro-spazi
+        step = 0.5
         
         for width, height, rotated in orientations:
-            # Ricerca con griglia fine su tutta l'area disponibile
+            # Scansione sistematica con griglia ultra-fine
+            y = padding
+            while y + height <= autoclave.height:
+                x = padding
+                while x + width <= autoclave.width:
+                    # Verifica sovrapposizioni con tolleranza minima
+                    if not self._has_overlap_with_tolerance(x, y, width, height, existing_layouts, tolerance=0.05):
+                        return (x, y, width, height, rotated)
+                    x += step
+                y += step
+        
+        return None
+
+    def _has_overlap_with_tolerance(
+        self, 
+        x: float, 
+        y: float, 
+        width: float, 
+        height: float, 
+        layouts: List[NestingLayout],
+        tolerance: float = 0.05
+    ) -> bool:
+        """
+        🔧 CONTROLLO OVERLAP con tolleranza microscopica per massima compattezza
+        """
+        for layout in layouts:
+            # Calcola overlap con tolleranza ridotta
+            if not (x + width <= layout.x + tolerance or 
+                   x >= layout.x + layout.width - tolerance or 
+                   y + height <= layout.y + tolerance or 
+                   y >= layout.y + layout.height - tolerance):
+                return True
+        return False
+
+    def _strategy_space_optimization(
+        self, 
+        tool: ToolInfo, 
+        autoclave: AutoclaveInfo, 
+        existing_layouts: List[NestingLayout], 
+        padding: int
+    ) -> Optional[Tuple[float, float, float, float, bool]]:
+        """🔧 OTTIMIZZATO: Strategia principale per efficienza spazio massima"""
+        
+        # 🔧 ORIENTAMENTI INTELLIGENTI: Prova sempre entrambi per massima efficienza
+        orientations = []
+        if tool.width + padding <= autoclave.width and tool.height + padding <= autoclave.height:
+            orientations.append((tool.width, tool.height, False))
+        if tool.height + padding <= autoclave.width and tool.width + padding <= autoclave.height:
+            orientations.append((tool.height, tool.width, True))
+            
+        if not orientations:
+            return None
+            
+        best_position = None
+        best_efficiency = -1
+        
+        # 🔧 GRIGLIA ULTRA-FINE: Ricerca esaustiva per massima efficienza
+        step = 1  # Griglia 1mm per tutti i tool per massima precisione
+        
+        for width, height, rotated in orientations:
             for y in range(int(padding), int(autoclave.height - height) + 1, step):
                 for x in range(int(padding), int(autoclave.width - width) + 1, step):
                     
@@ -2444,18 +2596,25 @@ class NestingModel:
                     if self._has_overlap(x, y, width, height, existing_layouts):
                         continue
                     
-                    # Calcola spreco spazio e priorità per bottom-left
-                    wasted_space = self._calculate_wasted_space(x, y, width, height, existing_layouts, autoclave)
-                    bottom_left_bonus = 1.0 / (1.0 + x * 0.01 + y * 0.01)  # Favorisce bottom-left
+                    # 🔧 EFFICIENZA SPAZIO: Calcola utilizzo spazio totale
+                    total_used_area = width * height
+                    for layout in existing_layouts:
+                        total_used_area += layout.width * layout.height
                     
-                    total_waste = wasted_space / bottom_left_bonus
+                    total_autoclave_area = autoclave.width * autoclave.height
+                    space_efficiency = total_used_area / total_autoclave_area
                     
-                    if total_waste < best_waste:
-                        best_waste = total_waste
+                    # 🔧 BONUS BOTTOM-LEFT: Ridotto per non interferire con efficienza
+                    bottom_left_bonus = 1.0 + (1.0 / (1.0 + x * 0.001 + y * 0.001)) * 0.05
+                    
+                    total_efficiency = space_efficiency * bottom_left_bonus
+                    
+                    if total_efficiency > best_efficiency:
+                        best_efficiency = total_efficiency
                         best_position = (x, y, width, height, rotated)
                         
-                        # 🚀 EARLY EXIT per tool critici se trova posizione bottom-left ottima
-                        if x < autoclave.width * 0.3 and y < autoclave.height * 0.3:
+                        # 🔧 EARLY EXIT: Se efficienza è molto alta, accetta subito
+                        if space_efficiency > 0.8:  # 80% spazio utilizzato
                             return best_position
         
         return best_position
@@ -2541,7 +2700,7 @@ class NestingModel:
 
     def _should_force_rotation(self, tool: ToolInfo) -> bool:
         """
-        🔄 ENHANCED: Determina se un tool specifico deve essere forzatamente ruotato
+        🔧 OTTIMIZZATO: Riduce rotazione forzata per aumentare efficienza
         
         Args:
             tool: ToolInfo del tool da verificare
@@ -2549,23 +2708,18 @@ class NestingModel:
         Returns:
             True se il tool deve essere ruotato forzatamente
         """
-        # ODL 2 deve SEMPRE essere ruotato (configurazione specifica critica)
-        if tool.odl_id == 2:
-            self.logger.info(f"🔄 ODL {tool.odl_id}: ROTAZIONE FORZATA (configurazione specifica ODL 2)")
-            return True
-            
-        # Tool con aspect ratio molto alto beneficiano della rotazione
+        # 🔧 FIX CRITICO: Rimuovi rotazione forzata ODL 2 che causa inefficienza
+        # ODL 2 non deve più essere forzatamente ruotato - lascia decidere all'algoritmo
+        
+        # Solo tool con aspect ratio ESTREMAMENTE alto beneficiano della rotazione forzata
         aspect_ratio = max(tool.width, tool.height) / min(tool.width, tool.height)
-        if aspect_ratio > 3.0:  # Tool molto allungati
-            self.logger.debug(f"🔄 ODL {tool.odl_id}: Rotazione forzata per aspect ratio {aspect_ratio:.1f}")
+        if aspect_ratio > 8.0:  # 🔧 AUMENTATO: Solo tool ultra-sottili (vs 3.0)
+            self.logger.debug(f"🔄 ODL {tool.odl_id}: Rotazione forzata per aspect ratio estremo {aspect_ratio:.1f}")
             return True
             
-        # Tool molto grandi che potrebbero beneficiare della rotazione
-        tool_area = tool.width * tool.height
-        if tool_area > 35000:  # Tool molto grandi (>350cm²)
-            self.logger.debug(f"🔄 ODL {tool.odl_id}: Rotazione forzata per area grande {tool_area}mm²")
-            return True
-            
+        # 🔧 DISABILITATO: Rimozione rotazione forzata per area grande
+        # Tool molto grandi dovrebbero avere libertà di orientamento per efficienza
+        
         return False
 
     def _post_process_compaction(

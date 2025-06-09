@@ -187,8 +187,8 @@ class NestingSolveRequest(BaseModel):
     """Schema per la richiesta dell'endpoint solve v1.4.12-DEMO"""
     autoclave_id: int = Field(..., description="ID dell'autoclave da utilizzare")
     odl_ids: Optional[List[int]] = Field(None, description="IDs degli ODL da processare (None = tutti disponibili)")
-    padding_mm: float = Field(default=20, ge=5, le=50, description="Padding tra i tool (5-50mm)")
-    min_distance_mm: float = Field(default=15, ge=5, le=30, description="Distanza minima dai bordi (5-30mm)")
+    padding_mm: float = Field(default=20, ge=0.1, le=50, description="Padding tra i tool (0.1-50mm) - OTTIMIZZATO per efficienza reale")
+    min_distance_mm: float = Field(default=15, ge=0.1, le=30, description="Distanza minima dai bordi (0.1-30mm) - OTTIMIZZATO per spazio massimo")
     vacuum_lines_capacity: Optional[int] = Field(None, ge=1, le=50, description="Capacità massima linee vuoto")
     allow_heuristic: bool = Field(default=False, description="Abilita heuristica RRGH")
     timeout_override: Optional[int] = Field(None, ge=30, le=300, description="Override timeout (30-300s)")
@@ -199,11 +199,11 @@ class NestingSolveRequest(BaseModel):
             "example": {
                 "autoclave_id": 1,
                 "odl_ids": [5, 6, 7],
-                "padding_mm": 20,
-                "min_distance_mm": 15,
-                "vacuum_lines_capacity": 10,
-                "allow_heuristic": False,
-                "timeout_override": None,
+                "padding_mm": 0.2,
+                "min_distance_mm": 0.2,
+                "vacuum_lines_capacity": 20,
+                "allow_heuristic": True,
+                "timeout_override": 90,
                 "heavy_piece_threshold_kg": 50.0
             }
         }
