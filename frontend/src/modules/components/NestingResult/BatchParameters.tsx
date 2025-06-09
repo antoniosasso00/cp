@@ -15,7 +15,7 @@ interface BatchNestingResult {
   parametri?: {
     padding_mm: number
     min_distance_mm: number
-    priorita_area: boolean
+    // priorita_area rimosso (non utilizzato dall'algoritmo)
   }
   configurazione_json: {
     tool_positions: any[]
@@ -72,26 +72,16 @@ export default function BatchParameters({ batch }: BatchParametersProps) {
         <div className="flex items-center justify-between p-3 bg-gray-50 rounded border">
           <div className="flex items-center gap-2">
             <Target className="h-4 w-4 text-purple-600" />
-            <span className="text-sm font-medium">Strategia Ottimizzazione</span>
+            <span className="text-sm font-medium">Algoritmo</span>
           </div>
           <Badge 
             variant="outline" 
-            className={parametri.priorita_area 
-              ? "bg-purple-50 text-purple-700 border-purple-200" 
-              : "bg-orange-50 text-orange-700 border-orange-200"
-            }
+            className="bg-purple-50 text-purple-700 border-purple-200"
           >
-            {parametri.priorita_area ? (
-              <div className="flex items-center gap-1">
-                <Target className="h-3 w-3" />
-                Massimizza Area
-              </div>
-            ) : (
-              <div className="flex items-center gap-1">
-                <CheckCircle className="h-3 w-3" />
-                Massimizza ODL
-              </div>
-            )}
+            <div className="flex items-center gap-1">
+              <Target className="h-3 w-3" />
+              OR-Tools CP-SAT Aerospace
+            </div>
           </Badge>
         </div>
       </div>
@@ -146,10 +136,7 @@ export default function BatchParameters({ batch }: BatchParametersProps) {
           <div className="flex items-start gap-2">
             <div className="w-2 h-2 bg-purple-400 rounded-full mt-1 flex-shrink-0" />
             <span>
-              <strong>Strategia:</strong> {parametri.priorita_area 
-                ? "Massimizza l'utilizzo dell'area disponibile" 
-                : "Massimizza il numero di ODL posizionati"
-              }
+              <strong>Algoritmo:</strong> OR-Tools CP-SAT con ottimizzazioni aerospace per massima efficienza
             </span>
           </div>
         </div>

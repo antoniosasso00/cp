@@ -32,6 +32,7 @@ import BatchTabs from '../../../components/NestingResult/BatchTabs'
 import NestingDetailsCard from '../../../components/NestingResult/NestingDetailsCard'
 import BatchParameters from '../../../components/NestingResult/BatchParameters'
 import HistoryPanel from '../../../components/NestingResult/HistoryPanel'
+import EfficiencyAnalysis from './components/EfficiencyAnalysis'
 
 // Caricamento dinamico del canvas
 const NestingCanvas = dynamic(() => import('./NestingCanvas'), {
@@ -98,7 +99,7 @@ interface BatchNestingResult {
   parametri?: {
     padding_mm: number
     min_distance_mm: number
-    priorita_area: boolean
+    // priorita_area rimosso (non utilizzato dall'algoritmo)
   }
   created_at: string
   updated_at?: string
@@ -418,7 +419,8 @@ export default function NestingResultPage({ params }: Props) {
       {currentBatch && isMounted && (
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
           {/* Canvas Principale - 3/4 della larghezza su desktop */}
-          <div className="xl:col-span-3 order-2 xl:order-1">
+          <div className="xl:col-span-3 order-2 xl:order-1 space-y-6">
+            {/* Canvas Nesting */}
             <Card className="h-fit">
               <CardHeader className="pb-4">
                 <CardTitle className="flex items-center gap-2">
@@ -441,6 +443,20 @@ export default function NestingResultPage({ params }: Props) {
                 />
               </CardContent>
             </Card>
+
+            {/* 🚀 ANALISI EFFICIENZA AEROSPACE */}
+            {currentBatch.configurazione_json && currentBatch.autoclave && (
+              <EfficiencyAnalysis
+                efficiency={currentBatch.metrics?.efficiency_percentage || 0}
+                totalAreaUsed={currentBatch.metrics?.total_area_used_mm2 || 0}
+                totalWeight={currentBatch.metrics?.total_weight_kg || 0}
+                planeWidth={currentBatch.autoclave.lunghezza}
+                planeHeight={currentBatch.autoclave.larghezza_piano}
+                toolPositions={currentBatch.configurazione_json.tool_positions || []}
+                padding={currentBatch.parametri?.padding_mm || 1}
+                minDistance={currentBatch.parametri?.min_distance_mm || 1}
+              />
+            )}
           </div>
 
           {/* Pannello Informazioni - 1/4 della larghezza su desktop */}

@@ -1,0 +1,7 @@
+{
+  "odl_ids": ["1", "2", "3"],
+  "parametri": {
+    "padding_mm": 1,
+    "min_distance_mm": 1
+  }
+} 

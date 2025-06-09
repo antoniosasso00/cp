@@ -161,6 +161,11 @@ class NestingRequest(BaseModel):
     autoclave_ids: List[str]
     parametri: NestingParametri = NestingParametri()
 
+# 🆕 NUOVO: Modello specifico per multi-batch che non richiede autoclave_ids
+class NestingMultiRequest(BaseModel):
+    odl_ids: List[str]
+    parametri: NestingParametri = NestingParametri()
+
 class NestingResponse(BaseModel):
     batch_id: Optional[str] = ""  # ✅ FIX: Permette None e fornisce default vuoto
     message: str
@@ -172,7 +177,7 @@ class NestingResponse(BaseModel):
     total_weight: float
     algorithm_status: str
     success: bool
-    validation_report: Dict[str, Any] = None
+    validation_report: Optional[Dict[str, Any]] = None
     fixes_applied: List[str] = []
 
 class NestingDataResponse(BaseModel):
@@ -446,8 +451,7 @@ def genera_nesting_robusto(
         # Parametri nesting
         parameters = NestingParameters(
             padding_mm=request.parametri.padding_mm,
-            min_distance_mm=request.parametri.min_distance_mm,
-            priorita_area=False  # ✅ FIX: Valore fisso dato che non è più configurabile dall'utente
+            min_distance_mm=request.parametri.min_distance_mm
         )
         
         # Inizializza servizio robusto
@@ -619,13 +623,16 @@ def get_batch_result(
         # Modalità multi-batch: trova tutti i batch correlati
         batch_results = [format_batch_result(main_batch)]
         
-        # ✨ MIGLIORAMENTO: Ricerca batch correlati più ampia
+        # 🔧 FIX MULTI-BATCH v2: Ricerca batch correlati con finestra progressiva
         if main_batch.created_at:
             from datetime import timedelta
-            # Prima prova con finestra di 5 minuti
-            time_window = timedelta(minutes=5)
+            
+            # Prima prova: finestra stretta per multi-batch (±1 minuto)
+            time_window = timedelta(minutes=1)
             start_time = main_batch.created_at - time_window
             end_time = main_batch.created_at + time_window
+            
+            logger.info(f"🔍 Ricerca batch correlati per {main_batch.id} nel periodo {start_time} - {end_time}")
             
             related_batches = db.query(BatchNesting).options(
                 joinedload(BatchNesting.autoclave)
@@ -636,12 +643,16 @@ def get_batch_result(
                 BatchNesting.stato.in_(['sospeso', 'confermato'])  # Solo batch validi
             ).all()
             
-            logger.info(f"🔗 Trovati {len(related_batches)} batch correlati (5min) per {main_batch.id}")
+            logger.info(f"🔗 Trovati {len(related_batches)} batch correlati (±1min) per {main_batch.id}")
             
-            # Se non troviamo batch correlati nella finestra ristretta, espandi la ricerca
+            # Log dettagliato dei batch trovati
+            for rb in related_batches:
+                logger.info(f"   - Batch {rb.id[:8]}... | Autoclave: {rb.autoclave_id} | ODL: {rb.odl_ids}")
+            
+            # Se non troviamo batch nella finestra stretta, espandi progressivamente
             if not related_batches:
-                logger.info("🔍 Espansione ricerca batch correlati a ±30 minuti")
-                expanded_window = timedelta(minutes=30)
+                logger.info("🔍 Espansione ricerca a ±5 minuti")
+                expanded_window = timedelta(minutes=5)
                 start_time = main_batch.created_at - expanded_window
                 end_time = main_batch.created_at + expanded_window
                 
@@ -652,22 +663,22 @@ def get_batch_result(
                     BatchNesting.created_at >= start_time,
                     BatchNesting.created_at <= end_time,
                     BatchNesting.stato.in_(['sospeso', 'confermato'])
-                ).limit(10).all()  # Limite per evitare troppe visualizzazioni
+                ).limit(20).all()  # Limite ragionevole
                 
-                logger.info(f"🔗 Trovati {len(related_batches)} batch correlati (30min) per {main_batch.id}")
+                logger.info(f"🔗 Trovati {len(related_batches)} batch correlati (±5min) per {main_batch.id}")
+            
+            # Verifica che i batch abbiano autoclavi diverse (caratteristica del multi-batch)
+            if related_batches:
+                main_autoclave_id = main_batch.autoclave_id
+                truly_related = []
                 
-                # Se ancora non troviamo batch, mostra almeno gli ultimi batch recenti
-                if not related_batches:
-                    logger.info("🔍 Fallback: mostra ultimi 5 batch recenti")
-                    recent_batches = db.query(BatchNesting).options(
-                        joinedload(BatchNesting.autoclave)
-                    ).filter(
-                        BatchNesting.id != main_batch.id,
-                        BatchNesting.stato.in_(['sospeso', 'confermato'])
-                    ).order_by(BatchNesting.created_at.desc()).limit(5).all()
-                    
-                    related_batches = recent_batches
-                    logger.info(f"🔗 Mostrati {len(related_batches)} batch recenti come fallback")
+                for rb in related_batches:
+                    # Se le autoclavi sono diverse, potrebbero essere batch multi-autoclave
+                    if rb.autoclave_id != main_autoclave_id:
+                        truly_related.append(rb)
+                
+                related_batches = truly_related
+                logger.info(f"🎯 Filtrati {len(related_batches)} batch con autoclavi diverse (multi-batch)")
             
             # Aggiungi i batch correlati
             for related_batch in related_batches:
@@ -1615,4 +1626,294 @@ def validate_nesting_layout(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Errore durante la validazione: {str(e)}"
+        )
+
+@router.post("/genera-multi", response_model=Dict[str, Any],
+             summary="🚀 Genera batch multipli automaticamente per tutte le autoclavi disponibili")
+def genera_nesting_multi_batch(
+    request: NestingMultiRequest, 
+    db: Session = Depends(get_db)
+):
+    """
+    🔧 ENDPOINT MULTI-BATCH AUTOMATICO
+    ==================================
+    
+    Genera automaticamente batch nesting per tutte le autoclavi disponibili:
+    
+    - **Auto-selezione autoclavi**: Utilizza tutte le autoclavi disponibili nel sistema
+    - **Generazione parallela**: Crea un batch per ogni autoclave con gli stessi ODL
+    - **Ordinamento per efficienza**: Ordina i risultati per efficienza decrescente
+    - **Gestione errori robusta**: Continua anche se qualche autoclave fallisce
+    - **Response unified**: Ritorna tutti i batch generati con statistiche aggregate
+    
+    **Parametri:**
+    - odl_ids: Lista degli ID degli ODL da processare
+    - parametri: Configurazione algoritmo nesting (usata per tutte le autoclavi)
+    
+    **Ritorna:**
+    - Lista di tutti i batch generati
+    - Statistiche aggregate di efficienza
+    - Best batch ID (quello con efficienza maggiore)
+    - Report di successo/fallimento per ogni autoclave
+    """
+    
+    try:
+        logger.info(f"🚀 Avvio generazione multi-batch: {len(request.odl_ids)} ODL")
+        
+        # 🔍 DEBUG: Log dettagliato input
+        logger.info(f"🔍 DEBUG INPUT: ODL IDs: {request.odl_ids}")
+        logger.info(f"🔍 DEBUG INPUT: Parametri: padding={request.parametri.padding_mm}mm, min_distance={request.parametri.min_distance_mm}mm")
+        
+        # Validazione input base
+        if not request.odl_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Lista ODL non può essere vuota"
+            )
+        
+        # Conversione IDs da string a int
+        try:
+            odl_ids = [int(id_str) for id_str in request.odl_ids]
+            logger.info(f"🔍 DEBUG: ODL IDs convertiti: {odl_ids}")
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"IDs ODL non validi: {str(e)}"
+            )
+        
+        # Recupera tutte le autoclavi disponibili
+        from models.autoclave import Autoclave
+        logger.info("🔍 DEBUG: Recupero autoclavi disponibili...")
+        autoclavi_disponibili = db.query(Autoclave).filter(
+            Autoclave.stato == StatoAutoclaveEnum.DISPONIBILE
+        ).all()
+        
+        logger.info(f"🔍 DEBUG: Trovate {len(autoclavi_disponibili)} autoclavi: {[(a.id, a.nome) for a in autoclavi_disponibili]}")
+        
+        if not autoclavi_disponibili:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Nessuna autoclave disponibile per la generazione multi-batch"
+            )
+        
+        logger.info(f"🏭 Trovate {len(autoclavi_disponibili)} autoclavi disponibili")
+        
+        # Parametri nesting
+        parameters = NestingParameters(
+            padding_mm=request.parametri.padding_mm,
+            min_distance_mm=request.parametri.min_distance_mm
+        )
+        logger.info(f"🔍 DEBUG: Parametri nesting: {parameters}")
+        
+        # 🚀 ALGORITMO DISTRIBUZIONE v2.0: Distribuzione ciclica intelligente degli ODL
+        logger.info(f"📊 Distribuzione {len(odl_ids)} ODL tra {len(autoclavi_disponibili)} autoclavi")
+        
+        # Crea distribuzione ciclica: ODL i → autoclave (i % num_autoclavi)
+        autoclave_assignments = {}
+        for i, odl_id in enumerate(odl_ids):
+            autoclave_index = i % len(autoclavi_disponibili)
+            target_autoclave_id = autoclavi_disponibili[autoclave_index].id
+            
+            if target_autoclave_id not in autoclave_assignments:
+                autoclave_assignments[target_autoclave_id] = []
+            autoclave_assignments[target_autoclave_id].append(odl_id)
+        
+        # Log della distribuzione
+        logger.info("🔍 DEBUG: DISTRIBUZIONE FINALE:")
+        for autoclave_id, assigned_odls in autoclave_assignments.items():
+            autoclave_nome = next(a.nome for a in autoclavi_disponibili if a.id == autoclave_id)
+            logger.info(f"🏭 {autoclave_nome} (ID:{autoclave_id}): ODL {assigned_odls} ({len(assigned_odls)} pezzi)")
+        
+        # Inizializza servizio
+        logger.info("🔍 DEBUG: Inizializzazione servizio nesting...")
+        nesting_service = NestingService()
+        
+        # Genera batch per ogni autoclave
+        logger.info("🔍 DEBUG: Avvio generazione batch per ogni autoclave...")
+        batch_results = []
+        success_count = 0
+        error_count = 0
+        
+        for i, autoclave in enumerate(autoclavi_disponibili):
+            try:
+                logger.info(f"🔍 DEBUG: Processo autoclave {i+1}/{len(autoclavi_disponibili)}: {autoclave.nome}")
+                
+                # 🎯 DISTRIBUZIONE INTELLIGENTE: Usa solo gli ODL assegnati a questa autoclave
+                assigned_odl_ids = autoclave_assignments.get(autoclave.id, [])
+                
+                if not assigned_odl_ids:
+                    logger.info(f"⚠️ Nessun ODL assegnato a {autoclave.nome}, saltando...")
+                    batch_results.append({
+                        'batch_id': None,
+                        'autoclave_id': autoclave.id,
+                        'autoclave_nome': autoclave.nome,
+                        'efficiency': 0,
+                        'total_weight': 0,
+                        'positioned_tools': 0,
+                        'excluded_odls': 0,
+                        'success': False,
+                        'message': f'Nessun ODL assegnato a {autoclave.nome}'
+                    })
+                    error_count += 1
+                    continue
+                
+                logger.info(f"🔄 Generazione batch per {autoclave.nome}: {len(assigned_odl_ids)} ODL assegnati {assigned_odl_ids}")
+                
+                # 🔧 FIX ALGORITMO: Genera nesting DIRETTAMENTE per questa autoclave specifica
+                # Con SOLO gli ODL assegnati alla distribuzione ciclica
+                logger.info(f"🔍 DEBUG: Chiamata generate_nesting per autoclave {autoclave.id} con ODL {assigned_odl_ids}")
+                
+                nesting_result = nesting_service.generate_nesting(
+                    db=db,
+                    odl_ids=assigned_odl_ids,  # ✅ USA SOLO GLI ODL ASSEGNATI
+                    autoclave_id=autoclave.id,
+                    parameters=parameters
+                )
+                
+                logger.info(f"🔍 DEBUG: Risultato nesting per {autoclave.nome}: success={nesting_result.success if nesting_result else None}")
+                
+                # Converti il risultato nel formato atteso
+                if nesting_result and nesting_result.success:
+                    logger.info(f"🔍 DEBUG: Creazione batch per {autoclave.nome}...")
+                    # Crea batch nel database per questa autoclave
+                    batch_id = nesting_service._create_robust_batch(db, nesting_result, autoclave.id, parameters)
+                    logger.info(f"🔍 DEBUG: Batch creato con ID: {batch_id}")
+                    
+                    result = {
+                        'success': True,
+                        'batch_id': batch_id,
+                        'efficiency': nesting_result.efficiency,
+                        'total_weight': nesting_result.total_weight,
+                        'positioned_tools': [
+                            {
+                                'odl_id': tool.odl_id,
+                                'x': tool.x,
+                                'y': tool.y,
+                                'width': tool.width,
+                                'height': tool.height,
+                                'peso': tool.peso,
+                                'rotated': tool.rotated,
+                                'lines_used': tool.lines_used
+                            } for tool in nesting_result.positioned_tools
+                        ],
+                        'excluded_odls': nesting_result.excluded_odls,
+                        'message': f'Nesting completato per autoclave {autoclave.nome}'
+                    }
+                else:
+                    logger.warning(f"🔍 DEBUG: Nesting fallito per {autoclave.nome}")
+                    result = {
+                        'success': False,
+                        'batch_id': None,
+                        'efficiency': 0,
+                        'total_weight': 0,
+                        'positioned_tools': [],
+                        'excluded_odls': nesting_result.excluded_odls if nesting_result else [],
+                        'message': f'Nesting fallito per autoclave {autoclave.nome}: {nesting_result.algorithm_status if nesting_result else "Errore sconosciuto"}'
+                    }
+                
+                if result['success'] and result.get('batch_id'):
+                    # Recupera il batch completo per le statistiche
+                    logger.info(f"🔍 DEBUG: Recupero batch {result['batch_id']} dal database...")
+                    batch = db.query(BatchNesting).filter(
+                        BatchNesting.id == result['batch_id']
+                    ).first()
+                    
+                    if batch:
+                        batch_info = {
+                            'batch_id': result['batch_id'],
+                            'autoclave_id': autoclave.id,
+                            'autoclave_nome': autoclave.nome,
+                            'efficiency': result['efficiency'],
+                            'total_weight': result['total_weight'],
+                            'positioned_tools': len(result['positioned_tools']),
+                            'excluded_odls': len(result['excluded_odls']),
+                            'success': True,
+                            'message': result['message']
+                        }
+                        batch_results.append(batch_info)
+                        success_count += 1
+                        logger.info(f"✅ Batch generato per {autoclave.nome}: {result['batch_id']} (efficienza: {result['efficiency']:.1f}%)")
+                    else:
+                        logger.warning(f"⚠️ Batch ID {result['batch_id']} non trovato nel database")
+                        error_count += 1
+                else:
+                    logger.warning(f"⚠️ Generazione fallita per {autoclave.nome}: {result['message']}")
+                    batch_results.append({
+                        'batch_id': None,
+                        'autoclave_id': autoclave.id,
+                        'autoclave_nome': autoclave.nome,
+                        'efficiency': 0,
+                        'total_weight': 0,
+                        'positioned_tools': 0,
+                        'excluded_odls': len(assigned_odl_ids),
+                        'success': False,
+                        'message': result['message']
+                    })
+                    error_count += 1
+                    
+            except Exception as autoclave_error:
+                logger.error(f"❌ Errore durante generazione per {autoclave.nome}: {str(autoclave_error)}")
+                import traceback
+                logger.error(f"❌ Stack trace: {traceback.format_exc()}")
+                batch_results.append({
+                    'batch_id': None,
+                    'autoclave_id': autoclave.id,
+                    'autoclave_nome': autoclave.nome,
+                    'efficiency': 0,
+                    'total_weight': 0,
+                    'positioned_tools': 0,
+                    'excluded_odls': len(autoclave_assignments.get(autoclave.id, [])),
+                    'success': False,
+                    'message': f"Errore durante generazione: {str(autoclave_error)}"
+                })
+                error_count += 1
+        
+        logger.info(f"🔍 DEBUG: Completamento generazione multi-batch: {success_count} successi, {error_count} errori")
+        
+        # Ordina i risultati per efficienza decrescente
+        batch_results.sort(key=lambda x: x['efficiency'], reverse=True)
+        
+        # Determina il best batch (quello con efficienza maggiore)
+        successful_batches = [b for b in batch_results if b['success']]
+        best_batch_id = successful_batches[0]['batch_id'] if successful_batches else None
+        
+        # Statistiche aggregate
+        total_efficiency = sum(b['efficiency'] for b in successful_batches)
+        avg_efficiency = total_efficiency / len(successful_batches) if successful_batches else 0
+        
+        # Log del risultato finale
+        logger.info(f"🎯 Multi-batch completato: {success_count} successi, {error_count} errori")
+        if best_batch_id:
+            logger.info(f"🏆 Best batch: {best_batch_id} con efficienza {successful_batches[0]['efficiency']:.1f}%")
+        
+        # 🔍 DEBUG: Log dettagliato di tutti i batch generati
+        logger.info(f"📊 RIEPILOGO BATCH GENERATI:")
+        for br in batch_results:
+            autoclave_nome = br.get('autoclave_nome', 'N/A')
+            batch_id = br.get('batch_id', 'N/A')
+            efficiency = br.get('efficiency', 0)
+            success = br.get('success', False)
+            logger.info(f"   - {autoclave_nome}: {batch_id} | Efficienza: {efficiency:.1f}% | {'✅' if success else '❌'}")
+        
+        # Prepara risposta
+        return {
+            'success': success_count > 0,
+            'message': f"Generazione multi-batch completata: {success_count} batch creati, {error_count} errori",
+            'total_autoclavi': len(autoclavi_disponibili),
+            'success_count': success_count,
+            'error_count': error_count,
+            'best_batch_id': best_batch_id,
+            'avg_efficiency': round(avg_efficiency, 2),
+            'batch_results': batch_results,
+            'execution_id': f"multi_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        }
+        
+    except HTTPException:
+        # Re-raise HTTPException as is
+        raise
+    except Exception as e:
+        logger.error(f"❌ Errore imprevisto nella generazione multi-batch: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore interno del server: {str(e)}"
         )

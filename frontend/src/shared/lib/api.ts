@@ -1266,10 +1266,20 @@ export const batchNestingApi = {
     parametri: {
       padding_mm: number;
       min_distance_mm: number;
-      priorita_area: boolean;
     };
   }) => {
     return apiRequest<any>('/batch_nesting/genera', 'POST', request);
+  },
+
+  // 🚀 NUOVO: Endpoint multi-batch con distribuzione intelligente ODL
+  generaMulti: async (request: {
+    odl_ids: string[];
+    parametri: {
+      padding_mm: number;
+      min_distance_mm: number;
+    };
+  }) => {
+    return apiRequest<any>('/batch_nesting/genera-multi', 'POST', request);
   },
 
   fetchBatchNestings: (params?: {

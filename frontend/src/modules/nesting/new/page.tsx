@@ -1,22 +1,25 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { FormField } from '@/shared/components/form';
-import { Loader2, Settings, Play, AlertTriangle, CheckCircle } from 'lucide-react';
-import { odlApi, autoclavesApi } from '@/lib/api';
-import axios from 'axios';
+import { Button } from '@/shared/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
+import { Checkbox } from '@/shared/components/ui/checkbox';
+import { Badge } from '@/shared/components/ui/badge';
+import { Alert, AlertDescription } from '@/shared/components/ui/alert';
+import { 
+  Loader2, 
+  Play, 
+  Package, 
+  Factory, 
+  Plane,
+  AlertTriangle
+} from 'lucide-react';
+import { useStandardToast } from '@/shared/hooks/use-standard-toast';
+import { batchNestingApi, odlApi, autoclavesApi } from '@/shared/lib/api';
+import { NestingParams, defaultNestingParams } from '../schema';
+import AerospaceParametersForm from './components/AerospaceParametersForm';
 
-// Interfacce TypeScript
 interface ODLData {
   id: number;
   parte: {
@@ -48,119 +51,165 @@ interface AutoclaveData {
   max_load_kg?: number;
 }
 
-interface NestingParametri {
-  padding_mm: number;
-  min_distance_mm: number;
-  priorita_area: boolean;
-  accorpamento_odl: boolean;
-}
-
 export default function NewNestingPage() {
   const router = useRouter();
-
-  // States
-  const [odlList, setOdlList] = useState<ODLData[]>([]);
-  const [autoclaveList, setAutoclaveList] = useState<AutoclaveData[]>([]);
-  const [selectedOdl, setSelectedOdl] = useState<string[]>([]);
-  const [selectedAutoclave, setSelectedAutoclave] = useState<string>('');
-  const [parametri, setParametri] = useState<NestingParametri>({
-    padding_mm: 1,
-    min_distance_mm: 1,
-    priorita_area: true,
-    accorpamento_odl: false
-  });
+  const { success, error: showError } = useStandardToast();
   
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [odlList, setOdlList] = useState<ODLData[]>([]);
+  const [autoclaveList, setAutoclaveList] = useState<AutoclaveData[]>([]);
+  const [selectedOdl, setSelectedOdl] = useState<string[]>([]);
+  const [selectedAutoclavi, setSelectedAutoclavi] = useState<string[]>([]);
+  const [parameters, setParameters] = useState<NestingParams>(defaultNestingParams);
   const [error, setError] = useState<string | null>(null);
 
-  // Caricamento dati iniziali
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        // Carica ODL in attesa di cura
-        const odlData = await odlApi.fetchODLs({ status: 'Attesa Cura' });
-        console.log('📋 ODL caricati:', odlData);
-        setOdlList(odlData);
-
-        // Carica autoclavi disponibili
-        const autoclaveResponse = await autoclavesApi.fetchAvailableAutoclaves();
-        console.log('🏭 Autoclavi caricate:', autoclaveResponse);
-        setAutoclaveList(autoclaveResponse);
-
-        if (autoclaveResponse.length === 0) {
-          setError('⚠️ Nessuna autoclave disponibile. Verifica che almeno un\'autoclave sia in stato "DISPONIBILE".');
-        }
-
-      } catch (err: any) {
-        console.error('❌ Errore nel caricamento dati:', err);
-        setError(`Errore nel caricamento: ${err.message || 'Errore sconosciuto'}`);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadData();
   }, []);
 
-  // Gestione selezione ODL
-  const handleOdlSelection = (odlId: string, checked: boolean) => {
-    if (checked) {
-      setSelectedOdl(prev => [...prev, odlId]);
-    } else {
-      setSelectedOdl(prev => prev.filter(id => id !== odlId));
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // 🔧 FIX: Usa endpoint nesting che garantisce dati corretti per il nesting
+      const nestingData = await batchNestingApi.getData();
+      
+      // 🔍 DEBUG: Log dati ricevuti
+      console.log('🔍 ODL ricevuti:', nestingData.odl_in_attesa_cura?.length || 0);
+      console.log('🔍 Autoclavi ricevute:', nestingData.autoclavi_disponibili?.length || 0, nestingData.autoclavi_disponibili);
+      
+      setOdlList(nestingData.odl_in_attesa_cura || []);
+      setAutoclaveList(nestingData.autoclavi_disponibili || []);
+      
+    } catch (err: any) {
+      console.error('Errore nel caricamento dati:', err);
+      showError('Errore nel caricamento dei dati');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Gestione selezione autoclave
-  const handleAutoclaveSelection = (autoclaveId: string) => {
-    setSelectedAutoclave(autoclaveId);
+  const handleOdlSelection = (odlId: string, checked: boolean) => {
+    setSelectedOdl(prev => 
+      checked 
+        ? [...prev, odlId]
+        : prev.filter(id => id !== odlId)
+    );
   };
 
-  // Generazione nesting
+  const handleAutoclaveSelection = (autoclaveId: string, checked: boolean) => {
+    console.log(`🔍 Autoclave ${autoclaveId} ${checked ? 'SELEZIONATA' : 'DESELEZIONATA'}`);
+    setSelectedAutoclavi(prev => {
+      const newSelection = checked 
+        ? [...prev, autoclaveId]
+        : prev.filter(id => id !== autoclaveId);
+      console.log('🔍 Nuova selezione autoclavi:', newSelection);
+      return newSelection;
+    });
+  };
+
+  const handleSelectAllAutoclavi = (checked: boolean) => {
+    const newSelection = checked ? autoclaveList.map(a => a.id.toString()) : [];
+    console.log(`🔍 ${checked ? 'SELEZIONA' : 'DESELEZIONA'} TUTTE le autoclavi:`, newSelection);
+    setSelectedAutoclavi(newSelection);
+  };
+
   const generateNesting = async () => {
     if (selectedOdl.length === 0) {
       setError('Seleziona almeno un ODL per generare il nesting');
       return;
     }
 
-    if (!selectedAutoclave) {
-      setError('Seleziona un\'autoclave per generare il nesting');
+    if (selectedAutoclavi.length === 0) {
+      setError('Seleziona almeno un\'autoclave per generare il nesting');
       return;
     }
 
     try {
       setGenerating(true);
       setError(null);
-
-      console.log('🚀 Avvio generazione nesting:', {
-        odl_ids: selectedOdl,
-        autoclave_ids: [selectedAutoclave],
-        parametri
-      });
-
-      // Chiamata API per generare il nesting
-      const response = await axios.post('/api/batch_nesting/genera', {
-        odl_ids: selectedOdl,
-        autoclave_ids: [selectedAutoclave],
-        parametri
-      });
-
-      console.log('✅ Nesting generato:', response.data);
-
-      // Reindirizza alla pagina di visualizzazione del risultato
-      if (response.data.batch_id) {
-        router.push(`/nesting/result/${response.data.batch_id}`);
+      
+      // 🔍 DEBUG: Log dettagliato delle selezioni
+      console.log('=== DEBUG SELEZIONI ===');
+      console.log('ODL selezionati:', selectedOdl.length, selectedOdl);
+      console.log('Autoclavi selezionate:', selectedAutoclavi.length, selectedAutoclavi);
+      console.log('Lista autoclavi disponibili:', autoclaveList.map(a => `${a.id}-${a.nome}`));
+      console.log('Condizione multi-batch:', selectedAutoclavi.length > 1);
+      
+      let response;
+      
+      if (selectedAutoclavi.length > 1) {
+        // 🚀 MULTI-BATCH: Usa endpoint specifico con distribuzione intelligente ODL
+        console.log('🚀 CHIAMANDO ENDPOINT MULTI-BATCH per', selectedAutoclavi.length, 'autoclavi');
+        response = await batchNestingApi.generaMulti({
+          odl_ids: selectedOdl,
+          parametri: {
+            padding_mm: parameters.padding_mm,
+            min_distance_mm: parameters.min_distance_mm
+          }
+        });
       } else {
-        setError('Errore: ID batch non ricevuto dal server');
+        // Single batch: usa endpoint standard
+        console.log('🔄 CHIAMANDO ENDPOINT SINGLE-BATCH per autoclave', selectedAutoclavi[0]);
+        response = await batchNestingApi.genera({
+          odl_ids: selectedOdl,
+          autoclave_ids: selectedAutoclavi,
+          parametri: {
+            padding_mm: parameters.padding_mm,
+            min_distance_mm: parameters.min_distance_mm
+          }
+        });
       }
 
+      // 🔍 DEBUG: Log completo della risposta
+      console.log('=== RISPOSTA ENDPOINT ===');
+      console.log('Response object:', response);
+      console.log('Success:', response?.success);
+      console.log('Success count:', response?.success_count);
+      console.log('Total autoclavi:', response?.total_autoclavi);
+      console.log('Best batch ID:', response?.best_batch_id);
+      console.log('Batch results:', response?.batch_results);
+
+      if (response?.success) {
+        // Controllo per multi-batch reale
+        const isRealMultiBatch = selectedAutoclavi.length > 1 && 
+                                response?.success_count > 1 && 
+                                response?.batch_results?.length > 1;
+        
+        console.log('🔍 Is real multi-batch?', isRealMultiBatch);
+        console.log('🔍 Selected autoclavi:', selectedAutoclavi.length);
+        console.log('🔍 Success count:', response?.success_count);
+        console.log('🔍 Batch results length:', response?.batch_results?.length);
+        
+        success(`${isRealMultiBatch ? 'Multi-batch' : 'Batch'} generato con successo!`);
+        
+        // Redirect alla pagina risultati
+        if (isRealMultiBatch && response.best_batch_id) {
+          // Multi-batch reale: vai al best batch con parametro multi
+          console.log('🚀 Redirect to MULTI-BATCH result:', response.best_batch_id);
+          router.push(`/nesting/result/${response.best_batch_id}?multi=true`);
+        } else if (response.best_batch_id) {
+          // Single batch: vai al batch generato
+          console.log('🚀 Redirect to SINGLE-BATCH result:', response.best_batch_id);
+          router.push(`/nesting/result/${response.best_batch_id}`);
+        } else if (response.batch_id) {
+          // Fallback per compatibility
+          console.log('🚀 Redirect to FALLBACK result:', response.batch_id);
+          router.push(`/nesting/result/${response.batch_id}`);
+        } else {
+          // Fallback alla lista nesting
+          console.log('⚠️ No batch ID found, redirect to list');
+          router.push('/nesting');
+        }
+      } else {
+        throw new Error(response?.message || 'Errore nella generazione');
+      }
+      
     } catch (err: any) {
-      console.error('❌ Errore nella generazione nesting:', err);
-      setError(`Errore nella generazione: ${err.response?.data?.detail || err.message || 'Errore sconosciuto'}`);
+      console.error('Errore nella generazione:', err);
+      showError(err.message || 'Errore nella generazione del nesting');
     } finally {
       setGenerating(false);
     }
@@ -168,34 +217,22 @@ export default function NewNestingPage() {
 
   if (loading) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="text-center">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Caricamento dati...</h2>
-            <p className="text-muted-foreground">Recupero ODL e autoclavi disponibili</p>
-          </div>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Nuovo Nesting Automatico</h1>
-          <p className="text-muted-foreground">
-            Seleziona ODL e autoclave per generare un layout ottimizzato con OR-Tools
-          </p>
-        </div>
-        <Button 
-          onClick={() => router.back()} 
-          variant="outline"
-        >
-          Indietro
-        </Button>
+    <div className="container mx-auto py-6 space-y-6">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
+          <Plane className="h-8 w-8 text-blue-600" />
+          Nuovo Nesting Aerospace
+        </h1>
+        <p className="text-muted-foreground">
+          Crea un nuovo batch di nesting con parametri ottimizzati per l'industria aerospaziale
+        </p>
       </div>
 
       {/* Errori */}
@@ -206,59 +243,85 @@ export default function NewNestingPage() {
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Selezione ODL */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5" />
-              Selezione ODL ({selectedOdl.length} selezionati)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {odlList.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">
-                  Nessun ODL in stato "Attesa Cura" disponibile
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3 max-h-96 overflow-y-auto">
-                {odlList.map((odl) => (
-                  <div key={odl.id} className="flex items-center space-x-3 p-3 border rounded-lg">
-                    <Checkbox
-                      id={`odl-${odl.id}`}
-                      checked={selectedOdl.includes(odl.id.toString())}
-                      onCheckedChange={(checked) => 
-                        handleOdlSelection(odl.id.toString(), checked as boolean)
-                      }
-                    />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">ODL #{odl.id}</span>
-                        <Badge variant="secondary">{odl.parte.part_number}</Badge>
-                        <Badge variant="outline">Priorità {odl.priorita}</Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {odl.parte.descrizione_breve}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Tool: {odl.tool.part_number_tool} • Valvole: {odl.parte.num_valvole_richieste}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Selezione Autoclave e Parametri */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Colonna sinistra - Selezione ODL */}
         <div className="space-y-6">
-          {/* Selezione Autoclave */}
           <Card>
             <CardHeader>
-              <CardTitle>Autoclave</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Package className="h-5 w-5" />
+                ODL Disponibili
+                <Badge variant="outline">
+                  {selectedOdl.length} / {odlList.length}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {odlList.length === 0 ? (
+                <div className="text-center py-4">
+                  <p className="text-muted-foreground text-sm">
+                    Nessun ODL disponibile per il nesting
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {odlList.map((odl) => (
+                    <div key={odl.id} className="flex items-center space-x-3 p-2 border rounded-lg">
+                      <Checkbox
+                        id={`odl-${odl.id}`}
+                        checked={selectedOdl.includes(odl.id.toString())}
+                        onCheckedChange={(checked) => 
+                          handleOdlSelection(odl.id.toString(), checked as boolean)
+                        }
+                      />
+                      <div className="flex-1">
+                        <div className="font-medium">{odl.parte.part_number}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {odl.parte.descrizione_breve}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Tool: {odl.tool.part_number_tool} • Priorità: {odl.priorita}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Colonna destra - Selezione Autoclavi e Parametri */}
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Factory className="h-5 w-5" />
+                  Autoclavi
+                  <Badge variant="outline">
+                    {selectedAutoclavi.length} / {autoclaveList.length}
+                  </Badge>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleSelectAllAutoclavi(true)}
+                    disabled={selectedAutoclavi.length === autoclaveList.length}
+                  >
+                    Seleziona Tutte
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleSelectAllAutoclavi(false)}
+                    disabled={selectedAutoclavi.length === 0}
+                  >
+                    Deseleziona Tutte
+                  </Button>
+                </div>
+              </CardTitle>
             </CardHeader>
             <CardContent>
               {autoclaveList.length === 0 ? (
@@ -273,14 +336,10 @@ export default function NewNestingPage() {
                     <div key={autoclave.id} className="flex items-center space-x-3">
                       <Checkbox
                         id={`autoclave-${autoclave.id}`}
-                        checked={selectedAutoclave === autoclave.id.toString()}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            handleAutoclaveSelection(autoclave.id.toString());
-                          } else {
-                            setSelectedAutoclave('');
-                          }
-                        }}
+                        checked={selectedAutoclavi.includes(autoclave.id.toString())}
+                        onCheckedChange={(checked) => 
+                          handleAutoclaveSelection(autoclave.id.toString(), checked as boolean)
+                        }
                       />
                       <div className="flex-1">
                         <div className="font-medium">{autoclave.nome}</div>
@@ -295,84 +354,46 @@ export default function NewNestingPage() {
                   ))}
                 </div>
               )}
+
+              {selectedAutoclavi.length > 0 && (
+                <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
+                  <p className="text-sm text-green-800 font-medium mb-2">
+                    🚀 {selectedAutoclavi.length > 1 ? 'Multi-Batch' : 'Single-Batch'}: {selectedAutoclavi.length} autoclavi selezionate
+                  </p>
+                  <p className="text-xs text-green-700 mb-2">
+                    {selectedAutoclavi.length > 1 
+                      ? 'Verrà generato un batch per ogni autoclave selezionata.'
+                      : 'Verrà generato un batch per l\'autoclave selezionata.'
+                    }
+                  </p>
+                  <div className="text-xs text-green-600">
+                    🔍 DEBUG: IDs selezionati: [{selectedAutoclavi.join(', ')}]
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedAutoclavi.map((autoclaveId) => {
+                      const autoclave = autoclaveList.find(a => a.id.toString() === autoclaveId);
+                      return autoclave ? (
+                        <Badge key={autoclave.id} variant="secondary" className="text-xs">
+                          {autoclave.nome}
+                        </Badge>
+                      ) : null;
+                    })}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
-          {/* Parametri Nesting */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings className="h-5 w-5" />
-                Parametri Nesting
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <FormField
-                label="Padding (mm)"
-                name="padding_mm"
-                type="number"
-                value={parametri.padding_mm}
-                onChange={(value) => setParametri(prev => ({
-                  ...prev,
-                  padding_mm: Number(value) || 1
-                }))}
-                min={5}
-                max={100}
-                description="Spazio aggiuntivo attorno ai pezzi"
-              />
-
-              <FormField
-                label="Distanza minima (mm)"
-                name="min_distance_mm"
-                type="number"
-                value={parametri.min_distance_mm}
-                onChange={(value) => setParametri(prev => ({
-                  ...prev,
-                  min_distance_mm: Number(value) || 15
-                }))}
-                min={5}
-                max={50}
-                description="Distanza minima tra i pezzi"
-              />
-
-              <div className="flex items-center justify-between rounded-lg border p-4">
-                <div className="space-y-0.5">
-                  <Label className="text-sm font-medium">Priorità area</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Ottimizza per ridurre l'area utilizzata
-                  </p>
-                </div>
-                <Switch
-                  checked={parametri.priorita_area}
-                  onCheckedChange={(checked) => setParametri(prev => ({
-                    ...prev,
-                    priorita_area: checked
-                  }))}
-                />
-              </div>
-
-              <div className="flex items-center justify-between rounded-lg border p-4">
-                <div className="space-y-0.5">
-                  <Label className="text-sm font-medium">Accorpamento ODL</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Raggruppa ODL simili per ottimizzare lo spazio
-                  </p>
-                </div>
-                <Switch
-                  checked={parametri.accorpamento_odl}
-                  onCheckedChange={(checked) => setParametri(prev => ({
-                    ...prev,
-                    accorpamento_odl: checked
-                  }))}
-                />
-              </div>
-            </CardContent>
-          </Card>
+          {/* Form Parametri Aerospace */}
+          <AerospaceParametersForm
+            initialParameters={parameters}
+            onParametersChange={setParameters}
+          />
 
           {/* Pulsante Genera */}
           <Button
             onClick={generateNesting}
-            disabled={generating || selectedOdl.length === 0 || !selectedAutoclave}
+            disabled={generating || selectedOdl.length === 0 || selectedAutoclavi.length === 0}
             className="w-full"
             size="lg"
           >
@@ -384,7 +405,7 @@ export default function NewNestingPage() {
             ) : (
               <>
                 <Play className="mr-2 h-4 w-4" />
-                Genera Nesting
+                Genera {selectedAutoclavi.length > 1 ? 'Multi-Batch' : 'Nesting'} Aerospace
               </>
             )}
           </Button>
@@ -392,7 +413,7 @@ export default function NewNestingPage() {
       </div>
 
       {/* Riepilogo selezione */}
-      {(selectedOdl.length > 0 || selectedAutoclave) && (
+      {(selectedOdl.length > 0 || selectedAutoclavi.length > 0) && (
         <Card>
           <CardHeader>
             <CardTitle>Riepilogo Selezione</CardTitle>
@@ -404,17 +425,23 @@ export default function NewNestingPage() {
                 <p className="text-2xl font-bold text-blue-600">{selectedOdl.length}</p>
               </div>
               <div>
-                <h4 className="font-medium mb-2">Autoclave</h4>
-                <p className="text-sm">
-                  {selectedAutoclave ? 
-                    autoclaveList.find(a => a.id.toString() === selectedAutoclave)?.nome || 'Sconosciuta'
+                <h4 className="font-medium mb-2">Autoclavi</h4>
+                <p className="text-2xl font-bold text-green-600">{selectedAutoclavi.length}</p>
+                <p className="text-xs text-muted-foreground">
+                  {selectedAutoclavi.length > 0 
+                    ? `${selectedAutoclavi.length} batch verranno generati`
                     : 'Nessuna selezionata'
                   }
                 </p>
               </div>
               <div>
                 <h4 className="font-medium mb-2">Algoritmo</h4>
-                <p className="text-sm">OR-Tools CP-SAT</p>
+                <p className="text-sm">OR-Tools CP-SAT Aerospace</p>
+                <p className="text-xs text-muted-foreground">
+                  {parameters.boeing_787_mode ? 'Boeing 787 Mode' : 
+                   parameters.airbus_a350_mode ? 'Airbus A350 Mode' : 
+                   'General Aviation Mode'}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -422,4 +449,4 @@ export default function NewNestingPage() {
       )}
     </div>
   );
-} 
+}

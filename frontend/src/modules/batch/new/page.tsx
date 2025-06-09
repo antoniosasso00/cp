@@ -49,7 +49,7 @@ interface AutoclaveData {
 interface NestingParametri {
   padding_mm: number;
   min_distance_mm: number;
-  priorita_area: boolean;
+  // priorita_area rimosso (non utilizzato dall'algoritmo)
 }
 
 export default function NewBatchPage() {
@@ -64,7 +64,7 @@ export default function NewBatchPage() {
   const [nestingParams, setNestingParams] = useState<NestingParametri>({
     padding_mm: 1,
     min_distance_mm: 1,
-    priorita_area: true
+    // priorita_area rimosso
   });
   
   const [loading, setLoading] = useState(true);
@@ -351,17 +351,7 @@ export default function NewBatchPage() {
                 />
               </div>
 
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="priorita-area"
-                  checked={nestingParams.priorita_area}
-                  onCheckedChange={(checked) => setNestingParams(prev => ({
-                    ...prev,
-                    priorita_area: checked
-                  }))}
-                />
-                <Label htmlFor="priorita-area">Priorità area</Label>
-              </div>
+              {/* Parametro priorita_area rimosso - non utilizzato dall'algoritmo */}
             </CardContent>
           </Card>
 

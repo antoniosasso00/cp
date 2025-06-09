@@ -1,11 +1,11 @@
 # CarbonPilot - Schema Summary
-Generato il: 2025-06-05 19:38:49
+Generato il: 2025-06-09 11:24:30
 
 📊 STATISTICHE
 ====================
 • Modelli SQLAlchemy: 19
-• Schemi Pydantic: 91
-• Totale componenti: 110
+• Schemi Pydantic: 92
+• Totale componenti: 111
 
 📊 MODELLI SQLALCHEMY (19 trovati)
 ==================================================
@@ -123,7 +123,7 @@ Utilizzato per benchmarking e controllo delle performance.
    📝 Modello Tool semplificato che corrisponde alla struttura del database attuale
    🔗 Relazioni (1):
 
-📋 SCHEMI PYDANTIC (91 trovati)
+📋 SCHEMI PYDANTIC (92 trovati)
 ==================================================
 
 📄 AutoclaveBase
@@ -682,23 +682,39 @@ Attributes:
       • pieces_excluded: <class 'int'> (obbligatorio, default=PydanticUndefined)
         💬 Numero pezzi esclusi
 
+📄 NestingParamsRequest
+   📝 Schema per i parametri di nesting
+   🏷️  Campi (6):
+      • padding_mm: <class 'float'> (opzionale, default=10)
+        💬 Padding aggiuntivo attorno ai pezzi (mm)
+      • min_distance_mm: <class 'float'> (opzionale, default=15)
+        💬 Distanza minima tra i pezzi (mm)
+      • vacuum_lines_capacity: <class 'int'> (opzionale, default=20)
+        💬 Capacità massima linee di vuoto
+      • use_fallback: <class 'bool'> (opzionale, default=True)
+        💬 Usa fallback greedy se CP-SAT fallisce
+      • allow_heuristic: <class 'bool'> (opzionale, default=True)
+        💬 Usa euristiche avanzate
+      • timeout_override: typing.Optional[int] (opzionale)
+        💬 Override del timeout predefinito
+
 📄 NestingSolveRequest
-   📝 Schema per la richiesta di risoluzione nesting v1.4.12-DEMO
+   📝 Schema per la richiesta dell'endpoint solve v1.4.12-DEMO
    🏷️  Campi (8):
       • autoclave_id: <class 'int'> (obbligatorio, default=PydanticUndefined)
         💬 ID dell'autoclave da utilizzare
       • odl_ids: typing.Optional[typing.List[int]] (opzionale)
-        💬 Lista specifica di ODL (se None, usa tutti quelli disponibili)
-      • padding_mm: <class 'float'> (opzionale, default=20.0)
-        💬 Padding tra tool in mm
-      • min_distance_mm: <class 'float'> (opzionale, default=15.0)
-        💬 Distanza minima dai bordi in mm
-      • vacuum_lines_capacity: <class 'int'> (opzionale, default=10)
+        💬 IDs degli ODL da processare (None = tutti disponibili)
+      • padding_mm: <class 'float'> (opzionale, default=20)
+        💬 Padding tra i tool (5-50mm)
+      • min_distance_mm: <class 'float'> (opzionale, default=15)
+        💬 Distanza minima dai bordi (5-30mm)
+      • vacuum_lines_capacity: typing.Optional[int] (opzionale)
         💬 Capacità massima linee vuoto
       • allow_heuristic: <class 'bool'> (opzionale, default=False)
-        💬 Abilita euristica RRGH
+        💬 Abilita heuristica RRGH
       • timeout_override: typing.Optional[int] (opzionale)
-        💬 Override timeout in secondi
+        💬 Override timeout (30-300s)
       • heavy_piece_threshold_kg: <class 'float'> (opzionale, default=50.0)
         💬 Soglia peso per constraint posizionamento
 
@@ -749,9 +765,9 @@ Attributes:
 📄 ParametriNesting
    📝 Schema per validare i parametri utilizzati nella generazione del nesting
    🏷️  Campi (6):
-      • padding_mm: <class 'float'> (opzionale, default=20.0)
+      • padding_mm: <class 'float'> (opzionale, default=1.0)
         💬 Padding in millimetri tra i tool
-      • min_distance_mm: <class 'float'> (opzionale, default=15.0)
+      • min_distance_mm: <class 'float'> (opzionale, default=1.0)
         💬 Distanza minima tra i tool in millimetri
       • priorita_area: <class 'bool'> (opzionale, default=True)
         💬 Priorità alla massimizzazione dell'area utilizzata
@@ -1187,7 +1203,9 @@ Attributes:
         is set to `'allow'`.
     __pydantic_fields_set__: The names of fields explicitly set during instantiation.
     __pydantic_private__: Values of private attributes set on the model instance.
-   🏷️  Campi (7):
+   🏷️  Campi (8):
+      • numero_odl: <class 'str'> (obbligatorio, default=PydanticUndefined)
+        💬 Numero ODL inserito manualmente (es. 2024001)
       • parte_id: <class 'int'> (obbligatorio, default=PydanticUndefined)
         💬 ID della parte associata all'ordine di lavoro
       • tool_id: <class 'int'> (obbligatorio, default=PydanticUndefined)
@@ -1234,7 +1252,9 @@ Attributes:
         is set to `'allow'`.
     __pydantic_fields_set__: The names of fields explicitly set during instantiation.
     __pydantic_private__: Values of private attributes set on the model instance.
-   🏷️  Campi (7):
+   🏷️  Campi (8):
+      • numero_odl: <class 'str'> (obbligatorio, default=PydanticUndefined)
+        💬 Numero ODL inserito manualmente (es. 2024001)
       • parte_id: <class 'int'> (obbligatorio, default=PydanticUndefined)
         💬 ID della parte associata all'ordine di lavoro
       • tool_id: <class 'int'> (obbligatorio, default=PydanticUndefined)
@@ -1281,7 +1301,9 @@ Attributes:
         is set to `'allow'`.
     __pydantic_fields_set__: The names of fields explicitly set during instantiation.
     __pydantic_private__: Values of private attributes set on the model instance.
-   🏷️  Campi (12):
+   🏷️  Campi (13):
+      • numero_odl: <class 'str'> (obbligatorio, default=PydanticUndefined)
+        💬 Numero ODL inserito manualmente (es. 2024001)
       • parte_id: <class 'int'> (obbligatorio, default=PydanticUndefined)
         💬 ID della parte associata all'ordine di lavoro
       • tool_id: <class 'int'> (obbligatorio, default=PydanticUndefined)
@@ -1338,7 +1360,9 @@ Attributes:
         is set to `'allow'`.
     __pydantic_fields_set__: The names of fields explicitly set during instantiation.
     __pydantic_private__: Values of private attributes set on the model instance.
-   🏷️  Campi (10):
+   🏷️  Campi (11):
+      • numero_odl: <class 'str'> (obbligatorio, default=PydanticUndefined)
+        💬 Numero ODL inserito manualmente (es. 2024001)
       • parte_id: <class 'int'> (obbligatorio, default=PydanticUndefined)
         💬 ID della parte associata all'ordine di lavoro
       • tool_id: <class 'int'> (obbligatorio, default=PydanticUndefined)
@@ -1391,7 +1415,9 @@ Attributes:
         is set to `'allow'`.
     __pydantic_fields_set__: The names of fields explicitly set during instantiation.
     __pydantic_private__: Values of private attributes set on the model instance.
-   🏷️  Campi (7):
+   🏷️  Campi (8):
+      • numero_odl: typing.Optional[str] (opzionale)
+        💬 Numero ODL inserito manualmente (es. 2024001)
       • parte_id: typing.Optional[int] (opzionale)
         💬 ID della parte associata all'ordine di lavoro
       • tool_id: typing.Optional[int] (opzionale)

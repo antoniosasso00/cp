@@ -3,6 +3,9 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
 
+# Import per la relazione autoclave
+from schemas.autoclave import AutoclaveResponse
+
 # Enum per rappresentare i vari stati di un batch nesting
 class StatoBatchNestingEnum(str, Enum):
     DRAFT = "draft"
@@ -107,6 +110,9 @@ class BatchNestingUpdate(BaseModel):
 class BatchNestingResponse(BatchNestingBase):
     id: str = Field(..., description="ID UUID del batch")
     
+    # Relazione autoclave
+    autoclave: Optional[AutoclaveResponse] = Field(None, description="Dati completi dell'autoclave associata")
+    
     # Statistiche aggregate
     numero_nesting: int = Field(default=0, description="Numero di nesting nel batch")
     peso_totale_kg: float = Field(default=0, description="Peso totale in kg")
@@ -156,30 +162,47 @@ class BatchNestingList(BaseModel):
 
 # ========== SCHEMI PER ENDPOINT SOLVE v1.4.12-DEMO ==========
 
+class NestingParamsRequest(BaseModel):
+    """Schema per i parametri di nesting"""
+    padding_mm: float = Field(default=10, ge=0.1, le=100, description="Padding aggiuntivo attorno ai pezzi (mm)")
+    min_distance_mm: float = Field(default=15, ge=0.1, le=50, description="Distanza minima tra i pezzi (mm)")
+    vacuum_lines_capacity: int = Field(default=20, ge=1, le=50, description="Capacità massima linee di vuoto")
+    use_fallback: bool = Field(default=True, description="Usa fallback greedy se CP-SAT fallisce")
+    allow_heuristic: bool = Field(default=True, description="Usa euristiche avanzate")
+    timeout_override: Optional[int] = Field(default=None, description="Override del timeout predefinito")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "padding_mm": 10,
+                "min_distance_mm": 15,
+                "vacuum_lines_capacity": 20,
+                "use_fallback": True,
+                "allow_heuristic": True,
+                "timeout_override": None,
+            }
+        }
+
 class NestingSolveRequest(BaseModel):
-    """Schema per la richiesta di risoluzione nesting v1.4.12-DEMO"""
+    """Schema per la richiesta dell'endpoint solve v1.4.12-DEMO"""
     autoclave_id: int = Field(..., description="ID dell'autoclave da utilizzare")
-    odl_ids: Optional[List[int]] = Field(None, description="Lista specifica di ODL (se None, usa tutti quelli disponibili)")
-    
-    # Parametri algoritmo
-    padding_mm: float = Field(default=1.0, ge=5, le=50, description="Padding tra tool in mm")
-    min_distance_mm: float = Field(default=1.0, ge=5, le=30, description="Distanza minima dai bordi in mm")
-    vacuum_lines_capacity: int = Field(default=20, ge=1, le=50, description="Capacità massima linee vuoto")
-    
-    # Nuovi parametri v1.4.12-DEMO
-    allow_heuristic: bool = Field(default=True, description="Abilita euristica RRGH")
-    timeout_override: Optional[int] = Field(None, ge=30, le=300, description="Override timeout in secondi")
-    heavy_piece_threshold_kg: float = Field(default=50.0, ge=10, le=200, description="Soglia peso per constraint posizionamento")
+    odl_ids: Optional[List[int]] = Field(None, description="IDs degli ODL da processare (None = tutti disponibili)")
+    padding_mm: float = Field(default=20, ge=5, le=50, description="Padding tra i tool (5-50mm)")
+    min_distance_mm: float = Field(default=15, ge=5, le=30, description="Distanza minima dai bordi (5-30mm)")
+    vacuum_lines_capacity: Optional[int] = Field(None, ge=1, le=50, description="Capacità massima linee vuoto")
+    allow_heuristic: bool = Field(default=False, description="Abilita heuristica RRGH")
+    timeout_override: Optional[int] = Field(None, ge=30, le=300, description="Override timeout (30-300s)")
+    heavy_piece_threshold_kg: float = Field(default=50.0, ge=0, description="Soglia peso per constraint posizionamento")
     
     class Config:
         json_schema_extra = {
             "example": {
                 "autoclave_id": 1,
-                "odl_ids": None,
-                "padding_mm": 1.0,
-                "min_distance_mm": 1.0,
-                "vacuum_lines_capacity": 20,
-                "allow_heuristic": True,
+                "odl_ids": [5, 6, 7],
+                "padding_mm": 20,
+                "min_distance_mm": 15,
+                "vacuum_lines_capacity": 10,
+                "allow_heuristic": False,
                 "timeout_override": None,
                 "heavy_piece_threshold_kg": 50.0
             }

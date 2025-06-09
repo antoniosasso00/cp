@@ -205,7 +205,8 @@ export default function NestingPage() {
         parametri: {
           padding_mm: parametri.padding_mm,
           min_distance_mm: parametri.min_distance_mm,
-          priorita_area: false
+          use_fallback: true,
+        allow_heuristic: true
         }
       }
 

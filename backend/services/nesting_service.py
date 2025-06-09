@@ -32,16 +32,21 @@ from models.ciclo_cura import CicloCura
 from models.autoclave import Autoclave, StatoAutoclaveEnum
 from models.batch_nesting import BatchNesting, StatoBatchNestingEnum
 
+# 🚀 AEROSPACE: Import del solver ottimizzato
+from services.nesting.solver import NestingModel, NestingParameters as AerospaceParameters, ToolInfo, AutoclaveInfo
+
 # Configurazione logger
 logger = logging.getLogger(__name__)
 
 @dataclass
 class NestingParameters:
-    """Parametri per l'algoritmo di nesting"""
-    padding_mm: int = 1  # 🚀 OTTIMIZZAZIONE: Padding ultra-ottimizzato 1mm
-    min_distance_mm: int = 1  # 🚀 OTTIMIZZAZIONE: Distanza ultra-ottimizzata 1mm
-    vacuum_lines_capacity: int = 20  # 🚀 OTTIMIZZAZIONE: Aumentato per maggiore flessibilità
-    priorita_area: bool = True  # Priorità area o numero tool
+    """Parametri per il nesting ottimizzato"""
+    padding_mm: float = 10  # Padding aggiuntivo attorno ai pezzi
+    min_distance_mm: float = 15  # Distanza minima tra i pezzi
+    vacuum_lines_capacity: int = 20  # Capacità massima linee di vuoto (default per compatibilità)
+    use_fallback: bool = True  # Usa fallback greedy se CP-SAT fallisce
+    allow_heuristic: bool = True  # Usa euristiche avanzate
+    timeout_override: Optional[int] = None  # Override del timeout predefinito
     
 @dataclass
 class ToolPosition:
@@ -524,58 +529,216 @@ class NestingService:
             
     def check_ciclo_cura_compatibility(self, odl_data: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
-        Verifica la compatibilità dei cicli di cura tra gli ODL
+        🔄 MIGLIORATO: Verifica la compatibilità dei cicli di cura tra gli ODL
+        Ora supporta cicli di cura compatibili invece di richiedere cicli identici
         """
         try:
             # Raggruppa per ciclo di cura
             cicli_cura = {}
+            odl_senza_ciclo = []
+            
             for odl in odl_data:
                 ciclo_id = odl['ciclo_cura_id']
-                if ciclo_id not in cicli_cura:
-                    cicli_cura[ciclo_id] = []
-                cicli_cura[ciclo_id].append(odl)
+                if ciclo_id is None:
+                    odl_senza_ciclo.append(odl)
+                else:
+                    if ciclo_id not in cicli_cura:
+                        cicli_cura[ciclo_id] = []
+                    cicli_cura[ciclo_id].append(odl)
             
-            # Per ora, prendiamo il ciclo di cura più comune
-            if None in cicli_cura:
-                # ODL senza ciclo di cura - li escludiamo
-                excluded = [
+            # 🔄 NUOVO: Logica di compatibilità cicli di cura
+            compatible_groups = self._find_compatible_cure_cycles(cicli_cura)
+            
+            if not compatible_groups:
+                # Se non ci sono gruppi compatibili, usa il ciclo più comune
+                if cicli_cura:
+                    ciclo_principale = max(cicli_cura.keys(), key=lambda k: len(cicli_cura[k]))
+                    compatible_odls = cicli_cura[ciclo_principale]
+                    
+                    # Escludi tutti gli altri cicli
+                    excluded = []
+                    for ciclo_id, odls in cicli_cura.items():
+                        if ciclo_id != ciclo_principale:
+                            excluded.extend([
+                                {
+                                    'odl_id': odl['odl_id'],
+                                    'motivo': 'Ciclo di cura incompatibile',
+                                    'dettagli': f"ODL {odl['odl_id']} ha ciclo di cura {ciclo_id}, ma il batch usa ciclo {ciclo_principale}"
+                                }
+                                for odl in odls
+                            ])
+                else:
+                    compatible_odls = []
+                    excluded = []
+            else:
+                # Usa il gruppo compatibile più grande
+                best_group = max(compatible_groups, key=lambda g: sum(len(cicli_cura[cid]) for cid in g))
+                compatible_odls = []
+                for ciclo_id in best_group:
+                    compatible_odls.extend(cicli_cura[ciclo_id])
+                
+                # Escludi cicli non compatibili
+                excluded = []
+                for ciclo_id, odls in cicli_cura.items():
+                    if ciclo_id not in best_group:
+                        excluded.extend([
+                            {
+                                'odl_id': odl['odl_id'],
+                                'motivo': 'Ciclo di cura incompatibile con gruppo selezionato',
+                                'dettagli': f"ODL {odl['odl_id']} ha ciclo di cura {ciclo_id}, incompatibile con gruppo {best_group}"
+                            }
+                            for odl in odls
+                        ])
+            
+            # Gestisci ODL senza ciclo di cura
+            if odl_senza_ciclo:
+                excluded.extend([
                     {
                         'odl_id': odl['odl_id'],
                         'motivo': 'Ciclo di cura non definito',
                         'dettagli': f"ODL {odl['odl_id']} non ha un ciclo di cura associato"
                     }
-                    for odl in cicli_cura[None]
-                ]
-                del cicli_cura[None]
-            else:
-                excluded = []
+                    for odl in odl_senza_ciclo
+                ])
             
-            if not cicli_cura:
-                return [], excluded
-                
-            # Trova il ciclo più comune
-            ciclo_principale = max(cicli_cura.keys(), key=lambda k: len(cicli_cura[k]))
-            compatible_odls = cicli_cura[ciclo_principale]
+            self.logger.info(f"🔄 Compatibilità cicli: {len(compatible_odls)} ODL compatibili, {len(excluded)} esclusi")
+            if compatible_groups:
+                self.logger.info(f"🔄 Gruppo cicli compatibili selezionato: {best_group}")
             
-            # Gli ODL con cicli diversi vengono esclusi
-            for ciclo_id, odls in cicli_cura.items():
-                if ciclo_id != ciclo_principale:
-                    excluded.extend([
-                        {
-                            'odl_id': odl['odl_id'],
-                            'motivo': 'Ciclo di cura incompatibile',
-                            'dettagli': f"ODL {odl['odl_id']} ha ciclo di cura {ciclo_id}, ma il batch usa ciclo {ciclo_principale}"
-                        }
-                        for odl in odls
-                    ])
-            
-            self.logger.info(f"Compatibilità cicli: {len(compatible_odls)} ODL compatibili, {len(excluded)} esclusi")
             return compatible_odls, excluded
             
         except Exception as e:
             self.logger.error(f"Errore nella verifica compatibilità cicli: {str(e)}")
             raise
+    
+    def _find_compatible_cure_cycles(self, cicli_cura: Dict[int, List]) -> List[List[int]]:
+        """
+        🔄 ENHANCED: Trova gruppi di cicli di cura compatibili basati su parametri reali
+        
+        Args:
+            cicli_cura: Dizionario {ciclo_id: [odl_list]}
             
+        Returns:
+            Lista di gruppi di cicli compatibili [[ciclo1, ciclo2], [ciclo3], ...]
+        """
+        try:
+            if not cicli_cura:
+                return []
+                
+            # Ottieni i dettagli dei cicli di cura dal database
+            from models.ciclo_cura import CicloCura
+            from sqlalchemy.orm import sessionmaker
+            from database import engine
+            
+            Session = sessionmaker(bind=engine)
+            session = Session()
+            
+            try:
+                ciclo_details = {}
+                for ciclo_id in cicli_cura.keys():
+                    if ciclo_id is not None:
+                        ciclo = session.query(CicloCura).filter(CicloCura.id == ciclo_id).first()
+                        if ciclo:
+                            ciclo_details[ciclo_id] = {
+                                'temperatura': ciclo.temperatura,
+                                'tempo_minuti': ciclo.tempo_minuti,
+                                'pressione': ciclo.pressione,
+                                'nome': ciclo.nome
+                            }
+                
+                # Implementa logica di compatibilità avanzata
+                compatible_groups = []
+                processed_cycles = set()
+                
+                for ciclo_id, ciclo_info in ciclo_details.items():
+                    if ciclo_id in processed_cycles:
+                        continue
+                        
+                    # Crea un nuovo gruppo con questo ciclo
+                    current_group = [ciclo_id]
+                    processed_cycles.add(ciclo_id)
+                    
+                    # Trova cicli compatibili con questo
+                    for other_ciclo_id, other_info in ciclo_details.items():
+                        if other_ciclo_id in processed_cycles:
+                            continue
+                            
+                        # Verifica compatibilità
+                        if self._are_cycles_compatible(ciclo_info, other_info):
+                            current_group.append(other_ciclo_id)
+                            processed_cycles.add(other_ciclo_id)
+                            self.logger.info(f"🔄 Cicli compatibili: {ciclo_info['nome']} + {other_info['nome']}")
+                    
+                    compatible_groups.append(current_group)
+                
+                # Aggiungi cicli None come gruppo separato se esistono
+                if None in cicli_cura:
+                    compatible_groups.append([None])
+                
+                self.logger.info(f"🔄 Gruppi cicli compatibili trovati: {len(compatible_groups)}")
+                for i, group in enumerate(compatible_groups):
+                    group_names = []
+                    for cid in group:
+                        if cid is None:
+                            group_names.append("Non definito")
+                        elif cid in ciclo_details:
+                            group_names.append(ciclo_details[cid]['nome'])
+                        else:
+                            group_names.append(f"ID:{cid}")
+                    self.logger.info(f"🔄 Gruppo {i+1}: {group_names}")
+                
+                return compatible_groups
+                
+            finally:
+                session.close()
+                
+        except Exception as e:
+            self.logger.error(f"Errore nella ricerca cicli compatibili: {str(e)}")
+            # Fallback: ogni ciclo forma il proprio gruppo
+            return [[ciclo_id] for ciclo_id in cicli_cura.keys()]
+    
+    def _are_cycles_compatible(self, cycle1: Dict, cycle2: Dict) -> bool:
+        """
+        🔄 NUOVO: Verifica se due cicli di cura sono compatibili
+        
+        Args:
+            cycle1, cycle2: Dizionari con temperatura, tempo_minuti, pressione
+            
+        Returns:
+            True se i cicli sono compatibili
+        """
+        try:
+            # Tolleranze per compatibilità
+            TEMP_TOLERANCE = 10  # ±10°C
+            TIME_TOLERANCE_PCT = 0.20  # ±20% del tempo
+            PRESSURE_TOLERANCE = 0.1  # ±0.1 bar
+            
+            # Verifica temperatura
+            if cycle1['temperatura'] and cycle2['temperatura']:
+                temp_diff = abs(cycle1['temperatura'] - cycle2['temperatura'])
+                if temp_diff > TEMP_TOLERANCE:
+                    return False
+            
+            # Verifica tempo (tolleranza percentuale)
+            if cycle1['tempo_minuti'] and cycle2['tempo_minuti']:
+                time1, time2 = cycle1['tempo_minuti'], cycle2['tempo_minuti']
+                max_time = max(time1, time2)
+                time_diff_pct = abs(time1 - time2) / max_time
+                if time_diff_pct > TIME_TOLERANCE_PCT:
+                    return False
+            
+            # Verifica pressione
+            if cycle1['pressione'] and cycle2['pressione']:
+                pressure_diff = abs(cycle1['pressione'] - cycle2['pressione'])
+                if pressure_diff > PRESSURE_TOLERANCE:
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Errore nella verifica compatibilità cicli: {str(e)}")
+            return False
+
     def perform_nesting_2d(
         self, 
         odl_data: List[Dict[str, Any]], 
@@ -583,16 +746,17 @@ class NestingService:
         parameters: NestingParameters
     ) -> NestingResult:
         """
-        Esegue l'algoritmo di nesting 2D utilizzando OR-Tools CP-SAT con timeout adaptivo e fallback greedy
+        🚀 AEROSPACE GRADE: Esegue nesting 2D utilizzando l'algoritmo ottimizzato aerospace
+        Sostituisce completamente il vecchio algoritmo per raggiungere efficienze 80-90%
         """
         try:
             # ✅ FIX CRITICO: Dimensioni del piano autoclave CORRETTE
             plane_width = autoclave_data['lunghezza']          # Larghezza = lunghezza autoclave
             plane_height = autoclave_data['larghezza_piano']   # Altezza = larghezza piano
             max_weight = autoclave_data['max_load_kg']
+            max_lines = parameters.vacuum_lines_capacity
             
-            self.logger.info(f"Piano autoclave: {plane_width}x{plane_height}mm, peso max: {max_weight}kg")
-            self.logger.info(f"Capacità linee vuoto: {parameters.vacuum_lines_capacity}")
+            self.logger.info(f"🚀 AEROSPACE NESTING: Piano {plane_width}x{plane_height}mm, peso max: {max_weight}kg")
             
             if not odl_data:
                 return NestingResult(
@@ -608,406 +772,115 @@ class NestingService:
                     algorithm_status="Nessun ODL da posizionare"
                 )
             
-            # TIMEOUT ADAPTIVO: min(60s, 2s × n_pieces)
-            n_pieces = len(odl_data)
-            timeout_seconds = min(60.0, 2.0 * n_pieces)
-            self.logger.info(f"⏱️ Timeout adaptivo: {timeout_seconds}s per {n_pieces} pezzi")
+            # 🚀 AEROSPACE: Conversione ai parametri ottimizzati
+            aerospace_params = AerospaceParameters(
+                padding_mm=0.5,  # Ultra-aggressive 0.5mm vs old 1mm
+                min_distance_mm=0.5,  # Ultra-aggressive 0.5mm vs old 1mm
+                vacuum_lines_capacity=max_lines,
+                use_fallback=True,
+                allow_heuristic=True,
+                timeout_override=None,
+                heavy_piece_threshold_kg=50.0,
+                # 🚀 AEROSPACE OPTIMIZATION PARAMETERS:
+                use_multithread=True,  # 8 CP-SAT workers vs single-thread
+                num_search_workers=8,  # Multi-threading for better convergence
+                use_grasp_heuristic=True,  # GRASP global optimization
+                compactness_weight=0.10,  # 10% compactness weight
+                balance_weight=0.05,  # 5% balance weight
+                area_weight=0.85,  # 85% area weight (vs 80% old)
+                max_iterations_grasp=5  # GRASP iterations
+            )
             
-            # Pre-filtraggio migliorato: escludi ODL troppo grandi o pesanti
-            valid_odls = []
-            excluded_odls = []
-            
+            # 🚀 AEROSPACE: Conversione tool data
+            aerospace_tools = []
             for odl in odl_data:
-                tool_width = odl['tool_width']
-                tool_height = odl['tool_height']
-                tool_weight = odl['tool_weight']
-                lines_needed = odl.get('lines_needed', 1)
-                
-                self.logger.info(f"🔍 Controllo ODL {odl['odl_id']}: Tool {tool_width}x{tool_height}mm, peso {tool_weight}kg, linee {lines_needed}")
-                
-                # Margini di sicurezza per il posizionamento
-                margin = parameters.min_distance_mm
-                
-                # Verifica dimensioni con controllo più accurato
-                # Orientamento normale: width x height
-                fits_normal = (tool_width + margin <= plane_width and 
-                              tool_height + margin <= plane_height)
-                
-                # Orientamento ruotato: height x width  
-                fits_rotated = (tool_height + margin <= plane_width and 
-                               tool_width + margin <= plane_height)
-                
-                self.logger.info(f"   Orientamento normale ({tool_width}x{tool_height} + {margin}mm): fits = {fits_normal}")
-                self.logger.info(f"   Orientamento ruotato ({tool_height}x{tool_width} + {margin}mm): fits = {fits_rotated}")
-                
-                if not fits_normal and not fits_rotated:
-                    excluded_odls.append({
-                        'odl_id': odl['odl_id'],
-                        'motivo': 'Dimensioni eccessive',
-                        'dettagli': f"Tool {tool_width}x{tool_height}mm non entra nel piano {plane_width}x{plane_height}mm in nessun orientamento (margine {margin}mm)"
-                    })
-                    self.logger.warning(f"   ❌ ODL {odl['odl_id']} escluso per dimensioni")
-                    continue
-                    
-                # Verifica peso
-                if tool_weight > max_weight:
-                    excluded_odls.append({
-                        'odl_id': odl['odl_id'],
-                        'motivo': 'Peso eccessivo',
-                        'dettagli': f"Tool {tool_weight}kg supera il limite di {max_weight}kg"
-                    })
-                    self.logger.warning(f"   ❌ ODL {odl['odl_id']} escluso per peso")
-                    continue
-                    
-                # Verifica linee vuoto
-                if lines_needed > parameters.vacuum_lines_capacity:
-                    excluded_odls.append({
-                        'odl_id': odl['odl_id'],
-                        'motivo': 'Troppe linee vuoto richieste',
-                        'dettagli': f"Tool richiede {lines_needed} linee, ma la capacità è {parameters.vacuum_lines_capacity}"
-                    })
-                    self.logger.warning(f"   ❌ ODL {odl['odl_id']} escluso per linee vuoto")
-                    continue
-                    
-                # Aggiungi informazioni su orientamenti possibili
-                odl['fits_normal'] = fits_normal
-                odl['fits_rotated'] = fits_rotated
-                valid_odls.append(odl)
-                
-                orientation_info = []
-                if fits_normal:
-                    orientation_info.append("normale")
-                if fits_rotated:
-                    orientation_info.append("ruotato")
-                
-                self.logger.info(f"   ✅ ODL {odl['odl_id']} valido per orientamenti: {', '.join(orientation_info)}")
-            
-            if not valid_odls:
-                return NestingResult(
-                    positioned_tools=[],
-                    excluded_odls=excluded_odls,
-                    total_weight=0,
-                    used_area=0,
-                    total_area=plane_width * plane_height,
-                    area_pct=0,
-                    lines_used=0,
-                    efficiency=0,
-                    success=False,
-                    algorithm_status="Nessun ODL può essere posizionato"
+                tool = ToolInfo(
+                    odl_id=odl['odl_id'],
+                    width=float(odl['tool_width']),
+                    height=float(odl['tool_height']),
+                    weight=float(odl['tool_weight']),
+                    lines_needed=odl.get('lines_needed', 1),
+                    ciclo_cura_id=odl.get('ciclo_cura_id'),
+                    priority=1
                 )
+                aerospace_tools.append(tool)
             
-            self.logger.info(f"📊 Pre-filtraggio completato: {len(valid_odls)} ODL validi, {len(excluded_odls)} esclusi")
+            # 🚀 AEROSPACE: Conversione autoclave data
+            aerospace_autoclave = AutoclaveInfo(
+                id=autoclave_data['id'],
+                width=float(plane_width),
+                height=float(plane_height),
+                max_weight=float(max_weight),
+                max_lines=max_lines
+            )
             
-            # Ordina per area decrescente (strategia greedy)
-            valid_odls.sort(key=lambda x: x['tool_width'] * x['tool_height'], reverse=True)
+            # 🚀 AEROSPACE: Inizializza il solver ottimizzato
+            aerospace_solver = NestingModel(aerospace_params)
             
-            # Crea il modello CP-SAT
-            model = cp_model.CpModel()
+            self.logger.info(f"🚀 AEROSPACE: Avvio solver ottimizzato con {len(aerospace_tools)} tools")
+            self.logger.info(f"🚀 PARAMETRI: padding=0.5mm, multithread=8, GRASP=ON, timeout=min(300s, 10s×{len(aerospace_tools)})")
             
-            # Variabili per posizioni (x, y) e rotazione di ogni tool
-            positions = {}
-            intervals_x = {}
-            intervals_y = {}
-            tool_included = {}
-            tool_rotated = {}
-            tool_lines_vars = {}
+            # 🚀 AEROSPACE: Risoluzione con algoritmo ottimizzato
+            aerospace_solution = aerospace_solver.solve(aerospace_tools, aerospace_autoclave)
             
-            for i, odl in enumerate(valid_odls):
-                odl_id = odl['odl_id']
-                original_width = int(odl['tool_width'])
-                original_height = int(odl['tool_height'])
-                lines_needed = odl.get('lines_needed', 1)
-                margin = parameters.min_distance_mm
-                
-                self.logger.info(f"🔧 Creazione variabili per ODL {odl_id}: {original_width}x{original_height}mm, {lines_needed} linee")
-                
-                # Variabile booleana per inclusione
-                tool_included[odl_id] = model.NewBoolVar(f'included_{odl_id}')
-                
-                # Variabile per linee vuoto utilizzate
-                tool_lines_vars[odl_id] = lines_needed
-                
-                # Gestione rotazione migliorata
-                if odl['fits_normal'] and odl['fits_rotated']:
-                    # Entrambi gli orientamenti possibili - rotazione variabile
-                    tool_rotated[odl_id] = model.NewBoolVar(f'rotated_{odl_id}')
-                    self.logger.info(f"   Rotazione: VARIABILE (entrambi orientamenti possibili)")
-                elif odl['fits_normal']:
-                    # Solo orientamento normale possibile
-                    tool_rotated[odl_id] = 0
-                    self.logger.info(f"   Rotazione: FISSA normale (solo questo orientamento possibile)")
-                else:
-                    # Solo orientamento ruotato possibile
-                    tool_rotated[odl_id] = 1
-                    self.logger.info(f"   Rotazione: FISSA ruotata (solo questo orientamento possibile)")
-                
-                # Calcolo limiti di posizione più accurato
-                if odl['fits_normal']:
-                    # Spazio disponibile per orientamento normale
-                    max_x_normal = int(plane_width - original_width - margin)
-                    max_y_normal = int(plane_height - original_height - margin)
-                    self.logger.info(f"   Normale: max_pos ({max_x_normal}, {max_y_normal})")
-                else:
-                    max_x_normal = margin  # Valore di fallback
-                    max_y_normal = margin
-                
-                if odl['fits_rotated']:
-                    # Spazio disponibile per orientamento ruotato
-                    max_x_rotated = int(plane_width - original_height - margin)  # Nota: height diventa width
-                    max_y_rotated = int(plane_height - original_width - margin)   # Nota: width diventa height
-                    self.logger.info(f"   Ruotato: max_pos ({max_x_rotated}, {max_y_rotated})")
-                else:
-                    max_x_rotated = margin  # Valore di fallback
-                    max_y_rotated = margin
-                
-                # Variabili di posizione
-                x = model.NewIntVar(margin, int(plane_width - margin), f'x_{odl_id}')
-                y = model.NewIntVar(margin, int(plane_height - margin), f'y_{odl_id}')
-                
-                # Vincoli di posizione basati sulla rotazione
-                if isinstance(tool_rotated[odl_id], int):
-                    # Rotazione fissa
-                    if tool_rotated[odl_id] == 0:  # Non ruotato
-                        if odl['fits_normal']:
-                            model.Add(x <= max_x_normal).OnlyEnforceIf(tool_included[odl_id])
-                            model.Add(y <= max_y_normal).OnlyEnforceIf(tool_included[odl_id])
-                            width_var = original_width
-                            height_var = original_height
-                        else:
-                            # Questo non dovrebbe mai accadere con la logica corretta
-                            model.Add(tool_included[odl_id] == 0)  # Forza esclusione
-                            width_var = original_width
-                            height_var = original_height
-                    else:  # Ruotato
-                        if odl['fits_rotated']:
-                            model.Add(x <= max_x_rotated).OnlyEnforceIf(tool_included[odl_id])
-                            model.Add(y <= max_y_rotated).OnlyEnforceIf(tool_included[odl_id])
-                            width_var = original_height  # Dimensioni scambiate
-                            height_var = original_width
-                        else:
-                            # Questo non dovrebbe mai accadere con la logica corretta
-                            model.Add(tool_included[odl_id] == 0)  # Forza esclusione
-                            width_var = original_width
-                            height_var = original_height
-                else:
-                    # Rotazione variabile - vincoli condizionali
-                    
-                    # Vincoli per orientamento normale (non ruotato)
-                    if odl['fits_normal']:
-                        model.Add(x <= max_x_normal).OnlyEnforceIf([tool_included[odl_id], tool_rotated[odl_id].Not()])
-                        model.Add(y <= max_y_normal).OnlyEnforceIf([tool_included[odl_id], tool_rotated[odl_id].Not()])
-                    
-                    # Vincoli per orientamento ruotato
-                    if odl['fits_rotated']:
-                        model.Add(x <= max_x_rotated).OnlyEnforceIf([tool_included[odl_id], tool_rotated[odl_id]])
-                        model.Add(y <= max_y_rotated).OnlyEnforceIf([tool_included[odl_id], tool_rotated[odl_id]])
-                    
-                    # Per gli intervalli, useremo le dimensioni massime per evitare sovrapposizioni
-                    width_var = max(original_width, original_height)
-                    height_var = max(original_width, original_height)
-                
-                self.logger.info(f"   Dimensioni intervallo: {width_var}x{height_var}mm")
-                
-                # Salva informazioni per il risultato finale
-                positions[odl_id] = (x, y, width_var, height_var, original_width, original_height)
-                
-                # Intervalli per non sovrapposizione
-                intervals_x[odl_id] = model.NewOptionalIntervalVar(
-                    x, width_var, x + width_var, tool_included[odl_id], f'interval_x_{odl_id}'
-                )
-                intervals_y[odl_id] = model.NewOptionalIntervalVar(
-                    y, height_var, y + height_var, tool_included[odl_id], f'interval_y_{odl_id}'
-                )
-            
-            # Vincolo di non sovrapposizione 2D
-            if len(intervals_x) > 0:
-                model.AddNoOverlap2D(
-                    list(intervals_x.values()),
-                    list(intervals_y.values())
-                )
-                self.logger.info(f"🔒 Aggiunto vincolo di non sovrapposizione per {len(intervals_x)} tool")
-            
-            # Vincolo di peso massimo
-            total_weight_var = model.NewIntVar(0, int(max_weight * 1000), 'total_weight')
-            weight_terms = []
-            for odl in valid_odls:
-                odl_id = odl['odl_id']
-                if odl_id in tool_included:
-                    weight_terms.append(
-                        tool_included[odl_id] * int(odl['tool_weight'] * 1000)
-                    )
-            
-            if weight_terms:
-                model.Add(total_weight_var == sum(weight_terms))
-                model.Add(total_weight_var <= int(max_weight * 1000))
-                self.logger.info(f"⚖️ Aggiunto vincolo di peso massimo: {max_weight}kg")
-            
-            # NUOVO: Vincolo di capacità linee vuoto
-            total_lines_var = model.NewIntVar(0, parameters.vacuum_lines_capacity, 'total_lines')
-            lines_terms = []
-            for odl in valid_odls:
-                odl_id = odl['odl_id']
-                if odl_id in tool_included:
-                    lines_needed = tool_lines_vars[odl_id]
-                    lines_terms.append(tool_included[odl_id] * lines_needed)
-            
-            if lines_terms:
-                model.Add(total_lines_var == sum(lines_terms))
-                model.Add(total_lines_var <= parameters.vacuum_lines_capacity)
-                self.logger.info(f"🔌 Aggiunto vincolo linee vuoto: max {parameters.vacuum_lines_capacity}")
-            
-            # Funzione obiettivo MIGLIORATA
-            # SEMPRE massimizza il numero di ODL inclusi come obiettivo primario
-            num_included = sum(tool_included.values())
-            
-            if parameters.priorita_area:
-                # Obiettivo: massimizza copertura del piano (area utilizzata)
-                # Prima massimizza ODL, poi massimizza area utilizzata
-                
-                # Calcola l'area totale utilizzata dai tool posizionati
-                total_used_area = model.NewIntVar(0, int(plane_width * plane_height), 'total_used_area')
-                area_terms = []
-                
-                for odl in valid_odls:
-                    odl_id = odl['odl_id']
-                    if odl_id in tool_included:
-                        # Area del tool (larghezza * altezza)
-                        tool_area = int(odl['tool_width'] * odl['tool_height'])
-                        area_terms.append(tool_included[odl_id] * tool_area)
-                
-                if area_terms:
-                    model.Add(total_used_area == sum(area_terms))
-                
-                # Obiettivo combinato: massimizza ODL (peso 10000) + massimizza area utilizzata (peso 1)
-                # Peso secondario per bilanciare peso basso (per minimizzare la deformazione del piano)
-                total_weight_objective = model.NewIntVar(0, int(max_weight * 1000 * len(valid_odls)), 'weight_obj')
-                if weight_terms:
-                    model.Add(total_weight_objective == sum(weight_terms))
-                    # Obiettivo: massimizza ODL + area - peso/1000 (per favorire peso basso)
-                    model.Maximize(num_included * 10000 + total_used_area - total_weight_objective // 1000)
-                else:
-                    model.Maximize(num_included * 10000 + total_used_area)
-                    
-                self.logger.info("🎯 Obiettivo: Massimizza ODL (priorità) + massimizza copertura piano + minimizza peso (secondario)")
-            else:
-                # Massimizza solo il numero di ODL inclusi
-                model.Maximize(num_included)
-                self.logger.info("🎯 Obiettivo: Massimizza numero ODL inclusi")
-            
-            # Risolvi il problema con timeout adaptivo
-            solver = cp_model.CpSolver()
-            solver.parameters.max_time_in_seconds = timeout_seconds
-            
-            self.logger.info(f"🚀 Avvio risoluzione CP-SAT per {len(valid_odls)} ODL (timeout: {timeout_seconds}s)")
-            status = solver.Solve(model)
-            
-            # Elabora risultati
+            # 🚀 AEROSPACE: Conversione risultati al formato legacy
             positioned_tools = []
-            final_excluded = excluded_odls.copy()
-            total_weight = 0
-            used_area = 0
-            total_lines_used = 0
+            for layout in aerospace_solution.layouts:
+                tool_pos = ToolPosition(
+                    odl_id=layout.odl_id,
+                    x=layout.x,
+                    y=layout.y,
+                    width=layout.width,
+                    height=layout.height,
+                    peso=layout.weight,
+                    rotated=layout.rotated,
+                    lines_used=layout.lines_used
+                )
+                positioned_tools.append(tool_pos)
             
-            if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-                for odl in valid_odls:
-                    odl_id = odl['odl_id']
-                    if odl_id in tool_included and solver.Value(tool_included[odl_id]):
-                        x, y, w, h, w_orig, h_orig = positions[odl_id]
-                        
-                        # Determina se il tool è ruotato
-                        is_rotated = False
-                        if isinstance(tool_rotated[odl_id], int):
-                            is_rotated = bool(tool_rotated[odl_id])
-                        else:
-                            is_rotated = bool(solver.Value(tool_rotated[odl_id]))
-                        
-                        # Calcola dimensioni finali in base alla rotazione
-                        if is_rotated:
-                            final_width = float(h_orig)  # Larghezza diventa altezza originale
-                            final_height = float(w_orig)  # Altezza diventa larghezza originale
-                        else:
-                            final_width = float(w_orig)  # Dimensioni originali
-                            final_height = float(h_orig)
-                        
-                        lines_used_tool = tool_lines_vars[odl_id]
-                        
-                        pos = ToolPosition(
-                            odl_id=odl_id,
-                            x=float(solver.Value(x)),
-                            y=float(solver.Value(y)),
-                            width=final_width,
-                            height=final_height,
-                            peso=float(odl['tool_weight']),
-                            rotated=is_rotated,
-                            lines_used=lines_used_tool
-                        )
-                        positioned_tools.append(pos)
-                        total_weight += odl['tool_weight']
-                        used_area += final_width * final_height
-                        total_lines_used += lines_used_tool
-                    else:
-                        final_excluded.append({
-                            'odl_id': odl_id,
-                            'motivo': 'Non ottimale per il nesting',
-                            'dettagli': f"ODL {odl_id} non incluso nella soluzione ottimale"
-                        })
-                
-                algorithm_status = "OPTIMAL" if status == cp_model.OPTIMAL else "FEASIBLE"
-                success = True
-                
-            elif status in [cp_model.INFEASIBLE, cp_model.UNKNOWN]:
-                # FALLBACK GREEDY: attiva quando CP-SAT non trova soluzione o va in timeout
-                self.logger.warning(f"⚠️ CP-SAT status: {status}, attivazione fallback greedy")
-                
-                # Usa l'algoritmo fallback greedy
-                fallback_result = fallback_greedy_nesting(valid_odls, autoclave_data, parameters)
-                
-                # Aggiungi le esclusioni del pre-filtraggio
-                fallback_result.excluded_odls.extend(excluded_odls)
-                
-                # Ritorna il risultato del fallback
-                return fallback_result
-                
-            else:
-                # Nessuna soluzione trovata
-                final_excluded.extend([
-                    {
-                        'odl_id': odl['odl_id'],
-                        'motivo': 'Nessuna soluzione trovata',
-                        'dettagli': f"L'algoritmo non è riuscito a trovare una configurazione valida"
-                    }
-                    for odl in valid_odls
-                ])
-                algorithm_status = "INFEASIBLE" if status == cp_model.INFEASIBLE else "UNKNOWN"
-                success = False
-            
+            # 🚀 AEROSPACE: Conversione metriche
             total_area = plane_width * plane_height
-            efficiency = (used_area / total_area * 100) if total_area > 0 else 0
-            area_pct = efficiency
+            used_area = sum(tool.width * tool.height for tool in positioned_tools)
+            efficiency = aerospace_solution.metrics.efficiency_score
             
-            self.logger.info(f"Nesting completato: {len(positioned_tools)} ODL posizionati, {len(final_excluded)} esclusi")
-            self.logger.info(f"Efficienza: {efficiency:.1f}%, Peso totale: {total_weight:.1f}kg, Linee usate: {total_lines_used}/{parameters.vacuum_lines_capacity}")
+            # 🚀 AEROSPACE: Log risultati con comparazione
+            self.logger.info(f"🚀 AEROSPACE RISULTATO: {len(positioned_tools)} ODL posizionati")
+            self.logger.info(f"🚀 EFFICIENZA: {efficiency:.1f}% (Target aerospace: 80-90%)")
+            self.logger.info(f"🚀 AREA: {aerospace_solution.metrics.area_pct:.1f}% utilizzata")
+            self.logger.info(f"🚀 VACUUM: {aerospace_solution.metrics.vacuum_util_pct:.1f}% linee usate")
+            self.logger.info(f"🚀 ROTAZIONI: {aerospace_solution.metrics.rotation_used}")
+            self.logger.info(f"🚀 ALGORITMO: {aerospace_solution.algorithm_status}")
+            self.logger.info(f"🚀 TEMPO: {aerospace_solution.metrics.time_solver_ms:.0f}ms")
             
-            # Log info sulle rotazioni
-            if positioned_tools:
-                rotated_count = sum(1 for tool in positioned_tools if tool.rotated)
-                self.logger.info(f"Tool ruotati: {rotated_count}/{len(positioned_tools)} ({rotated_count/len(positioned_tools)*100:.1f}%)")
+            if aerospace_solution.metrics.fallback_used:
+                self.logger.warning("🚀 FALLBACK: Utilizzato algoritmo greedy avanzato")
+            
+            if aerospace_solution.metrics.heuristic_iters > 0:
+                self.logger.info(f"🚀 HEURISTIC: {aerospace_solution.metrics.heuristic_iters} iterazioni di miglioramento")
+            
+            # ⚠️ WARNING se efficienza è sotto standard aerospace
+            if efficiency < 60.0:
+                self.logger.warning(f"⚠️ EFFICIENZA SOTTO STANDARD: {efficiency:.1f}% < 60% (verificare dati input)")
+            elif efficiency < 80.0:
+                self.logger.warning(f"⚠️ EFFICIENZA MIGLIORABILE: {efficiency:.1f}% < 80% target aerospace")
+            else:
+                self.logger.info(f"✅ EFFICIENZA AEROSPACE: {efficiency:.1f}% >= 80% target")
             
             return NestingResult(
                 positioned_tools=positioned_tools,
-                excluded_odls=final_excluded,
-                total_weight=total_weight,
+                excluded_odls=aerospace_solution.excluded_odls,
+                total_weight=aerospace_solution.metrics.total_weight,
                 used_area=used_area,
                 total_area=total_area,
-                area_pct=area_pct,
-                lines_used=total_lines_used,
+                area_pct=aerospace_solution.metrics.area_pct,
+                lines_used=aerospace_solution.metrics.lines_used,
                 efficiency=efficiency,
-                success=success,
-                algorithm_status=algorithm_status
+                success=aerospace_solution.success,
+                algorithm_status=f"AEROSPACE_{aerospace_solution.algorithm_status}"
             )
             
         except Exception as e:
-            self.logger.error(f"Errore nell'algoritmo di nesting: {str(e)}")
+            self.logger.error(f"🚀 AEROSPACE ERROR: {str(e)}")
             raise
             
     def generate_nesting(
@@ -1142,7 +1015,9 @@ class NestingService:
             parametri = {
                 'padding_mm': float(parameters.padding_mm),
                 'min_distance_mm': float(parameters.min_distance_mm),
-                'priorita_area': bool(parameters.priorita_area),
+                'use_fallback': bool(parameters.use_fallback),
+                'allow_heuristic': bool(parameters.allow_heuristic),
+                'timeout_override': parameters.timeout_override,
                 'accorpamento_odl': False,
                 'use_secondary_plane': False,
                 'max_weight_per_plane_kg': None

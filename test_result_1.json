@@ -1,0 +1,50 @@
+{
+  "test_name": "Test 1: ODL 2 (Rotazione Forzata) + ODL 3, 4",
+  "batch_id": "615e071c-aa49-4483-ab9f-e3769e9f7afd",
+  "message": "Nesting completato con successo su autoclave 1", 
+  "odl_count": 3,
+  "autoclave_count": 1,
+  "positioned_tools": [
+    {
+      "odl_id": 2,
+      "x": 0.0,
+      "y": 0.0,
+      "width": 405.0,
+      "height": 95.0,
+      "peso": 0.0,
+      "rotated": false,
+      "lines_used": 2
+    },
+    {
+      "odl_id": 4,
+      "x": 0.0,
+      "y": 95.5,
+      "width": 329.0,
+      "height": 54.0,
+      "peso": 0.0,
+      "rotated": false,
+      "lines_used": 2
+    }
+  ],
+  "excluded_odls": [
+    {
+      "odl_id": 3,
+      "motivo": "Ciclo di cura incompatibile con gruppo selezionato",
+      "dettagli": "ODL 3 ha ciclo di cura 2, incompatibile con gruppo [1]"
+    }
+  ],
+  "efficiency": 63.29,
+  "total_weight": 0.0,
+  "algorithm_status": "AEROSPACE_AEROSPACE_BL_FFD",
+  "success": true,
+  "validation_report": {
+    "valid": true,
+    "issues": [],
+    "warnings": [],
+    "statistics": {
+      "odl_attesa_cura": 6,
+      "autoclavi_disponibili": 3
+    }
+  },
+  "fixes_applied": []
+} 
