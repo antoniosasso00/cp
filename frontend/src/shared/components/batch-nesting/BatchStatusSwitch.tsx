@@ -6,80 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { 
-  AlertTriangle, 
-  CheckCircle, 
-  Clock, 
-  Loader2, 
-  Lock, 
-  PlayCircle,
-  StopCircle,
-  Info,
-  Package,
-  Flame
-} from 'lucide-react';
+import { Loader2, Lock, Info, CheckCircle, AlertTriangle } from 'lucide-react';
 import { batchNestingApi } from '@/lib/api';
-
-// Tipi per lo stato del batch
-type BatchStatus = 'sospeso' | 'confermato' | 'loaded' | 'cured' | 'terminato';
-
-interface BatchStatusInfo {
-  status: BatchStatus;
-  label: string;
-  description: string;
-  color: string;
-  icon: React.ComponentType<{ className?: string }>;
-  canTransitionTo: BatchStatus[];
-  actionLabel?: string;
-}
-
-// Configurazione stati batch completa
-const BATCH_STATUS_CONFIG: Record<BatchStatus, BatchStatusInfo> = {
-  sospeso: {
-    status: 'sospeso',
-    label: 'In Sospeso',
-    description: 'Batch generato, in attesa di conferma per avviare il ciclo di cura',
-    color: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-    icon: Clock,
-    canTransitionTo: ['confermato'],
-    actionLabel: 'Conferma Batch'
-  },
-  confermato: {
-    status: 'confermato', 
-    label: 'Confermato',
-    description: 'Batch confermato, pronto per il caricamento in autoclave. ODL in stato "Cura"',
-    color: 'bg-green-100 text-green-800 border-green-300',
-    icon: CheckCircle,
-    canTransitionTo: ['loaded'],
-    actionLabel: 'Carica in Autoclave'
-  },
-  loaded: {
-    status: 'loaded',
-    label: 'Caricato',
-    description: 'Batch caricato in autoclave, pronto per avviare il ciclo di cura',
-    color: 'bg-blue-100 text-blue-800 border-blue-300',
-    icon: Package,
-    canTransitionTo: ['cured'],
-    actionLabel: 'Avvia Cura'
-  },
-  cured: {
-    status: 'cured',
-    label: 'In Cura',
-    description: 'Ciclo di cura in corso. Autoclave occupata',
-    color: 'bg-orange-100 text-orange-800 border-orange-300',
-    icon: Flame,
-    canTransitionTo: ['terminato'],
-    actionLabel: 'Termina Cura'
-  },
-  terminato: {
-    status: 'terminato',
-    label: 'Terminato', 
-    description: 'Ciclo di cura completato. ODL in stato "Finito", autoclave disponibile',
-    color: 'bg-gray-100 text-gray-800 border-gray-300',
-    icon: CheckCircle,
-    canTransitionTo: []
-  }
-};
+import { 
+  useBatchStatus, 
+  BatchStatus,
+  BATCH_STATUS_CONFIG,
+  getAvailableTransitions 
+} from '@/shared/hooks/useBatchStatus';
 
 interface BatchStatusSwitchProps {
   /** ID univoco del batch */
@@ -114,22 +48,22 @@ export default function BatchStatusSwitch({
   readOnly = false
 }: BatchStatusSwitchProps) {
   
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [showConfirmation, setShowConfirmation] = useState<BatchStatus | null>(null);
-
-  const currentConfig = BATCH_STATUS_CONFIG[currentStatus];
+  
+  // Usa la state machine centralizzata
+  const batchStatus = useBatchStatus(batchId, currentStatus);
+  
+  // Ottieni le transizioni valide per l'utente corrente
+  const validTransitions = getAvailableTransitions(batchStatus.state).filter(
+    nextStatus => batchStatus.canTransition(nextStatus, userInfo.userRole)
+  );
 
   // Funzione per gestire il cambio di stato
   const handleStatusChange = async (newStatus: BatchStatus) => {
     // Verifica se la transizione è consentita
-    if (!currentConfig.canTransitionTo.includes(newStatus)) {
-      setError(`Transizione da ${currentConfig.label} a ${BATCH_STATUS_CONFIG[newStatus].label} non consentita`);
+    if (!batchStatus.canTransition(newStatus, userInfo.userRole)) {
       return;
     }
-
-    setIsLoading(true);
-    setError(null);
 
     try {
       let updatedBatch;
@@ -177,6 +111,9 @@ export default function BatchStatusSwitch({
       }
 
       console.log(`✅ Batch ${batchId} aggiornato a stato: ${newStatus}`);
+      
+      // Usa la state machine per la transizione
+      await batchStatus.transition(newStatus, userInfo.userRole);
 
       // Notifica il parent component
       if (onStatusChanged) {
@@ -187,70 +124,128 @@ export default function BatchStatusSwitch({
 
     } catch (err: any) {
       console.error(`❌ Errore nel cambio stato batch ${batchId}:`, err);
-      setError(err.message || 'Errore durante il cambio di stato');
-    } finally {
-      setIsLoading(false);
+      // L'errore viene gestito dalla state machine
     }
   };
 
   // Funzione per aprire la conferma
   const requestStatusChange = (newStatus: BatchStatus) => {
     setShowConfirmation(newStatus);
-    setError(null);
+    batchStatus.clearError();
   };
 
-  // Funzione per annullare la conferma  
+  // Funzione per annullare la conferma
   const cancelStatusChange = () => {
     setShowConfirmation(null);
-    setError(null);
+    batchStatus.clearError();
   };
 
-  const CurrentIcon = currentConfig.icon;
+  // Ottieni configurazione dello stato corrente
+  const currentStatusInfo = batchStatus.statusInfo;
+  const CurrentIcon = currentStatusInfo.icon;
 
   return (
-    <Card className="w-full">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <CurrentIcon className="h-5 w-5" />
-          Controllo Stato Batch
-          {batchName && (
-            <span className="text-sm font-normal text-gray-600">({batchName})</span>
-          )}
+    <Card className="w-full max-w-2xl">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-3">
+          <CurrentIcon className="h-6 w-6" />
+          Gestione Stato Batch: {batchName || batchId}
         </CardTitle>
       </CardHeader>
-
-      <CardContent className="space-y-4">
-        {/* Stato Attuale */}
-        <div className="flex items-center justify-between">
-          <div className="flex flex-col gap-1">
-            <span className="text-sm font-medium text-gray-700">Stato Attuale:</span>
-            <Badge className={`${currentConfig.color} px-3 py-1`}>
-              <CurrentIcon className="h-4 w-4 mr-1" />
-              {currentConfig.label}
-            </Badge>
+      
+      <CardContent className="space-y-6">
+        {/* Stato Corrente */}
+        <div className="flex items-center justify-between p-4 rounded-lg border">
+          <div className="flex items-center gap-3">
+            <CurrentIcon className="h-8 w-8 text-gray-600" />
+            <div>
+              <div className="font-semibold text-lg">{currentStatusInfo.label}</div>
+              <div className="text-sm text-gray-600">{currentStatusInfo.description}</div>
+            </div>
           </div>
           
-          {/* Statistiche Batch */}
-          <div className="text-right text-sm text-gray-600">
-            <div>ODL: {odlCount}</div>
-            <div>Peso: {totalWeight.toFixed(1)} kg</div>
+          <Badge 
+            className={`${currentStatusInfo.color.bg} ${currentStatusInfo.color.text} ${currentStatusInfo.color.border} border`}
+          >
+            {currentStatusInfo.label}
+          </Badge>
+        </div>
+
+        {/* Informazioni Batch */}
+        <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+          <div className="text-sm">
+            <span className="font-medium">ODL inclusi:</span> {odlCount}
+          </div>
+          <div className="text-sm">
+            <span className="font-medium">Peso totale:</span> {totalWeight} kg
           </div>
         </div>
 
-        {/* Descrizione Stato */}
-        <Alert>
-          <Info className="h-4 w-4" />
-          <AlertDescription className="text-sm">
-            {currentConfig.description}
-          </AlertDescription>
-        </Alert>
+        {/* Errori dalla State Machine */}
+        {batchStatus.error && (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              {batchStatus.error}
+            </AlertDescription>
+          </Alert>
+        )}
 
-        {/* Controlli di Transizione */}
-        {!readOnly && currentConfig.canTransitionTo.length > 0 && (
+        {/* Transizione in corso */}
+        {batchStatus.isTransitioning && (
+          <Alert>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <AlertDescription>
+              Aggiornamento stato in corso...
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Dialogo di Conferma */}
+        {showConfirmation && (
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertDescription>
+              <div className="space-y-3">
+                <p>
+                  Confermare la transizione a: <strong>{BATCH_STATUS_CONFIG[showConfirmation].label}</strong>?
+                </p>
+                <p className="text-sm text-gray-600">
+                  {BATCH_STATUS_CONFIG[showConfirmation].description}
+                </p>
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={() => handleStatusChange(showConfirmation)}
+                    disabled={batchStatus.isTransitioning}
+                    size="sm"
+                  >
+                    {batchStatus.isTransitioning ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                    ) : (
+                      <CheckCircle className="h-4 w-4 mr-1" />
+                    )}
+                    Conferma
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={cancelStatusChange}
+                    disabled={batchStatus.isTransitioning}
+                    size="sm"
+                  >
+                    Annulla
+                  </Button>
+                </div>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Azioni Disponibili */}
+        {!readOnly && validTransitions.length > 0 && (
           <div className="space-y-3">
             <span className="text-sm font-medium text-gray-700">Azioni Disponibili:</span>
             
-            {currentConfig.canTransitionTo.map(nextStatus => {
+            {validTransitions.map((nextStatus: BatchStatus) => {
               const nextConfig = BATCH_STATUS_CONFIG[nextStatus];
               const NextIcon = nextConfig.icon;
               
@@ -266,11 +261,11 @@ export default function BatchStatusSwitch({
                   
                   <Button 
                     onClick={() => requestStatusChange(nextStatus)}
-                    disabled={isLoading}
+                    disabled={batchStatus.isTransitioning}
                     variant="outline"
                     size="sm"
                   >
-                    {isLoading ? (
+                    {batchStatus.isTransitioning ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <>
@@ -296,74 +291,19 @@ export default function BatchStatusSwitch({
         )}
 
         {/* Stato Finale */}
-        {currentConfig.canTransitionTo.length === 0 && !readOnly && (
+        {validTransitions.length === 0 && !readOnly && (
           <Alert>
             <CheckCircle className="h-4 w-4" />
             <AlertDescription>
-              Batch completato. Non sono disponibili ulteriori azioni.
+              Batch in stato finale. Nessuna azione aggiuntiva disponibile.
             </AlertDescription>
           </Alert>
         )}
 
-        {/* Errori */}
-        {error && (
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
-        {/* Modal di Conferma */}
-        {showConfirmation && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <Card className="w-full max-w-md mx-4">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-orange-500" />
-                  Conferma Cambio Stato
-                </CardTitle>
-              </CardHeader>
-              
-              <CardContent className="space-y-4">
-                <div className="text-sm">
-                  Sei sicuro di voler cambiare lo stato del batch da{' '}
-                  <Badge className={currentConfig.color}>{currentConfig.label}</Badge>
-                  {' '}a{' '}
-                  <Badge className={BATCH_STATUS_CONFIG[showConfirmation].color}>
-                    {BATCH_STATUS_CONFIG[showConfirmation].label}
-                  </Badge>
-                  ?
-                </div>
-
-                <Alert>
-                  <Info className="h-4 w-4" />
-                  <AlertDescription className="text-sm">
-                    {BATCH_STATUS_CONFIG[showConfirmation].description}
-                  </AlertDescription>
-                </Alert>
-
-                <div className="flex gap-2 justify-end">
-                  <Button
-                    variant="outline"
-                    onClick={cancelStatusChange}
-                    disabled={isLoading}
-                  >
-                    Annulla
-                  </Button>
-                  <Button
-                    onClick={() => handleStatusChange(showConfirmation)}
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                    ) : (
-                      <CheckCircle className="h-4 w-4 mr-1" />
-                    )}
-                    Conferma
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+        {/* Informazioni Ultima Transizione */}
+        {batchStatus.lastTransition && (
+          <div className="text-xs text-gray-500 p-2 bg-gray-50 rounded">
+            Ultima transizione: {batchStatus.lastTransition.label}
           </div>
         )}
       </CardContent>

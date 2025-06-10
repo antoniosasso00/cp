@@ -88,40 +88,11 @@ export const ODL_STATUS_TRANSITIONS = {
 // STATI BATCH NESTING
 // ================================
 
-/** Array degli stati Batch disponibili */
-export const BATCH_STATUSES = [
-  'sospeso',
-  'confermato', 
-  'terminato'
-] as const;
-
-/** Etichette user-friendly per gli stati Batch */
-export const BATCH_STATUS_LABELS = {
-  'sospeso': 'Sospeso',
-  'confermato': 'Confermato',
-  'terminato': 'Terminato'
-} as const;
-
-/** Descrizioni dettagliate per gli stati Batch */
-export const BATCH_STATUS_DESCRIPTIONS = {
-  'sospeso': 'Batch generato, in attesa di conferma per avviare il ciclo di cura',
-  'confermato': 'Batch confermato, ciclo di cura avviato. ODL in stato "Cura"',
-  'terminato': 'Ciclo di cura completato. ODL in stato "Finito"'
-} as const;
-
-/** Colori per i badge degli stati Batch */
-export const BATCH_STATUS_COLORS = {
-  'sospeso': 'bg-yellow-100 text-yellow-800 border-yellow-300',
-  'confermato': 'bg-green-100 text-green-800 border-green-300',
-  'terminato': 'bg-blue-100 text-blue-800 border-blue-300'
-} as const;
-
-/** Icone per gli stati Batch */
-export const BATCH_STATUS_ICONS = {
-  'sospeso': Clock,
-  'confermato': PlayCircle,
-  'terminato': CheckCircle
-} as const;
+// ================================
+// STATI BATCH - DEPRECATO
+// ================================
+// Le definizioni degli stati batch sono state spostate in useBatchStatus.ts
+// per centralizzare la logica della state machine
 
 // ================================
 // STATI SCHEDULE
@@ -180,8 +151,8 @@ export const USER_ROLE_LABELS = {
   'Curing': 'Curing'
 } as const;
 
-/** Descrizioni dettagliate per i ruoli */
-export const USER_ROLE_DESCRIPTIONS = {
+/** Descrizioni dettagliate per i ruoli (interno) */
+const USER_ROLE_DESCRIPTIONS = {
   'ADMIN': 'Accesso completo al sistema',
   'Management': 'Gestione e supervisione',
   'Clean Room': 'Operazioni in camera bianca e laminazione',
@@ -214,8 +185,8 @@ export const PRODUCTION_PHASE_LABELS = {
   'cura': 'Cura'
 } as const;
 
-/** Descrizioni dettagliate per le fasi */
-export const PRODUCTION_PHASE_DESCRIPTIONS = {
+/** Descrizioni dettagliate per le fasi (interno) */
+const PRODUCTION_PHASE_DESCRIPTIONS = {
   'laminazione': 'Fase di laminazione del componente',
   'attesa_cura': 'Attesa per l\'inizio del processo di cura',
   'cura': 'Processo di cura in autoclave'
@@ -252,8 +223,8 @@ export const AUTOCLAVE_STATUS_COLORS = {
   'SPENTA': 'bg-gray-100 text-gray-800 border-gray-300'
 } as const;
 
-/** Icone per gli stati Autoclave */
-export const AUTOCLAVE_STATUS_ICONS = {
+/** Icone per gli stati Autoclave (interno) */
+const AUTOCLAVE_STATUS_ICONS = {
   'DISPONIBILE': CheckCircle,
   'IN_USO': PlayCircle,
   'GUASTO': AlertTriangle,
@@ -381,7 +352,9 @@ export const getBadgeColor = (type: string, value: string): string => {
     case 'odl_status':
       return ODL_STATUS_COLORS[value as keyof typeof ODL_STATUS_COLORS] || GENERIC_STATUS_COLORS.neutral;
     case 'batch_status':
-      return BATCH_STATUS_COLORS[value as keyof typeof BATCH_STATUS_COLORS] || GENERIC_STATUS_COLORS.neutral;
+      // Usa la nuova state machine per i colori dei batch
+      console.warn('getBadgeColor per batch_status è deprecato. Usa getStatusColor da useBatchStatus');
+      return GENERIC_STATUS_COLORS.neutral;
     case 'schedule_status':
       return SCHEDULE_STATUS_COLORS[value as keyof typeof SCHEDULE_STATUS_COLORS] || GENERIC_STATUS_COLORS.neutral;
     case 'user_role':
@@ -403,7 +376,9 @@ export const getLabel = (type: string, value: string): string => {
     case 'odl_status':
       return ODL_STATUS_LABELS[value as keyof typeof ODL_STATUS_LABELS] || value;
     case 'batch_status':
-      return BATCH_STATUS_LABELS[value as keyof typeof BATCH_STATUS_LABELS] || value;
+      // Usa la nuova state machine per le etichette dei batch
+      console.warn('getLabel per batch_status è deprecato. Usa getStatusLabel da useBatchStatus');
+      return value;
     case 'schedule_status':
       return SCHEDULE_STATUS_LABELS[value as keyof typeof SCHEDULE_STATUS_LABELS] || value;
     case 'user_role':

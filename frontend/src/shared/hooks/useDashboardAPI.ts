@@ -157,23 +157,23 @@ function useDashboardEndpoint<T>(
 }
 
 /**
- * 📊 Hook per statistiche ODL
+ * 📊 Hook per statistiche ODL (interno)
  */
-export function useODLStats() {
+function useODLStats() {
   return useDashboardEndpoint<ODLStats>(API_ENDPOINTS.dashboard.odlCount)
 }
 
 /**
- * 🏭 Hook per carico autoclavi
+ * 🏭 Hook per carico autoclavi (interno)
  */
-export function useAutoclaveLoad() {
+function useAutoclaveLoad() {
   return useDashboardEndpoint<AutoclaveLoad>(API_ENDPOINTS.dashboard.autoclaveLoad)
 }
 
 /**
- * 📦 Hook per nesting attivi
+ * 📦 Hook per nesting attivi (interno)
  */
-export function useNestingActive() {
+function useNestingActive() {
   return useDashboardEndpoint<NestingActive>(API_ENDPOINTS.dashboard.nestingActive)
 }
 

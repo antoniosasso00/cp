@@ -35,5 +35,5 @@ export const REFRESH_INTERVALS = {
   kpi: 60000,        // 1 minuto
 } as const
 
-// Configurazione timeout per le richieste
-export const REQUEST_TIMEOUT = 10000 // 10 secondi 
+// Configurazione timeout per le richieste (interno)
+const REQUEST_TIMEOUT = 10000 // 10 secondi 

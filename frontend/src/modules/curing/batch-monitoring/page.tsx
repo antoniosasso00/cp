@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 // Force dynamic rendering for this page
 export const dynamic = 'force-dynamic'
@@ -30,6 +31,8 @@ import {
 } from 'lucide-react'
 import { batchNestingApi } from '@/lib/api'
 import { formatDateTime } from '@/lib/utils'
+import { StatusCard } from '@/shared/components/ui/StatusCard'
+import { useBatchTrends } from '@/shared/hooks/useBatchTrends'
 
 interface BatchMonitoring {
   id: string
@@ -168,6 +171,10 @@ function StatoBadge({ stato }: { stato: string }) {
 }
 
 export default function BatchMonitoringPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const statusFilter = searchParams.get('status') || ''
+  
   const [batches, setBatches] = useState<BatchMonitoring[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -182,6 +189,14 @@ export default function BatchMonitoringPage() {
     })
     return initialStates
   })
+
+  // Calcolo trend giornalieri
+  const trends = useBatchTrends(batches.map(b => ({
+    id: b.id,
+    stato: b.stato,
+    created_at: b.created_at,
+    updated_at: b.updated_at
+  })))
 
   useEffect(() => {
     loadBatches()
@@ -304,7 +319,9 @@ export default function BatchMonitoringPage() {
     const matchesAutoclave = !selectedAutoclave || selectedAutoclave === 'all' || 
       batch.autoclave_id.toString() === selectedAutoclave
     
-    return matchesSearch && matchesAutoclave
+    const matchesStatus = !statusFilter || batch.stato === statusFilter
+    
+    return matchesSearch && matchesAutoclave && matchesStatus
   })
 
   // Raggruppa batch per sezione
@@ -328,6 +345,17 @@ export default function BatchMonitoringPage() {
       ...prev,
       [sectionId]: !prev[sectionId]
     }))
+  }
+
+  // Funzione per applicare filtro status tramite URL
+  const handleStatusFilter = (status: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (status === 'all' || status === '') {
+      params.delete('status')
+    } else {
+      params.set('status', status)
+    }
+    router.push(`?${params.toString()}`)
   }
 
   if (loading && batches.length === 0) {
@@ -378,91 +406,112 @@ export default function BatchMonitoringPage() {
         </Button>
       </div>
 
-      {/* Statistiche Rapide */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Totale</p>
-                <p className="text-2xl font-bold">{stats.totale}</p>
-              </div>
-              <Activity className="h-8 w-8 text-blue-500" />
-            </div>
-          </CardContent>
-        </Card>
+      {/* Dashboard Statistiche Interattive */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <StatusCard
+          title="Totale Batch"
+          value={stats.totale}
+          icon={Activity}
+          color="blue"
+          trend={{
+            value: trends.total.delta,
+            type: trends.total.delta > 0 ? 'increase' : trends.total.delta < 0 ? 'decrease' : 'stable'
+          }}
+          onClick={() => handleStatusFilter('all')}
+          className={statusFilter === '' ? 'ring-2 ring-blue-500' : ''}
+        />
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Sospesi</p>
-                <p className="text-2xl font-bold text-yellow-600">{stats.sospeso}</p>
-              </div>
-              <Clock className="h-8 w-8 text-yellow-500" />
-            </div>
-          </CardContent>
-        </Card>
+        <StatusCard
+          title="In Sospeso"
+          value={stats.sospeso}
+          icon={Clock}
+          color="yellow"
+          trend={{
+            value: trends.sospeso.delta,
+            type: trends.sospeso.delta > 0 ? 'increase' : trends.sospeso.delta < 0 ? 'decrease' : 'stable'
+          }}
+          onClick={() => handleStatusFilter('sospeso')}
+          className={statusFilter === 'sospeso' ? 'ring-2 ring-yellow-500' : ''}
+        />
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Confermati</p>
-                <p className="text-2xl font-bold text-green-600">{stats.confermato}</p>
-              </div>
-              <CheckCircle className="h-8 w-8 text-green-500" />
-            </div>
-          </CardContent>
-        </Card>
+        <StatusCard
+          title="Confermati"
+          value={stats.confermato}
+          icon={CheckCircle}
+          color="green"
+          trend={{
+            value: trends.confermato.delta,
+            type: trends.confermato.delta > 0 ? 'increase' : trends.confermato.delta < 0 ? 'decrease' : 'stable'
+          }}
+          onClick={() => handleStatusFilter('confermato')}
+          className={statusFilter === 'confermato' ? 'ring-2 ring-green-500' : ''}
+        />
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Caricati</p>
-                <p className="text-2xl font-bold text-blue-600">{stats.loaded}</p>
-              </div>
-              <Package className="h-8 w-8 text-blue-500" />
-            </div>
-          </CardContent>
-        </Card>
+        <StatusCard
+          title="Caricati"
+          value={stats.loaded}
+          icon={Package}
+          color="purple"
+          trend={{
+            value: trends.loaded.delta,
+            type: trends.loaded.delta > 0 ? 'increase' : trends.loaded.delta < 0 ? 'decrease' : 'stable'
+          }}
+          onClick={() => handleStatusFilter('loaded')}
+          className={statusFilter === 'loaded' ? 'ring-2 ring-purple-500' : ''}
+        />
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">In Cura</p>
-                <p className="text-2xl font-bold text-red-600">{stats.in_cura}</p>
-              </div>
-              <Flame className="h-8 w-8 text-red-500" />
-            </div>
-          </CardContent>
-        </Card>
+        <StatusCard
+          title="In Cura"
+          value={stats.in_cura}
+          icon={Flame}
+          color="red"
+          trend={{
+            value: trends.cured.delta,
+            type: trends.cured.delta > 0 ? 'increase' : trends.cured.delta < 0 ? 'decrease' : 'stable'
+          }}
+          onClick={() => handleStatusFilter('cured')}
+          className={statusFilter === 'cured' ? 'ring-2 ring-red-500' : ''}
+        />
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Completati</p>
-                <p className="text-2xl font-bold text-green-600">{stats.completato}</p>
-              </div>
-              <ClipboardCheck className="h-8 w-8 text-green-500" />
-            </div>
-          </CardContent>
-        </Card>
+        <StatusCard
+          title="Completati"
+          value={stats.completato}
+          icon={ClipboardCheck}
+          color="gray"
+          trend={{
+            value: trends.completato.delta,
+            type: trends.completato.delta > 0 ? 'increase' : trends.completato.delta < 0 ? 'decrease' : 'stable'
+          }}
+          onClick={() => handleStatusFilter('completato')}
+          className={statusFilter === 'completato' ? 'ring-2 ring-gray-500' : ''}
+        />
       </div>
 
       {/* Filtri Globali */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Search className="h-4 w-4" />
-            Filtri
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Search className="h-4 w-4" />
+              Filtri
+            </div>
+            {statusFilter && (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                Filtro attivo: {statusFilter}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto p-0 ml-1"
+                  onClick={() => handleStatusFilter('')}
+                >
+                  ×
+                </Button>
+              </Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="text-sm font-medium">Ricerca</label>
               <Input
@@ -483,6 +532,23 @@ export default function BatchMonitoringPage() {
                   <SelectItem value="1">Autoclave 1</SelectItem>
                   <SelectItem value="2">Autoclave 2</SelectItem>
                   <SelectItem value="3">Autoclave 3</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Stato</label>
+              <Select value={statusFilter} onValueChange={handleStatusFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Tutti gli stati" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Tutti</SelectItem>
+                  <SelectItem value="sospeso">In Sospeso</SelectItem>
+                  <SelectItem value="confermato">Confermati</SelectItem>
+                  <SelectItem value="loaded">Caricati</SelectItem>
+                  <SelectItem value="cured">In Cura</SelectItem>
+                  <SelectItem value="completato">Completati</SelectItem>
                 </SelectContent>
               </Select>
             </div>

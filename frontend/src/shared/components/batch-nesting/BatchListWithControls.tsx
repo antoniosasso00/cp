@@ -46,15 +46,8 @@ import BatchCRUD from './BatchCRUD';
 import { useRouter } from 'next/navigation';
 import { useStandardToast } from '@/shared/hooks/use-standard-toast';
 
-import { 
-  BATCH_STATUS_COLORS,
-  BATCH_STATUS_ICONS
-} from '@/shared/lib/constants';
-import type { BatchStatus } from '@/shared/types';
-
-// Configurazione icone e colori per stati batch (usando costanti centralizzate)
-const STATUS_ICONS = BATCH_STATUS_ICONS;
-const STATUS_COLORS = BATCH_STATUS_COLORS;
+import { BATCH_STATUS_CONFIG } from '@/shared/hooks/useBatchStatus';
+import type { BatchStatus } from '@/shared/hooks/useBatchStatus';
 
 interface BatchListWithControlsProps {
   /** Titolo del componente */
@@ -595,8 +588,9 @@ export default function BatchListWithControls({
             </div>
             {batches.map(batch => {
               const isExpanded = expandedBatch === batch.id;
-              const StatusIcon = STATUS_ICONS[batch.stato];
-              const statusColor = STATUS_COLORS[batch.stato];
+              const statusConfig = BATCH_STATUS_CONFIG[batch.stato as BatchStatus];
+              const StatusIcon = statusConfig?.icon || Package;
+              const statusColor = statusConfig?.color.bg || 'bg-gray-500';
 
               return (
                 <Card key={batch.id} className="border-l-4 border-l-blue-500">

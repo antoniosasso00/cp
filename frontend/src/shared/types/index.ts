@@ -13,7 +13,6 @@
 
 import type { 
   ODL_STATUSES,
-  BATCH_STATUSES,
   SCHEDULE_STATUSES,
   USER_ROLES,
   PRODUCTION_PHASES,
@@ -26,6 +25,9 @@ import type {
   VALVE_SUBCATEGORIES
 } from '@/shared/lib/constants';
 
+// Import del nuovo tipo BatchStatus dalla state machine
+import type { BatchStatus as BatchStatusType } from '@/shared/hooks/useBatchStatus';
+
 // ================================
 // TIPI PRINCIPALI
 // ================================
@@ -34,7 +36,7 @@ import type {
 export type ODLStatus = typeof ODL_STATUSES[number];
 
 /** Tipo per gli stati Batch Nesting */
-export type BatchStatus = typeof BATCH_STATUSES[number];
+export type BatchStatus = BatchStatusType;
 
 /** Tipo per gli stati Schedule */
 export type ScheduleStatus = typeof SCHEDULE_STATUSES[number];
