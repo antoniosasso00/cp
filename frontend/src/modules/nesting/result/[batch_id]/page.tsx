@@ -2,14 +2,20 @@
 
 import React, { useState, useEffect, Suspense, useCallback, useMemo } from 'react'
 import { useToast } from '@/shared/components/ui/use-toast'
-import { Loader2, MousePointer, X } from 'lucide-react'
+import { Loader2, MousePointer, X, Award } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { Button } from '@/shared/components/ui/button'
+import { Card, CardContent } from '@/shared/components/ui/card'
+import { AccordionPanel } from '@/shared/components/ui/common'
+import { useCanvasAutoFit } from '@/shared/lib/canvas-utils'
 
 // Importazione componenti nuovi
 import CompactHeader from './components/CompactHeader'
 import BatchActions from './components/BatchActions'
+import NestingStatistics from './components/NestingStatistics'
+import NestingToolList from './components/NestingToolList'
+import NestingBatchSwitcher from './components/NestingBatchSwitcher'
 
 // Lazy loading per NestingCanvasV2 e NestingToolbox
 const NestingCanvasV2 = dynamic(() => import('./components/NestingCanvasV2'), {
@@ -27,14 +33,7 @@ const NestingCanvasV2 = dynamic(() => import('./components/NestingCanvasV2'), {
   ssr: false
 })
 
-const NestingToolbox = dynamic(() => import('./components/NestingToolbox'), {
-  loading: () => (
-    <div className="flex items-center justify-center h-64 bg-gray-50 border border-gray-200 rounded-lg">
-      <Loader2 className="h-6 w-6 text-blue-500 animate-spin" />
-    </div>
-  ),
-  ssr: false
-})
+
 
 
 
@@ -461,6 +460,79 @@ export default function NestingResultPage({ params }: Props) {
     )
   }
 
+  // Ref per auto-fit canvas
+  const canvasContainerRef = React.useRef<HTMLDivElement>(null)
+
+  // Auto-fit del canvas al container
+  const fitResult = useCanvasAutoFit(
+    canvasContainerRef,
+    canvasWidth,
+    canvasHeight,
+    { padding: 20, maxScale: 1.0 },
+    (result) => {
+      console.log(`🎯 Canvas auto-fit: scale=${result.scale.toFixed(2)}, container=${result.containerWidth}x${result.containerHeight}`)
+    }
+  )
+
+  // Prepare accordion items
+  const accordionItems = [
+    {
+      id: 'statistics',
+      title: 'Statistiche Nesting',
+      icon: 'info' as const,
+      badge: `${efficiency?.toFixed(1)}%`,
+      badgeVariant: 'success' as const,
+      defaultOpen: true,
+      content: (
+        <NestingStatistics
+          toolPositions={toolPositions}
+          autoclave={currentBatch?.autoclave}
+          canvasWidth={canvasWidth}
+          canvasHeight={canvasHeight}
+          efficiency={efficiency}
+          totalWeight={currentBatch?.peso_totale_kg}
+          totalArea={currentBatch?.area_totale_utilizzata}
+          odlExcluded={currentBatch?.odl_esclusi}
+        />
+      )
+    },
+    {
+      id: 'toollist',
+      title: 'Lista Tool',
+      icon: 'info' as const,
+      badge: `${toolPositions.length} tool`,
+      badgeVariant: 'secondary' as const,
+      defaultOpen: false,
+      content: (
+        <NestingToolList
+          toolPositions={toolPositions}
+          odlExcluded={currentBatch?.odl_esclusi}
+          onToolSelect={handleToolSelect}
+        />
+      )
+    }
+  ]
+
+  // Aggiungi batch switcher solo se multi-batch
+  if (multiBatchData && multiBatchData.total_batches > 1) {
+    accordionItems.push({
+      id: 'batchswitcher',
+      title: 'Batch Multipli',
+      icon: 'info' as const,
+      badge: `${multiBatchData.total_batches} batch`,
+      badgeVariant: 'secondary' as const,
+      defaultOpen: false,
+      content: (
+        <NestingBatchSwitcher
+          multiBatchData={multiBatchData}
+          currentBatchId={params.batch_id}
+          selectedBatchIndex={selectedBatchIndex}
+          onBatchSelect={setSelectedBatchIndex}
+        />
+      )
+    })
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Compact Header */}
@@ -474,41 +546,48 @@ export default function NestingResultPage({ params }: Props) {
         isLoading={loading}
       />
 
-      {/* Main Content - Layout 80/20 */}
-      <div className="flex h-[calc(100vh-80px)]">
-        {/* Left section - Canvas (80%) */}
-        <div className="flex-1 p-4">
-          <Suspense
-            fallback={
-              <div className="flex items-center justify-center h-full bg-white border border-gray-200 rounded-lg">
-                <div className="text-center space-y-3">
-                  <Loader2 className="h-12 w-12 text-blue-500 mx-auto animate-spin" />
-                  <div>
-                    <p className="text-lg font-medium text-gray-700">Caricamento Canvas</p>
-                    <p className="text-sm text-gray-500">Inizializzazione vista 3D...</p>
+      {/* Main Content - New Layout: Canvas Full Width + Accordion Below */}
+      <div className="p-4 space-y-4">
+        {/* Canvas Container - Full Width */}
+        <Card>
+          <CardContent className="p-4">
+            <div 
+              id="nesting-canvas-container"
+              ref={canvasContainerRef}
+              className="relative w-full h-[70vh] min-h-[500px]"
+            >
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center h-full bg-white border border-gray-200 rounded-lg">
+                    <div className="text-center space-y-3">
+                      <Loader2 className="h-12 w-12 text-blue-500 mx-auto animate-spin" />
+                      <div>
+                        <p className="text-lg font-medium text-gray-700">Caricamento Canvas</p>
+                        <p className="text-sm text-gray-500">Inizializzazione vista 3D...</p>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            }
-          >
-            <NestingCanvasV2
-              canvasWidth={canvasWidth}
-              canvasHeight={canvasHeight}
-              toolPositions={toolPositions}
-              planeAssignments={canvasData?.plane_assignments}
-              isFullscreen={isFullscreen}
-              onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
-              onToolSelect={handleToolSelect}
-              className={isFullscreen ? 'fixed inset-0 z-50 bg-white' : 'h-full'}
-            />
-          </Suspense>
-        </div>
+                }
+              >
+                <NestingCanvasV2
+                  canvasWidth={canvasWidth}
+                  canvasHeight={canvasHeight}
+                  toolPositions={toolPositions}
+                  planeAssignments={canvasData?.plane_assignments}
+                  isFullscreen={isFullscreen}
+                  onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
+                  onToolSelect={handleToolSelect}
+                  className={isFullscreen ? 'fixed inset-0 z-50 bg-white' : 'w-full h-full'}
+                />
+              </Suspense>
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* Right section - Sidebar (20%) */}
-        <div className="w-80 border-l bg-white p-4 space-y-4 overflow-y-auto">
-          {/* Tool Drawer */}
-          {showToolDrawer && selectedToolInfo && (
-            <div className="border rounded-lg p-4 bg-blue-50 border-blue-200">
+        {/* Tool Drawer - Overlay quando tool selezionato */}
+        {showToolDrawer && selectedToolInfo && (
+          <Card className="border-blue-200 bg-blue-50">
+            <CardContent className="p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold text-blue-800 flex items-center gap-2">
                   <MousePointer className="h-4 w-4" />
@@ -524,7 +603,7 @@ export default function NestingResultPage({ params }: Props) {
                 </Button>
               </div>
               
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <div className="font-medium text-blue-800">ODL {selectedToolInfo.tool.odl_id}</div>
                   {selectedToolInfo.tool.part_number && (
@@ -535,102 +614,64 @@ export default function NestingResultPage({ params }: Props) {
                   )}
                 </div>
                 
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="font-medium">Posizione:</span>
-                    <div className="text-blue-600">
-                      X: {selectedToolInfo.tool.x.toFixed(0)}mm<br/>
-                      Y: {selectedToolInfo.tool.y.toFixed(0)}mm
-                    </div>
-                  </div>
-                  <div>
-                    <span className="font-medium">Dimensioni:</span>
-                    <div className="text-blue-600">
-                      {selectedToolInfo.tool.width.toFixed(0)} × {selectedToolInfo.tool.height.toFixed(0)}mm
-                    </div>
+                <div>
+                  <span className="font-medium text-blue-800">Posizione:</span>
+                  <div className="text-blue-600 text-sm">
+                    X: {selectedToolInfo.tool.x.toFixed(0)}mm, Y: {selectedToolInfo.tool.y.toFixed(0)}mm
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="font-medium">Peso:</span>
-                    <div className="text-blue-600">{selectedToolInfo.tool.peso.toFixed(1)} kg</div>
-                  </div>
-                  <div>
-                    <span className="font-medium">Orientamento:</span>
-                    <div className="text-blue-600">
-                      {selectedToolInfo.tool.rotated ? 'Ruotato' : 'Normale'}
-                    </div>
+                <div>
+                  <span className="font-medium text-blue-800">Dimensioni:</span>
+                  <div className="text-blue-600 text-sm">
+                    {selectedToolInfo.tool.width.toFixed(0)} × {selectedToolInfo.tool.height.toFixed(0)}mm
                   </div>
                 </div>
                 
-                <div className="pt-2 border-t border-blue-200">
-                  <div className="text-xs text-blue-600">
-                    📍 Posizionato automaticamente dall'algoritmo di nesting
+                <div>
+                  <span className="font-medium text-blue-800">Peso:</span>
+                  <div className="text-blue-600 text-sm">{selectedToolInfo.tool.peso.toFixed(1)} kg</div>
+                  <span className="font-medium text-blue-800">Orientamento:</span>
+                  <div className="text-blue-600 text-sm">
+                    {selectedToolInfo.tool.rotated ? 'Ruotato' : 'Normale'}
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-
-          {/* Batch Actions */}
-          <BatchActions
-            batchId={currentBatch?.id || ''}
-            batchState={currentBatch?.stato || ''}
-            onSaveDraft={async () => {}} 
-            onConfirm={handleConfirmBatch}
-            onCancel={async () => {}}
-            onDelete={async () => {}}
-            onDownload={() => handleDownloadReport()}
-            onExportReport={() => handleDownloadReport()}
-            isLoading={loading}
-          />
-
-          {/* Multi-batch selector */}
-          {multiBatchData?.total_batches > 1 && (
-            <div className="space-y-2">
-              <h3 className="text-sm font-medium text-gray-700">Seleziona Batch</h3>
-              <div className="space-y-1">
-                {multiBatchData?.batch_results.map((batch, index) => (
-                  <button
-                    key={batch.id}
-                    onClick={() => setSelectedBatchIndex(index)}
-                    className={`w-full text-left p-2 rounded border text-sm ${
-                      index === selectedBatchIndex
-                        ? 'bg-blue-50 border-blue-200 text-blue-800'
-                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
-                    }`}
-                  >
-                    <div className="font-medium">{batch.autoclave?.nome || `Autoclave ${batch.autoclave_id}`}</div>
-                    <div className="text-xs text-gray-500">
-                      {(batch.metrics?.efficiency_percentage || batch.efficiency || 0).toFixed(1)}% efficienza
-                    </div>
-                  </button>
-                ))}
+              
+              <div className="mt-3 pt-3 border-t border-blue-200">
+                <div className="text-xs text-blue-600">
+                  📍 Posizionato automaticamente dall'algoritmo di nesting
+                </div>
               </div>
-            </div>
-          )}
+            </CardContent>
+          </Card>
+        )}
 
-          {/* Nesting Toolbox */}
-          <Suspense
-            fallback={
-              <div className="flex items-center justify-center h-64 bg-gray-50 border border-gray-200 rounded-lg">
-                <Loader2 className="h-6 w-6 text-blue-500 animate-spin" />
-              </div>
-            }
-          >
-            <NestingToolbox
-              toolPositions={toolPositions}
-              autoclave={currentBatch?.autoclave}
-              canvasWidth={canvasWidth}
-              canvasHeight={canvasHeight}
-              efficiency={efficiency}
-              totalWeight={currentBatch?.peso_totale_kg}
-              totalArea={currentBatch?.area_totale_utilizzata}
-              odlExcluded={currentBatch?.odl_esclusi}
+        {/* Batch Actions */}
+        <Card>
+          <CardContent className="p-4">
+            <BatchActions
+              batchId={currentBatch?.id || ''}
+              batchState={currentBatch?.stato || ''}
+              onSaveDraft={async () => {}} 
+              onConfirm={handleConfirmBatch}
+              onCancel={async () => {}}
+              onDelete={async () => {}}
+              onDownload={() => handleDownloadReport()}
+              onExportReport={() => handleDownloadReport()}
+              isLoading={loading}
             />
-          </Suspense>
-        </div>
+          </CardContent>
+        </Card>
+
+        {/* Accordion con Statistiche, Tool List, Batch Switcher */}
+        <AccordionPanel
+          items={accordionItems}
+          allowMultiple={true}
+          defaultOpenItems={['statistics']}
+          variant="default"
+          showSeparators={false}
+        />
       </div>
     </div>
   )

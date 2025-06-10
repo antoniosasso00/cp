@@ -56,8 +56,4 @@ export const nestingCreateSchema = z.object({
 
 export type NestingCreateFormValues = z.infer<typeof nestingCreateSchema>
 
-export const nestingCreateDefaultValues: NestingCreateFormValues = {
-  odl_ids: [],
-  autoclave_ids: [],
-  parametri: defaultNestingParams
-} 
+// Removed unused export nestingCreateDefaultValues 

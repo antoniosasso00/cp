@@ -4,15 +4,23 @@ export type BatchStatus = 'sospeso' | 'confermato' | 'loaded' | 'cured' | 'termi
 
 export interface ToolPosition {
   odl_id: number
+  id?: number // Fallback per ID se odl_id non disponibile
   x: number
   y: number  
   width: number
   height: number
   peso: number
   rotated: boolean | string
+  rotation_angle?: number // Angolo di rotazione specifico
   part_number?: string
   tool_nome?: string
+  numero_odl?: string // Numero ODL formattato (es. "2024001")
+  descrizione_breve?: string // Descrizione breve della parte
   excluded?: boolean
+  // Campi aggiuntivi per tooltip
+  area?: number
+  posizione?: string
+  stato?: string
 }
 
 export interface AutoclaveInfo {
@@ -108,4 +116,14 @@ export interface ToolRectProps {
   autoclaveHeight: number
   showTooltips?: boolean
   className?: string
+}
+
+// Interfaccia per i risultati dei test di rendering
+export interface SmallAreaTestResult {
+  width: number
+  height: number
+  expected: string
+  fontSize: string
+  textVisible: boolean
+  result: string
 } 

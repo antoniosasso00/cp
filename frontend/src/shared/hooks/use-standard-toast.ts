@@ -76,21 +76,4 @@ export function useCrudToast() {
   }
 }
 
-/**
- * Hook per notifiche di qualità/efficienza
- */
-export function useQualityToast() {
-  return {
-    efficiency: (value: number, threshold?: number) => {
-      if (value < (threshold || 60)) {
-        toastService.showQualityWarning('efficiency', value, threshold)
-      }
-    },
-    quality: (message: string) => {
-      toastService.showQualityWarning('quality', message)
-    },
-    validation: (message: string) => {
-      toastService.showQualityWarning('validation', message)
-    }
-  }
-} 
+// Removed unused export useQualityToast 

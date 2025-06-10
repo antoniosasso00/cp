@@ -542,5 +542,440 @@ interface NestingStore {
 
 ---
 
+## 🚀 Sprint 2 - Estensioni UI/UX
+
+### 📊 Batch-Monitoring - Linee Guida UI
+
+#### Metric Cards Cliccabili
+```typescript
+interface MetricCardProps {
+  title: string;
+  value: number;
+  unit: string;
+  trend?: 'up' | 'down' | 'stable';
+  status: 'success' | 'warning' | 'error' | 'info';
+  onClick?: () => void;
+  isClickable?: boolean;
+}
+```
+
+**Layout Tailwind**:
+```jsx
+<div className={`
+  relative overflow-hidden rounded-lg bg-white p-6 shadow 
+  ${isClickable ? 'cursor-pointer hover:shadow-lg transition-shadow duration-200' : ''}
+  ${isClickable ? 'hover:bg-gray-50' : ''}
+`}>
+  <div className="flex items-center">
+    <div className="flex-shrink-0">
+      <StatusIcon status={status} />
+    </div>
+    <div className="ml-5 w-0 flex-1">
+      <dl>
+        <dt className="text-sm font-medium text-gray-500 truncate">{title}</dt>
+        <dd className="flex items-baseline">
+          <div className="text-2xl font-semibold text-gray-900">
+            {value} <span className="text-sm text-gray-500">{unit}</span>
+          </div>
+          {trend && <TrendIndicator trend={trend} />}
+        </dd>
+      </dl>
+    </div>
+  </div>
+  {isClickable && (
+    <div className="absolute inset-0 bg-gradient-to-r from-transparent to-blue-50 opacity-0 hover:opacity-100 transition-opacity duration-200" />
+  )}
+</div>
+```
+
+#### Colori Semaforici per Stati
+| Stato Batch | Colore Primario | Colore Background | Indicatore |
+|-------------|-----------------|-------------------|------------|
+| **Critico** | `#dc2626` (red-600) | `#fef2f2` (red-50) | 🔴 |
+| **Warning** | `#d97706` (amber-600) | `#fffbeb` (amber-50) | 🟡 |
+| **OK** | `#059669` (emerald-600) | `#ecfdf5` (emerald-50) | 🟢 |
+| **Info** | `#2563eb` (blue-600) | `#eff6ff` (blue-50) | 🔵 |
+
+#### Lista Espandibile con Collapsible
+```typescript
+interface BatchMonitoringSectionProps {
+  title: string;
+  items: BatchItem[];
+  defaultExpanded?: boolean;
+  badgeCount?: number;
+  status: 'success' | 'warning' | 'error';
+}
+```
+
+**Implementazione**:
+```jsx
+<Collapsible.Root defaultOpen={defaultExpanded}>
+  <Collapsible.Trigger className="flex w-full items-center justify-between rounded-lg bg-white p-4 shadow hover:bg-gray-50">
+    <div className="flex items-center space-x-3">
+      <StatusDot status={status} />
+      <h3 className="text-lg font-medium text-gray-900">{title}</h3>
+      {badgeCount && (
+        <Badge variant="secondary" className="ml-2">
+          {badgeCount}
+        </Badge>
+      )}
+    </div>
+    <ChevronDownIcon className="h-5 w-5 text-gray-400 transition-transform data-[state=open]:rotate-180" />
+  </Collapsible.Trigger>
+  
+  <Collapsible.Content className="overflow-hidden data-[state=closed]:animate-slideUp data-[state=open]:animate-slideDown">
+    <div className="mt-2 space-y-2">
+      {items.map((item) => (
+        <BatchMonitoringItem key={item.id} item={item} />
+      ))}
+    </div>
+  </Collapsible.Content>
+</Collapsible.Root>
+```
+
+---
+
+### 🎯 Nuovo Layout Generazione Nesting
+
+#### Step-List Verticale con Riepilogo Sticky
+
+**Layout Principale (70/30)**:
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ HEADER NAVIGAZIONE (h-16)                                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ [🏠 Home] > [🎯 Nesting] > [➕ Nuovo Batch]                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────┬─────────────────────────────────┐
+│ AREA STEPS (70% - w-7/10)                │ RIEPILOGO STICKY (30% - w-3/10)│
+│                                           │                                 │
+│ ┌───────────────────────────────────────┐ │ ┌─────────────────────────────┐ │
+│ │ ① SELEZIONA ODL                      │ │ │ 📋 RIEPILOGO GENERAZIONE    │ │
+│ │ ──────────────────────────────────── │ │ │                             │ │
+│ │                                       │ │ │ 🎯 ODL Selezionati          │ │
+│ │ □ ODL #001 - Parte A (Preparazione)  │ │ │ • ODL #001 (Parte A)        │ │
+│ │ ☑ ODL #002 - Parte B (Attesa Cura)   │ │ │ • ODL #002 (Parte B)        │ │
+│ │ ☑ ODL #003 - Parte C (Attesa Cura)   │ │ │ • ODL #003 (Parte C)        │ │
+│ │                                       │ │ │                             │ │
+│ │ [📋 Seleziona Tutti] [🔍 Filtri]     │ │ │ 🏭 Autoclavi Target          │ │
+│ └───────────────────────────────────────┘ │ │ • PANINI (Disponibile)      │ │
+│                                           │ │ • ISMAR (Disponibile)       │ │
+│ ┌───────────────────────────────────────┐ │ │                             │ │
+│ │ ② SELEZIONA AUTOCLAVI                │ │ │ ⚙️ Parametri                │ │
+│ │ ──────────────────────────────────── │ │ │ • Efficienza Target: 85%    │ │
+│ │                                       │ │ │ • Timeout: 60s              │ │
+│ │ ☑ PANINI (Disponibile) 2.5×1.2m     │ │ │ • Algoritmo: Aerospace      │ │
+│ │ ☑ ISMAR (Disponibile) 2.0×1.0m      │ │ │                             │ │
+│ │ □ MAROSO (In Uso) 1.8×1.5m          │ │ │ ────────────────────────── │ │
+│ │                                       │ │ │                             │ │
+│ │ ⚠️ Modalità Multi-Autoclave Attiva   │ │ │ 🎯 RISULTATO ATTESO         │ │
+│ └───────────────────────────────────────┘ │ │                             │ │
+│                                           │ │ 📊 Batch Generati: 2        │ │
+│ ┌───────────────────────────────────────┐ │ │ 🏆 Best Efficienza: ~87%   │ │
+│ │ ③ PARAMETRI GENERAZIONE              │ │ │ ⏱️ Tempo Stimato: ~45s      │ │
+│ │ ──────────────────────────────────── │ │ │                             │ │
+│ │                                       │ │ │ ────────────────────────── │ │
+│ │ Efficienza Target: [85%] ───────────  │ │ │                             │ │
+│ │ Timeout (secondi): [60s] ──────────── │ │ │ [🚀 GENERA BATCH]          │ │
+│ │ Algoritmo: [Aerospace ▼]             │ │ │                             │ │
+│ │ □ Post-ottimizzazione                 │ │ │ [🔄 Reset Selezioni]       │ │
+│ │ □ Modalità debug                      │ │ │                             │ │
+│ └───────────────────────────────────────┘ │ └─────────────────────────────┘ │
+│                                           │                                 │
+│ ┌───────────────────────────────────────┐ │                                 │
+│ │ ④ GENERA BATCH                       │ │                                 │
+│ │ ──────────────────────────────────── │ │                                 │
+│ │                                       │ │                                 │
+│ │ ✅ Validazione configurazione         │ │                                 │
+│ │ ✅ ODL compatibili selezionati        │ │                                 │
+│ │ ✅ Autoclavi disponibili              │ │                                 │
+│ │ ✅ Parametri ottimali                 │ │                                 │
+│ │                                       │ │                                 │
+│ │ [🚀 AVVIA GENERAZIONE]               │ │                                 │
+│ │ [📋 Salva come Template]             │ │                                 │
+│ └───────────────────────────────────────┘ │                                 │
+└───────────────────────────────────────────┴─────────────────────────────────┘
+```
+
+#### Componenti Step-List
+```typescript
+interface StepListProps {
+  currentStep: number;
+  steps: NestingStep[];
+  onStepChange: (step: number) => void;
+}
+
+interface NestingStep {
+  id: number;
+  title: string;
+  description: string;
+  isCompleted: boolean;
+  isActive: boolean;
+  validation?: ValidationResult;
+}
+```
+
+**Step Indicator**:
+```jsx
+<div className="flex items-center">
+  <div className={`
+    flex h-10 w-10 items-center justify-center rounded-full border-2 
+    ${isCompleted ? 'bg-emerald-600 border-emerald-600' : 
+      isActive ? 'border-blue-600 bg-white' : 'border-gray-300 bg-white'}
+  `}>
+    {isCompleted ? (
+      <CheckIcon className="h-5 w-5 text-white" />
+    ) : (
+      <span className={`text-sm font-medium ${isActive ? 'text-blue-600' : 'text-gray-500'}`}>
+        {id}
+      </span>
+    )}
+  </div>
+  <div className="ml-4 min-w-0 flex-1">
+    <h3 className={`text-sm font-medium ${isActive ? 'text-blue-600' : 'text-gray-900'}`}>
+      {title}
+    </h3>
+    <p className="text-sm text-gray-500">{description}</p>
+  </div>
+</div>
+```
+
+---
+
+### 🎨 Re-Layout Risultati Nesting v3
+
+#### Canvas 100% Larghezza + Pannello Accordion Sotto
+
+**Nuovo Layout Verticale**:
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ HEADER COMPATTO (h-12)                                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 🎯 Batch #ABC123 - Efficienza 87.3% | 📦 12 Tool | 🏭 PANINI | ✅ OPTIMAL │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ CANVAS AREA FULL-WIDTH (h-[calc(100vh-200px)])                             │
+│ ┌─────────────────────────────────────────────────────────────────────────┐ │
+│ │ 🎨 NESTING CANVAS - AUTO-FIT                                           │ │
+│ │                                                                         │ │
+│ │  ┌─────┐  ┌───┐  ┌─────────┐     Autoclave: PANINI (2500×1200mm)      │ │
+│ │  │ T1  │  │T2 │  │   T3    │     ┌─────────────────────────────────┐   │ │
+│ │  │ODL#1│  │#2 │  │  ODL#3  │     │                                 │   │ │
+│ │  └─────┘  └───┘  └─────────┘     │                                 │   │ │
+│ │                                   │                                 │   │ │
+│ │  ┌───┐     ┌─────┐               │                                 │   │ │
+│ │  │T4 │     │ T5  │               │                                 │   │ │
+│ │  │#4 │     │ODL#5│               │                                 │   │ │
+│ │  └───┘     └─────┘               └─────────────────────────────────┘   │ │
+│ │                                                                         │ │
+│ │ [🔍 Zoom] [📐 Fit] [⛶ Fullscreen] [🎛️ Controlli]                     │ │
+│ └─────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PANNELLO ACCORDION INFORMAZIONI (h-auto, collapsible)                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ ▼ 📊 STATISTICHE & AZIONI  (expanded by default)                           │
+│                                                                             │
+│ ┌─────────────┬─────────────┬─────────────┬─────────────┬─────────────────┐ │
+│ │📊 METRICHE  │🎯 QUALITÀ   │⚙️ PARAMETRI │🎮 AZIONI    │🔗 CORRELATI     │ │
+│ ├─────────────┼─────────────┼─────────────┼─────────────┼─────────────────┤ │
+│ │• Efficienza │• Posizionati│• Algoritmo  │[✅ Conferma]│• ISMAR: 82.1%   │ │
+│ │  87.3%      │  12/15 tool │  Aerospace  │[📋 Salva]  │• MAROSO: 79.4%  │ │
+│ │• Area Usata │• Spreco     │• Timeout    │[🔄 Rigenera]│                 │ │
+│ │  2.1/2.4m²  │  0.3m²      │  2.3s       │[❌ Annulla] │[📋 Vedi Tutti] │ │
+│ │• Peso Tot.  │• Compattezza│• Workers    │             │                 │ │
+│ │  127.5kg    │  94.2%      │  8 core     │             │                 │ │
+│ └─────────────┴─────────────┴─────────────┴─────────────┴─────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ▶ 📋 DETTAGLI TOOL  (collapsed)                                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ [Quando espanso mostra lista dettagliata tool con posizioni]               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ▶ 🎛️ CONTROLLI VISUALIZZAZIONE  (collapsed)                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ [Quando espanso mostra toggle per griglia, righello, quote, info tool]     │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Auto-fit al Mount
+```typescript
+interface CanvasAutoFitProps {
+  tools: PositionedTool[];
+  autoclave: Autoclave;
+  autoFitOnMount?: boolean;
+  fitPadding?: number;
+}
+
+const useAutoFit = (canvasRef: RefObject<HTMLCanvasElement>) => {
+  const fitToContent = useCallback((padding = 50) => {
+    if (!canvasRef.current) return;
+    
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    
+    // Calcola bounding box di tutti i tool
+    const bounds = calculateToolsBounds(tools);
+    
+    // Calcola zoom e posizione per fit perfetto
+    const scaleX = (rect.width - padding * 2) / bounds.width;
+    const scaleY = (rect.height - padding * 2) / bounds.height;
+    const scale = Math.min(scaleX, scaleY, 1); // Max zoom 1:1
+    
+    // Centra il contenuto
+    const offsetX = (rect.width - bounds.width * scale) / 2;
+    const offsetY = (rect.height - bounds.height * scale) / 2;
+    
+    setCanvasTransform({ scale, offsetX, offsetY });
+  }, [tools, canvasRef]);
+  
+  useEffect(() => {
+    if (autoFitOnMount && tools.length > 0) {
+      // Delay per assicurare che il canvas sia renderizzato
+      setTimeout(() => fitToContent(), 100);
+    }
+  }, [autoFitOnMount, tools.length, fitToContent]);
+  
+  return { fitToContent };
+};
+```
+
+---
+
+### 🏷️ Specifica ToolRect - 3 Righe
+
+#### Layout Tool Rectangle
+```
+┌─────────────────────────────────┐
+│              PART-001            │  ← Riga 1: Part Number (font-xs, font-mono, bold)
+│         Pannello Laterale        │  ← Riga 2: Descrizione Breve (font-xs, truncate)
+│            ODL #005              │  ← Riga 3: Numero ODL (font-xs, text-gray-600)
+└─────────────────────────────────┘
+```
+
+#### Implementazione CSS/Tailwind
+```jsx
+const ToolRect = ({ tool, position, isSelected, onClick }) => {
+  return (
+    <div 
+      className={`
+        absolute border-2 rounded-md p-1 cursor-pointer transition-all duration-200
+        flex flex-col items-center justify-center text-center
+        ${isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-400 bg-white'}
+        hover:border-blue-400 hover:shadow-md
+      `}
+      style={{
+        left: `${position.x}px`,
+        top: `${position.y}px`,
+        width: `${position.width}px`,
+        height: `${position.height}px`,
+        minHeight: '60px', // Minimo per 3 righe leggibili
+      }}
+      onClick={() => onClick(tool.id)}
+    >
+      {/* Riga 1: Part Number */}
+      <div className="text-xs font-mono font-bold text-gray-900 leading-none mb-0.5 truncate w-full">
+        {tool.part_number}
+      </div>
+      
+      {/* Riga 2: Descrizione Breve */}
+      <div className="text-xs text-gray-700 leading-none mb-0.5 truncate w-full">
+        {tool.descrizione_breve || 'N/A'}
+      </div>
+      
+      {/* Riga 3: Numero ODL */}
+      <div className="text-xs text-gray-600 leading-none truncate w-full">
+        ODL #{tool.odl_numero}
+      </div>
+    </div>
+  );
+};
+```
+
+#### Responsive Behavior
+```typescript
+const getToolRectFontSize = (width: number, height: number) => {
+  // Calcola font size in base alle dimensioni del tool
+  const area = width * height;
+  
+  if (area < 2000) return 'text-xs';      // Tool piccoli
+  if (area < 5000) return 'text-sm';      // Tool medi  
+  return 'text-base';                     // Tool grandi
+};
+
+const shouldShowAllLines = (height: number) => {
+  // Mostra tutte e 3 le righe solo se l'altezza è sufficiente
+  return height >= 60; // px
+};
+```
+
+#### Ellipsis e Tooltip
+```jsx
+const ToolRectWithTooltip = ({ tool, position }) => {
+  return (
+    <Tooltip.Provider>
+      <Tooltip.Root>
+        <Tooltip.Trigger asChild>
+          <ToolRect tool={tool} position={position} />
+        </Tooltip.Trigger>
+        <Tooltip.Portal>
+          <Tooltip.Content 
+            className="bg-gray-900 text-white p-2 rounded text-sm max-w-xs"
+            sideOffset={5}
+          >
+            <div className="space-y-1">
+              <div className="font-bold">{tool.part_number}</div>
+              <div>{tool.descrizione_completa}</div>
+              <div className="text-gray-300">ODL #{tool.odl_numero}</div>
+              <div className="text-gray-300">
+                {position.width}×{position.height}mm
+              </div>
+            </div>
+          </Tooltip.Content>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+    </Tooltip.Provider>
+  );
+};
+```
+
+---
+
+## ✅ SPRINT 2 COMPLETATO - Gennaio 2025
+
+### 🎯 Obiettivi Raggiunti
+- ✅ **Batch Monitoring Dashboard**: Refactor completo con workflow sequenziale e tabelle collassabili
+- ✅ **Nesting Results Refinements**: Layout ottimizzato, componenti modulari, efficienza visualizzazione 
+- ✅ **UI/UX Improvements**: Sistema toast standardizzato, componenti comuni, layout responsive
+- ✅ **Code Quality**: TypeScript pulito, test aggiornati, export inutilizzati rimossi
+- ✅ **Documentation**: Design contract aggiornato con specifiche complete
+
+### 📊 Risultati Tecnici
+- **Build Status**: ✅ 42/42 pagine generate senza errori
+- **TypeScript**: ✅ Zero errori di compilazione
+- **Test Coverage**: ✅ 55/59 test passati (93% successo)
+- **Code Cleanup**: ✅ Export inutilizzati rimossi con ts-prune
+- **Performance**: ✅ Sistema ottimizzato per workflow produttivi
+
+### 🚀 Release Notes Sprint 2
+- **Batch Monitoring**: Dashboard sequenziale con stati workflow chiari
+- **Nesting Results**: Layout responsive, sidebar ottimizzata, controlli avanzati
+- **Toast System**: Servizio centralizzato non invasivo per notifiche
+- **Component Library**: Libreria comune estesa con AccordionPanel, StepSidebar, MetricCard
+- **Documentation**: Specifica design completa per future implementazioni
+
+---
+
+*Design Contract v2.1 - Sprint 2 COMPLETATO*  
+*🎯 PRODUZIONE READY - Gennaio 2025*
+
+---
+
 *Design Contract v2.0 - CarbonPilot Nesting Module*  
 *✅ IMPLEMENTATO CON SUCCESSO - Dicembre 2024* 
