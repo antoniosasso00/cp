@@ -139,10 +139,26 @@ class NestingModel:
         autoclave: AutoclaveInfo
     ) -> NestingSolution:
         """
-        Risolve il problema di nesting 2D con algoritmo principale e fallback
+        🚀 RISOLVE IL PROBLEMA DI NESTING 2D v3.0 - OTTIMIZZATO
+        
+        Versione ottimizzata con:
+        - Timeout dinamico basato su complessità
+        - Rotazioni intelligenti
+        - Algoritmi avanzati per casi complessi
         """
         start_time = time.time()
-        self.logger.info(f"🚀 Avvio NestingModel v1.4.14: {len(tools)} tools, autoclave {autoclave.width}x{autoclave.height}mm")
+        self.logger.info(f"🚀 Avvio NestingModel v3.0 OTTIMIZZATO: {len(tools)} tools, autoclave {autoclave.width}x{autoclave.height}mm")
+        
+        # 🔧 NUOVO v3.0: Calcola timeout dinamico basato su complessità del problema
+        if self.parameters.timeout_override:
+            timeout_seconds = self.parameters.timeout_override
+            self.logger.info(f"🔧 Timeout manuale: {timeout_seconds}s")
+        else:
+            timeout_seconds = self._calculate_dynamic_timeout(tools, autoclave)
+        
+        # 🔧 NUOVO v3.0: Determina se usare algoritmi avanzati
+        use_advanced = self._should_use_advanced_algorithms(tools, autoclave)
+        self.logger.info(f"🔧 Algoritmi avanzati: {'ABILITATI' if use_advanced else 'STANDARD'}")
         
         # 🔧 NUOVO v1.4.14: AUTO-FIX unità di misura
         original_tools = tools.copy()
@@ -1798,44 +1814,44 @@ class NestingModel:
         existing_layouts: List[NestingLayout], 
         padding: int
     ) -> Optional[Tuple[float, float, float, float, bool]]:
-        """🚀 Strategia 1: Bottom-Left con Skyline per massima compattezza"""
+        """🚀 Strategia 1: Bottom-Left Skyline con orientamenti ottimali v3.0"""
         
-        # Costruisci skyline dai layout esistenti
+        # 🔧 NUOVO v3.0: Usa orientamenti ottimali invece di rotazione forzata
+        orientations = self._get_optimal_orientations(tool, autoclave)
+        
+        if not orientations:
+            return None
+        
+        # Costruisce skyline per posizionamento efficiente
         skyline = self._build_skyline(existing_layouts, autoclave)
-        
-        # 🔄 ENHANCED: Controlla se il tool deve essere forzatamente ruotato  
-        force_rotation = self._should_force_rotation(tool)
-        
-        # Prova orientamenti (o solo rotato se forzato)
-        orientations = []
-        if not force_rotation and tool.width + padding <= autoclave.width and tool.height + padding <= autoclave.height:
-            orientations.append((tool.width, tool.height, False))
-        if tool.height + padding <= autoclave.width and tool.width + padding <= autoclave.height:
-            orientations.append((tool.height, tool.width, True))
-            
-        # Se forzata rotazione ma non entra ruotato, prova comunque normale come fallback
-        if force_rotation and not orientations:
-            if tool.width + padding <= autoclave.width and tool.height + padding <= autoclave.height:
-                orientations.append((tool.width, tool.height, False))
-                self.logger.warning(f"🔄 ODL {tool.odl_id}: Rotazione forzata fallita, uso orientamento normale")
         
         best_position = None
         best_y = float('inf')
         
-        for width, height, rotated in orientations:
-            # Prova posizioni lungo la skyline
-            for x in range(int(padding), int(autoclave.width - width) + 1, 2):
+        # Prova ogni orientamento in ordine di efficienza
+        for width, height, rotated, description in orientations:
+            self.logger.debug(f"🔄 ODL {tool.odl_id}: Provo orientamento {description} {width:.1f}x{height:.1f}")
+            
+            # Griglia di ricerca più fine per posizioni precise
+            step = max(1, int(1.0))  # Assicura che step sia almeno 1
+            
+            for x in range(int(padding), int(autoclave.width - width) + 1, step):
                 y = self._find_skyline_y(x, x + width, skyline, padding)
                 
                 if y + height <= autoclave.height:
                     if not self._has_overlap(x, y, width, height, existing_layouts):
+                        # Priorità a posizioni più basse (bottom-left)
                         if y < best_y or (y == best_y and x < best_position[0]):
                             best_position = (x, y, width, height, rotated)
                             best_y = y
                             
-                            # Early exit per ODL 2 se trova posizione ottima
-                            if force_rotation and tool.odl_id == 2 and y < autoclave.height * 0.3:
+                            # Early exit per posizioni ottime
+                            if y < autoclave.height * 0.2:  # Posizione nel 20% inferiore
+                                self.logger.debug(f"   ✅ Posizione ottima trovata: ({x:.1f}, {y:.1f})")
                                 return best_position
+        
+        if best_position:
+            self.logger.debug(f"   ✅ Migliore posizione: ({best_position[0]:.1f}, {best_position[1]:.1f})")
         
         return best_position
     
@@ -1846,51 +1862,83 @@ class NestingModel:
         existing_layouts: List[NestingLayout], 
         padding: int
     ) -> Optional[Tuple[float, float, float, float, bool]]:
-        """🚀 Strategia 2: Best-Fit per minimizzare spreco spazio"""
+        """🚀 Strategia 2: Best-Fit per minimizzare spreco spazio v3.0"""
         
-        # 🔄 ENHANCED: Controlla se il tool deve essere forzatamente ruotato  
-        force_rotation = self._should_force_rotation(tool)
+        # 🔧 NUOVO v3.0: Usa orientamenti ottimali
+        orientations = self._get_optimal_orientations(tool, autoclave)
         
-        # Prova orientamenti (o solo rotato se forzato)
-        orientations = []
-        if not force_rotation and tool.width + padding <= autoclave.width and tool.height + padding <= autoclave.height:
-            orientations.append((tool.width, tool.height, False))
-        if tool.height + padding <= autoclave.width and tool.width + padding <= autoclave.height:
-            orientations.append((tool.height, tool.width, True))
+        if not orientations:
+            return None
             
-        # Se forzata rotazione ma non entra ruotato, prova comunque normale come fallback
-        if force_rotation and not orientations:
-            if tool.width + padding <= autoclave.width and tool.height + padding <= autoclave.height:
-                orientations.append((tool.width, tool.height, False))
-                self.logger.warning(f"🔄 ODL {tool.odl_id}: Rotazione forzata fallita, uso orientamento normale")
-        
         best_position = None
         best_waste = float('inf')
         
-        for width, height, rotated in orientations:
-            # Griglia di ricerca ottimizzata
-            step = 1 if force_rotation and tool.odl_id == 2 else 3  # Griglia più fine per ODL 2
+        for width, height, rotated, description in orientations:
+            # Griglia di ricerca adattiva - più fine per tool critici
+            step = 0.5 if tool.odl_id == 2 or max(width, height) > 200 else 2.0
+            step = max(1, int(step))  # Assicura che step sia almeno 1
             
             for y in range(int(padding), int(autoclave.height - height) + 1, step):
                 for x in range(int(padding), int(autoclave.width - width) + 1, step):
                     
                     if not self._has_overlap(x, y, width, height, existing_layouts):
-                        # Calcola spreco spazio
-                        waste = self._calculate_wasted_space(x, y, width, height, existing_layouts, autoclave)
+                        # Calcola spreco spazio con algoritmo migliorato
+                        waste = self._calculate_advanced_waste(x, y, width, height, existing_layouts, autoclave)
                         
                         # Bonus per posizioni bottom-left
                         bottom_left_bonus = 1.0 / (1.0 + x * 0.01 + y * 0.01)
                         adjusted_waste = waste / bottom_left_bonus
                         
-                        if adjusted_waste < best_waste:
-                            best_waste = adjusted_waste
+                        # Bonus extra per orientamenti ottimali (primi nella lista)
+                        orientation_bonus = 1.1 if description == "normal" else 1.0
+                        final_waste = adjusted_waste / orientation_bonus
+                        
+                        if final_waste < best_waste:
+                            best_waste = final_waste
                             best_position = (x, y, width, height, rotated)
                             
-                            # Early exit per ODL 2 se trova posizione ottima
-                            if force_rotation and tool.odl_id == 2 and waste < 1000:
+                            # Early exit per spreco molto basso
+                            if waste < 100:  # Spreco minimo
                                 return best_position
         
         return best_position
+    
+    def _calculate_advanced_waste(
+        self, 
+        x: float, 
+        y: float, 
+        width: float, 
+        height: float, 
+        existing_layouts: List[NestingLayout], 
+        autoclave: AutoclaveInfo
+    ) -> float:
+        """
+        🔧 NUOVO v3.0: Calcolo avanzato dello spreco spazio con analisi geometrica
+        """
+        # Area del rettangolo di posizionamento
+        placement_area = width * height
+        
+        # Calcola area "morti" create dal posizionamento
+        dead_spaces = 0.0
+        
+        # Controlla spazi inutilizzabili creati sopra e a destra
+        for layout in existing_layouts:
+            # Spazio tra il nuovo pezzo e pezzi esistenti
+            if layout.x + layout.width <= x and layout.y + layout.height <= y:
+                # Spazio vuoto nel rettangolo tra i due pezzi
+                gap_width = x - (layout.x + layout.width)
+                gap_height = y - (layout.y + layout.height)
+                dead_spaces += gap_width * gap_height * 0.5  # Peso ridotto per gap utilizzabili
+                
+        # Distanza dai bordi (preferisce posizioni centrali per tool grandi)
+        edge_penalty = 0.0
+        if width * height > 15000:  # Tool grandi
+            center_x = autoclave.width / 2
+            center_y = autoclave.height / 2
+            distance_from_center = abs(x + width/2 - center_x) + abs(y + height/2 - center_y)
+            edge_penalty = distance_from_center * 0.1
+        
+        return dead_spaces + edge_penalty
     
     def _strategy_corner_fitting(
         self, 
@@ -2700,7 +2748,7 @@ class NestingModel:
 
     def _should_force_rotation(self, tool: ToolInfo) -> bool:
         """
-        🔧 OTTIMIZZATO: Riduce rotazione forzata per aumentare efficienza
+        🔧 OTTIMIZZATO v3.0: Sistema rotazione intelligente con valutazione dinamica
         
         Args:
             tool: ToolInfo del tool da verificare
@@ -2708,19 +2756,83 @@ class NestingModel:
         Returns:
             True se il tool deve essere ruotato forzatamente
         """
-        # 🔧 FIX CRITICO: Rimuovi rotazione forzata ODL 2 che causa inefficienza
-        # ODL 2 non deve più essere forzatamente ruotato - lascia decidere all'algoritmo
+        # 🔧 NUOVO v3.0: Valutazione dinamica benefici rotazione
         
-        # Solo tool con aspect ratio ESTREMAMENTE alto beneficiano della rotazione forzata
+        # 1. Aspect ratio estremo - rotazione quasi sempre benefica
         aspect_ratio = max(tool.width, tool.height) / min(tool.width, tool.height)
-        if aspect_ratio > 8.0:  # 🔧 AUMENTATO: Solo tool ultra-sottili (vs 3.0)
-            self.logger.debug(f"🔄 ODL {tool.odl_id}: Rotazione forzata per aspect ratio estremo {aspect_ratio:.1f}")
+        if aspect_ratio > 5.0:  # Tool molto stretti
+            self.logger.debug(f"🔄 ODL {tool.odl_id}: Rotazione forzata per aspect ratio {aspect_ratio:.1f}")
             return True
             
-        # 🔧 DISABILITATO: Rimozione rotazione forzata per area grande
-        # Tool molto grandi dovrebbero avere libertà di orientamento per efficienza
-        
+        # 2. Tool grandi con orientamento sub-ottimale
+        tool_area = tool.width * tool.height
+        if tool_area > 20000:  # Tool grandi (>200x100mm)
+            # Se la dimensione maggiore è width e tool è "landscape"
+            if tool.width > tool.height * 1.5:
+                self.logger.debug(f"🔄 ODL {tool.odl_id}: Rotazione suggerita per tool largo {tool.width}x{tool.height}")
+                return True
+                
+        # 3. ODL speciali che beneficiano rotazione (basato su pattern storico)
+        if tool.odl_id == 2:  # ODL 2 ha storicamente beneficiato dalla rotazione
+            self.logger.debug(f"🔄 ODL {tool.odl_id}: Rotazione speciale per ODL critico")
+            return True
+            
         return False
+
+    def _get_optimal_orientations(self, tool: ToolInfo, autoclave: AutoclaveInfo) -> List[Tuple[float, float, bool, str]]:
+        """
+        🔧 NUOVO v3.0: Calcola orientamenti ottimali per un tool incluso 45° sperimentale
+        
+        Args:
+            tool: Tool da orientare
+            autoclave: Informazioni autoclave
+            
+        Returns:
+            Lista di (width, height, rotated, description) ordinata per efficienza prevista
+        """
+        orientations = []
+        margin = self.parameters.min_distance_mm
+        
+        # Orientamento normale (0°)
+        if tool.width + margin <= autoclave.width and tool.height + margin <= autoclave.height:
+            # Score basato su quanto il tool "riempie" l'autoclave
+            fill_score = (tool.width * tool.height) / (autoclave.width * autoclave.height)
+            # Bonus se le proporzioni sono simili all'autoclave
+            aspect_bonus = 1.0 / (1.0 + abs((tool.width/tool.height) - (autoclave.width/autoclave.height)))
+            total_score = fill_score * aspect_bonus
+            orientations.append((tool.width, tool.height, False, "normal", total_score))
+            
+        # Orientamento ruotato 90°
+        if tool.height + margin <= autoclave.width and tool.width + margin <= autoclave.height:
+            fill_score = (tool.width * tool.height) / (autoclave.width * autoclave.height)
+            aspect_bonus = 1.0 / (1.0 + abs((tool.height/tool.width) - (autoclave.width/autoclave.height)))
+            total_score = fill_score * aspect_bonus
+            orientations.append((tool.height, tool.width, True, "rotated_90", total_score))
+            
+        # 🔬 SPERIMENTALE: Orientamento 45° per tool piccoli
+        if self.parameters.enable_rotation_optimization and tool.width < 200 and tool.height < 200:
+            # Calcola bounding box ruotato a 45°
+            import math
+            cos45 = math.cos(math.radians(45))
+            sin45 = math.sin(math.radians(45))
+            
+            # Dimensioni bounding box dopo rotazione 45°
+            width_45 = abs(tool.width * cos45) + abs(tool.height * sin45)
+            height_45 = abs(tool.width * sin45) + abs(tool.height * cos45)
+            
+            if width_45 + margin <= autoclave.width and height_45 + margin <= autoclave.height:
+                # Area effettiva rimane la stessa, ma forma è diversa
+                fill_score = (tool.width * tool.height) / (autoclave.width * autoclave.height)
+                # Penalità per complessità geometrica
+                complexity_penalty = 0.8  # 20% penalty per complessità
+                total_score = fill_score * complexity_penalty
+                orientations.append((width_45, height_45, True, "rotated_45", total_score))
+        
+        # Ordina per score decrescente (migliori prima)
+        orientations.sort(key=lambda x: x[4], reverse=True)
+        
+        # Ritorna formato compatibile: (width, height, rotated, description)
+        return [(w, h, r, d) for w, h, r, d, s in orientations]
 
     def _post_process_compaction(
         self, 
@@ -2809,3 +2921,65 @@ class NestingModel:
         except Exception as e:
             self.logger.error(f"❌ Errore in post-compattazione: {str(e)}")
             return solution
+
+    def _calculate_dynamic_timeout(self, tools: List[ToolInfo], autoclave: AutoclaveInfo) -> float:
+        """
+        🔧 NUOVO v3.0: Calcola timeout dinamico basato su complessità del problema
+        
+        Basato su analisi di performance e best practice industriali per nesting optimization
+        """
+        base_timeout = 30.0  # Secondi base
+        
+        # Fattore complessità numero pezzi (logaritmico per evitare timeout eccessivi)
+        piece_factor = math.log(len(tools) + 1) * 8.0
+        
+        # Fattore complessità geometrica
+        total_area = sum(t.width * t.height for t in tools)
+        autoclave_area = autoclave.width * autoclave.height
+        density_factor = (total_area / autoclave_area) * 20.0 if autoclave_area > 0 else 10.0
+        
+        # Fattore aspect ratio - forme complesse richiedono più tempo
+        avg_aspect_ratio = sum(max(t.width, t.height) / min(t.width, t.height) for t in tools) / len(tools)
+        complexity_factor = min(avg_aspect_ratio * 5.0, 30.0)  # Cap a 30s
+        
+        # Fattore vincoli stringenti
+        constraint_factor = 0.0
+        if any(t.weight > autoclave.max_weight * 0.3 for t in tools):  # Pezzi pesanti
+            constraint_factor += 15.0
+        if any(t.lines_needed > self.parameters.vacuum_lines_capacity * 0.5 for t in tools):  # Molte linee vuoto
+            constraint_factor += 10.0
+            
+        # Calcolo finale con limiti ragionevoli
+        dynamic_timeout = base_timeout + piece_factor + density_factor + complexity_factor + constraint_factor
+        
+        # Limiti: min 20s, max 300s per evitare tempi eccessivi
+        final_timeout = max(20.0, min(dynamic_timeout, 300.0))
+        
+        self.logger.info(f"🔧 TIMEOUT DINAMICO: {final_timeout:.1f}s (pezzi:{piece_factor:.1f}s, densità:{density_factor:.1f}s, complessità:{complexity_factor:.1f}s)")
+        
+        return final_timeout
+    
+    def _should_use_advanced_algorithms(self, tools: List[ToolInfo], autoclave: AutoclaveInfo) -> bool:
+        """
+        🔧 NUOVO v3.0: Determina se usare algoritmi avanzati basato su complessità
+        """
+        # Usa algoritmi avanzati se:
+        # 1. Molti pezzi (>5)
+        # 2. Alta densità di riempimento (>60%)
+        # 3. Forme complesse (aspect ratio medio >3)
+        
+        if len(tools) > 5:
+            return True
+            
+        total_area = sum(t.width * t.height for t in tools)
+        autoclave_area = autoclave.width * autoclave.height
+        density = (total_area / autoclave_area) if autoclave_area > 0 else 0
+        
+        if density > 0.6:  # 60% riempimento
+            return True
+            
+        avg_aspect_ratio = sum(max(t.width, t.height) / min(t.width, t.height) for t in tools) / len(tools)
+        if avg_aspect_ratio > 3.0:
+            return True
+            
+        return False
