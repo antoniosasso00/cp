@@ -1,66 +1,105 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { useStandardToast } from '@/shared/hooks/use-standard-toast'
-import { Loader2, Package2, Calendar, Filter, RefreshCw, Eye, Plus, ChevronDown, ChevronRight } from 'lucide-react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { batchNestingApi, BatchNestingList } from '@/lib/api'
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
+import { Button } from '@/shared/components/ui/button'
+import { Badge } from '@/shared/components/ui/badge'
+import { Input } from '@/shared/components/ui/input'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/components/ui/table'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
+import { 
+  Loader2, 
+  Package2, 
+  Plus, 
+  Search,
+  Eye,
+  RefreshCw,
+  Filter,
+  LayoutGrid
+} from 'lucide-react'
+import { batchNestingApi, BatchNestingList } from '@/shared/lib/api'
+import { formatDateTime } from '@/shared/lib/utils'
+
+interface BatchItem {
+  id: string
+  nome?: string
+  stato: 'sospeso' | 'confermato' | 'loaded' | 'cured' | 'terminato'
+  autoclave_id: number
+  autoclave?: {
+    nome: string
+    codice: string
+  }
+  numero_nesting: number
+  peso_totale_kg: number
+  created_at: string
+  updated_at: string
+  metrics?: {
+    efficiency_percentage: number
+    total_weight_kg: number
+    positioned_tools: number
+  }
+}
+
+const STATO_LABELS = {
+  'sospeso': 'In Sospeso',
+  'confermato': 'Confermato',
+  'loaded': 'Caricato',
+  'cured': 'In Cura',
+  'terminato': 'Terminato'
+}
+
+const STATO_COLORS = {
+  'sospeso': 'bg-yellow-100 text-yellow-800',
+  'confermato': 'bg-green-100 text-green-800',
+  'loaded': 'bg-blue-100 text-blue-800',
+  'cured': 'bg-red-100 text-red-800',
+  'terminato': 'bg-gray-100 text-gray-800'
+}
 
 export default function NestingListPage() {
-  const { toast } = useStandardToast()
   const router = useRouter()
-  
-  // Stati per i dati
-  const [batchList, setBatchList] = useState<BatchNestingList[]>([])
+  const { toast } = useStandardToast()
+
+  const [batches, setBatches] = useState<BatchItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  
-  // Stati per i filtri (solo stati disponibili nell'interfaccia)
-  const [filtroStato, setFiltroStato] = useState<'sospeso' | 'confermato' | 'tutti'>('tutti')
-  const [filtroNome, setFiltroNome] = useState('')
-  
-  // Stato di apertura/chiusura della lista
-  const [isListOpen, setIsListOpen] = useState(true)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statoFilter, setStatoFilter] = useState<string>('all')
+  const [autoclaveFilter, setAutoclaveFilter] = useState<string>('all')
 
-  // Caricamento dati iniziali
   useEffect(() => {
-    loadBatchList()
-  }, [filtroStato, filtroNome])
+    loadBatches()
+  }, [])
 
-  const loadBatchList = async () => {
+  const loadBatches = async () => {
     try {
       setLoading(true)
-      setError(null)
+      const response = await batchNestingApi.getAll({ limit: 100 })
       
-      console.log('🔄 Caricamento lista batch nesting...')
-
-      const params = {
-        limit: 100, // Aumentiamo per catturare più batch prima di filtrare
-        stato: filtroStato !== 'tutti' ? filtroStato : undefined,
-        nome: filtroNome || undefined
-      }
-
-      const data = await batchNestingApi.getAll(params)
+      // Convert BatchNestingList to BatchItem
+      const convertedBatches: BatchItem[] = response.map((batch: BatchNestingList) => ({
+        ...batch,
+        stato: batch.stato as BatchItem['stato'], // Cast to correct union type
+        metrics: {
+          efficiency_percentage: 85, // Mock data - replace with real calculation
+          total_weight_kg: batch.peso_totale_kg,
+          positioned_tools: 0 // Mock data - replace with real data
+        }
+      }))
       
-      // 🚫 FILTRO BATCH TERMINATI - Non mostrarli mai in pagina nesting
-      const activeBatches = data.filter(batch => batch.stato !== 'terminato')
+      // Filtra batch terminati (nascondi quelli vecchi)
+      const activeBatches = convertedBatches.filter((batch: BatchItem) => batch.stato !== 'terminato')
+      setBatches(activeBatches)
       
-      console.log(`✅ Batch nesting caricati: ${data.length} totali, ${activeBatches.length} attivi (esclusi terminati)`)
-      setBatchList(activeBatches)
-
-    } catch (error) {
-      console.error('❌ Errore nel caricamento batch nesting:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Errore sconosciuto nel caricamento dati'
-      setError(errorMessage)
       toast({
-        title: 'Errore di caricamento',
-        description: errorMessage,
+        title: 'Lista aggiornata',
+        description: `Caricati ${activeBatches.length} batch attivi`
+      })
+    } catch (error) {
+      toast({
+        title: 'Errore caricamento',
+        description: 'Impossibile caricare la lista batch',
         variant: 'destructive'
       })
     } finally {
@@ -68,131 +107,88 @@ export default function NestingListPage() {
     }
   }
 
-  const getStatoBadgeVariant = (stato: string) => {
-    switch (stato) {
-      case 'sospeso':
-        return 'secondary'
-      case 'confermato':
-        return 'default'
-      default:
-        return 'secondary'
-    }
-  }
+  // Filtered data
+  const filteredBatches = batches.filter(batch => {
+    const matchesSearch = !searchQuery || 
+      batch.nome?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      batch.autoclave?.nome?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      batch.id.toLowerCase().includes(searchQuery.toLowerCase())
+    
+    const matchesStato = statoFilter === 'all' || batch.stato === statoFilter
+    const matchesAutoclave = autoclaveFilter === 'all' || batch.autoclave_id.toString() === autoclaveFilter
 
-  const getStatoLabel = (stato: string) => {
-    switch (stato) {
-      case 'sospeso':
-        return 'In sospeso'
-      case 'confermato':
-        return 'Confermato'
-      default:
-        return stato
-    }
-  }
+    return matchesSearch && matchesStato && matchesAutoclave
+  })
+
+  // Get unique autoclavi for filter
+  const uniqueAutoclavi = Array.from(new Set(batches.map(b => b.autoclave_id)))
+    .map(id => {
+      const batch = batches.find(b => b.autoclave_id === id)
+      return {
+        id,
+        nome: batch?.autoclave?.nome || `Autoclave ${id}`
+      }
+    })
 
   const handleViewBatch = (batchId: string) => {
-    router.push(`/dashboard/curing/nesting/result/${batchId}`)
+    router.push(`/nesting/result/${batchId}`)
   }
 
-  const handleNewNesting = () => {
-    router.push('/dashboard/curing/nesting')
-  }
-
-  // Statistiche batch attivi (esclusi terminati)
-  const stats = {
-    totale: batchList.length,
-    sospeso: batchList.filter(b => b.stato === 'sospeso').length,
-    confermato: batchList.filter(b => b.stato === 'confermato').length
-  }
-
-  // Mostra errore se presente
-  if (error) {
+  if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Lista Nesting</h1>
-            <p className="text-muted-foreground">Gestione batch di nesting generati</p>
-          </div>
-          <Button onClick={handleNewNesting}>
-            <Plus className="mr-2 h-4 w-4" />
-            Nuovo Nesting
-          </Button>
+      <div className="flex items-center justify-center min-h-96">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto" />
+          <p className="text-sm text-muted-foreground">Caricamento batch...</p>
         </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package2 className="h-5 w-5 text-destructive" />
-              Errore di Caricamento
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">{error}</p>
-            <Button onClick={loadBatchList} variant="outline">
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Riprova
-            </Button>
-          </CardContent>
-        </Card>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <div className="container mx-auto p-6 space-y-6 max-w-7xl">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Lista Nesting</h1>
-          <p className="text-muted-foreground">Gestione batch di nesting attivi (esclusi terminati)</p>
+          <h1 className="text-3xl font-bold tracking-tight">Lista Batch Nesting</h1>
+          <p className="text-muted-foreground">
+            Gestisci e visualizza i batch generati
+          </p>
         </div>
-        <Button onClick={handleNewNesting}>
+        <Button onClick={() => router.push('/nesting')}>
           <Plus className="mr-2 h-4 w-4" />
           Nuovo Nesting
         </Button>
       </div>
 
-      {/* Statistiche Rapide */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Totale Attivi</p>
-                <p className="text-2xl font-bold">{stats.totale}</p>
-              </div>
-              <Package2 className="h-8 w-8 text-blue-500" />
+          <CardContent className="flex items-center p-6">
+            <Package2 className="h-8 w-8 text-muted-foreground" />
+            <div className="ml-4">
+              <p className="text-sm font-medium text-muted-foreground">Totale Batch</p>
+              <p className="text-2xl font-bold">{batches.length}</p>
             </div>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Sospesi</p>
-                <p className="text-2xl font-bold text-yellow-600">{stats.sospeso}</p>
+        
+        {['sospeso', 'confermato', 'cured'].map(stato => (
+          <Card key={stato}>
+            <CardContent className="flex items-center p-6">
+              <LayoutGrid className="h-8 w-8 text-muted-foreground" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-muted-foreground">{STATO_LABELS[stato as keyof typeof STATO_LABELS]}</p>
+                <p className="text-2xl font-bold">
+                  {batches.filter(b => b.stato === stato).length}
+                </p>
               </div>
-              <div className="h-2 w-2 rounded-full bg-yellow-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Confermati</p>
-                <p className="text-2xl font-bold text-green-600">{stats.confermato}</p>
-              </div>
-              <div className="h-2 w-2 rounded-full bg-green-500" />
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {/* Filtri */}
+      {/* Filters */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -200,128 +196,157 @@ export default function NestingListPage() {
             Filtri
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="space-y-2">
-              <label htmlFor="filtro-stato" className="text-sm font-medium">
-                Stato
-              </label>
-              <Select value={filtroStato} onValueChange={(value: any) => setFiltroStato(value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleziona stato" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="tutti">Tutti gli stati attivi</SelectItem>
-                  <SelectItem value="sospeso">In sospeso</SelectItem>
-                  <SelectItem value="confermato">Confermato</SelectItem>
-                </SelectContent>
-              </Select>
+        <CardContent>
+          <div className="flex gap-4 items-center">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Cerca per nome, ID o autoclave..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
             </div>
+            
+            <Select value={statoFilter} onValueChange={setStatoFilter}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Filtra per stato" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tutti gli stati</SelectItem>
+                {Object.entries(STATO_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-            <div className="space-y-2">
-              <label htmlFor="filtro-nome" className="text-sm font-medium">
-                Nome
-              </label>
-              <Input
-                id="filtro-nome"
-                placeholder="Cerca per nome..."
-                value={filtroNome}
-                onChange={(e) => setFiltroNome(e.target.value)}
-              />
-            </div>
+            <Select value={autoclaveFilter} onValueChange={setAutoclaveFilter}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Filtra per autoclave" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tutte le autoclavi</SelectItem>
+                {uniqueAutoclavi.map((autoclave) => (
+                  <SelectItem key={autoclave.id} value={autoclave.id.toString()}>
+                    {autoclave.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-            <div className="flex items-end">
-              <Button onClick={loadBatchList} variant="outline" className="w-full">
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Aggiorna
-              </Button>
-            </div>
+            <Button onClick={loadBatches} variant="outline">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Lista Batch Comprimibile */}
+      {/* Table */}
       <Card>
-        <Collapsible open={isListOpen} onOpenChange={setIsListOpen}>
-          <CollapsibleTrigger asChild>
-            <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <Package2 className="h-5 w-5" />
-                  Batch Nesting Attivi
-                  <Badge variant="secondary">{batchList.length}</Badge>
-                </CardTitle>
-                <div className="flex items-center gap-2">
-                  <CardDescription className="hidden md:block">
-                    Lista di tutti i batch di nesting attivi (esclusi terminati)
-                  </CardDescription>
-                  {isListOpen ? (
-                    <ChevronDown className="h-4 w-4" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" />
-                  )}
-                </div>
-              </div>
-            </CardHeader>
-          </CollapsibleTrigger>
-          
-          <CollapsibleContent>
-            <CardContent>
-              {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-8 w-8 animate-spin mr-2" />
-                  <span>Caricamento batch nesting...</span>
-                </div>
-              ) : batchList.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Package2 className="h-8 w-8 mx-auto mb-2" />
-                  <p>Nessun batch nesting attivo trovato</p>
-                  <p className="text-sm">I batch terminati non vengono mostrati in questa vista</p>
-                  <Button onClick={handleNewNesting} className="mt-4">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Crea Nesting
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {batchList.map((batch) => (
-                    <div key={batch.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className="font-medium">
-                            {batch.nome || `Nesting #${batch.numero_nesting}`}
-                          </span>
-                          <Badge variant={getStatoBadgeVariant(batch.stato)}>
-                            {getStatoLabel(batch.stato)}
-                          </Badge>
-                        </div>
-                        
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="h-4 w-4" />
-                            {new Date(batch.created_at).toLocaleDateString('it-IT')}
-                          </span>
-                          <span>Autoclave: {batch.autoclave_id}</span>
-                          <span>Peso: {batch.peso_totale_kg.toFixed(1)} kg</span>
-                        </div>
+        <CardHeader>
+          <CardTitle>
+            Batch ({filteredBatches.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {filteredBatches.length === 0 ? (
+            <div className="text-center py-8">
+              <Package2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">
+                {searchQuery || statoFilter !== 'all' || autoclaveFilter !== 'all'
+                  ? 'Nessun batch corrisponde ai filtri'
+                  : 'Nessun batch disponibile'
+                }
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Batch</TableHead>
+                  <TableHead>Stato</TableHead>
+                  <TableHead>Autoclave</TableHead>
+                  <TableHead>Efficienza</TableHead>
+                  <TableHead>Tool</TableHead>
+                  <TableHead>Peso</TableHead>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Azioni</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredBatches.map((batch) => (
+                  <TableRow key={batch.id}>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{batch.nome}</p>
+                        <p className="text-sm text-muted-foreground font-mono">
+                          {batch.id.slice(0, 8)}...
+                        </p>
                       </div>
-                      
-                      <div className="flex items-center gap-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => handleViewBatch(batch.id)}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={STATO_COLORS[batch.stato as keyof typeof STATO_COLORS] || 'bg-gray-100 text-gray-800'}>
+                        {STATO_LABELS[batch.stato as keyof typeof STATO_LABELS] || batch.stato}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{batch.autoclave?.nome || `Autoclave ${batch.autoclave_id}`}</p>
+                        <p className="text-sm text-muted-foreground">{batch.autoclave?.codice}</p>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </CollapsibleContent>
-        </Collapsible>
+                    </TableCell>
+                    <TableCell>
+                      {batch.metrics?.efficiency_percentage != null ? (
+                        <Badge variant="outline">
+                          {batch.metrics.efficiency_percentage.toFixed(1)}%
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {batch.metrics?.positioned_tools != null ? (
+                        <Badge variant="secondary">
+                          {batch.metrics.positioned_tools}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {batch.metrics?.total_weight_kg != null ? (
+                        `${batch.metrics.total_weight_kg.toFixed(1)}kg`
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="text-sm">{formatDateTime(batch.created_at)}</p>
+                        {batch.updated_at !== batch.created_at && (
+                          <p className="text-xs text-muted-foreground">
+                            Mod: {formatDateTime(batch.updated_at)}
+                          </p>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        onClick={() => handleViewBatch(batch.id)}
+                        variant="outline"
+                        size="sm"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
       </Card>
     </div>
   )

@@ -247,10 +247,10 @@ def get_batch_result(
             } if main_batch.autoclave else None,
             "odl_ids": main_batch.odl_ids or [],
             "configurazione_json": {
-                # 🎯 FIX: Mantieni TUTTI i campi originali della configurazione JSON
-                **(main_batch.configurazione_json or {}),
-                # Sovrascrivi solo tool_positions arricchiti
+                "canvas_width": main_batch.configurazione_json.get('canvas_width', 0) if main_batch.configurazione_json else 0,
+                "canvas_height": main_batch.configurazione_json.get('canvas_height', 0) if main_batch.configurazione_json else 0,
                 "tool_positions": tool_positions,
+                "plane_assignments": main_batch.configurazione_json.get('plane_assignments', {}) if main_batch.configurazione_json else {}
             },
             "parametri": getattr(main_batch, 'parametri', {}),
             "created_at": main_batch.created_at.isoformat() if main_batch.created_at else None,
@@ -263,9 +263,7 @@ def get_batch_result(
             "metrics": {
                 "efficiency_percentage": efficiency_percentage,
                 "total_area_used_mm2": 0,  # Da calcolare se necessario
-                "total_weight_kg": total_weight,
-                "positioned_tools": len(tool_positions),
-                "excluded_tools": 0  # TODO: calcolare gli esclusi se disponibili
+                "total_weight_kg": total_weight
             },
             "efficiency": efficiency_percentage,  # Campo legacy per compatibilità
             "data_conferma": main_batch.data_conferma.isoformat() if main_batch.data_conferma else None
@@ -309,10 +307,10 @@ def get_batch_result(
                 } if batch.autoclave else None,
                 "odl_ids": batch.odl_ids or [],
                 "configurazione_json": {
-                    # 🎯 FIX: Mantieni TUTTI i campi originali della configurazione JSON anche per batch correlati
-                    **(batch.configurazione_json or {}),
-                    # Sovrascrivi solo tool_positions arricchiti
+                    "canvas_width": batch.configurazione_json.get('canvas_width', 0) if batch.configurazione_json else 0,
+                    "canvas_height": batch.configurazione_json.get('canvas_height', 0) if batch.configurazione_json else 0,
                     "tool_positions": batch_tool_positions,
+                    "plane_assignments": batch.configurazione_json.get('plane_assignments', {}) if batch.configurazione_json else {}
                 },
                 "parametri": getattr(batch, 'parametri', {}),
                 "created_at": batch.created_at.isoformat() if batch.created_at else None,
@@ -322,9 +320,7 @@ def get_batch_result(
                 "metrics": {
                     "efficiency_percentage": batch_efficiency,
                     "total_area_used_mm2": 0,
-                    "total_weight_kg": batch_weight,
-                    "positioned_tools": len(batch_tool_positions),
-                    "excluded_tools": 0  # TODO: calcolare gli esclusi se disponibili
+                    "total_weight_kg": batch_weight
                 },
                 "efficiency": batch_efficiency,
                 "data_conferma": batch.data_conferma.isoformat() if batch.data_conferma else None

@@ -8,12 +8,14 @@ a volte funziona e a volte no.
 """
 
 import sys
-sys.path.append('./backend')
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), 'backend'))
 
-from database.db_setup import SessionLocal
+from models.db import SessionLocal
 from models.autoclave import Autoclave
 from models.batch_nesting import BatchNesting
-from database.enums import StatoAutoclaveEnum, StatoBatchNestingEnum
+from models.autoclave import StatoAutoclaveEnum
+from models.batch_nesting import StatoBatchNestingEnum
 from datetime import datetime, timedelta
 
 def debug_sistema():

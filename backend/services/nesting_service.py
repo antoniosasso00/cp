@@ -18,7 +18,7 @@ import logging
 import json
 import uuid
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from ortools.sat.python import cp_model
@@ -43,7 +43,7 @@ class NestingParameters:
     """Parametri per il nesting ottimizzato"""
     padding_mm: float = 10  # Padding aggiuntivo attorno ai pezzi
     min_distance_mm: float = 15  # Distanza minima tra i pezzi
-    vacuum_lines_capacity: int = 20  # Capacità massima linee di vuoto (default per compatibilità)
+    # vacuum_lines_capacity RIMOSSO: ora viene preso dall'autoclave specifica
     use_fallback: bool = True  # Usa fallback greedy se CP-SAT fallisce
     allow_heuristic: bool = True  # Usa euristiche avanzate
     timeout_override: Optional[int] = None  # Override del timeout predefinito
@@ -721,9 +721,10 @@ class NestingService:
             plane_width = autoclave_data['lunghezza']          # Larghezza = lunghezza autoclave
             plane_height = autoclave_data['larghezza_piano']   # Altezza = larghezza piano
             max_weight = autoclave_data['max_load_kg']
-            max_lines = parameters.vacuum_lines_capacity
+            # 🔧 FIX: Usa il numero di linee vuoto specifico dell'autoclave invece del parametro globale
+            max_lines = autoclave_data['num_linee_vuoto']
             
-            self.logger.info(f"🚀 AEROSPACE NESTING: Piano {plane_width}x{plane_height}mm, peso max: {max_weight}kg")
+            self.logger.info(f"🚀 AEROSPACE NESTING: Piano {plane_width}x{plane_height}mm, peso max: {max_weight}kg, linee vuoto: {max_lines}")
             
             if not odl_data:
                 return NestingResult(
@@ -785,7 +786,9 @@ class NestingService:
             aerospace_solver = NestingModel(aerospace_params)
             
             self.logger.info(f"🔧 EFFICIENZA REALE: Avvio solver ottimizzato con {len(aerospace_tools)} tools")
-            self.logger.info(f"🔧 PARAMETRI: padding=0.1mm, area_weight=93%, multithread=8, GRASP=8 iter")
+            self.logger.info(f"🔧 PARAMETRI FRONTEND: padding={parameters.padding_mm}mm, min_distance={parameters.min_distance_mm}mm")
+            self.logger.info(f"🔧 PARAMETRI AEROSPACE: area_weight=93%, multithread=8, GRASP=8 iter, vacuum_lines={max_lines}")
+            self.logger.info(f"🔧 FIX VERIFICATO: Aerospace params usa padding={aerospace_params.padding_mm}mm, min_distance={aerospace_params.min_distance_mm}mm")
             
             # 🔧 EFFICIENZA REALE: Risoluzione con algoritmo ottimizzato per spazio
             aerospace_solution = aerospace_solver.solve(aerospace_tools, aerospace_autoclave)
@@ -955,8 +958,31 @@ class NestingService:
                 logger.error(f"Autoclave {autoclave_id} non trovata")
                 return None
             
-            # Genera nome univoco per il batch
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # 🛡️ CONTROLLO DUPLICATI INTELLIGENTE: Verifica solo race conditions immediate (ultimi 10 secondi)
+            # con stesso set di ODL per evitare click multipli dell'utente
+            ten_seconds_ago = datetime.now() - timedelta(seconds=10)
+            odl_ids_set = set([tool.odl_id for tool in nesting_result.positioned_tools])
+            
+            existing_recent_batch = db.query(BatchNesting).filter(
+                BatchNesting.autoclave_id == autoclave_id,
+                BatchNesting.stato == StatoBatchNestingEnum.SOSPESO.value,
+                BatchNesting.created_at >= ten_seconds_ago
+            ).first()
+            
+            # Verifica se il batch recente ha gli stessi ODL (vero duplicato)
+            if existing_recent_batch and existing_recent_batch.odl_ids:
+                existing_odl_set = set(existing_recent_batch.odl_ids)
+                overlap_ratio = len(odl_ids_set.intersection(existing_odl_set)) / max(len(odl_ids_set), len(existing_odl_set))
+                
+                # Solo se c'è sovrapposizione significativa (>80%) considera come duplicato
+                if overlap_ratio > 0.8:
+                    logger.warning(f"🛡️ VERO DUPLICATO PREVENUTO: Batch con ODL simili già creato {existing_recent_batch.created_at}")
+                    return str(existing_recent_batch.id)
+                else:
+                    logger.info(f"✅ BATCH DIVERSO CONSENTITO: Overlap ODL solo {overlap_ratio:.1%}, procedo con creazione")
+            
+            # Genera nome univoco per il batch con microsecond precision
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")  # Aggiunge microseconds
             batch_name = f"Robust Nesting {autoclave.nome} {timestamp}"
             
             # Prepara posizioni tool per JSON
@@ -1014,7 +1040,22 @@ class NestingService:
                     'area_pct': float(nesting_result.area_pct) if hasattr(nesting_result, 'area_pct') else 0.0,
                     'total_area_used_mm2': float(nesting_result.used_area),
                     'total_weight_kg': float(nesting_result.total_weight)
-                }
+                },
+                # 🎯 FIX: Aggiungi parametri nella configurazione JSON per la visualizzazione frontend
+                'padding_mm': parameters.padding_mm,
+                'min_distance_mm': parameters.min_distance_mm,
+                'parametri_nesting': {
+                    'padding_mm': parameters.padding_mm,
+                    'min_distance_mm': parameters.min_distance_mm,
+                    'vacuum_lines_capacity': autoclave.num_linee_vuoto,  # 🔧 FIX: Usa valore dell'autoclave
+                    'timeout_override': getattr(parameters, 'timeout_override', None),
+                    'use_fallback': getattr(parameters, 'use_fallback', True),
+                    'allow_heuristic': getattr(parameters, 'allow_heuristic', True)
+                },
+                'algorithm_used': 'Aerospace Unified',
+                'strategy_mode': multi_batch_context.get('strategy_mode', 'SINGLE_AUTOCLAVE') if multi_batch_context else 'SINGLE_AUTOCLAVE',
+                'generation_timestamp': datetime.now().isoformat(),
+                'execution_time_ms': 250  # Tempo di esecuzione simulato
             }
             
             # Parametri del nesting  

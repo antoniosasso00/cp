@@ -1548,7 +1548,7 @@ export const batchNestingApi = {
       queryParams.append('confermato_da_ruolo', confermato_da_ruolo);
       
       const response = await apiRequest<BatchNestingResponse>(
-        `/batch_nesting/${id}/conferma?${queryParams.toString()}`, 
+        `/batch_nesting/${id}/confirm?${queryParams.toString()}`, 
         'PATCH'
       );
       
@@ -1655,6 +1655,33 @@ export const batchNestingApi = {
   ): Promise<BatchNestingResponse> => {
     // Compatibilità: chiudi ora mappa su termina
     return batchNestingApi.termina(id, chiuso_da_utente, chiuso_da_ruolo);
+  },
+
+  // 🆕 Metodo per ottenere i risultati di un batch (con supporto multi-batch)
+  getResult: async (batchId: string, options?: { multi?: boolean }) => {
+    try {
+      const queryParams = options?.multi ? '?multi=true' : '';
+      console.log(`📊 Caricamento risultati batch ${batchId}${options?.multi ? ' (multi-batch)' : ''}...`);
+      
+      const response = await apiRequest<any>(`/batch_nesting/result/${batchId}${queryParams}`);
+      
+      console.log(`✅ Risultati batch ${batchId} caricati con successo`);
+      return response;
+    } catch (error: any) {
+      console.error(`❌ Errore nel caricamento risultati batch ${batchId}:`, error);
+      throw new Error(error?.message || 'Errore nel caricamento dei risultati');
+    }
+  },
+
+  // 🆕 Metodo per confermare un batch (alias di conferma per compatibilità)
+  confirm: async (
+    id: string, 
+    data: {
+      confermato_da_utente: string;
+      confermato_da_ruolo: string;
+    }
+  ): Promise<BatchNestingResponse> => {
+    return batchNestingApi.conferma(id, data.confermato_da_utente, data.confermato_da_ruolo);
   }
 };
 

@@ -206,51 +206,7 @@ def conferma_batch_nesting_legacy(
     db: Session = Depends(get_db)
 ):
     """Endpoint legacy - usa /confirm"""
-    # Implementazione diretta per evitare problemi di ordine di definizione
-    try:
-        # Trova il batch
-        batch = db.query(BatchNesting).filter(BatchNesting.id == batch_id).first()
-        if not batch:
-            raise HTTPException(status_code=404, detail="Batch non trovato")
-        
-        # Valida transizione di stato
-        validate_batch_state_transition(batch.stato, StatoBatchNestingEnum.CONFERMATO)
-        
-        # Aggiorna batch
-        batch.stato = StatoBatchNestingEnum.CONFERMATO
-        batch.confermato_da_utente = confermato_da_utente
-        batch.confermato_da_ruolo = confermato_da_ruolo
-        batch.data_conferma = datetime.now()
-        
-        # Aggiorna ODL associate a "Cura"
-        if batch.odl_ids:
-            odls = db.query(ODL).filter(ODL.id.in_(batch.odl_ids)).all()
-            for odl in odls:
-                if odl.status != "Cura":
-                    odl.status = "Cura"
-                    odl.updated_at = datetime.now()
-                    logger.info(f"📋 ODL {odl.id} aggiornato a stato CURA")
-        
-        # Aggiorna autoclave a "IN_USO"
-        if batch.autoclave_id:
-            autoclave = db.query(Autoclave).filter(Autoclave.id == batch.autoclave_id).first()
-            if autoclave and autoclave.stato != StatoAutoclaveEnum.IN_USO:
-                autoclave.stato = StatoAutoclaveEnum.IN_USO
-                autoclave.updated_at = datetime.now()
-                logger.info(f"🏭 Autoclave {autoclave.id} aggiornata a stato IN_USO")
-        
-        db.commit()
-        db.refresh(batch)
-        
-        logger.info(f"✅ Batch {batch_id} confermato da {confermato_da_utente}")
-        
-        # Converti a BatchNestingResponse appropriato
-        return format_batch_for_response(batch)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        return handle_database_error(db, e, f"conferma batch {batch_id}")
+    return confirm_batch_nesting(batch_id, confermato_da_utente, confermato_da_ruolo, db)
 
 @router.patch("/{batch_id}/loaded", response_model=BatchNestingResponse,
               summary="⚠️ ALIAS: usa /load")

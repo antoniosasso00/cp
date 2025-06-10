@@ -31,8 +31,9 @@ logger = logging.getLogger(__name__)
 class NestingParameters:
     """Parametri per l'algoritmo di nesting ottimizzato AEROSPACE GRADE"""
     # 🚀 PARAMETRI AEROSPACE BASE (Boeing 787 / Airbus A350 Standards)
-    padding_mm: float = 0.2  # 🔧 RIDOTTO: 0.2mm vs 0.5mm per efficienza reale
-    min_distance_mm: float = 0.2  # 🔧 RIDOTTO: 0.2mm vs 0.5mm per spazio ottimale
+    # 🔧 FIX: Valori default che SARANNO SOVRASCRITTI dal frontend - non sono più hardcoded!
+    padding_mm: float = 10.0  # Sarà sovrascritto dai parametri frontend (default 10mm)
+    min_distance_mm: float = 15.0  # Sarà sovrascritto dai parametri frontend (default 15mm)
     vacuum_lines_capacity: int = 25  # 🚀 AEROSPACE: Aumentato per maggiore flessibilità
     use_fallback: bool = True  # Abilita fallback greedy avanzato
     allow_heuristic: bool = True  # ✅ Euristica GRASP attiva per default
@@ -659,9 +660,12 @@ class NestingModel:
         Usa variabili intermedie per evitare errori BoundedLinearExpression
         """
         
-        # 🔧 FIX DEFINITIVO CP-SAT: Vincolo di non sovrapposizione senza intervalli
-        # Evita BoundedLinearExpression usando vincoli diretti
-        tools_included = [tool for tool in tools if True]  # Tutti i tool candidati
+        # 🔧 FIX DEFINITIVO CP-SAT: Vincolo di non sovrapposizione CON PADDING
+        # PROBLEMA TROVATO: prima non includeva padding nei vincoli overlap!
+        tools_included = [tool for tool in tools if True]
+        padding = max(1, round(self.parameters.padding_mm))  # 🔧 FIX: Usa padding_mm invece di min_distance_mm
+        
+        self.logger.info(f"🔧 CP-SAT OVERLAP FIX: Usando padding {padding}mm tra tool")
         
         for i, tool1 in enumerate(tools_included):
             for j, tool2 in enumerate(tools_included):
@@ -670,9 +674,10 @@ class NestingModel:
                     
                 id1, id2 = tool1.odl_id, tool2.odl_id
                 
-                # Vincolo: se entrambi inclusi, non devono sovrapporsi
-                # Due rettangoli non si sovrappongono se:
-                # end_x1 <= start_x2 OR end_x2 <= start_x1 OR end_y1 <= start_y2 OR end_y2 <= start_y1
+                # Vincolo: se entrambi inclusi, non devono sovrapporsi CON PADDING
+                # Due rettangoli non si sovrappongono con padding se:
+                # end_x1 + padding <= start_x2 OR end_x2 + padding <= start_x1 OR 
+                # end_y1 + padding <= start_y2 OR end_y2 + padding <= start_y1
                 
                 no_overlap_x1 = model.NewBoolVar(f'no_overlap_x1_{id1}_{id2}')
                 no_overlap_x2 = model.NewBoolVar(f'no_overlap_x2_{id1}_{id2}')
@@ -684,24 +689,24 @@ class NestingModel:
                     variables['included'][id1], variables['included'][id2]
                 ])
                 
-                # Definisci i vincoli di non sovrapposizione
-                # end_x1 <= start_x2 (tool1 a sinistra di tool2)
-                model.Add(variables['end_x'][id1] <= variables['x'][id2]).OnlyEnforceIf([
+                # 🔧 FIX CRITICO: Definisci i vincoli di non sovrapposizione CON PADDING
+                # end_x1 + padding <= start_x2 (tool1 a sinistra di tool2 con distanza minima)
+                model.Add(variables['end_x'][id1] + padding <= variables['x'][id2]).OnlyEnforceIf([
                     variables['included'][id1], variables['included'][id2], no_overlap_x1
                 ])
                 
-                # end_x2 <= start_x1 (tool2 a sinistra di tool1)
-                model.Add(variables['end_x'][id2] <= variables['x'][id1]).OnlyEnforceIf([
+                # end_x2 + padding <= start_x1 (tool2 a sinistra di tool1 con distanza minima)
+                model.Add(variables['end_x'][id2] + padding <= variables['x'][id1]).OnlyEnforceIf([
                     variables['included'][id1], variables['included'][id2], no_overlap_x2
                 ])
                 
-                # end_y1 <= start_y2 (tool1 sotto tool2)
-                model.Add(variables['end_y'][id1] <= variables['y'][id2]).OnlyEnforceIf([
+                # end_y1 + padding <= start_y2 (tool1 sotto tool2 con distanza minima)
+                model.Add(variables['end_y'][id1] + padding <= variables['y'][id2]).OnlyEnforceIf([
                     variables['included'][id1], variables['included'][id2], no_overlap_y1
                 ])
                 
-                # end_y2 <= start_y1 (tool2 sotto tool1)
-                model.Add(variables['end_y'][id2] <= variables['y'][id1]).OnlyEnforceIf([
+                # end_y2 + padding <= start_y1 (tool2 sotto tool1 con distanza minima)
+                model.Add(variables['end_y'][id2] + padding <= variables['y'][id1]).OnlyEnforceIf([
                     variables['included'][id1], variables['included'][id2], no_overlap_y2
                 ])
         
@@ -740,13 +745,13 @@ class NestingModel:
             model.Add(total_lines == sum(lines_terms))
             model.Add(total_lines <= self.parameters.vacuum_lines_capacity)
         
-        # 🔧 FIX CP-SAT: Vincoli di posizione minimi (già gestiti in _create_cpsat_variables)
+        # 🔧 FIX CP-SAT: Vincoli di posizione minimi con padding dalle pareti
         margin = max(1, round(self.parameters.min_distance_mm))
         
         for tool in tools:
             tool_id = tool.odl_id
             
-            # Vincoli minimi di posizione
+            # Vincoli minimi di posizione (distanza dalle pareti dell'autoclave)
             model.Add(variables['x'][tool_id] >= margin).OnlyEnforceIf(variables['included'][tool_id])
             model.Add(variables['y'][tool_id] >= margin).OnlyEnforceIf(variables['included'][tool_id])
     
@@ -1188,7 +1193,7 @@ class NestingModel:
         - Dimensioni rispetto all'autoclave (con rotazione)
         - Peso massimo supportato
         - Linee vuoto disponibili
-        - Padding richiesto
+        - Padding richiesto (SOLO controllo dimensioni, NON area)
         
         Returns:
             bool: True se il pezzo può essere posizionato, False altrimenti
@@ -1198,16 +1203,16 @@ class NestingModel:
         margin = self.parameters.min_distance_mm
         padding = self.parameters.padding_mm
         
-        # 1. Controllo dimensioni base (oversize)
-        fits_normal = (piece.width + margin <= autoclave.width and 
-                      piece.height + margin <= autoclave.height)
-        fits_rotated = (piece.height + margin <= autoclave.width and 
-                       piece.width + margin <= autoclave.height)
+        # 1. Controllo dimensioni base (oversize) - INCLUDE PADDING
+        fits_normal = (piece.width + padding <= autoclave.width and 
+                      piece.height + padding <= autoclave.height)
+        fits_rotated = (piece.height + padding <= autoclave.width and 
+                       piece.width + padding <= autoclave.height)
         
         if not fits_normal and not fits_rotated:
             piece.debug_reasons.append("oversize")
             piece.excluded = True
-            self.logger.debug(f"🔍 ODL {piece.odl_id}: OVERSIZE - {piece.width}x{piece.height}mm non entra in {autoclave.width}x{autoclave.height}mm")
+            self.logger.debug(f"🔍 ODL {piece.odl_id}: OVERSIZE - {piece.width}x{piece.height}mm con padding {padding}mm non entra in {autoclave.width}x{autoclave.height}mm")
             return False
         
         # 2. Controllo peso
@@ -1224,18 +1229,11 @@ class NestingModel:
             self.logger.debug(f"🔍 ODL {piece.odl_id}: VACUUM_LINES - richiede {piece.lines_needed} > {autoclave.max_lines} disponibili")
             return False
         
-        # 4. Controllo padding requirements (area minima con padding)
-        min_area_with_padding = (piece.width + 2*padding) * (piece.height + 2*padding)
-        autoclave_area = autoclave.width * autoclave.height
+        # 🔧 FIX CRITICO: RIMOSSO controllo area con padding troppo restrittivo
+        # Il controllo dimensioni sopra è sufficiente e corretto
         
-        if min_area_with_padding > autoclave_area:
-            piece.debug_reasons.append("padding")
-            piece.excluded = True
-            self.logger.debug(f"🔍 ODL {piece.odl_id}: PADDING - area con padding {min_area_with_padding:.0f}mm² > area autoclave {autoclave_area:.0f}mm²")
-            return False
-        
-        # 5. Se tutto ok, pezzo potenzialmente piazzabile
-        self.logger.debug(f"🔍 ODL {piece.odl_id}: PLACEABLE - {piece.width}x{piece.height}mm, {piece.weight}kg, {piece.lines_needed} linee")
+        # 4. Se tutto ok, pezzo potenzialmente piazzabile
+        self.logger.debug(f"🔍 ODL {piece.odl_id}: PLACEABLE - {piece.width}x{piece.height}mm, {piece.weight}kg, {piece.lines_needed} linee, padding {padding}mm OK")
         return True
     
     def _find_greedy_position(
@@ -1733,10 +1731,10 @@ class NestingModel:
             # Angolo in alto a destra del layout
             candidates.add((layout.x + layout.width + padding, layout.y + layout.height + padding))
             
-        # Aggiungi griglia fine solo nelle aree promettenti (primi 500mm da ogni bordo)
-        grid_step = 2
+        # 🔧 FIX CRITICO: Usa il padding come grid_step minimo per rispettare le distanze
+        grid_step = max(2, int(padding))  # Griglia deve rispettare il padding minimo
         
-        # Griglia fine vicino ai bordi
+        # Griglia fine con step basato sul padding (rispetta distanze del frontend)
         for y in range(int(padding), min(500, int(autoclave.height)), grid_step):
             for x in range(int(padding), min(500, int(autoclave.width)), grid_step):
                 candidates.add((x, y))
@@ -1823,8 +1821,9 @@ class NestingModel:
         best_y = float('inf')
         
         for width, height, rotated in orientations:
-            # Prova posizioni lungo la skyline
-            for x in range(int(padding), int(autoclave.width - width) + 1, 2):
+            # 🔧 FIX: Prova posizioni lungo la skyline rispettando il padding minimo
+            step = max(2, int(padding // 2))  # Step ridotto ma che rispetta il padding
+            for x in range(int(padding), int(autoclave.width - width) + 1, step):
                 y = self._find_skyline_y(x, x + width, skyline, padding)
                 
                 if y + height <= autoclave.height:
@@ -1868,8 +1867,8 @@ class NestingModel:
         best_waste = float('inf')
         
         for width, height, rotated in orientations:
-            # Griglia di ricerca ottimizzata
-            step = 1 if force_rotation and tool.odl_id == 2 else 3  # Griglia più fine per ODL 2
+            # 🔧 FIX: Griglia di ricerca che rispetta padding frontend invece di valori hardcoded
+            step = max(2, int(padding // 2))  # Step proporzionale al padding, minimo 2mm
             
             for y in range(int(padding), int(autoclave.height - height) + 1, step):
                 for x in range(int(padding), int(autoclave.width - width) + 1, step):
@@ -2447,8 +2446,8 @@ class NestingModel:
             if layout.odl_id in tools_dict:
                 positioned_tools.append(tools_dict[layout.odl_id])
         
-        # 🔧 PADDING ULTRA-AGGRESSIVO: 0.1mm per massima compattezza
-        ultra_compacted = self._apply_bl_ffd_algorithm_aerospace(positioned_tools, autoclave, padding=0.1)
+        # 🔧 FIX: Usa padding frontend anche per compattazione ultra-aggressiva  
+        ultra_compacted = self._apply_bl_ffd_algorithm_aerospace(positioned_tools, autoclave, padding=self.parameters.padding_mm)
         
         # FASE 2: Tentativo inserimento tool esclusi con padding zero (solo contatto)
         final_layouts = ultra_compacted.copy()
@@ -2492,7 +2491,7 @@ class NestingModel:
             
             all_available_tools = positioned_tools + excluded_tools
             complete_rearrangement = self._apply_bl_ffd_algorithm_aerospace(
-                all_available_tools, autoclave, padding=0.05  # Padding minimo 0.05mm
+                all_available_tools, autoclave, padding=self.parameters.padding_mm  # 🔧 FIX: Usa padding frontend
             )
             
             # Accetta solo se migliora significativamente
@@ -2509,11 +2508,18 @@ class NestingModel:
         tool: ToolInfo,
         autoclave: AutoclaveInfo,
         existing_layouts: List[NestingLayout],
-        padding: float = 0.1
+        padding: float = None  # 🔧 FIX: Rimuovo valore hardcoded 0.1
     ) -> Optional[Tuple[float, float, float, float, bool]]:
         """
         🔧 RICERCA MICRO-SPAZI: Trova spazi microscopici per tool esclusi
+        🔧 FIX CRITICO: Ora rispetta i parametri padding dell'utente invece di hardcode 0.1mm
         """
+        
+        # 🔧 FIX: Usa padding dai parametri frontend se non specificato
+        if padding is None:
+            padding = self.parameters.padding_mm
+            
+        self.logger.debug(f"🔧 MICRO-SPACE: Ricerca per ODL {tool.odl_id} con padding {padding}mm (frontend)")
         
         # Prova entrambi gli orientamenti
         orientations = []
@@ -2523,23 +2529,28 @@ class NestingModel:
             orientations.append((tool.height, tool.width, True))
             
         if not orientations:
+            self.logger.debug(f"🔧 MICRO-SPACE: ODL {tool.odl_id} troppo grande anche con padding {padding}mm")
             return None
         
-        # 🔧 GRIGLIA ULTRA-FINE: 0.5mm step per trovare anche i micro-spazi
-        step = 0.5
+        # 🔧 GRIGLIA DINAMICA: Usa step basato su padding per efficienza 
+        step = max(2, int(padding // 2))  # Step proporzionale al padding, minimo 2mm
+        self.logger.debug(f"🔧 MICRO-SPACE: Step griglia {step}mm basato su padding {padding}mm")
         
         for width, height, rotated in orientations:
-            # Scansione sistematica con griglia ultra-fine
+            # Scansione sistematica con griglia ottimizzata
             y = padding
             while y + height <= autoclave.height:
                 x = padding
                 while x + width <= autoclave.width:
-                    # Verifica sovrapposizioni con tolleranza minima
-                    if not self._has_overlap_with_tolerance(x, y, width, height, existing_layouts, tolerance=0.05):
+                    # 🔧 FIX: Usa tolleranza proporzionale al padding invece di hardcode 0.05
+                    tolerance = min(0.1, padding * 0.1)  # Max 0.1mm o 10% del padding
+                    if not self._has_overlap_with_tolerance(x, y, width, height, existing_layouts, tolerance=tolerance):
+                        self.logger.debug(f"🔧 MICRO-SPACE: Posizione trovata per ODL {tool.odl_id} in ({x:.1f}, {y:.1f})")
                         return (x, y, width, height, rotated)
                     x += step
                 y += step
         
+        self.logger.debug(f"🔧 MICRO-SPACE: Nessuna posizione trovata per ODL {tool.odl_id} con padding {padding}mm")
         return None
 
     def _has_overlap_with_tolerance(
@@ -2552,7 +2563,8 @@ class NestingModel:
         tolerance: float = 0.05
     ) -> bool:
         """
-        🔧 CONTROLLO OVERLAP con tolleranza microscopica per massima compattezza
+        🔧 CONTROLLO OVERLAP con tolleranza configurabile
+        ⚠️ NOTA: Default 0.05mm viene sovrascritto dalle funzioni chiamanti con valori proporzionali al padding
         """
         for layout in layouts:
             # Calcola overlap con tolleranza ridotta
@@ -2585,8 +2597,8 @@ class NestingModel:
         best_position = None
         best_efficiency = -1
         
-        # 🔧 GRIGLIA ULTRA-FINE: Ricerca esaustiva per massima efficienza
-        step = 1  # Griglia 1mm per tutti i tool per massima precisione
+        # 🔧 FIX: Griglia dinamica che rispetta i parametri frontend
+        step = max(2, int(padding // 2))  # Step proporzionale al padding, minimo 2mm
         
         for width, height, rotated in orientations:
             for y in range(int(padding), int(autoclave.height - height) + 1, step):
@@ -2640,7 +2652,7 @@ class NestingModel:
         if any(t.odl_id == 2 for t in tools):
             self.logger.info("🎯 STRATEGIA 1: ODL 2 prioritario")
             odl2_first = sorted(tools, key=lambda t: (t.odl_id != 2, -t.width * t.height))
-            layouts1 = self._apply_bl_ffd_algorithm_custom_order(odl2_first, autoclave, padding=0.5)
+            layouts1 = self._apply_bl_ffd_algorithm_custom_order(odl2_first, autoclave, padding=self.parameters.padding_mm)  # 🔧 FIX
             if len(layouts1) > best_count:
                 best_count = len(layouts1)
                 best_solution = self._create_solution_from_layouts(layouts1, tools, autoclave, start_time, "SMART_ODL2_FIRST")
@@ -2649,7 +2661,7 @@ class NestingModel:
         # Strategia 2: Tool più piccoli per primi (fill gaps first)
         self.logger.info("🎯 STRATEGIA 2: Tool piccoli prioritari")
         small_first = sorted(tools, key=lambda t: t.width * t.height)
-        layouts2 = self._apply_bl_ffd_algorithm_aerospace(small_first, autoclave, padding=0.3)
+        layouts2 = self._apply_bl_ffd_algorithm_aerospace(small_first, autoclave, padding=self.parameters.padding_mm)  # 🔧 FIX
         solution2 = self._create_solution_from_layouts(layouts2, tools, autoclave, start_time, "SMART_SMALL_FIRST")
         if len(layouts2) > best_count or (len(layouts2) == best_count and solution2.metrics.efficiency_score > best_efficiency):
             best_count = len(layouts2)
@@ -2660,7 +2672,7 @@ class NestingModel:
         # Strategia 3: Aspect ratio ottimizzato (long pieces first)
         self.logger.info("🎯 STRATEGIA 3: Aspect ratio ottimizzato")
         aspect_sorted = sorted(tools, key=lambda t: -(max(t.width, t.height) / min(t.width, t.height)))
-        layouts3 = self._apply_bl_ffd_algorithm_aerospace(aspect_sorted, autoclave, padding=0.4)
+        layouts3 = self._apply_bl_ffd_algorithm_aerospace(aspect_sorted, autoclave, padding=self.parameters.padding_mm)  # 🔧 FIX
         solution3 = self._create_solution_from_layouts(layouts3, tools, autoclave, start_time, "SMART_ASPECT_RATIO")
         if len(layouts3) > best_count or (len(layouts3) == best_count and solution3.metrics.efficiency_score > best_efficiency):
             best_count = len(layouts3)
@@ -2671,7 +2683,7 @@ class NestingModel:
         # Strategia 4: Layout compatto (width-first)
         self.logger.info("🎯 STRATEGIA 4: Width-first compatto")
         width_first = sorted(tools, key=lambda t: (-t.width, -t.height))
-        layouts4 = self._apply_bl_ffd_algorithm_aerospace(width_first, autoclave, padding=0.2)
+        layouts4 = self._apply_bl_ffd_algorithm_aerospace(width_first, autoclave, padding=self.parameters.padding_mm)  # 🔧 FIX
         solution4 = self._create_solution_from_layouts(layouts4, tools, autoclave, start_time, "SMART_WIDTH_FIRST")
         if len(layouts4) > best_count or (len(layouts4) == best_count and solution4.metrics.efficiency_score > best_efficiency):
             best_count = len(layouts4)
@@ -2682,7 +2694,7 @@ class NestingModel:
         # Strategia 5: Layout tetris (height-first)
         self.logger.info("🎯 STRATEGIA 5: Height-first tetris")
         height_first = sorted(tools, key=lambda t: (-t.height, -t.width))
-        layouts5 = self._apply_bl_ffd_algorithm_aerospace(height_first, autoclave, padding=0.2)
+        layouts5 = self._apply_bl_ffd_algorithm_aerospace(height_first, autoclave, padding=self.parameters.padding_mm)  # 🔧 FIX
         solution5 = self._create_solution_from_layouts(layouts5, tools, autoclave, start_time, "SMART_HEIGHT_FIRST")
         if len(layouts5) > best_count or (len(layouts5) == best_count and solution5.metrics.efficiency_score > best_efficiency):
             best_count = len(layouts5)
@@ -2759,11 +2771,11 @@ class NestingModel:
                 if layout.odl_id in tools_dict:
                     compacted_tools.append(tools_dict[layout.odl_id])
             
-            # 3. Applica algoritmo BL-FFD con padding ultra-ridotto per massima compattezza
+            # 3. Applica algoritmo BL-FFD con padding dal frontend per consistenza  
             ultra_compact_layouts = self._apply_bl_ffd_algorithm_aerospace(
                 compacted_tools, 
                 autoclave, 
-                padding=0.1  # Ultra-ridotto per massima compattezza
+                padding=self.parameters.padding_mm  # 🔧 FIX: Usa padding frontend per consistenza
             )
             
             # 4. Se migliora, applica anche strategia di riempimento gap

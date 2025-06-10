@@ -1,191 +1,103 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-
-// Force dynamic rendering for this page
-export const dynamic = 'force-dynamic'
-
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { useRouter } from 'next/navigation'
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
+import { Button } from '@/shared/components/ui/button'
+import { Badge } from '@/shared/components/ui/badge'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/components/ui/table'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/shared/components/ui/collapsible'
+import { Checkbox } from '@/shared/components/ui/checkbox'
+import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { 
-  Activity, 
+  Loader2, 
   Clock, 
-  Flame, 
-  RefreshCw, 
-  Search,
-  AlertCircle,
+  Play, 
+  Pause, 
   CheckCircle,
-  Thermometer,
-  Gauge,
+  XCircle,
   ChevronDown,
-  ChevronRight,
-  Package,
-  ClipboardCheck,
-  PlayCircle
+  ChevronUp,
+  RefreshCw,
+  Eye,
+  Thermometer,
+  Trash2
 } from 'lucide-react'
-import { batchNestingApi } from '@/lib/api'
-import { formatDateTime } from '@/lib/utils'
+import { batchNestingApi } from '@/shared/lib/api'
+import { formatDateTime } from '@/shared/lib/utils'
 
-interface BatchMonitoring {
+interface BatchMonitoringItem {
   id: string
-  nome: string
-  stato: 'sospeso' | 'confermato' | 'loaded' | 'cured' | 'terminato' | 'in_cura' | 'completato' | 'errore' | 'attesa'
+  nome?: string
+  stato: 'sospeso' | 'confermato' | 'loaded' | 'cured' | 'terminato'
   autoclave_id: number
-  autoclave_nome?: string
-  numero_odl?: number
-  numero_nesting?: number
-  ciclo_cura_id?: number
-  ciclo_nome?: string
-  temperatura_target?: number
-  temperatura_attuale?: number
-  pressione_target?: number
-  pressione_attuale?: number
-  tempo_rimanente_minuti?: number
-  tempo_totale_minuti?: number
-  data_inizio_cura?: string
-  data_fine_prevista?: string
+  autoclave?: {
+    nome: string
+    codice: string
+    stato: string
+  }
+  numero_nesting: number
+  peso_totale_kg: number
   created_at: string
   updated_at: string
+  confermato_da_utente?: string
+  data_conferma?: string
+  workflow_actions?: {
+    next_action: string
+    can_proceed: boolean
+    last_action?: string
+    last_action_time?: string
+  }
 }
 
-// Configurazione sezioni workflow
-interface WorkflowSection {
-  id: string
-  title: string
-  description: string
-  icon: any
-  color: string
-  states: string[]
-  defaultOpen: boolean
-}
-
-const WORKFLOW_SECTIONS: WorkflowSection[] = [
-  {
-    id: 'sospeso',
-    title: 'In Sospeso',
-    description: 'Batch generati in attesa di conferma',
-    icon: Clock,
-    color: 'text-yellow-600 bg-yellow-50 border-yellow-200',
-    states: ['sospeso'],
-    defaultOpen: true
+const STATO_WORKFLOW = {
+  'sospeso': { 
+    label: 'In Sospeso', 
+    color: 'bg-yellow-100 text-yellow-800', 
+    icon: Pause,
+    next: 'Conferma'
   },
-  {
-    id: 'confermato',
-    title: 'Confermati',
-    description: 'Batch confermati pronti per il caricamento',
+  'confermato': { 
+    label: 'Confermato', 
+    color: 'bg-green-100 text-green-800', 
     icon: CheckCircle,
-    color: 'text-green-600 bg-green-50 border-green-200',
-    states: ['confermato'],
-    defaultOpen: true
+    next: 'Carica'
   },
-  {
-    id: 'caricato',
-    title: 'Caricati',
-    description: 'Batch caricati in autoclave',
-    icon: Package,
-    color: 'text-blue-600 bg-blue-50 border-blue-200',
-    states: ['loaded', 'attesa'],
-    defaultOpen: true
+  'loaded': { 
+    label: 'Caricato', 
+    color: 'bg-blue-100 text-blue-800', 
+    icon: Clock,
+    next: 'Avvia Cura'
   },
-  {
-    id: 'in_cura',
-    title: 'In Cura',
-    description: 'Batch attualmente in processo di cura',
-    icon: Flame,
-    color: 'text-red-600 bg-red-50 border-red-200',
-    states: ['cured', 'in_cura'],
-    defaultOpen: true
+  'cured': { 
+    label: 'In Cura', 
+    color: 'bg-red-100 text-red-800', 
+    icon: Thermometer,
+    next: 'Termina'
   },
-  {
-    id: 'completato',
-    title: 'Completati',
-    description: 'Batch con cura terminata (ultime 24h)',
-    icon: ClipboardCheck,
-    color: 'text-gray-600 bg-gray-50 border-gray-200',
-    states: ['completato'],
-    defaultOpen: false
+  'terminato': { 
+    label: 'Terminato', 
+    color: 'bg-gray-100 text-gray-800', 
+    icon: CheckCircle,
+    next: null
   }
-]
-
-function StatoBadge({ stato }: { stato: string }) {
-  const getColor = () => {
-    switch (stato) {
-      case 'sospeso':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-300'
-      case 'confermato':
-        return 'bg-green-100 text-green-800 border-green-300'
-      case 'loaded':
-      case 'attesa':
-        return 'bg-blue-100 text-blue-800 border-blue-300'
-      case 'in_cura':
-      case 'cured':
-        return 'bg-red-100 text-red-800 border-red-300'
-      case 'completato':
-      case 'terminato':
-        return 'bg-gray-100 text-gray-800 border-gray-300'
-      case 'errore':
-        return 'bg-red-100 text-red-800 border-red-300'
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-300'
-    }
-  }
-
-  const getLabel = () => {
-    switch (stato) {
-      case 'sospeso':
-        return 'In Sospeso'
-      case 'confermato':
-        return 'Confermato'
-      case 'loaded':
-        return 'Caricato'
-      case 'cured':
-        return 'In Cura'
-      case 'in_cura':
-        return 'In Cura'
-      case 'completato':
-        return 'Completato'
-      case 'terminato':
-        return 'Terminato'
-      case 'attesa':
-        return 'In Attesa'
-      case 'errore':
-        return 'Errore'
-      default:
-        return stato
-    }
-  }
-
-  return (
-    <Badge className={`${getColor()} border flex items-center gap-1`} variant="outline">
-      {getLabel()}
-    </Badge>
-  )
 }
 
 export default function BatchMonitoringPage() {
-  const [batches, setBatches] = useState<BatchMonitoring[]>([])
+  const router = useRouter()
+  const { toast } = useStandardToast()
+
+  const [batches, setBatches] = useState<BatchMonitoringItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedAutoclave, setSelectedAutoclave] = useState<string>('')
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+  const [actionLoading, setActionLoading] = useState<string[]>([])
   
-  // Stati di apertura/chiusura delle sezioni
-  const [sectionStates, setSectionStates] = useState<Record<string, boolean>>(() => {
-    const initialStates: Record<string, boolean> = {}
-    WORKFLOW_SECTIONS.forEach(section => {
-      initialStates[section.id] = section.defaultOpen
-    })
-    return initialStates
-  })
+  const [selectedBatches, setSelectedBatches] = useState<Set<string>>(new Set())
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   useEffect(() => {
     loadBatches()
-    // Aggiorna automaticamente ogni 30 secondi
+    // Auto-refresh ogni 30 secondi
     const interval = setInterval(loadBatches, 30000)
     return () => clearInterval(interval)
   }, [])
@@ -193,455 +105,406 @@ export default function BatchMonitoringPage() {
   const loadBatches = async () => {
     try {
       setLoading(true)
-      setError(null)
+      const response = await batchNestingApi.getAll({ limit: 100 })
       
-      // Carica i batch per il monitoraggio
-      const response = await batchNestingApi.getAll({ 
-        limit: 100 // Aumentiamo per catturare più batch
+      // Filtra solo batch attivi (non terminati da più di 1 giorno)
+      const activeBatches = response.filter(batch => {
+        if (batch.stato !== 'terminato') return true
+        const daysSinceUpdate = (Date.now() - new Date(batch.updated_at).getTime()) / (1000 * 60 * 60 * 24)
+        return daysSinceUpdate < 1
       })
-      
-      // Simulo dati di monitoraggio aggiuntivi con stati realistici
-      const batchesWithMonitoring: BatchMonitoring[] = response.map(batch => {
-        // Determina lo stato di monitoraggio basato sullo stato reale
-        let statoMonitoraggio: string
-        let inCura = false
-        
-        switch (batch.stato) {
-          case 'terminato':
-            // Solo gli ultimi batch terminati nelle ultime 24h
-            const batchDate = new Date(batch.updated_at || batch.created_at)
-            const now = new Date()
-            const hoursSinceUpdate = (now.getTime() - batchDate.getTime()) / (1000 * 60 * 60)
-            statoMonitoraggio = hoursSinceUpdate <= 24 ? 'completato' : 'terminato'
-            break
-          case 'confermato':
-            // Simula progressione del workflow per batch confermati
-            const rand = Math.random()
-            const daysSinceCreation = (new Date().getTime() - new Date(batch.created_at).getTime()) / (1000 * 60 * 60 * 24)
-            
-            if (daysSinceCreation > 2) {
-              // Batch più vecchi sono più probabilmente in cura
-              statoMonitoraggio = 'in_cura'
-              inCura = true
-            } else if (daysSinceCreation > 1) {
-              // Batch di ieri sono probabilmente caricati
-              statoMonitoraggio = 'loaded'
-            } else if (rand > 0.7) {
-              // Alcuni batch recenti potrebbero essere già caricati
-              statoMonitoraggio = 'loaded'
-            } else {
-              // La maggior parte rimane confermata
-              statoMonitoraggio = 'confermato'
-            }
-            break
-          case 'sospeso':
-            statoMonitoraggio = 'sospeso'
-            break
-          default:
-            statoMonitoraggio = batch.stato
+
+      // Convert to monitoring format
+      const monitoringBatches: BatchMonitoringItem[] = activeBatches.map(batch => ({
+        ...batch,
+        stato: batch.stato as BatchMonitoringItem['stato'],
+        workflow_actions: {
+          next_action: STATO_WORKFLOW[batch.stato as keyof typeof STATO_WORKFLOW]?.next || '',
+          can_proceed: batch.stato !== 'terminato',
+          last_action: batch.stato === 'confermato' ? 'Confermato' : undefined,
+          last_action_time: batch.updated_at
         }
-        
-        return {
-          ...batch,
-          nome: batch.nome || `Batch ${batch.numero_nesting || batch.id.slice(-8)}`,
-          stato: statoMonitoraggio as any,
-          autoclave_nome: `Autoclave ${batch.autoclave_id}`,
-          ciclo_nome: `Ciclo Standard ${batch.autoclave_id}`,
-          numero_odl: Math.floor(Math.random() * 50) + 1,
-          numero_nesting: batch.numero_nesting || Math.floor(Math.random() * 20) + 1,
-          temperatura_target: inCura ? 180 + Math.random() * 40 : undefined,
-          temperatura_attuale: inCura ? (175 + Math.random() * 50) : undefined,
-          pressione_target: inCura ? 6.0 + Math.random() * 2 : undefined,
-          pressione_attuale: inCura ? (5.8 + Math.random() * 2.4) : undefined,
-          tempo_rimanente_minuti: inCura ? Math.floor(Math.random() * 480) : undefined,
-          tempo_totale_minuti: inCura ? (480 + Math.floor(Math.random() * 240)) : undefined,
-          data_inizio_cura: inCura ? new Date(Date.now() - Math.random() * 86400000).toISOString() : undefined,
-          data_fine_prevista: inCura ? new Date(Date.now() + Math.random() * 86400000).toISOString() : undefined
-        }
+      }))
+
+      setBatches(monitoringBatches)
+      setSelectedBatches(prev => {
+        const activeBatchIds = new Set(monitoringBatches.map(b => b.id))
+        const newSelected = new Set<string>()
+        prev.forEach(id => {
+          if (activeBatchIds.has(id)) {
+            newSelected.add(id)
+          }
+        })
+        return newSelected
       })
-      
-      // Filtro i batch terminati da più di 24h (non mostrarli neanche in completati)
-      const filteredBatches = batchesWithMonitoring.filter(batch => batch.stato !== 'terminato')
-      
-      setBatches(filteredBatches)
-    } catch (err) {
-      console.error('Errore caricamento batch:', err)
-      setError('Errore nel caricamento dei batch di monitoraggio')
+    } catch (error) {
+      toast({
+        title: 'Errore caricamento',
+        description: 'Impossibile caricare i batch da monitorare',
+        variant: 'destructive'
+      })
     } finally {
       setLoading(false)
     }
   }
 
-  const formatDuration = (minutes: number | undefined) => {
-    if (!minutes) return '-'
-    const hours = Math.floor(minutes / 60)
-    const mins = minutes % 60
-    return `${hours}h ${mins}m`
+  const handleSelectBatch = (batchId: string, checked: boolean) => {
+    setSelectedBatches(prev => {
+      const newSet = new Set(prev)
+      if (checked) {
+        newSet.add(batchId)
+      } else {
+        newSet.delete(batchId)
+      }
+      return newSet
+    })
   }
 
-  const formatTemperature = (temp: number | undefined) => {
-    if (!temp) return '-'
-    return `${temp.toFixed(1)}°C`
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedBatches(new Set(batches.map(b => b.id)))
+    } else {
+      setSelectedBatches(new Set())
+    }
   }
 
-  const formatPressure = (pressure: number | undefined) => {
-    if (!pressure) return '-'
-    return `${pressure.toFixed(1)} bar`
+  const handleDeleteMultiple = async () => {
+    if (selectedBatches.size === 0) return
+
+    try {
+      setDeleteLoading(true)
+      
+      const selectedBatchData = batches.filter(b => selectedBatches.has(b.id))
+      const batchesRequireConfirm = selectedBatchData.filter(b => 
+        ['confermato', 'loaded', 'cured'].includes(b.stato)  
+      ) 
+      const batchesSafeToDelete = selectedBatchData.filter(b => 
+        ['sospeso', 'draft'].includes(b.stato)
+      )
+      const batchesCannotDelete = selectedBatchData.filter(b => 
+        b.stato === 'terminato'
+      )
+
+      let confirmDelete = false
+      if (batchesRequireConfirm.length > 0) {
+        const confirmMessage = `
+ATTENZIONE: Stai per eliminare batch in stati attivi!
+
+Batch che richiedono conferma (${batchesRequireConfirm.length}):
+${batchesRequireConfirm.map(b => `• ${b.id} (${b.stato})`).join('\n')}
+
+Batch eliminabili direttamente (${batchesSafeToDelete.length}):
+${batchesSafeToDelete.map(b => `• ${b.id} (${b.stato})`).join('\n')}
+
+${batchesCannotDelete.length > 0 ? `
+IMPOSSIBILI DA ELIMINARE (${batchesCannotDelete.length}):
+${batchesCannotDelete.map(b => `• ${b.id} (${b.stato})`).join('\n')}
+` : ''}
+
+Vuoi procedere?`
+
+        confirmDelete = window.confirm(confirmMessage)
+        if (!confirmDelete) return
+      }
+
+      const idsToDelete = Array.from(selectedBatches)
+      const result = await batchNestingApi.deleteMultipleBatch(idsToDelete, confirmDelete)
+
+      toast({
+        title: 'Eliminazione completata',
+        description: `Eliminati ${result.deleted_count}/${result.total_requested} batch`
+      })
+
+      await loadBatches()
+      setSelectedBatches(new Set())
+
+    } catch (error: any) {
+      toast({
+        title: 'Errore eliminazione',
+        description: error.message || 'Impossibile eliminare i batch selezionati',
+        variant: 'destructive'
+      })
+    } finally {
+      setDeleteLoading(false)
+    }
   }
 
-  const getProgressPercentage = (batch: BatchMonitoring) => {
-    if (!batch.tempo_rimanente_minuti || !batch.tempo_totale_minuti) return 0
-    return ((batch.tempo_totale_minuti - batch.tempo_rimanente_minuti) / batch.tempo_totale_minuti) * 100
+  const toggleExpanded = (batchId: string) => {
+    const newExpanded = new Set(expandedRows)
+    if (newExpanded.has(batchId)) {
+      newExpanded.delete(batchId)
+    } else {
+      newExpanded.add(batchId)
+    }
+    setExpandedRows(newExpanded)
   }
 
-  // Filtri globali
-  const filteredBatches = batches.filter(batch => {
-    const matchesSearch = !searchQuery || 
-      batch.nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      batch.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (batch.autoclave_nome?.toLowerCase().includes(searchQuery.toLowerCase()))
+  const handleWorkflowAction = async (batch: BatchMonitoringItem, action: string) => {
+    const batchId = batch.id
     
-    const matchesAutoclave = !selectedAutoclave || selectedAutoclave === 'all' || 
-      batch.autoclave_id.toString() === selectedAutoclave
-    
-    return matchesSearch && matchesAutoclave
-  })
+    try {
+      setActionLoading(prev => [...prev, batchId])
+      
+      const userInfo = {
+        confermato_da_utente: 'Sistema',
+        confermato_da_ruolo: 'Operatore'
+      }
 
-  // Raggruppa batch per sezione
-  const getBatchesForSection = (section: WorkflowSection) => {
-    return filteredBatches.filter(batch => section.states.includes(batch.stato))
+      switch (action) {
+        case 'Conferma':
+          await batchNestingApi.confirm(batchId, userInfo)
+          break
+        case 'Carica':
+          await batchNestingApi.carica(batchId, userInfo.confermato_da_utente, userInfo.confermato_da_ruolo)
+          break
+        case 'Avvia Cura':
+          await batchNestingApi.avviaCura(batchId, userInfo.confermato_da_utente, userInfo.confermato_da_ruolo)
+          break
+        case 'Termina':
+          await batchNestingApi.termina(batchId, userInfo.confermato_da_utente, userInfo.confermato_da_ruolo)
+          break
+        default:
+          throw new Error(`Azione non supportata: ${action}`)
+      }
+
+      toast({
+        title: 'Azione completata',
+        description: `${action} eseguito con successo per batch ${batch.nome || batchId}`
+      })
+
+      // Refresh data
+      await loadBatches()
+      
+    } catch (error: any) {
+      toast({
+        title: 'Errore azione',
+        description: error.message || `Impossibile eseguire ${action}`,
+        variant: 'destructive'
+      })
+    } finally {
+      setActionLoading(prev => prev.filter(id => id !== batchId))
+    }
   }
 
-  // Statistiche totali
-  const stats = {
-    totale: batches.length,
-    sospeso: batches.filter(b => b.stato === 'sospeso').length,
-    confermato: batches.filter(b => b.stato === 'confermato').length,
-    loaded: batches.filter(b => ['loaded', 'attesa'].includes(b.stato)).length,
-    in_cura: batches.filter(b => ['in_cura'].includes(b.stato)).length,
-    completato: batches.filter(b => b.stato === 'completato').length,
-    errori: batches.filter(b => b.stato === 'errore').length
+  const handleViewBatch = (batchId: string) => {
+    router.push(`/nesting/result/${batchId}`)
   }
 
-  const toggleSection = (sectionId: string) => {
-    setSectionStates(prev => ({
-      ...prev,
-      [sectionId]: !prev[sectionId]
-    }))
-  }
-
-  if (loading && batches.length === 0) {
+  if (loading) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <Activity className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-500" />
-            <p className="text-muted-foreground">Caricamento monitoraggio batch...</p>
-          </div>
+      <div className="flex items-center justify-center min-h-96">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto" />
+          <p className="text-sm text-muted-foreground">Caricamento monitoraggio batch...</p>
         </div>
       </div>
     )
   }
 
-  if (error) {
-    return (
-      <div className="container mx-auto p-6">
-        <Card className="border-red-200">
-          <CardContent className="pt-6">
-            <div className="text-center text-red-600">
-              <AlertCircle className="h-8 w-8 mx-auto mb-4" />
-              <p>{error}</p>
-              <Button onClick={loadBatches} className="mt-4">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Riprova
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
+  // Group batches by status
+  const groupedBatches = batches.reduce((acc, batch) => {
+    if (!acc[batch.stato]) acc[batch.stato] = []
+    acc[batch.stato].push(batch)
+    return acc
+  }, {} as Record<string, BatchMonitoringItem[]>)
+
+  const isAllSelected = batches.length > 0 && selectedBatches.size === batches.length
+  const isPartiallySelected = selectedBatches.size > 0 && selectedBatches.size < batches.length
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-6 space-y-6 max-w-7xl">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Monitoraggio Batch</h1>
           <p className="text-muted-foreground">
-            Controllo workflow dei batch in tempo reale
+            Controllo real-time del workflow di cura
           </p>
         </div>
-        <Button onClick={loadBatches} variant="outline" disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Aggiorna
-        </Button>
+        <div className="flex items-center space-x-2">
+          {selectedBatches.size > 0 && (
+            <Button 
+              onClick={handleDeleteMultiple}
+              variant="destructive"
+              disabled={deleteLoading}
+            >
+              {deleteLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              Elimina {selectedBatches.size} selezionati
+            </Button>
+          )}
+          
+          <Button onClick={loadBatches} variant="outline">
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Aggiorna
+          </Button>
+        </div>
       </div>
 
-      {/* Statistiche Rapide */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Totale</p>
-                <p className="text-2xl font-bold">{stats.totale}</p>
-              </div>
-              <Activity className="h-8 w-8 text-blue-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Sospesi</p>
-                <p className="text-2xl font-bold text-yellow-600">{stats.sospeso}</p>
-              </div>
-              <Clock className="h-8 w-8 text-yellow-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Confermati</p>
-                <p className="text-2xl font-bold text-green-600">{stats.confermato}</p>
-              </div>
-              <CheckCircle className="h-8 w-8 text-green-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Caricati</p>
-                <p className="text-2xl font-bold text-blue-600">{stats.loaded}</p>
-              </div>
-              <Package className="h-8 w-8 text-blue-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">In Cura</p>
-                <p className="text-2xl font-bold text-red-600">{stats.in_cura}</p>
-              </div>
-              <Flame className="h-8 w-8 text-red-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Completati</p>
-                <p className="text-2xl font-bold text-green-600">{stats.completato}</p>
-              </div>
-              <ClipboardCheck className="h-8 w-8 text-green-500" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filtri Globali */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Search className="h-4 w-4" />
-            Filtri
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium">Ricerca</label>
-              <Input
-                placeholder="Nome batch, ID, Autoclave..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-            
-            <div>
-              <label className="text-sm font-medium">Autoclave</label>
-              <Select value={selectedAutoclave} onValueChange={setSelectedAutoclave}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Tutte le autoclavi" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tutte</SelectItem>
-                  <SelectItem value="1">Autoclave 1</SelectItem>
-                  <SelectItem value="2">Autoclave 2</SelectItem>
-                  <SelectItem value="3">Autoclave 3</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Sezioni Workflow */}
-      <div className="space-y-4">
-        {WORKFLOW_SECTIONS.map((section) => {
-          const sectionBatches = getBatchesForSection(section)
-          const isOpen = sectionStates[section.id]
-          const IconComponent = section.icon
-
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        {Object.entries(STATO_WORKFLOW).map(([stato, config]) => {
+          const count = groupedBatches[stato]?.length || 0
+          const IconComponent = config.icon
+          
           return (
-            <Card key={section.id} className={`border-2 ${section.color}`}>
-              <Collapsible 
-                open={isOpen} 
-                onOpenChange={() => toggleSection(section.id)}
-              >
-                <CollapsibleTrigger asChild>
-                  <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="flex items-center gap-3">
-                        <IconComponent className="h-5 w-5" />
-                        {section.title}
-                        <Badge variant="secondary" className="ml-2">
-                          {sectionBatches.length}
-                        </Badge>
-                      </CardTitle>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-muted-foreground hidden md:block">
-                          {section.description}
-                        </span>
-                        {isOpen ? (
-                          <ChevronDown className="h-4 w-4" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4" />
-                        )}
-                      </div>
-                    </div>
-                  </CardHeader>
-                </CollapsibleTrigger>
-                
-                <CollapsibleContent>
-                  <CardContent>
-                    {sectionBatches.length === 0 ? (
-                      <div className="text-center py-8 text-muted-foreground">
-                        <IconComponent className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                        <p>Nessun batch in questa fase</p>
-                      </div>
-                    ) : (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Batch</TableHead>
-                            <TableHead>Stato</TableHead>
-                            <TableHead>Autoclave</TableHead>
-                            {section.id === 'in_cura' && <TableHead>Progresso</TableHead>}
-                            {section.id === 'in_cura' && <TableHead>Temperatura</TableHead>}
-                            {section.id === 'in_cura' && <TableHead>Pressione</TableHead>}
-                            {section.id === 'in_cura' && <TableHead>Tempo Rimanente</TableHead>}
-                            <TableHead>Creato</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {sectionBatches.map(batch => (
-                            <TableRow key={batch.id}>
-                              <TableCell>
-                                <div>
-                                  <div className="font-medium">{batch.nome}</div>
-                                  <div className="text-sm text-muted-foreground">
-                                    {batch.numero_odl} ODL • {batch.numero_nesting} Nesting
-                                  </div>
-                                </div>
-                              </TableCell>
-                              
-                              <TableCell>
-                                <StatoBadge stato={batch.stato} />
-                              </TableCell>
-                              
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <Gauge className="h-4 w-4 text-muted-foreground" />
-                                  {batch.autoclave_nome}
-                                </div>
-                              </TableCell>
-                              
-                              {section.id === 'in_cura' && (
-                                <>
-                                  <TableCell>
-                                    {batch.stato === 'in_cura' ? (
-                                      <div className="space-y-1">
-                                        <div className="w-full bg-gray-200 rounded-full h-2">
-                                          <div 
-                                            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                                            style={{ width: `${getProgressPercentage(batch)}%` }}
-                                          />
-                                        </div>
-                                        <div className="text-xs text-muted-foreground">
-                                          {getProgressPercentage(batch).toFixed(1)}%
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <span className="text-muted-foreground">-</span>
-                                    )}
-                                  </TableCell>
-                                  
-                                  <TableCell>
-                                    <div className="flex items-center gap-2">
-                                      <Thermometer className="h-4 w-4 text-muted-foreground" />
-                                      <div>
-                                        <div className="text-sm">{formatTemperature(batch.temperatura_attuale)}</div>
-                                        {batch.temperatura_target && (
-                                          <div className="text-xs text-muted-foreground">
-                                            Target: {formatTemperature(batch.temperatura_target)}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </TableCell>
-                                  
-                                  <TableCell>
-                                    <div>
-                                      <div className="text-sm">{formatPressure(batch.pressione_attuale)}</div>
-                                      {batch.pressione_target && (
-                                        <div className="text-xs text-muted-foreground">
-                                          Target: {formatPressure(batch.pressione_target)}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </TableCell>
-                                  
-                                  <TableCell>
-                                    <div className="flex items-center gap-2">
-                                      <Clock className="h-4 w-4 text-muted-foreground" />
-                                      {formatDuration(batch.tempo_rimanente_minuti)}
-                                    </div>
-                                  </TableCell>
-                                </>
-                              )}
-                              
-                              <TableCell>
-                                <div className="text-sm">
-                                  {formatDateTime(batch.created_at)}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    )}
-                  </CardContent>
-                </CollapsibleContent>
-              </Collapsible>
+            <Card key={stato}>
+              <CardContent className="flex items-center p-6">
+                <IconComponent className="h-8 w-8 text-muted-foreground" />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-muted-foreground">{config.label}</p>
+                  <p className="text-2xl font-bold">{count}</p>
+                </div>
+              </CardContent>
             </Card>
           )
         })}
       </div>
+
+      {/* Workflow Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span>Workflow Batch ({batches.length})</span>
+            {batches.length > 0 && (
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  checked={isAllSelected}
+                  onCheckedChange={handleSelectAll}
+                  className={isPartiallySelected ? "data-[state=checked]:bg-muted" : ""}
+                />
+                <span className="text-sm text-muted-foreground">
+                  {selectedBatches.size > 0 ? `${selectedBatches.size} selezionati` : 'Seleziona tutto'}
+                </span>
+              </div>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {batches.length === 0 ? (
+            <div className="text-center py-8">
+              <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">Nessun batch attivo da monitorare</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {batches.map((batch) => {
+                const isExpanded = expandedRows.has(batch.id)
+                const statoConfig = STATO_WORKFLOW[batch.stato]
+                const IconComponent = statoConfig.icon
+                const isActionLoading = actionLoading.includes(batch.id)
+                const isSelected = selectedBatches.has(batch.id)
+
+                return (
+                  <Collapsible key={batch.id} open={isExpanded} onOpenChange={() => toggleExpanded(batch.id)}>
+                    <div className="border rounded-lg">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center justify-between p-4 hover:bg-muted/50 cursor-pointer">
+                          <div className="flex items-center space-x-4">
+                            <div className="flex items-center space-x-2">
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={(checked) => handleSelectBatch(batch.id, checked as boolean)}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                              {isExpanded ? (
+                                <ChevronUp className="h-4 w-4" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4" />
+                              )}
+                              <IconComponent className="h-5 w-5" />
+                            </div>
+                            
+                            <div>
+                              <div className="font-medium">
+                                {batch.nome || `Batch #${batch.numero_nesting}`}
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                ID: {batch.id} • Autoclave: {batch.autoclave?.nome || `AC${batch.autoclave_id}`}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center space-x-4">
+                            <Badge className={statoConfig.color}>
+                              {statoConfig.label}
+                            </Badge>
+                            
+                            <div className="text-sm text-muted-foreground">
+                              {batch.peso_totale_kg}kg
+                            </div>
+
+                            {statoConfig.next && (
+                              <Button
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleWorkflowAction(batch, statoConfig.next!)
+                                }}
+                                disabled={isActionLoading}
+                              >
+                                {isActionLoading ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Play className="h-4 w-4" />
+                                )}
+                                {statoConfig.next}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </CollapsibleTrigger>
+
+                      <CollapsibleContent>
+                        <div className="border-t px-4 py-3 bg-muted/25">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                              <h4 className="font-medium mb-2">Timeline</h4>
+                              <div className="text-sm space-y-1">
+                                <div>Creato: {formatDateTime(batch.created_at)}</div>
+                                <div>Aggiornato: {formatDateTime(batch.updated_at)}</div>
+                                {batch.data_conferma && (
+                                  <div>Confermato: {formatDateTime(batch.data_conferma)}</div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div>
+                              <h4 className="font-medium mb-2">Dettagli</h4>
+                              <div className="text-sm space-y-1">
+                                <div>Numero: #{batch.numero_nesting}</div>
+                                <div>Peso: {batch.peso_totale_kg} kg</div>
+                                <div>Autoclave: {batch.autoclave?.nome || `AC${batch.autoclave_id}`}</div>
+                              </div>
+                            </div>
+
+                            <div>
+                              <h4 className="font-medium mb-2">Azioni</h4>
+                              <div className="flex space-x-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleViewBatch(batch.id)}
+                                >
+                                  <Eye className="h-4 w-4 mr-1" />
+                                  Visualizza
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </CollapsibleContent>
+                    </div>
+                  </Collapsible>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
-}
+} 

@@ -30,9 +30,14 @@ interface ToolPosition {
   width: number
   height: number
   peso: number
-  rotated: boolean
+  rotated: boolean | string
   part_number?: string
   tool_nome?: string
+  excluded?: boolean
+  // ✅ CAMPI PER VISUALIZZAZIONE COMPLETA
+  numero_odl?: string | number
+  descrizione_breve?: string
+  part_number_tool?: string
 }
 
 interface EfficiencyAnalysisProps {
