@@ -75,10 +75,8 @@ interface MultiBatchData {
 
 const STATO_LABELS = {
   'draft': 'Bozza',
-  'sospeso': 'In Sospeso',
-  'confermato': 'Confermato', 
-  'loaded': 'Caricato',
-  'cured': 'In Cura',
+  'sospeso': 'Sospeso',
+  'in_cura': 'In Cura',
   'terminato': 'Terminato',
   'undefined': 'Sconosciuto'
 } as const
@@ -86,10 +84,8 @@ const STATO_LABELS = {
 const STATO_COLORS = {
   'draft': 'bg-gray-100 text-gray-600',
   'sospeso': 'bg-yellow-100 text-yellow-800',
-  'confermato': 'bg-green-100 text-green-800',
-  'loaded': 'bg-blue-100 text-blue-800',
-  'cured': 'bg-red-100 text-red-800',
-  'terminato': 'bg-gray-100 text-gray-800',
+  'in_cura': 'bg-red-100 text-red-800',
+  'terminato': 'bg-green-100 text-green-800',
   'undefined': 'bg-red-100 text-red-800'
 } as const
 

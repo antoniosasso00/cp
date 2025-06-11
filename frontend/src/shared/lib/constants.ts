@@ -88,38 +88,43 @@ export const ODL_STATUS_TRANSITIONS = {
 // STATI BATCH NESTING
 // ================================
 
-/** Array degli stati Batch disponibili */
+/** Array degli stati Batch disponibili - FLUSSO MODERNO */
 export const BATCH_STATUSES = [
+  'draft',
   'sospeso',
-  'confermato', 
+  'in_cura', 
   'terminato'
 ] as const;
 
 /** Etichette user-friendly per gli stati Batch */
 export const BATCH_STATUS_LABELS = {
+  'draft': 'Bozza',
   'sospeso': 'Sospeso',
-  'confermato': 'Confermato',
+  'in_cura': 'In Cura',
   'terminato': 'Terminato'
 } as const;
 
 /** Descrizioni dettagliate per gli stati Batch */
 export const BATCH_STATUS_DESCRIPTIONS = {
-  'sospeso': 'Batch generato, in attesa di conferma per avviare il ciclo di cura',
-  'confermato': 'Batch confermato, ciclo di cura avviato. ODL in stato "Cura"',
-  'terminato': 'Ciclo di cura completato. ODL in stato "Finito"'
+  'draft': 'Risultati generati, non confermati',
+  'sospeso': 'Confermato dall\'operatore, pronto per caricamento',
+  'in_cura': 'Autoclave caricata, cura in corso, timing attivo',
+  'terminato': 'Cura completata, workflow chiuso'
 } as const;
 
 /** Colori per i badge degli stati Batch */
 export const BATCH_STATUS_COLORS = {
+  'draft': 'bg-gray-100 text-gray-800 border-gray-300',
   'sospeso': 'bg-yellow-100 text-yellow-800 border-yellow-300',
-  'confermato': 'bg-green-100 text-green-800 border-green-300',
-  'terminato': 'bg-blue-100 text-blue-800 border-blue-300'
+  'in_cura': 'bg-red-100 text-red-800 border-red-300',
+  'terminato': 'bg-green-100 text-green-800 border-green-300'
 } as const;
 
 /** Icone per gli stati Batch */
 export const BATCH_STATUS_ICONS = {
+  'draft': Clock,
   'sospeso': Clock,
-  'confermato': PlayCircle,
+  'in_cura': PlayCircle,
   'terminato': CheckCircle
 } as const;
 

@@ -10,6 +10,7 @@ import {
   Calendar
 } from 'lucide-react';
 import { useStandardToast } from '@/shared/hooks/use-standard-toast';
+import { batchNestingApi } from '@/shared/lib/api';
 
 // 🆕 STATI SEMPLIFICATI - Nuovo flusso industriale
 type BatchStatus = 'draft' | 'sospeso' | 'in_cura' | 'terminato';
@@ -40,9 +41,9 @@ const STATUS_CONFIG = {
     endpoint: '/confirm'
   },
   sospeso: {
-    label: 'Confermato',
-    color: 'bg-blue-100 text-blue-800',
-    icon: CheckCircle,
+    label: 'Sospeso',
+    color: 'bg-yellow-100 text-yellow-800',
+    icon: Clock,
     description: 'Confermato dall\'operatore, pronto per caricamento',
     nextAction: 'Inizia Cura',
     nextStatus: 'in_cura' as BatchStatus,
@@ -95,34 +96,14 @@ export function BatchStatusControl({
       const userId = 'ADMIN';
       const userRole = 'ADMIN';
       
-      const endpoint = `/api/batch_nesting/${batchId}${config.endpoint}`;
-      const params = new URLSearchParams();
-      
-      // Parametri specifici per endpoint
+      // Usa l'API centralizzata con i parametri corretti
       if (config.endpoint === '/confirm') {
-        params.append('confermato_da_utente', userId);
-        params.append('confermato_da_ruolo', userRole);
+        await batchNestingApi.conferma(batchId, userId, userRole);
       } else if (config.endpoint === '/start-cure') {
-        params.append('caricato_da_utente', userId);
-        params.append('caricato_da_ruolo', userRole);
+        await batchNestingApi.avviaCura(batchId, userId, userRole);
       } else if (config.endpoint === '/terminate') {
-        params.append('terminato_da_utente', userId);
-        params.append('terminato_da_ruolo', userRole);
+        await batchNestingApi.termina(batchId, userId, userRole);
       }
-
-      const response = await fetch(`${endpoint}?${params.toString()}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Errore ${response.status}: ${errorData}`);
-      }
-
-      const result = await response.json();
       
       success(`${config.nextAction} completata`, 'Operazione eseguita con successo');
       

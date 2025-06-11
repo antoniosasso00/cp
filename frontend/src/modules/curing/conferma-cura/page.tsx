@@ -30,9 +30,9 @@ export default function ConfermaFineCuraPage() {
       setLoading(true);
       setError(null);
       
-      // Recupera solo i batch in stato "confermato"
-      const batchList = await batchNestingApi.getAll({ 
-        stato: 'confermato',
+      // Recupera solo i batch in stato "sospeso" pronti per caricamento
+              const batchList = await batchNestingApi.getAll({ 
+          stato: 'sospeso',
         limit: 50 
       });
       

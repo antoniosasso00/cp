@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -41,6 +41,16 @@ export default function MonitoraggioPage() {
     statoODL: 'all'
   })
 
+  // Stabilizza la funzione onError usando useCallback
+  const handleError = useCallback((message: string) => {
+    setError(message)
+    toast({
+      variant: 'destructive',
+      title: 'Errore',
+      description: message,
+    })
+  }, []) // ✅ FIX: Rimosso toast dalle dipendenze per evitare loop infiniti
+
   // Carica il catalogo al caricamento della pagina
   useEffect(() => {
     const fetchCatalogo = async () => {
@@ -51,19 +61,14 @@ export default function MonitoraggioPage() {
         setCatalogo(data.filter(item => item.attivo)) // Solo parti attive
       } catch (err) {
         console.error('Errore nel caricamento del catalogo:', err)
-        setError('Impossibile caricare il catalogo. Riprova più tardi.')
-        toast({
-          variant: 'destructive',
-          title: 'Errore',
-          description: 'Impossibile caricare il catalogo. Riprova più tardi.',
-        })
+        handleError('Impossibile caricare il catalogo. Riprova più tardi.')
       } finally {
         setIsLoading(false)
       }
     }
     
     fetchCatalogo()
-  }, [toast])
+  }, [handleError])
 
   // Aggiorna i filtri
   const updateFiltri = (nuoviFiltri: Partial<FiltriGlobali>) => {
@@ -199,14 +204,7 @@ export default function MonitoraggioPage() {
           <PerformanceGenerale 
             filtri={filtri}
             catalogo={catalogo}
-            onError={(message: string) => {
-              setError(message)
-              toast({
-                variant: 'destructive',
-                title: 'Errore',
-                description: message,
-              })
-            }}
+            onError={handleError}
           />
         </TabsContent>
 
@@ -214,14 +212,7 @@ export default function MonitoraggioPage() {
           <StatisticheCatalogo 
             filtri={filtri}
             catalogo={catalogo}
-            onError={(message: string) => {
-              setError(message)
-              toast({
-                variant: 'destructive',
-                title: 'Errore',
-                description: message,
-              })
-            }}
+            onError={handleError}
           />
         </TabsContent>
 
@@ -229,14 +220,7 @@ export default function MonitoraggioPage() {
           <TempiODL 
             filtri={filtri}
             catalogo={catalogo}
-            onError={(message: string) => {
-              setError(message)
-              toast({
-                variant: 'destructive',
-                title: 'Errore',
-                description: message,
-              })
-            }}
+            onError={handleError}
           />
         </TabsContent>
       </Tabs>

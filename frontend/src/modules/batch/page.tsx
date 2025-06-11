@@ -224,9 +224,7 @@ export default function BatchListPage() {
                   <SelectItem value="all">Tutti gli stati</SelectItem>
                   <SelectItem value="draft">Bozza</SelectItem>
                   <SelectItem value="sospeso">In attesa</SelectItem>
-                  <SelectItem value="confermato">Confermato</SelectItem>
-                  <SelectItem value="loaded">Caricato</SelectItem>
-                  <SelectItem value="cured">Curato</SelectItem>
+                                  <SelectItem value="in_cura">In Cura</SelectItem>
                   <SelectItem value="terminato">Terminato</SelectItem>
                 </SelectContent>
               </Select>

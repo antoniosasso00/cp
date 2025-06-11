@@ -28,7 +28,7 @@ import axios from 'axios';
 interface BatchDetails {
   id: string;
   nome: string | null;
-  stato: 'draft' | 'sospeso' | 'confermato' | 'loaded' | 'cured' | 'terminato';
+  stato: 'draft' | 'sospeso' | 'in_cura' | 'terminato';
   autoclave_id: number;
   odl_ids: number[];
   numero_nesting: number;
@@ -167,7 +167,7 @@ export default function BatchDetailPage() {
       if (curedForm.anomalie) params.append('anomalie', curedForm.anomalie);
       
       const response = await axios.patch(
-        `/api/batch_nesting/${batchId}/cured?${params}`
+        `/api/batch_nesting/${batchId}/start-cure?${params}`
       );
       
       console.log('🎉 Batch marcato come curato:', response.data);
@@ -186,9 +186,7 @@ export default function BatchDetailPage() {
     switch (stato) {
       case 'draft': return <Clock className="w-5 h-5" />;
       case 'sospeso': return <AlertTriangle className="w-5 h-5" />;
-      case 'confermato': return <CheckCircle className="w-5 h-5" />;
-      case 'loaded': return <Package className="w-5 h-5" />;
-      case 'cured': return <Zap className="w-5 h-5" />;
+      case 'in_cura': return <Zap className="w-5 h-5" />;
       case 'terminato': return <CheckCircle className="w-5 h-5" />;
       default: return <AlertTriangle className="w-5 h-5" />;
     }
@@ -198,9 +196,7 @@ export default function BatchDetailPage() {
     switch (stato) {
       case 'draft': return 'bg-gray-500';
       case 'sospeso': return 'bg-yellow-500';
-      case 'confermato': return 'bg-blue-500';
-      case 'loaded': return 'bg-purple-500';
-      case 'cured': return 'bg-green-500';
+      case 'in_cura': return 'bg-red-500';
       case 'terminato': return 'bg-green-600';
       default: return 'bg-gray-500';
     }
@@ -401,10 +397,10 @@ export default function BatchDetailPage() {
                 </Button>
               )}
 
-              {batch.stato === 'confermato' && (
+              {batch.stato === 'sospeso' && (
                 <div className="space-y-3">
                   <div className="space-y-2">
-                    <Label htmlFor="caricato-utente">Caricato da</Label>
+                    <Label htmlFor="caricato-utente">Avvia Cura</Label>
                     <Input
                       id="caricato-utente"
                       value={loadedForm.caricato_da_utente}
@@ -412,6 +408,7 @@ export default function BatchDetailPage() {
                         ...prev,
                         caricato_da_utente: e.target.value
                       }))}
+                      placeholder="Operatore che avvia la cura"
                     />
                   </div>
                   <Button 
@@ -424,12 +421,12 @@ export default function BatchDetailPage() {
                     ) : (
                       <Package className="w-4 h-4 mr-2" />
                     )}
-                    Marca come Caricato
+                    Inizia Cura
                   </Button>
                 </div>
               )}
 
-              {batch.stato === 'loaded' && (
+              {batch.stato === 'in_cura' && (
                 <div className="space-y-3">
                   <div className="space-y-2">
                     <Label htmlFor="curato-utente">Curato da</Label>
@@ -522,7 +519,7 @@ export default function BatchDetailPage() {
                 </div>
               )}
 
-              {batch.stato === 'cured' && (
+              {batch.stato === 'terminato' && (
                 <div className="text-center py-4 text-green-600">
                   <CheckCircle className="w-8 h-8 mx-auto mb-2" />
                   <p className="font-medium">Batch Completato</p>

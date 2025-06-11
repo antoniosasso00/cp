@@ -1,10 +1,10 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { AlertCircle, Loader2, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { AlertCircle, Loader2, TrendingUp, TrendingDown, Minus, Clock, BarChart3 } from 'lucide-react'
 import { CatalogoResponse, standardTimesApi, TimesComparisonResponse } from '@/lib/api'
 import { formatDuration } from '@/lib/utils'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -48,6 +48,13 @@ export default function StatisticheCatalogo({ filtri, catalogo, onError }: Stati
   const [selectedPartNumber, setSelectedPartNumber] = useState<string>('')
   const [comparisonData, setComparisonData] = useState<TimesComparisonData | null>(null)
   const [loadingStats, setLoadingStats] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Stabilizza la funzione di gestione errori
+  const handleError = useCallback((message: string) => {
+    setError(message)
+    onError(message)
+  }, []) // ✅ FIX: Rimosso onError dalle dipendenze per evitare loop infiniti
 
   // Carica le statistiche quando cambia il part number selezionato o i filtri
   useEffect(() => {
@@ -61,8 +68,9 @@ export default function StatisticheCatalogo({ filtri, catalogo, onError }: Stati
       
       try {
         setLoadingStats(true)
+        setError(null)
+        setComparisonData(null)
         
-        // ✅ NUOVO: Utilizza la nuova API standardTimesApi.fetchTimesComparison
         const giorni = parseInt(filtri.periodo)
         const result = await standardTimesApi.fetchTimesComparison(selectedPartNumber, giorni)
         
@@ -72,7 +80,7 @@ export default function StatisticheCatalogo({ filtri, catalogo, onError }: Stati
       } catch (err) {
         console.error('Errore nel caricamento del confronto tempi:', err)
         if (isMounted) {
-          onError('Impossibile caricare il confronto con i tempi standard. Riprova più tardi.')
+          handleError('Impossibile caricare il confronto con i tempi standard. Riprova più tardi.')
         }
       } finally {
         if (isMounted) {
@@ -88,7 +96,7 @@ export default function StatisticheCatalogo({ filtri, catalogo, onError }: Stati
     return () => {
       isMounted = false;
     };
-  }, [selectedPartNumber, filtri.periodo, onError])
+  }, [selectedPartNumber, filtri.periodo]) // ✅ FIX: Rimosso handleError dalle dipendenze per evitare loop infiniti
 
   // Applica il filtro part number dai filtri globali
   useEffect(() => {

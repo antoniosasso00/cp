@@ -123,7 +123,7 @@ export default function PerformanceGenerale({ filtri, catalogo, onError }: Perfo
     }
     
     fetchStatistiche()
-  }, [filtri, onError])
+  }, [filtri]) // ✅ FIX: Rimosso onError dalle dipendenze per evitare loop infiniti
 
   if (isLoading) {
     return (

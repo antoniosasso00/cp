@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, TrendingUp, TrendingDown, Clock, CheckCircle, AlertCircle } from 'lucide-react'
@@ -35,11 +35,19 @@ interface StatisticheGenerali {
 export default function PerformanceGenerale({ filtri, catalogo, onError }: PerformanceGeneraleProps) {
   const [statistiche, setStatistiche] = useState<StatisticheGenerali | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Stabilizza la funzione di gestione errori
+  const handleError = useCallback((message: string) => {
+    setError(message)
+    onError(message)
+  }, []) // ✅ FIX: Rimosso onError dalle dipendenze per evitare loop infiniti
 
   useEffect(() => {
     const fetchStatistiche = async () => {
       try {
         setIsLoading(true)
+        setError(null)
         
         // Carica tutti gli ODL
         const odlData = await odlApi.fetchODLs()
@@ -116,14 +124,14 @@ export default function PerformanceGenerale({ filtri, catalogo, onError }: Perfo
         
       } catch (error) {
         console.error('Errore nel caricamento delle statistiche generali:', error)
-        onError('Impossibile caricare le statistiche generali. Riprova più tardi.')
+        handleError('Impossibile caricare le statistiche generali. Riprova più tardi.')
       } finally {
         setIsLoading(false)
       }
     }
     
     fetchStatistiche()
-  }, [filtri, onError])
+  }, [filtri]) // ✅ FIX: Rimosso handleError dalle dipendenze per evitare loop infiniti
 
   if (isLoading) {
     return (
@@ -131,6 +139,16 @@ export default function PerformanceGenerale({ filtri, catalogo, onError }: Perfo
         <Loader2 className="h-8 w-8 animate-spin" />
         <span className="ml-2">Caricamento performance...</span>
       </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>Errore</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
     )
   }
 

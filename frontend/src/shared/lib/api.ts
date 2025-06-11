@@ -924,7 +924,7 @@ export const phaseTimesApi = {
     if (params?.fase) queryParams.append('fase', params.fase);
     
     const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
-    return apiRequest<TempoFaseResponse[]>(`/tempo-fasi${query}`);
+    return apiRequest<TempoFaseResponse[]>(`/tempo-fasi/${query}`);
   },
   
   // ✅ getOne → fetchPhaseTime
@@ -1591,21 +1591,21 @@ export const batchNestingApi = {
     }
   },
 
-  // 🆕 Funzione per avviare la cura (LOADED → CURED)
+  // 🆕 Funzione per avviare la cura (SOSPESO → IN_CURA)
   avviaCura: async (
     id: string, 
-    avviato_da_utente: string, 
-    avviato_da_ruolo: string
+    caricato_da_utente: string, 
+    caricato_da_ruolo: string
   ): Promise<BatchNestingResponse> => {
     try {
       console.log(`🔥 Avvio cura batch ${id}...`);
       
       const queryParams = new URLSearchParams();
-      queryParams.append('avviato_da_utente', avviato_da_utente);
-      queryParams.append('avviato_da_ruolo', avviato_da_ruolo);
+      queryParams.append('caricato_da_utente', caricato_da_utente);
+      queryParams.append('caricato_da_ruolo', caricato_da_ruolo);
       
       const response = await apiRequest<BatchNestingResponse>(
-        `/batch_nesting/${id}/cure?${queryParams.toString()}`, 
+        `/batch_nesting/${id}/start-cure?${queryParams.toString()}`, 
         'PATCH'
       );
       

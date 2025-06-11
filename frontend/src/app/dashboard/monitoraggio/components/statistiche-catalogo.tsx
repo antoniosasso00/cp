@@ -88,7 +88,7 @@ export default function StatisticheCatalogo({ filtri, catalogo, onError }: Stati
     return () => {
       isMounted = false;
     };
-  }, [selectedPartNumber, filtri.periodo, onError])
+  }, [selectedPartNumber, filtri.periodo]) // ✅ FIX: Rimosso onError dalle dipendenze per evitare loop infiniti
 
   // Applica il filtro part number dai filtri globali
   useEffect(() => {

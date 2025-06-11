@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -82,7 +82,8 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
   const { toast } = useStandardToast()
   const { confirm, ConfirmDialog } = useConfirmDialog()
 
-  const fetchData = async () => {
+  // Stabilizza la funzione fetchData con useCallback
+  const fetchData = useCallback(async () => {
     try {
       setIsLoading(true)
       
@@ -135,11 +136,11 @@ export default function TempiODL({ filtri, catalogo, onError }: TempiODLProps) {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [filtri, showOnlyValidODL]) // ✅ FIX: Rimosso onError dalle dipendenze per evitare loop infiniti
 
   useEffect(() => {
     fetchData()
-  }, [filtri, showOnlyValidODL]) // Ricarica quando cambiano i filtri o il toggle
+  }, [fetchData])
 
   // Filtra i dati in base alla ricerca locale
   const filteredItems = tempiFasi.filter(item => {
