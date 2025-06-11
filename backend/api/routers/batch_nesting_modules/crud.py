@@ -240,6 +240,55 @@ def get_batch_nesting_result(
             if not main_batch.autoclave:
                 logger.error(f"❌ Autoclave ID {main_batch.autoclave_id} non trovata per batch {batch_id}")
         
+        def enrich_tool_positions_with_odl_data(batch, odls_data):
+            """
+            🎯 ARRICCHIMENTO TOOL POSITIONS: Aggiungi part_number, descrizione_breve, numero_odl ai tool positions
+            """
+            configurazione = batch.configurazione_json or {}
+            
+            # Mappa ODL ID -> dati ODL per lookup veloce
+            odl_lookup = {odl_data['id']: odl_data for odl_data in odls_data}
+            
+            # 🔧 ARRICCHIMENTO TOOL_POSITIONS (formato database)
+            if 'tool_positions' in configurazione:
+                enriched_positions = []
+                for tool in configurazione['tool_positions']:
+                    enriched_tool = tool.copy()
+                    odl_id = tool.get('odl_id')
+                    if odl_id and odl_id in odl_lookup:
+                        odl_data = odl_lookup[odl_id]
+                        # Aggiungi informazioni della parte
+                        if odl_data.get('parte'):
+                            enriched_tool['part_number'] = odl_data['parte']['part_number']
+                            enriched_tool['descrizione_breve'] = odl_data['parte']['descrizione_breve']
+                        # Aggiungi numero ODL (cerca nel database l'ODL reale)
+                        odl_entity = db.query(ODL).filter(ODL.id == odl_id).first()
+                        if odl_entity:
+                            enriched_tool['numero_odl'] = odl_entity.numero_odl
+                    enriched_positions.append(enriched_tool)
+                configurazione['tool_positions'] = enriched_positions
+            
+            # 🔧 ARRICCHIMENTO POSITIONED_TOOLS (formato draft)
+            if 'positioned_tools' in configurazione:
+                enriched_positioned = []
+                for tool in configurazione['positioned_tools']:
+                    enriched_tool = tool.copy()
+                    odl_id = tool.get('odl_id')
+                    if odl_id and odl_id in odl_lookup:
+                        odl_data = odl_lookup[odl_id]
+                        # Aggiungi informazioni della parte
+                        if odl_data.get('parte'):
+                            enriched_tool['part_number'] = odl_data['parte']['part_number']
+                            enriched_tool['descrizione_breve'] = odl_data['parte']['descrizione_breve']
+                        # Aggiungi numero ODL (cerca nel database l'ODL reale)
+                        odl_entity = db.query(ODL).filter(ODL.id == odl_id).first()
+                        if odl_entity:
+                            enriched_tool['numero_odl'] = odl_entity.numero_odl
+                    enriched_positioned.append(enriched_tool)
+                configurazione['positioned_tools'] = enriched_positioned
+            
+            return configurazione
+        
         # Funzione helper per formattare un batch
         def format_batch_result(batch):
             # 🔧 FIX AUTOCLAVE: Caricamento manuale se necessario
@@ -254,8 +303,27 @@ def get_batch_nesting_result(
                     joinedload(ODL.tool)
                 ).filter(ODL.id.in_(batch.odl_ids)).all()
             
+            # Prepara dati ODL per arricchimento
+            odls_data = [
+                {
+                    "id": odl.id,
+                    "parte": {
+                        "part_number": odl.parte.part_number if odl.parte else None,
+                        "descrizione_breve": odl.parte.descrizione_breve if odl.parte else None
+                    } if odl.parte else None,
+                    "tool": {
+                        "part_number_tool": odl.tool.part_number_tool if odl.tool else None,
+                        "larghezza_piano": odl.tool.larghezza_piano if odl.tool else 0,
+                        "lunghezza_piano": odl.tool.lunghezza_piano if odl.tool else 0,
+                        "peso": odl.tool.peso if odl.tool else 0
+                    } if odl.tool else None
+                } for odl in odls
+            ]
+            
+            # 🎯 ARRICCHIMENTO: Aggiungi dati parte ai tool positions
+            configurazione = enrich_tool_positions_with_odl_data(batch, odls_data)
+            
             # Estrai metriche dalla configurazione
-            configurazione = batch.configurazione_json or {}
             metrics = configurazione.get('metrics', {})
             
             # 🔧 FIX AUTOCLAVE INFO: Gestisci caso in cui autoclave è None
@@ -291,7 +359,7 @@ def get_batch_nesting_result(
                 "autoclave_id": batch.autoclave_id,
                 "autoclave": autoclave_info,
                 "odl_ids": batch.odl_ids or [],
-                "configurazione_json": configurazione,
+                "configurazione_json": configurazione,  # 🎯 Ora arricchita con dati parte
                 "parametri": batch.parametri,
                 "created_at": batch.created_at.isoformat() if batch.created_at else None,
                 "numero_nesting": batch.numero_nesting,
@@ -307,21 +375,7 @@ def get_batch_nesting_result(
                     "positioned_tools": len(configurazione.get('tool_positions', [])) or len(configurazione.get('positioned_tools', [])),
                     "excluded_tools": 0  # TODO: calcolare gli esclusi se disponibili
                 },
-                "odls_data": [
-                    {
-                        "id": odl.id,
-                        "parte": {
-                            "part_number": odl.parte.part_number if odl.parte else None,
-                            "descrizione_breve": odl.parte.descrizione_breve if odl.parte else None
-                        } if odl.parte else None,
-                        "tool": {
-                            "part_number_tool": odl.tool.part_number_tool if odl.tool else None,
-                            "larghezza_piano": odl.tool.larghezza_piano if odl.tool else 0,
-                            "lunghezza_piano": odl.tool.lunghezza_piano if odl.tool else 0,
-                            "peso": odl.tool.peso if odl.tool else 0
-                        } if odl.tool else None
-                    } for odl in odls
-                ]
+                "odls_data": odls_data  # Mantenuto per compatibilità
             }
         
         # Risultato principale

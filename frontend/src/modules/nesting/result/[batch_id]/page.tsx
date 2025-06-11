@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'
@@ -28,6 +28,10 @@ import { formatDateTime } from '@/shared/lib/utils'
 import dynamic from 'next/dynamic'
 import { formatDistanceToNow } from 'date-fns'
 import { it } from 'date-fns/locale'
+import { ExitConfirmationDialog } from '@/shared/components/ui/exit-confirmation-dialog'
+import { useDraftLifecycle } from '@/shared/hooks/use-draft-lifecycle'
+import { DraftActionDialog } from './components/DraftActionDialog'
+import { ExitPageDialog } from './components/ExitPageDialog'
 
 // Dynamic import for canvas component
 const NestingCanvas = dynamic(() => import('./components/NestingCanvas'), {
@@ -146,14 +150,31 @@ export default function NestingResultPage() {
   const [updating, setUpdating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
-  const [savingDraft, setSavingDraft] = useState<string | null>(null) // Track which batch is being saved
+  
+  // 🎯 NEW: State per i nuovi dialog
+  const [showDraftActionDialog, setShowDraftActionDialog] = useState(false)
+  const [selectedBatchForAction, setSelectedBatchForAction] = useState<BatchData | null>(null)
+  const [currentAction, setCurrentAction] = useState<'save' | 'delete' | null>(null)
 
-  // 🚀 RILEVAMENTO AUTOMATICO MULTI-BATCH: basato sui dati, non sui parametri URL
-  const isMultiBatch = allBatches.length > 1
+  // 🚀 PERFORMANCE: Memoized computation for multi-batch detection
+  const isMultiBatch = useMemo(() => allBatches.length > 1, [allBatches.length])
+
+  // 🛡️ DRAFT LIFECYCLE MANAGEMENT: Enhanced with performance optimizations
+  const draftLifecycle = useDraftLifecycle({
+    allBatches,
+    selectedBatchId,
+    onBatchChange: useCallback((newBatchId, newBatchData) => {
+      setSelectedBatchId(newBatchId)
+      setBatchData(newBatchData as BatchData)
+    }, []),
+    onBatchRemoved: useCallback((batchId) => {
+      setAllBatches(prev => prev.filter(batch => batch.id !== batchId))
+    }, [])
+  })
 
   useEffect(() => {
     loadBatchData()
-  }, [batchId]) // Removed showAllDrafts dependency - auto-detection is always active
+  }, [batchId])
 
   // 🛡️ HELPER: Recupera dati autoclave se mancanti (per batch DRAFT)
   const enrichBatchWithAutoclaveData = async (batch: BatchData): Promise<BatchData> => {
@@ -192,23 +213,39 @@ export default function NestingResultPage() {
     }
   }
 
-  const loadBatchData = async () => {
+  // 🚀 PERFORMANCE & EDGE CASES: Enhanced loadBatchData with optimizations
+  const loadBatchData = useCallback(async () => {
+    // 🛡️ EDGE CASE: Validate batch ID
+    if (!batchId || batchId === 'undefined') {
+      setError('ID batch non valido')
+      setLoading(false)
+      return
+    }
+
     try {
       setLoading(true)
+      setError(null)
       
       console.log('🔍 CARICAMENTO INTELLIGENTE: Provo multi-batch per batch', batchId)
       
       // 🎯 RILEVAMENTO AUTOMATICO: Il sistema ora rileva automaticamente multi-batch
       const response = await batchNestingApi.getResult(batchId)
       
+      // 🛡️ EDGE CASE: Handle null/undefined response
+      if (!response) {
+        throw new Error('Nessuna risposta dal server')
+      }
+      
       if (response.batch_results && Array.isArray(response.batch_results) && response.batch_results.length > 1) {
         // ✅ MULTI-BATCH AUTO-RILEVATO: ordina per efficienza e arricchisci con dati autoclave
         console.log('🔧 MULTI-BATCH: Arricchimento dati autoclave per batch DRAFT...')
         
+        // 🚀 PERFORMANCE: Process autoclave data in parallel
         const enrichedBatches = await Promise.all(
           response.batch_results.map((batch: BatchData) => enrichBatchWithAutoclaveData(batch))
         )
         
+        // 🚀 PERFORMANCE: Optimized sorting with null checks
         const sortedBatches = enrichedBatches.sort((a: BatchData, b: BatchData) => {
           const effA = a.metrics?.efficiency_percentage || 0
           const effB = b.metrics?.efficiency_percentage || 0
@@ -217,8 +254,12 @@ export default function NestingResultPage() {
         
         setAllBatches(sortedBatches)
         
-        // Trova il batch corrente o usa il migliore
+        // 🛡️ EDGE CASE: Handle missing selected batch
         const currentBatch = sortedBatches.find((b: BatchData) => b.id === batchId) || sortedBatches[0]
+        if (!currentBatch) {
+          throw new Error('Nessun batch valido trovato')
+        }
+        
         setBatchData(currentBatch)
         setSelectedBatchId(currentBatch.id)
         
@@ -235,6 +276,11 @@ export default function NestingResultPage() {
       // 🎯 SINGLE-BATCH: nessun batch correlato trovato, arricchisci con dati autoclave
       console.log('✅ SINGLE-BATCH CARICATO (nessun batch correlato)')
       const singleResponse = Array.isArray(response) ? response[0] : response
+      
+      // 🛡️ EDGE CASE: Validate single response
+      if (!singleResponse || !singleResponse.id) {
+        throw new Error('Dati batch non validi')
+      }
       
       // Arricchisci il single-batch con dati autoclave se necessario
       console.log('🔧 SINGLE-BATCH: Arricchimento dati autoclave per batch DRAFT...')
@@ -253,16 +299,17 @@ export default function NestingResultPage() {
 
     } catch (error) {
       console.error('❌ ERRORE CARICAMENTO:', error)
-      setError('Impossibile caricare i dati del batch')
+      const errorMessage = error instanceof Error ? error.message : 'Errore sconosciuto'
+      setError(`Impossibile caricare i dati del batch: ${errorMessage}`)
       toast({
         title: 'Errore caricamento',
-        description: 'Impossibile caricare i dati del batch',
+        description: errorMessage,
         variant: 'destructive'
       })
     } finally {
       setLoading(false)
     }
-  }
+  }, [batchId, toast]) // 🚀 PERFORMANCE: Memoized with dependencies
 
   const handleBatchChange = (batchId: string) => {
     const batch = allBatches.find(b => b.id === batchId)
@@ -331,107 +378,39 @@ export default function NestingResultPage() {
     }
   }
 
-  // 🛡️ FUNZIONE: Salva bozza (promuove da DRAFT a SOSPESO)
-  const handleSaveDraft = async (batchId: string) => {
+  // 🎯 NEW: Gestori per le azioni sui draft con dialog elegante
+  const handleSaveDraftRequest = (batch: BatchData) => {
+    setSelectedBatchForAction(batch)
+    setCurrentAction('save')
+    setShowDraftActionDialog(true)
+  }
+
+  const handleDeleteDraftRequest = (batch: BatchData) => {
+    setSelectedBatchForAction(batch)
+    setCurrentAction('delete')
+    setShowDraftActionDialog(true)
+  }
+
+  const handleConfirmDraftAction = async () => {
+    if (!selectedBatchForAction || !currentAction) return
+
     try {
-      setSavingDraft(batchId)
-      toast({
-        title: 'Salvataggio bozza',
-        description: 'Salvataggio in corso...'
-      })
-      
-      // Chiamata API per promuovere draft a sospeso
-      const response = await fetch(`/api/batch_nesting/${batchId}/promote`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          target_state: 'sospeso',
-          promoted_by_user: 'ADMIN', // TODO: usare utente reale
-          promoted_by_role: 'ADMIN'
-        })
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || 'Errore durante il salvataggio')
+      if (currentAction === 'save') {
+        await draftLifecycle.handleSaveDraft(selectedBatchForAction.id)
+      } else if (currentAction === 'delete') {
+        await draftLifecycle.handleDeleteDraft(selectedBatchForAction.id)
       }
-
-      const result = await response.json()
-      
-      // Aggiorna lo stato locale
-      setBatchData((prev: any) => prev?.id === batchId ? { ...prev, stato: 'sospeso' } : prev)
-      setAllBatches(prev => prev.map(batch => 
-        batch.id === batchId ? { ...batch, stato: 'sospeso' } : batch
-      ))
-
-      toast({
-        title: 'Bozza salvata',
-        description: 'Batch promosso a stato "Sospeso"'
-      })
-      
-      // Refresh automatico per sincronizzare con il backend
-      setTimeout(loadBatchData, 1500)
-      
-    } catch (error) {
-      console.error('Errore salvataggio bozza:', error)
-      toast({
-        title: 'Errore salvataggio',
-        description: `Impossibile salvare la bozza: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`,
-        variant: 'destructive'
-      })
     } finally {
-      setSavingDraft(null)
+      setShowDraftActionDialog(false)
+      setSelectedBatchForAction(null)
+      setCurrentAction(null)
     }
   }
 
-  // 🛡️ FUNZIONE: Elimina bozza con conferma
-  const handleDeleteDraft = async (batchId: string) => {
-    const confirmed = window.confirm('Sei sicuro di voler eliminare questa bozza? L\'operazione non può essere annullata.')
-    if (!confirmed) return
-
-    try {
-      setSavingDraft(batchId) // Riusa la stessa variabile per disabilitare i pulsanti
-      toast({
-        title: 'Eliminazione bozza',
-        description: 'Eliminazione in corso...'
-      })
-      
-      const response = await fetch(`/api/batch_nesting/draft/${batchId}`, {
-        method: 'DELETE'
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || 'Errore durante l\'eliminazione')
-      }
-
-      // Rimuovi dalla lista locale e redirigi se necessario
-      if (batchData?.id === batchId) {
-        // Se stiamo eliminando il batch corrente, redirigi alla lista
-        toast({
-          title: 'Bozza eliminata',
-          description: 'Reindirizzamento alla lista...'
-        })
-        setTimeout(() => router.push('/nesting/list'), 1500)
-      } else {
-        // Rimuovi solo dalla lista
-        setAllBatches(prev => prev.filter(batch => batch.id !== batchId))
-        toast({
-          title: 'Bozza eliminata',
-          description: 'Eliminazione completata con successo'
-        })
-      }
-      
-    } catch (error) {
-      console.error('Errore eliminazione bozza:', error)
-      toast({
-        title: 'Errore eliminazione',
-        description: `Impossibile eliminare la bozza: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`,
-        variant: 'destructive'
-      })
-    } finally {
-      setSavingDraft(null)
-    }
+  const handleCloseDraftActionDialog = () => {
+    setShowDraftActionDialog(false)
+    setSelectedBatchForAction(null)
+    setCurrentAction(null)
   }
 
   if (loading) {
@@ -471,41 +450,21 @@ export default function NestingResultPage() {
 
   return (
     <div className="container mx-auto p-6 space-y-6 max-w-7xl">
-      {/* DRAFT WARNING BANNER */}
-      {isDraftBatch(batchData) && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <Clock className="h-5 w-5 text-amber-600" />
-            <div className="flex-1">
-              <p className="text-amber-800 font-medium">
-                🚧 Batch in modalità BOZZA - Non ancora salvato nel database
-              </p>
-              <p className="text-amber-700 text-sm mt-1">
-                Questo batch è temporaneo e verrà perso se non salvato. 
-                {isMultiBatch ? `${allBatches.filter(isDraftBatch).length} di ${allBatches.length} batch sono bozze.` : 'Salva per renderlo permanente.'}
-              </p>
-            </div>
-            <Button
-              onClick={() => handleSaveDraft(batchData.id)}
-              disabled={savingDraft === batchData.id}
-              className="bg-amber-600 hover:bg-amber-700 text-white"
-            >
-              {savingDraft === batchData.id ? (
-                <RefreshCw className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <Save className="h-4 w-4 mr-2" />
-              )}
-              Salva Ora
-            </Button>
-          </div>
-        </div>
-      )}
+      {/* EXIT CONFIRMATION DIALOG */}
+      <ExitConfirmationDialog
+        open={draftLifecycle.showExitDialog}
+        onOpenChange={draftLifecycle.setShowExitDialog}
+        draftCount={draftLifecycle.draftCount}
+        onConfirmExit={draftLifecycle.handleConfirmExit}
+        onSaveAll={draftLifecycle.handleSaveAllDrafts}
+        isProcessing={draftLifecycle.savingDraft === 'all'}
+      />
 
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button
-            onClick={() => router.push('/nesting/list')}
+            onClick={() => draftLifecycle.handleNavigation(() => router.push('/nesting/list'))}
             variant="outline"
             size="sm"
           >
@@ -516,19 +475,19 @@ export default function NestingResultPage() {
             <h1 className="text-3xl font-bold tracking-tight">
               {isMultiBatch ? (
                 <span className="flex items-center gap-2">
-                  Risultati Multi-Batch
+                  Gestione Multi-Batch
                   <Badge variant="secondary">{allBatches.length} batch</Badge>
-                  {allBatches.some(isDraftBatch) && (
+                  {draftLifecycle.hasUnsavedDrafts && (
                     <Badge variant="outline" className="text-amber-600 border-amber-300">
                       <Clock className="h-3 w-3 mr-1" />
-                      DRAFT
+                      {draftLifecycle.draftCount} DRAFT
                     </Badge>
                   )}
                 </span>
               ) : (
                 <span className="flex items-center gap-2">
                   Risultati Batch
-                  {isDraftBatch(batchData) && (
+                  {draftLifecycle.isDraftBatch(batchData) && (
                     <Badge variant="outline" className="text-amber-600 border-amber-300">
                       <Clock className="h-3 w-3 mr-1" />
                       DRAFT
@@ -549,7 +508,7 @@ export default function NestingResultPage() {
           </div>
         </div>
         
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -561,15 +520,15 @@ export default function NestingResultPage() {
             Aggiorna
           </Button>
           
-          {/* 🛡️ GESTIONE BOZZE: Pulsanti contestuali */}
-          {isDraftBatch(batchData) && (
+          {/* 🛡️ GESTIONE BOZZE: Pulsanti contestuali solo se è un draft */}
+          {draftLifecycle.isDraftBatch(batchData) && (
             <div className="flex items-center gap-2">
               <Button
-                onClick={() => handleSaveDraft(batchData.id)}
-                disabled={savingDraft === batchData.id}
+                onClick={() => handleSaveDraftRequest(batchData)}
+                disabled={draftLifecycle.savingDraft === batchData.id}
                 className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
               >
-                {savingDraft === batchData.id ? (
+                {draftLifecycle.savingDraft === batchData.id ? (
                   <RefreshCw className="h-4 w-4 animate-spin" />
                 ) : (
                   <Save className="h-4 w-4" />
@@ -579,8 +538,8 @@ export default function NestingResultPage() {
               
               <Button
                 variant="outline"
-                onClick={() => handleDeleteDraft(batchData.id)}
-                disabled={savingDraft === batchData.id}
+                onClick={() => handleDeleteDraftRequest(batchData)}
+                disabled={draftLifecycle.savingDraft === batchData.id}
                 className="flex items-center gap-2 text-red-600 border-red-200 hover:bg-red-50"
               >
                 <AlertCircle className="h-4 w-4" />
@@ -1013,14 +972,14 @@ export default function NestingResultPage() {
                       {(batchData.configurazione_json?.parametri_nesting?.min_distance_mm || 
                         batchData.configurazione_json?.parametri?.min_distance_mm ||
                         batchData.configurazione_json?.request_data?.parametri?.min_distance_mm) && (
-                        <div>
-                          <span className="font-medium">Distanza min:</span> {
-                            batchData.configurazione_json?.parametri_nesting?.min_distance_mm || 
-                            batchData.configurazione_json?.parametri?.min_distance_mm ||
-                            batchData.configurazione_json?.request_data?.parametri?.min_distance_mm
-                          }mm
-                        </div>
-                      )}
+                          <div>
+                            <span className="font-medium">Distanza min:</span> {
+                              batchData.configurazione_json?.parametri_nesting?.min_distance_mm || 
+                              batchData.configurazione_json?.parametri?.min_distance_mm ||
+                              batchData.configurazione_json?.request_data?.parametri?.min_distance_mm
+                            }mm
+                          </div>
+                        )}
                       {batchData.configurazione_json?.autoclave_target && (
                         <div>
                           <span className="font-medium">Target:</span> {batchData.configurazione_json.autoclave_target}
@@ -1045,6 +1004,27 @@ export default function NestingResultPage() {
           </div>
         </div>
       )}
+
+      {/* 🎯 NEW: Dialog per azioni sui draft (elegante come Conferma Avanzamento ODL) */}
+      <DraftActionDialog
+        open={showDraftActionDialog}
+        onOpenChange={setShowDraftActionDialog}
+        batch={selectedBatchForAction}
+        action={currentAction}
+        isProcessing={draftLifecycle.savingDraft === selectedBatchForAction?.id}
+        onConfirm={handleConfirmDraftAction}
+      />
+
+      {/* 🚪 NEW: Dialog di uscita dalla pagina per proteggere draft */}
+      <ExitPageDialog
+        open={draftLifecycle.showExitDialog}
+        onOpenChange={draftLifecycle.setShowExitDialog}
+        draftBatches={draftLifecycle.draftBatches}
+        isSaving={draftLifecycle.savingDraft === 'all'}
+        onSaveAndExit={draftLifecycle.handleSaveAndExit}
+        onExitWithoutSaving={draftLifecycle.handleExitWithoutSaving}
+        onStayOnPage={draftLifecycle.handleStayOnPage}
+      />
     </div>
   )
 } 
