@@ -1657,16 +1657,28 @@ export const batchNestingApi = {
     return batchNestingApi.termina(id, chiuso_da_utente, chiuso_da_ruolo);
   },
 
-  // 🆕 Metodo per ottenere i risultati di un batch (con supporto multi-batch)
-  getResult: async (batchId: string, options?: { multi?: boolean }) => {
+  // 🚀 BEST PRACTICE: Caricamento intelligente risultati batch senza parametri confusi
+  getResult: async (batchId: string) => {
     try {
-      const queryParams = options?.multi ? '?multi=true' : '';
-      console.log(`📊 Caricamento risultati batch ${batchId}${options?.multi ? ' (multi-batch)' : ''}...`);
+      console.log(`📊 CARICAMENTO AUTOMATICO: Rilevamento multi-batch per ${batchId}...`);
       
-      const response = await apiRequest<any>(`/batch_nesting/result/${batchId}${queryParams}`);
+      // 🎯 STRATEGIA 1: Prova sempre multi-batch per rilevare automaticamente batch correlati
+      try {
+        const multiResponse = await apiRequest<any>(`/batch_nesting/result/${batchId}?multi=true`);
+        
+        if (multiResponse.batch_results && Array.isArray(multiResponse.batch_results) && multiResponse.batch_results.length > 1) {
+          console.log(`✅ MULTI-BATCH AUTO-RILEVATO: ${multiResponse.batch_results.length} batch correlati`);
+          return multiResponse;
+        }
+      } catch (multiError) {
+        console.log(`🔄 Multi-batch non disponibile, usando single-batch:`, multiError);
+      }
       
-      console.log(`✅ Risultati batch ${batchId} caricati con successo`);
-      return response;
+      // 🎯 STRATEGIA 2: Fallback intelligente a single-batch
+      const singleResponse = await apiRequest<any>(`/batch_nesting/result/${batchId}`);
+      console.log(`✅ SINGLE-BATCH CARICATO: ${batchId}`);
+      return singleResponse;
+      
     } catch (error: any) {
       console.error(`❌ Errore nel caricamento risultati batch ${batchId}:`, error);
       throw new Error(error?.message || 'Errore nel caricamento dei risultati');

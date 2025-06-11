@@ -4,15 +4,14 @@ from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from enum import Enum as PyEnum
 from .base import Base
+from typing import Optional
 
 class StatoBatchNestingEnum(PyEnum):
-    """Enum per rappresentare i vari stati di un batch nesting"""
-    DRAFT = "draft"
-    SOSPESO = "sospeso"
-    CONFERMATO = "confermato"
-    LOADED = "loaded"
-    CURED = "cured"
-    TERMINATO = "terminato"
+    """Enum semplificato per workflow batch - 4 stati essenziali"""
+    DRAFT = "draft"           # Risultati generati, NON persistiti se non confermati
+    SOSPESO = "sospeso"       # Confermato dall'operatore, pronto per caricamento  
+    IN_CURA = "in_cura"       # Autoclave caricata, cura in corso, timing attivo
+    TERMINATO = "terminato"   # Cura completata, workflow chiuso
 
 class BatchNesting(Base):
     """
@@ -69,7 +68,7 @@ class BatchNesting(Base):
     note = Column(Text, nullable=True,
                   doc="Note aggiuntive sul batch nesting")
     
-    # Tracciabilità utenti
+    # Tracciabilità utenti - semplificata per il nuovo flusso
     creato_da_utente = Column(String(100), nullable=True,
                              doc="ID dell'utente che ha creato il batch")
     
@@ -77,19 +76,37 @@ class BatchNesting(Base):
                             doc="Ruolo dell'utente che ha creato il batch")
     
     confermato_da_utente = Column(String(100), nullable=True,
-                                 doc="ID dell'utente che ha confermato il batch")
+                                 doc="ID dell'utente che ha confermato il batch (DRAFT → SOSPESO)")
     
     confermato_da_ruolo = Column(String(50), nullable=True,
                                 doc="Ruolo dell'utente che ha confermato il batch")
     
     data_conferma = Column(DateTime, nullable=True,
-                          doc="Data e ora di conferma del batch")
+                          doc="Data e ora di conferma del batch (DRAFT → SOSPESO)")
     
+    # ✅ TIMING GESTITO VIA TempoFase: I tempi di cura vengono registrati
+    # automaticamente nell'entità TempoFase per ogni ODL del batch per 
+    # compatibilità con statistiche, barre avanzamento e sistema esistente
+    
+    # Campi per tracciabilità transizioni (senza timing diretto)
+    caricato_da_utente = Column(String(100), nullable=True,
+                               doc="ID dell'utente che ha caricato l'autoclave (SOSPESO → IN_CURA)")
+    
+    caricato_da_ruolo = Column(String(50), nullable=True,
+                              doc="Ruolo dell'utente che ha caricato l'autoclave")
+    
+    terminato_da_utente = Column(String(100), nullable=True,
+                                doc="ID dell'utente che ha terminato la cura (IN_CURA → TERMINATO)")
+    
+    terminato_da_ruolo = Column(String(50), nullable=True,
+                               doc="Ruolo dell'utente che ha terminato la cura")
+    
+    # Campi legacy da rimuovere nella migrazione
     data_completamento = Column(DateTime, nullable=True,
-                               doc="Data e ora di completamento del ciclo di cura")
+                               doc="⚠️ DEPRECATO: usa data_fine_cura")
     
     durata_ciclo_minuti = Column(Integer, nullable=True,
-                                doc="Durata del ciclo di cura in minuti (calcolata automaticamente)")
+                                doc="⚠️ DEPRECATO: usa durata_cura_effettiva_minuti")
     
     # Timestamp automatici
     created_at = Column(DateTime, nullable=False, default=func.now(),
@@ -182,13 +199,16 @@ class BatchNesting(Base):
         """Ritorna la descrizione testuale dello stato"""
         descrizioni = {
             StatoBatchNestingEnum.DRAFT: "Bozza in preparazione",
-            StatoBatchNestingEnum.SOSPESO: "In attesa di conferma",
-            StatoBatchNestingEnum.CONFERMATO: "Confermato e pronto per produzione",
-            StatoBatchNestingEnum.LOADED: "Caricato in autoclave",
-            StatoBatchNestingEnum.CURED: "Cura completata",
-            StatoBatchNestingEnum.TERMINATO: "Completato"
+            StatoBatchNestingEnum.SOSPESO: "Confermato, pronto per caricamento",
+            StatoBatchNestingEnum.IN_CURA: "In cura - Autoclave attiva",
+            StatoBatchNestingEnum.TERMINATO: "Cura completata"
         }
         return descrizioni.get(self.stato, "Stato sconosciuto")
+    
+    @property
+    def is_in_cura(self) -> bool:
+        """Verifica se il batch è attualmente in cura"""
+        return self.stato == StatoBatchNestingEnum.IN_CURA.value
     
     def update_efficiency(self):
         """Aggiorna il campo efficiency con il valore calcolato correttamente"""

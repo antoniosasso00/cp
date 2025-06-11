@@ -1,12 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'
 import { Badge } from '@/shared/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/components/ui/tabs'
+import { Separator } from '@/shared/components/ui/separator'
 import { useStandardToast } from '@/shared/hooks/use-standard-toast'
 import { 
   ArrowLeft, 
@@ -18,11 +18,16 @@ import {
   Download,
   RefreshCw,
   Info,
-  Award
+  Award,
+  Save,
+  AlertCircle,
+  Clock
 } from 'lucide-react'
 import { batchNestingApi } from '@/shared/lib/api'
 import { formatDateTime } from '@/shared/lib/utils'
 import dynamic from 'next/dynamic'
+import { formatDistanceToNow } from 'date-fns'
+import { it } from 'date-fns/locale'
 
 // Dynamic import for canvas component
 const NestingCanvas = dynamic(() => import('./components/NestingCanvas'), {
@@ -65,19 +70,64 @@ interface MultiBatchData {
 }
 
 const STATO_LABELS = {
+  'draft': 'Bozza',
   'sospeso': 'In Sospeso',
   'confermato': 'Confermato', 
   'loaded': 'Caricato',
   'cured': 'In Cura',
-  'terminato': 'Terminato'
-}
+  'terminato': 'Terminato',
+  'undefined': 'Sconosciuto'
+} as const
 
 const STATO_COLORS = {
+  'draft': 'bg-gray-100 text-gray-600',
   'sospeso': 'bg-yellow-100 text-yellow-800',
   'confermato': 'bg-green-100 text-green-800',
   'loaded': 'bg-blue-100 text-blue-800',
   'cured': 'bg-red-100 text-red-800',
-  'terminato': 'bg-gray-100 text-gray-800'
+  'terminato': 'bg-gray-100 text-gray-800',
+  'undefined': 'bg-red-100 text-red-800'
+} as const
+
+// 🛡️ HELPER: Gestione sicura dello stato
+const getSafeStatus = (stato: string | undefined): string => {
+  return stato || 'undefined'
+}
+
+// 🛡️ HELPER: Gestione universale formati tool (compatibilità backward)
+const getToolsFromBatch = (batch: any) => {
+  // Prova prima il formato database standard, poi quello draft
+  return batch?.configurazione_json?.tool_positions || batch?.configurazione_json?.positioned_tools || []
+}
+
+// 🛡️ HELPER: Verifica se il batch è una bozza salvabile
+const isDraftBatch = (batch: any) => {
+  if (!batch || !batch.stato) return false
+  return batch.stato === 'draft' || batch.stato === 'DRAFT'
+}
+
+// 🛡️ HELPER: Icona stato batch
+const getStatusIcon = (stato: string | undefined) => {
+  if (!stato) return <AlertCircle className="h-4 w-4" />
+  
+  switch (stato.toLowerCase()) {
+    case 'draft': return <Clock className="h-4 w-4" />
+    case 'sospeso': return <Save className="h-4 w-4" />
+    case 'confermato': return <CheckCircle2 className="h-4 w-4" />
+    default: return <AlertCircle className="h-4 w-4" />
+  }
+}
+
+// 🛡️ HELPER: Colore badge stato
+const getStatusBadgeVariant = (stato: string | undefined): "default" | "secondary" | "destructive" | "outline" => {
+  if (!stato) return 'outline'
+  
+  switch (stato.toLowerCase()) {
+    case 'draft': return 'outline'
+    case 'sospeso': return 'secondary'  
+    case 'confermato': return 'default'
+    default: return 'outline'
+  }
 }
 
 export default function NestingResultPage() {
@@ -87,61 +137,123 @@ export default function NestingResultPage() {
   const { toast } = useStandardToast()
 
   const batchId = params.batch_id as string
-  const forceMultiBatch = searchParams.get('multi') === 'true'
+  // Removed confusing URL parameters - auto-detection is now the default
 
   const [batchData, setBatchData] = useState<BatchData | null>(null)
   const [allBatches, setAllBatches] = useState<BatchData[]>([])
   const [selectedBatchId, setSelectedBatchId] = useState<string>(batchId)
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
+  const [savingDraft, setSavingDraft] = useState<string | null>(null) // Track which batch is being saved
 
-  // Determina se è multi-batch basandosi sui dati disponibili
-  const isMultiBatch = allBatches.length > 1 || forceMultiBatch
+  // 🚀 RILEVAMENTO AUTOMATICO MULTI-BATCH: basato sui dati, non sui parametri URL
+  const isMultiBatch = allBatches.length > 1
 
   useEffect(() => {
     loadBatchData()
-  }, [batchId, forceMultiBatch])
+  }, [batchId]) // Removed showAllDrafts dependency - auto-detection is always active
+
+  // 🛡️ HELPER: Recupera dati autoclave se mancanti (per batch DRAFT)
+  const enrichBatchWithAutoclaveData = async (batch: BatchData): Promise<BatchData> => {
+    if (batch.autoclave || !batch.autoclave_id) {
+      return batch // Dati già presenti o ID mancante
+    }
+
+    try {
+      console.log(`🔧 DRAFT FIX: Recupero dati autoclave ${batch.autoclave_id} per batch DRAFT`)
+      const autoclaveResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/autoclavi/${batch.autoclave_id}`)
+      if (autoclaveResponse.ok) {
+        const autoclaveData = await autoclaveResponse.json()
+        return {
+          ...batch,
+          autoclave: {
+            nome: autoclaveData.nome,
+            codice: autoclaveData.codice,
+            lunghezza: autoclaveData.lunghezza,
+            larghezza_piano: autoclaveData.larghezza_piano
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(`⚠️ Impossibile recuperare dati autoclave ${batch.autoclave_id}:`, error)
+    }
+
+    // Fallback con dati minimi
+    return {
+      ...batch,
+      autoclave: {
+        nome: `Autoclave ${batch.autoclave_id}`,
+        codice: `AUTO_${batch.autoclave_id}`,
+        lunghezza: 0,
+        larghezza_piano: 0
+      }
+    }
+  }
 
   const loadBatchData = async () => {
     try {
       setLoading(true)
       
-      // Tenta sempre di caricare come multi-batch per verificare se ci sono più batch
-      const response = await batchNestingApi.getResult(batchId, { multi: true })
+      console.log('🔍 CARICAMENTO INTELLIGENTE: Provo multi-batch per batch', batchId)
       
-      if (response.batch_results && Array.isArray(response.batch_results)) {
-        // Multi-batch response
-        const sortedBatches = response.batch_results.sort((a: BatchData, b: BatchData) => {
+      // 🎯 RILEVAMENTO AUTOMATICO: Il sistema ora rileva automaticamente multi-batch
+      const response = await batchNestingApi.getResult(batchId)
+      
+      if (response.batch_results && Array.isArray(response.batch_results) && response.batch_results.length > 1) {
+        // ✅ MULTI-BATCH AUTO-RILEVATO: ordina per efficienza e arricchisci con dati autoclave
+        console.log('🔧 MULTI-BATCH: Arricchimento dati autoclave per batch DRAFT...')
+        
+        const enrichedBatches = await Promise.all(
+          response.batch_results.map((batch: BatchData) => enrichBatchWithAutoclaveData(batch))
+        )
+        
+        const sortedBatches = enrichedBatches.sort((a: BatchData, b: BatchData) => {
           const effA = a.metrics?.efficiency_percentage || 0
           const effB = b.metrics?.efficiency_percentage || 0
-          return effB - effA // Ordina per efficienza decrescente
+          return effB - effA
         })
         
         setAllBatches(sortedBatches)
         
-        // Trova il batch corrente o usa il primo
+        // Trova il batch corrente o usa il migliore
         const currentBatch = sortedBatches.find((b: BatchData) => b.id === batchId) || sortedBatches[0]
         setBatchData(currentBatch)
         setSelectedBatchId(currentBatch.id)
         
-        toast({
-          title: 'Dati caricati',
-          description: `${sortedBatches.length} batch caricati (modalità multi-batch)`
-        })
-      } else {
-        // Single batch fallback
-        const singleResponse = await batchNestingApi.getResult(batchId)
-        setAllBatches([singleResponse])
-        setBatchData(singleResponse)
-        setSelectedBatchId(singleResponse.id)
+        console.log('✅ MULTI-BATCH AUTO-RILEVATO:', sortedBatches.length, 'batch caricati e arricchiti')
         
         toast({
-          title: 'Dati caricati',
-          description: 'Batch singolo caricato'
+          title: '🚀 Multi-Batch Auto-Rilevato',
+          description: `${sortedBatches.length} batch generati per autoclavi diverse`
         })
+        
+        return // Multi-batch trovato, processo completato
       }
+      
+      // 🎯 SINGLE-BATCH: nessun batch correlato trovato, arricchisci con dati autoclave
+      console.log('✅ SINGLE-BATCH CARICATO (nessun batch correlato)')
+      const singleResponse = Array.isArray(response) ? response[0] : response
+      
+      // Arricchisci il single-batch con dati autoclave se necessario
+      console.log('🔧 SINGLE-BATCH: Arricchimento dati autoclave per batch DRAFT...')
+      const enrichedSingleBatch = await enrichBatchWithAutoclaveData(singleResponse)
+      
+      setAllBatches([enrichedSingleBatch])
+      setBatchData(enrichedSingleBatch)
+      setSelectedBatchId(enrichedSingleBatch.id)
+      
+      console.log('✅ SINGLE-BATCH CARICATO')
+      
+      toast({
+        title: 'Batch Caricato',
+        description: 'Risultati nesting disponibili'
+      })
 
     } catch (error) {
+      console.error('❌ ERRORE CARICAMENTO:', error)
+      setError('Impossibile caricare i dati del batch')
       toast({
         title: 'Errore caricamento',
         description: 'Impossibile caricare i dati del batch',
@@ -219,6 +331,109 @@ export default function NestingResultPage() {
     }
   }
 
+  // 🛡️ FUNZIONE: Salva bozza (promuove da DRAFT a SOSPESO)
+  const handleSaveDraft = async (batchId: string) => {
+    try {
+      setSavingDraft(batchId)
+      toast({
+        title: 'Salvataggio bozza',
+        description: 'Salvataggio in corso...'
+      })
+      
+      // Chiamata API per promuovere draft a sospeso
+      const response = await fetch(`/api/batch_nesting/${batchId}/promote`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target_state: 'sospeso',
+          promoted_by_user: 'ADMIN', // TODO: usare utente reale
+          promoted_by_role: 'ADMIN'
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Errore durante il salvataggio')
+      }
+
+      const result = await response.json()
+      
+      // Aggiorna lo stato locale
+      setBatchData((prev: any) => prev?.id === batchId ? { ...prev, stato: 'sospeso' } : prev)
+      setAllBatches(prev => prev.map(batch => 
+        batch.id === batchId ? { ...batch, stato: 'sospeso' } : batch
+      ))
+
+      toast({
+        title: 'Bozza salvata',
+        description: 'Batch promosso a stato "Sospeso"'
+      })
+      
+      // Refresh automatico per sincronizzare con il backend
+      setTimeout(loadBatchData, 1500)
+      
+    } catch (error) {
+      console.error('Errore salvataggio bozza:', error)
+      toast({
+        title: 'Errore salvataggio',
+        description: `Impossibile salvare la bozza: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`,
+        variant: 'destructive'
+      })
+    } finally {
+      setSavingDraft(null)
+    }
+  }
+
+  // 🛡️ FUNZIONE: Elimina bozza con conferma
+  const handleDeleteDraft = async (batchId: string) => {
+    const confirmed = window.confirm('Sei sicuro di voler eliminare questa bozza? L\'operazione non può essere annullata.')
+    if (!confirmed) return
+
+    try {
+      setSavingDraft(batchId) // Riusa la stessa variabile per disabilitare i pulsanti
+      toast({
+        title: 'Eliminazione bozza',
+        description: 'Eliminazione in corso...'
+      })
+      
+      const response = await fetch(`/api/batch_nesting/draft/${batchId}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Errore durante l\'eliminazione')
+      }
+
+      // Rimuovi dalla lista locale e redirigi se necessario
+      if (batchData?.id === batchId) {
+        // Se stiamo eliminando il batch corrente, redirigi alla lista
+        toast({
+          title: 'Bozza eliminata',
+          description: 'Reindirizzamento alla lista...'
+        })
+        setTimeout(() => router.push('/nesting/list'), 1500)
+      } else {
+        // Rimuovi solo dalla lista
+        setAllBatches(prev => prev.filter(batch => batch.id !== batchId))
+        toast({
+          title: 'Bozza eliminata',
+          description: 'Eliminazione completata con successo'
+        })
+      }
+      
+    } catch (error) {
+      console.error('Errore eliminazione bozza:', error)
+      toast({
+        title: 'Errore eliminazione',
+        description: `Impossibile eliminare la bozza: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`,
+        variant: 'destructive'
+      })
+    } finally {
+      setSavingDraft(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-96">
@@ -256,6 +471,36 @@ export default function NestingResultPage() {
 
   return (
     <div className="container mx-auto p-6 space-y-6 max-w-7xl">
+      {/* DRAFT WARNING BANNER */}
+      {isDraftBatch(batchData) && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <Clock className="h-5 w-5 text-amber-600" />
+            <div className="flex-1">
+              <p className="text-amber-800 font-medium">
+                🚧 Batch in modalità BOZZA - Non ancora salvato nel database
+              </p>
+              <p className="text-amber-700 text-sm mt-1">
+                Questo batch è temporaneo e verrà perso se non salvato. 
+                {isMultiBatch ? `${allBatches.filter(isDraftBatch).length} di ${allBatches.length} batch sono bozze.` : 'Salva per renderlo permanente.'}
+              </p>
+            </div>
+            <Button
+              onClick={() => handleSaveDraft(batchData.id)}
+              disabled={savingDraft === batchData.id}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {savingDraft === batchData.id ? (
+                <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Save className="h-4 w-4 mr-2" />
+              )}
+              Salva Ora
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -273,9 +518,23 @@ export default function NestingResultPage() {
                 <span className="flex items-center gap-2">
                   Risultati Multi-Batch
                   <Badge variant="secondary">{allBatches.length} batch</Badge>
+                  {allBatches.some(isDraftBatch) && (
+                    <Badge variant="outline" className="text-amber-600 border-amber-300">
+                      <Clock className="h-3 w-3 mr-1" />
+                      DRAFT
+                    </Badge>
+                  )}
                 </span>
               ) : (
-                'Risultati Batch'
+                <span className="flex items-center gap-2">
+                  Risultati Batch
+                  {isDraftBatch(batchData) && (
+                    <Badge variant="outline" className="text-amber-600 border-amber-300">
+                      <Clock className="h-3 w-3 mr-1" />
+                      DRAFT
+                    </Badge>
+                  )}
+                </span>
               )}
             </h1>
             <p className="text-muted-foreground">
@@ -290,27 +549,55 @@ export default function NestingResultPage() {
           </div>
         </div>
         
-        <div className="flex items-center gap-2">
-          <Button onClick={loadBatchData} variant="outline" size="sm">
-            <RefreshCw className="h-4 w-4" />
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadBatchData}
+            disabled={updating}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${updating ? 'animate-spin' : ''}`} />
+            Aggiorna
           </Button>
-          <Button onClick={handleExport} variant="outline" size="sm">
-            <Download className="h-4 w-4" />
-          </Button>
-          {batchData.stato === 'sospeso' && (
-            <Button 
-              onClick={handleConfirmBatch}
-              disabled={updating}
-              size="sm"
-            >
-              {updating ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <CheckCircle2 className="mr-2 h-4 w-4" />
-              )}
-              Conferma
-            </Button>
+          
+          {/* 🛡️ GESTIONE BOZZE: Pulsanti contestuali */}
+          {isDraftBatch(batchData) && (
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => handleSaveDraft(batchData.id)}
+                disabled={savingDraft === batchData.id}
+                className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
+              >
+                {savingDraft === batchData.id ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                Salva Bozza
+              </Button>
+              
+              <Button
+                variant="outline"
+                onClick={() => handleDeleteDraft(batchData.id)}
+                disabled={savingDraft === batchData.id}
+                className="flex items-center gap-2 text-red-600 border-red-200 hover:bg-red-50"
+              >
+                <AlertCircle className="h-4 w-4" />
+                Elimina
+              </Button>
+            </div>
           )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExport}
+            className="flex items-center gap-2"
+          >
+            <Download className="h-4 w-4" />
+            Export
+          </Button>
         </div>
       </div>
 
@@ -392,7 +679,8 @@ export default function NestingResultPage() {
                         <CardContent className="space-y-4">
                           <div>
                             <p className="text-sm font-medium text-muted-foreground">Stato</p>
-                            <Badge className={STATO_COLORS[batch.stato as keyof typeof STATO_COLORS] || 'bg-gray-100 text-gray-800'}>
+                            <Badge className={getStatusBadgeVariant(batch.stato)}>
+                              {getStatusIcon(batch.stato)}
                               {STATO_LABELS[batch.stato as keyof typeof STATO_LABELS] || batch.stato}
                             </Badge>
                           </div>
@@ -473,9 +761,9 @@ export default function NestingResultPage() {
 
                           <CardContent>
                             <TabsContent value="tools" className="space-y-2">
-                              {batch.configurazione_json?.tool_positions?.length > 0 ? (
+                              {getToolsFromBatch(batch).length > 0 ? (
                                 <div className="space-y-2 max-h-48 overflow-y-auto">
-                                  {batch.configurazione_json.tool_positions.map((tool: any, index: number) => (
+                                  {getToolsFromBatch(batch).map((tool: any, index: number) => (
                                     <div key={index} className="text-xs p-2 bg-muted rounded">
                                       <p className="font-medium">{tool.part_number_tool || `Tool ${index + 1}`}</p>
                                       <p className="text-muted-foreground">
@@ -596,7 +884,8 @@ export default function NestingResultPage() {
               <CardContent className="space-y-4">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Stato</p>
-                  <Badge className={STATO_COLORS[batchData.stato as keyof typeof STATO_COLORS] || 'bg-gray-100 text-gray-800'}>
+                  <Badge className={getStatusBadgeVariant(batchData.stato)}>
+                    {getStatusIcon(batchData.stato)}
                     {STATO_LABELS[batchData.stato as keyof typeof STATO_LABELS] || batchData.stato}
                   </Badge>
                 </div>
@@ -677,9 +966,9 @@ export default function NestingResultPage() {
 
                 <CardContent>
                   <TabsContent value="tools" className="space-y-2">
-                    {batchData.configurazione_json?.tool_positions?.length > 0 ? (
+                    {getToolsFromBatch(batchData).length > 0 ? (
                       <div className="space-y-2 max-h-48 overflow-y-auto">
-                        {batchData.configurazione_json.tool_positions.map((tool: any, index: number) => (
+                        {getToolsFromBatch(batchData).map((tool: any, index: number) => (
                           <div key={index} className="text-xs p-2 bg-muted rounded">
                             <p className="font-medium">{tool.part_number_tool || `Tool ${index + 1}`}</p>
                             <p className="text-muted-foreground">

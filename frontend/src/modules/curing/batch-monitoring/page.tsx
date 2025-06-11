@@ -29,7 +29,7 @@ import { formatDateTime } from '@/shared/lib/utils'
 interface BatchMonitoringItem {
   id: string
   nome?: string
-  stato: 'sospeso' | 'confermato' | 'loaded' | 'cured' | 'terminato'
+  stato: 'draft' | 'sospeso' | 'in_cura' | 'terminato'
   autoclave_id: number
   autoclave?: {
     nome: string
@@ -51,25 +51,19 @@ interface BatchMonitoringItem {
 }
 
 const STATO_WORKFLOW = {
+  'draft': { 
+    label: 'Bozza', 
+    color: 'bg-gray-100 text-gray-800', 
+    icon: Clock,
+    next: 'Salva'
+  },
   'sospeso': { 
     label: 'In Sospeso', 
     color: 'bg-yellow-100 text-yellow-800', 
     icon: Pause,
-    next: 'Conferma'
-  },
-  'confermato': { 
-    label: 'Confermato', 
-    color: 'bg-green-100 text-green-800', 
-    icon: CheckCircle,
-    next: 'Carica'
-  },
-  'loaded': { 
-    label: 'Caricato', 
-    color: 'bg-blue-100 text-blue-800', 
-    icon: Clock,
     next: 'Avvia Cura'
   },
-  'cured': { 
+  'in_cura': { 
     label: 'In Cura', 
     color: 'bg-red-100 text-red-800', 
     icon: Thermometer,
@@ -176,10 +170,10 @@ export default function BatchMonitoringPage() {
       
       const selectedBatchData = batches.filter(b => selectedBatches.has(b.id))
       const batchesRequireConfirm = selectedBatchData.filter(b => 
-        ['confermato', 'loaded', 'cured'].includes(b.stato)  
+        ['in_cura'].includes(b.stato)  
       ) 
       const batchesSafeToDelete = selectedBatchData.filter(b => 
-        ['sospeso', 'draft'].includes(b.stato)
+        ['draft', 'sospeso'].includes(b.stato)
       )
       const batchesCannotDelete = selectedBatchData.filter(b => 
         b.stato === 'terminato'
@@ -393,7 +387,7 @@ Vuoi procedere?`
             <div className="space-y-2">
               {batches.map((batch) => {
                 const isExpanded = expandedRows.has(batch.id)
-                const statoConfig = STATO_WORKFLOW[batch.stato]
+                const statoConfig = STATO_WORKFLOW[batch.stato] || STATO_WORKFLOW['sospeso']
                 const IconComponent = statoConfig.icon
                 const isActionLoading = actionLoading.includes(batch.id)
                 const isSelected = selectedBatches.has(batch.id)

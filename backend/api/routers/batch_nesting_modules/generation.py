@@ -332,6 +332,16 @@ def genera_multi_aerospace_unified(
     logger.info(f"🚀 === MULTI-BATCH AEROSPACE START === ODL: {len(request.odl_ids)}")
     
     try:
+        # 🔧 FIX: Converti ODL IDs da string a int
+        try:
+            odl_ids_int = [int(odl_id) for odl_id in request.odl_ids]
+            logger.info(f"📋 ODL IDs convertiti: {odl_ids_int}")
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"ODL IDs non validi (devono essere numeri interi): {str(e)}"
+            )
+        
         # Recupera autoclavi disponibili
         autoclavi_disponibili = db.query(Autoclave).filter(
             Autoclave.stato == StatoAutoclaveEnum.DISPONIBILE
@@ -343,11 +353,22 @@ def genera_multi_aerospace_unified(
                 detail="Nessuna autoclave disponibile per il nesting"
             )
         
+        # Recupera ODL disponibili
+        odl_list = db.query(ODL).filter(
+            ODL.id.in_(odl_ids_int),
+            ODL.status == "Attesa Cura"
+        ).all()
+        
+        if not odl_list:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Nessun ODL valido trovato in stato 'Attesa Cura' tra gli ID: {odl_ids_int}"
+            )
+        
+        logger.info(f"✅ ODL validati: {len(odl_list)}/{len(odl_ids_int)}")
+        
         # Distribui ODL tra autoclavi
-        distribution = _distribute_odls_aerospace_grade(
-            db.query(ODL).filter(ODL.id.in_(request.odl_ids)).all(),
-            autoclavi_disponibili
-        )
+        distribution = _distribute_odls_aerospace_grade(odl_list, autoclavi_disponibili)
         
         # Genera nesting per ogni autoclave
         batch_results = []
@@ -369,16 +390,12 @@ def genera_multi_aerospace_unified(
                 )
                 
                 if result['success']:
-                    # Crea batch nel database usando NestingService
-                    from services.nesting_service import NestingService, NestingParameters, NestingResult, ToolPosition
+                    # 🚀 TUTTO INTEGRATO nel NestingService - nessun servizio esterno
+                    from services.nesting_service import get_nesting_service, NestingParameters, NestingResult, ToolPosition
                     
-                    nesting_service = NestingService()
-                    parameters = NestingParameters(
-                        padding_mm=request.parametri.padding_mm,
-                        min_distance_mm=request.parametri.min_distance_mm
-                    )
+                    nesting_service = get_nesting_service()
                     
-                    # Converti result in NestingResult per _create_robust_batch
+                    # Converti result in NestingResult
                     positioned_tools = []
                     for tool_data in result.get('positioned_tools_data', []):
                         positioned_tools.append(ToolPosition(
@@ -405,20 +422,43 @@ def genera_multi_aerospace_unified(
                         algorithm_status='SUCCESS'
                     )
                     
-                    # Crea batch reale nel database
-                    real_batch_id = nesting_service._create_robust_batch(
+                    # Parametri per il batch DRAFT
+                    parameters = NestingParameters(
+                        padding_mm=request.parametri.padding_mm,
+                        min_distance_mm=request.parametri.min_distance_mm,
+                        use_fallback=True,
+                        allow_heuristic=True
+                    )
+                    
+                    # 🎯 PREPARA CONTESTO MULTI-BATCH con generation_id univoco
+                    import uuid
+                    generation_id = f"gen_{uuid.uuid4().hex[:12]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                    
+                    multi_batch_context = {
+                        'generation_id': generation_id,
+                        'total_autoclavi': len(autoclavi_disponibili),
+                        'autoclave_ids': [a.id for a in autoclavi_disponibili],
+                        'strategy_mode': 'MULTI_AUTOCLAVE_AEROSPACE',
+                        'odl_count': len(autoclave_odl_ids),
+                        'result_classification': 'AEROSPACE_MULTI'
+                    }
+                    
+                    # 🆕 Crea batch DRAFT direttamente nel NestingService
+                    draft_id = nesting_service._create_robust_batch(
                         db=db,
                         nesting_result=nesting_result,
                         autoclave_id=autoclave.id,
-                        parameters=parameters
+                        parameters=parameters,
+                        multi_batch_context=multi_batch_context
                     )
                     
                     batch_results.append({
                         'autoclave_id': autoclave.id,
                         'autoclave_nome': autoclave.nome,
-                        'batch_id': real_batch_id or f"error_{autoclave.id}",
+                        'batch_id': draft_id,  # 🆕 Usa ID del batch DRAFT temporaneo
                         'efficiency': result.get('efficiency', 0),
-                        'success': True
+                        'success': True,
+                        'is_draft': True  # 🆕 Indica che è un batch DRAFT
                     })
                     success_count += 1
                 else:
@@ -798,8 +838,9 @@ def generate_nesting(
         logger.info(f"   ODL: {len(odl_ids)}")
         logger.info(f"   Autoclave: {autoclave_id}")
         
-        # Usa il servizio nesting esistente
-        nesting_service = NestingService()
+        # 🚀 Usa il servizio nesting singleton per mantenere correlazioni
+        from services.nesting_service import get_nesting_service
+        nesting_service = get_nesting_service()
         
         # 🔧 FIX: Parametri conversione con tutti i campi necessari
         parameters = NestingParameters(
@@ -869,3 +910,47 @@ def generate_nesting(
             'batch_id': None,
             'message': f'Errore aerospace critico: {str(e)}'
         }
+
+@router.post("/cleanup-draft-correlations", 
+             summary="🧹 Cleanup correlazioni DRAFT scadute",
+             status_code=status.HTTP_200_OK)
+def cleanup_draft_correlations(
+    max_age_hours: int = 24,
+    db: Session = Depends(get_db)
+):
+    """
+    🧹 CLEANUP CORRELAZIONI DRAFT SCADUTE
+    =====================================
+    
+    Rimuove le correlazioni per batch DRAFT scaduti o non più esistenti.
+    Utile per manutenzione del sistema e liberare memoria.
+    
+    Args:
+        max_age_hours: Età massima in ore delle correlazioni (default: 24h)
+        
+    Returns:
+        Statistiche del cleanup eseguito
+    """
+    try:
+        # Usa il singleton del nesting service
+        from services.nesting_service import get_nesting_service
+        nesting_service = get_nesting_service()
+        
+        # Esegui cleanup
+        cleanup_stats = nesting_service.cleanup_draft_correlations(max_age_hours=max_age_hours)
+        
+        logger.info(f"🧹 Cleanup correlazioni DRAFT completato: {cleanup_stats}")
+        
+        return {
+            "success": True,
+            "message": "Cleanup correlazioni DRAFT completato con successo",
+            "cleanup_statistics": cleanup_stats,
+            "max_age_hours": max_age_hours
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Errore cleanup correlazioni DRAFT: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante cleanup correlazioni DRAFT: {str(e)}"
+        )

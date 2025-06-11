@@ -224,6 +224,10 @@ class NestingService:
             'POSITIONING_FAILED': self._handle_positioning_failure,
             'DATA_CORRUPTION': self._handle_data_corruption
         }
+        
+        # 🎯 DRAFT BATCH CORRELATION SYSTEM
+        self._draft_correlations = {}  # generation_id -> [batch_ids]
+        self._batch_to_generation = {}  # batch_id -> generation_id
     
     def validate_system_prerequisites(self, db: Session) -> Dict[str, Any]:
         """Valida i prerequisiti del sistema per il nesting"""
@@ -397,10 +401,13 @@ class NestingService:
                 result['algorithm_status'] = 'NO_VALID_AUTOCLAVE'
                 return result
             
-            # 5. Esecuzione nesting per ogni autoclave
+            # 5. Esecuzione nesting per ogni autoclave con generation_id per correlazione
             best_result = None
             best_efficiency = 0
             best_autoclave_id = None
+            
+            # 🎯 GENERA ID UNIVOCO per correlazione multi-batch
+            generation_id = f"gen_{uuid.uuid4().hex[:12]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             
             for autoclave_id in validated_autoclave_ids:
                 logger.info(f"🚀 Tentativo nesting su autoclave {autoclave_id}")
@@ -417,8 +424,18 @@ class NestingService:
             
             # 6. Gestione risultato
             if best_result and best_result.success:
-                # Crea batch nel database
-                batch_id = self._create_robust_batch(db, best_result, best_autoclave_id, parameters)
+                # 🎯 PREPARA CONTESTO MULTI-BATCH con generation_id
+                multi_batch_context = {
+                    'generation_id': generation_id,
+                    'total_autoclavi': len(validated_autoclave_ids),
+                    'autoclave_ids': validated_autoclave_ids,
+                    'strategy_mode': 'MULTI_AUTOCLAVE_ROBUST',
+                    'odl_count': len(validated_odl_ids),
+                    'result_classification': 'BEST_EFFICIENCY'
+                }
+                
+                # Crea batch nel database con contesto
+                batch_id = self._create_robust_batch(db, best_result, best_autoclave_id, parameters, multi_batch_context)
                 
                 if batch_id:
                     result.update({
@@ -1077,7 +1094,7 @@ class NestingService:
                 area_totale_utilizzata=int(nesting_result.used_area / 100),  # Converte da mm² a cm²
                 valvole_totali_utilizzate=int(nesting_result.lines_used),
                 efficiency=float(nesting_result.efficiency),
-                stato=StatoBatchNestingEnum.SOSPESO.value,  # Usa il valore string dell'enum
+                stato=StatoBatchNestingEnum.DRAFT.value,  # NUOVO: Genera sempre in stato DRAFT
                 creato_da_utente='SYSTEM_ROBUST',
                 creato_da_ruolo='SYSTEM'
             )
@@ -1086,8 +1103,15 @@ class NestingService:
             db.commit()
             db.refresh(new_batch)
             
+            batch_id_str = str(new_batch.id)
+            
+            # 🎯 REGISTRA CORRELAZIONE DRAFT se multi-batch
+            if multi_batch_context and multi_batch_context.get('generation_id'):
+                generation_id = multi_batch_context['generation_id']
+                self._register_draft_correlation(batch_id_str, generation_id)
+            
             logger.info(f"✅ Batch robusto creato: {new_batch.id}")
-            return str(new_batch.id)
+            return batch_id_str
             
         except Exception as e:
             db.rollback()
@@ -1157,4 +1181,158 @@ class NestingService:
             'message': 'Dati ODL o autoclave corrotti - verificare integrità database',
             'algorithm_status': 'DATA_CORRUPTION'
         })
-        return result 
+        return result
+    
+    def _register_draft_correlation(self, batch_id: str, generation_id: str):
+        """
+        🎯 REGISTRA CORRELAZIONE DRAFT per multi-batch
+        """
+        try:
+            # Aggiungi batch alla lista di correlazioni per generation_id
+            if generation_id not in self._draft_correlations:
+                self._draft_correlations[generation_id] = []
+            
+            if batch_id not in self._draft_correlations[generation_id]:
+                self._draft_correlations[generation_id].append(batch_id)
+            
+            # Mappa batch -> generation per lookup inverso
+            self._batch_to_generation[batch_id] = generation_id
+            
+            logger.info(f"🔗 DRAFT correlation registrata: batch {batch_id} -> generation {generation_id}")
+            logger.info(f"🔗 Totale batch in generation {generation_id}: {len(self._draft_correlations[generation_id])}")
+            
+        except Exception as e:
+            logger.error(f"❌ Errore registrazione correlazione DRAFT: {str(e)}")
+    
+    def get_correlated_draft_batches(self, db: Session, batch_id: str) -> List[Dict[str, Any]]:
+        """
+        🎯 RECUPERA BATCH DRAFT CORRELATI per visualizzazione multi-batch
+        Risolve il problema della correlazione mancante per batch DRAFT
+        """
+        try:
+            # Converti batch_id a stringa se necessario
+            batch_id_str = str(batch_id)
+            
+            # Trova generation_id per questo batch
+            generation_id = self._batch_to_generation.get(batch_id_str)
+            if not generation_id:
+                logger.info(f"📍 Batch DRAFT {batch_id_str} non ha correlazioni multi-batch")
+                return []
+            
+            # Recupera tutti i batch correlati (escluso quello corrente)
+            correlated_batch_ids = [
+                bid for bid in self._draft_correlations.get(generation_id, [])
+                if bid != batch_id_str
+            ]
+            
+            if not correlated_batch_ids:
+                logger.info(f"📍 Nessun batch correlato trovato per generation {generation_id}")
+                return []
+            
+            # Recupera i dati dei batch correlati dal database
+            correlated_batches = []
+            for corr_batch_id in correlated_batch_ids:
+                try:
+                    # Carica batch dal database
+                    batch = db.query(BatchNesting).filter(
+                        BatchNesting.id == corr_batch_id,
+                        BatchNesting.stato == StatoBatchNestingEnum.DRAFT.value
+                    ).first()
+                    
+                    if batch:
+                        # Converti a dizionario con metadata di correlazione
+                        batch_dict = {
+                            'id': str(batch.id),
+                            'nome': batch.nome,
+                            'autoclave_id': batch.autoclave_id,
+                            'efficiency': float(batch.efficiency) if batch.efficiency else 0.0,
+                            'total_weight': float(batch.peso_totale_kg) if batch.peso_totale_kg else 0.0,
+                            'created_at': batch.created_at.isoformat() if batch.created_at else None,
+                            'stato': batch.stato,
+                            'positioned_tools_count': batch.numero_nesting or 0,
+                            
+                            # Metadata di correlazione
+                            'correlation_metadata': {
+                                'generation_id': generation_id,
+                                'is_correlated': True,
+                                'total_correlated_batches': len(self._draft_correlations[generation_id]),
+                                'correlation_source': 'draft_nesting_service'
+                            }
+                        }
+                        
+                        # Aggiungi configurazione se disponibile
+                        if batch.configurazione_json:
+                            batch_dict['configurazione_json'] = batch.configurazione_json
+                        
+                        correlated_batches.append(batch_dict)
+                        
+                except Exception as e:
+                    logger.warning(f"⚠️ Errore caricamento batch correlato {corr_batch_id}: {str(e)}")
+                    continue
+            
+            logger.info(f"🔗 Trovati {len(correlated_batches)} batch DRAFT correlati per {batch_id_str} (generation: {generation_id})")
+            return correlated_batches
+            
+        except Exception as e:
+            logger.error(f"❌ Errore recupero batch DRAFT correlati per {batch_id}: {str(e)}")
+            return []
+    
+    def cleanup_draft_correlations(self, max_age_hours: int = 24):
+        """
+        🧹 CLEANUP correlazioni DRAFT scadute
+        """
+        try:
+            current_time = datetime.now()
+            cleaned_generations = []
+            cleaned_batches = []
+            
+            # Rimuovi correlazioni per batch che non esistono più o sono troppo vecchi
+            for generation_id, batch_ids in list(self._draft_correlations.items()):
+                valid_batch_ids = []
+                
+                for batch_id in batch_ids:
+                    # Qui potresti aggiungere logica per verificare se il batch esiste ancora
+                    # Per ora manteniamo una semplice age-based cleanup
+                    valid_batch_ids.append(batch_id)
+                
+                if valid_batch_ids:
+                    self._draft_correlations[generation_id] = valid_batch_ids
+                else:
+                    # Rimuovi generation vuota
+                    del self._draft_correlations[generation_id]
+                    cleaned_generations.append(generation_id)
+            
+            # Cleanup reverse mapping
+            for batch_id in list(self._batch_to_generation.keys()):
+                generation_id = self._batch_to_generation[batch_id]
+                if generation_id not in self._draft_correlations:
+                    del self._batch_to_generation[batch_id]
+                    cleaned_batches.append(batch_id)
+            
+            if cleaned_generations or cleaned_batches:
+                logger.info(f"🧹 DRAFT correlations cleanup: {len(cleaned_generations)} generations, {len(cleaned_batches)} batch mappings rimossi")
+            
+            return {
+                'cleaned_generations': len(cleaned_generations),
+                'cleaned_batch_mappings': len(cleaned_batches),
+                'remaining_generations': len(self._draft_correlations),
+                'remaining_batch_mappings': len(self._batch_to_generation)
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Errore cleanup correlazioni DRAFT: {str(e)}")
+            return {'error': str(e)}
+
+# 🚀 SINGLETON INSTANCE per mantenere le correlazioni DRAFT in memoria
+_nesting_service_instance = None
+
+def get_nesting_service() -> NestingService:
+    """
+    🚀 FACTORY SINGLETON per NestingService con correlazioni condivise
+    Garantisce che le correlazioni DRAFT siano mantenute attraverso le richieste
+    """
+    global _nesting_service_instance
+    if _nesting_service_instance is None:
+        _nesting_service_instance = NestingService()
+        logger.info("🚀 NestingService singleton inizializzato con sistema correlazioni DRAFT")
+    return _nesting_service_instance

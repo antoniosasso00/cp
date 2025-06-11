@@ -9,7 +9,7 @@ Questo modulo contiene funzioni di utilità condivise tra i diversi router:
 """
 
 import logging
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError, DatabaseError
@@ -27,22 +27,63 @@ class ValidationError(Exception):
     """Eccezione personalizzata per errori di validazione"""
     pass
 
-def validate_batch_state_transition(current_state: StatoBatchNestingEnum, target_state: StatoBatchNestingEnum) -> bool:
-    """Valida se una transizione di stato è permessa"""
-    if current_state not in STATE_TRANSITIONS:
+def _convert_to_enum(state: Union[str, StatoBatchNestingEnum]) -> StatoBatchNestingEnum:
+    """Converte uno stato (stringa o enum) nell'enum corrispondente"""
+    if isinstance(state, StatoBatchNestingEnum):
+        return state
+    
+    # Prova a convertire la stringa in enum
+    try:
+        return StatoBatchNestingEnum(state)
+    except ValueError:
+        # Se non trova una corrispondenza diretta, prova a cercare per valore
+        for enum_item in StatoBatchNestingEnum:
+            if enum_item.value == state:
+                return enum_item
+        
+        # Se non trova niente, solleva eccezione
+        raise ValueError(f"Stato '{state}' non riconosciuto")
+
+def validate_batch_state_transition(current_state: Union[str, StatoBatchNestingEnum], target_state: Union[str, StatoBatchNestingEnum]) -> bool:
+    """Valida se una transizione di stato è permessa
+    
+    Args:
+        current_state: Stato corrente (stringa dal database o enum)
+        target_state: Stato target (stringa o enum)
+        
+    Returns:
+        True se la transizione è valida
+        
+    Raises:
+        HTTPException: Se la transizione non è permessa
+    """
+    try:
+        # Converte entrambi gli stati in enum per il confronto
+        current_enum = _convert_to_enum(current_state)
+        target_enum = _convert_to_enum(target_state)
+        
+        if current_enum not in STATE_TRANSITIONS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Stato corrente '{current_enum.value}' non riconosciuto"
+            )
+        
+        allowed_transitions = STATE_TRANSITIONS[current_enum]
+        if target_enum not in allowed_transitions:
+            allowed_values = [t.value for t in allowed_transitions]
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Transizione non permessa da '{current_enum.value}' a '{target_enum.value}'. "
+                       f"Transizioni possibili: {allowed_values}"
+            )
+        
+        return True
+        
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Stato corrente {current_state} non riconosciuto"
+            detail=str(e)
         )
-    
-    allowed_transitions = STATE_TRANSITIONS[current_state]
-    if target_state not in allowed_transitions:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Transizione non permessa da {current_state} a {target_state}. Transizioni possibili: {allowed_transitions}"
-        )
-    
-    return True
 
 def validate_user_permission(user_role: str, action: str) -> bool:
     """Valida se un ruolo utente ha i permessi per un'azione"""
@@ -220,7 +261,7 @@ def find_related_batches(db: Session, main_batch: BatchNesting, time_window_minu
         BatchNesting.id != main_batch.id,
         BatchNesting.created_at >= start_time,
         BatchNesting.created_at <= end_time,
-        BatchNesting.stato.in_(['sospeso', 'confermato', 'loaded', 'cured'])
+        BatchNesting.stato.in_(['sospeso', 'in_cura', 'terminato'])
     ).all()
     
     # Filtra per autoclavi diverse (caratteristica del multi-batch)
@@ -243,30 +284,27 @@ def convert_string_ids_to_int(string_ids: List[str], field_name: str = "ID") -> 
 # Stati batch che possono essere eliminati senza conferma
 DELETABLE_STATES_NO_CONFIRM = [StatoBatchNestingEnum.SOSPESO.value]
 
-# Stati batch che richiedono conferma per eliminazione
+# Stati batch che richiedono conferma per eliminazione  
 DELETABLE_STATES_WITH_CONFIRM = [
-    StatoBatchNestingEnum.CONFERMATO.value,
-    StatoBatchNestingEnum.LOADED.value,
-    StatoBatchNestingEnum.CURED.value
+    StatoBatchNestingEnum.IN_CURA.value,
 ]
 
 # Stati batch non eliminabili (storico)
 NON_DELETABLE_STATES = [StatoBatchNestingEnum.TERMINATO.value]
 
-# Transizioni di stato permesse
+# Transizioni di stato permesse - NUOVO FLUSSO SEMPLIFICATO
 STATE_TRANSITIONS = {
-    StatoBatchNestingEnum.DRAFT: [StatoBatchNestingEnum.SOSPESO],
-    StatoBatchNestingEnum.SOSPESO: [StatoBatchNestingEnum.CONFERMATO],
-    StatoBatchNestingEnum.CONFERMATO: [StatoBatchNestingEnum.LOADED],
-    StatoBatchNestingEnum.LOADED: [StatoBatchNestingEnum.CURED],
-    StatoBatchNestingEnum.CURED: [StatoBatchNestingEnum.TERMINATO],
+    StatoBatchNestingEnum.DRAFT: [StatoBatchNestingEnum.SOSPESO],        # Conferma operatore
+    StatoBatchNestingEnum.SOSPESO: [StatoBatchNestingEnum.IN_CURA],      # Caricamento autoclave
+    StatoBatchNestingEnum.IN_CURA: [StatoBatchNestingEnum.TERMINATO],    # Fine cura
     StatoBatchNestingEnum.TERMINATO: [],  # Stato finale
 }
 
 ROLE_PERMISSIONS = {
-    "ADMIN": ["CREATE", "READ", "UPDATE", "DELETE", "CONFIRM", "LOAD", "CURE", "TERMINATE"],
-    "MANAGER": ["CREATE", "READ", "UPDATE", "CONFIRM", "LOAD", "CURE", "TERMINATE"],
-    "OPERATOR": ["READ", "LOAD", "CURE"],
+    "ADMIN": ["CREATE", "READ", "UPDATE", "DELETE", "CONFIRM", "LOAD_CURE", "TERMINATE"],
+    "MANAGER": ["CREATE", "READ", "UPDATE", "CONFIRM", "LOAD_CURE", "TERMINATE"], 
+    "OPERATOR": ["READ", "LOAD_CURE", "TERMINATE"],
+    "AUTOCLAVISTA": ["READ", "LOAD_CURE", "TERMINATE"],
     "VIEWER": ["READ"]
 }
 

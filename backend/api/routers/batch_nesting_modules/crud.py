@@ -21,6 +21,8 @@ from api.database import get_db
 from models.batch_nesting import BatchNesting, StatoBatchNestingEnum
 from models.autoclave import Autoclave
 from models.odl import ODL
+from models.parte import Parte
+from models.tool import Tool
 from schemas.batch_nesting import (
     BatchNestingCreate, 
     BatchNestingResponse, 
@@ -28,6 +30,7 @@ from schemas.batch_nesting import (
     BatchNestingList,
     StatoBatchNestingEnum as StatoBatchNestingEnumSchema
 )
+from schemas.odl import ODLRead
 
 logger = logging.getLogger(__name__)
 
@@ -217,19 +220,32 @@ def get_batch_nesting_result(
     Utilizzato dal frontend per la pagina dei risultati.
     """
     try:
-        # Cerca il batch principale
+        # 🎯 SISTEMA UNIFICATO: Cerca solo nel database (include tutti gli stati)
         main_batch = db.query(BatchNesting).options(
             joinedload(BatchNesting.autoclave)
         ).filter(BatchNesting.id == batch_id).first()
         
+        # Se non trovato, errore 404
         if not main_batch:
+            logger.warning(f"❌ Batch {batch_id} non trovato nel database")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Batch nesting con ID {batch_id} non trovato"
             )
         
+        # 🔧 FIX AUTOCLAVE: Se la relazione non è caricata, carica manualmente
+        if main_batch.autoclave_id and not main_batch.autoclave:
+            logger.warning(f"⚠️ Autoclave non caricata con joinedload per batch {batch_id}, caricamento manuale")
+            main_batch.autoclave = db.query(Autoclave).filter(Autoclave.id == main_batch.autoclave_id).first()
+            if not main_batch.autoclave:
+                logger.error(f"❌ Autoclave ID {main_batch.autoclave_id} non trovata per batch {batch_id}")
+        
         # Funzione helper per formattare un batch
         def format_batch_result(batch):
+            # 🔧 FIX AUTOCLAVE: Caricamento manuale se necessario
+            if batch.autoclave_id and not batch.autoclave:
+                batch.autoclave = db.query(Autoclave).filter(Autoclave.id == batch.autoclave_id).first()
+            
             # Carica ODL associati
             odls = []
             if batch.odl_ids:
@@ -242,19 +258,38 @@ def get_batch_nesting_result(
             configurazione = batch.configurazione_json or {}
             metrics = configurazione.get('metrics', {})
             
-            return {
-                "id": batch.id,
-                "nome": batch.nome,
-                "stato": batch.stato,
-                "autoclave_id": batch.autoclave_id,
-                "autoclave": {
+            # 🔧 FIX AUTOCLAVE INFO: Gestisci caso in cui autoclave è None
+            autoclave_info = None
+            if batch.autoclave:
+                autoclave_info = {
                     "id": batch.autoclave.id,
                     "nome": batch.autoclave.nome,
                     "larghezza_piano": batch.autoclave.larghezza_piano,
                     "lunghezza": batch.autoclave.lunghezza,
                     "max_load_kg": batch.autoclave.max_load_kg,
                     "num_linee_vuoto": batch.autoclave.num_linee_vuoto
-                } if batch.autoclave else None,
+                }
+            elif batch.autoclave_id:
+                # Fallback: carica autoclave senza relazione
+                autoclave_db = db.query(Autoclave).filter(Autoclave.id == batch.autoclave_id).first()
+                if autoclave_db:
+                    autoclave_info = {
+                        "id": autoclave_db.id,
+                        "nome": autoclave_db.nome,
+                        "larghezza_piano": autoclave_db.larghezza_piano,
+                        "lunghezza": autoclave_db.lunghezza,
+                        "max_load_kg": autoclave_db.max_load_kg,
+                        "num_linee_vuoto": autoclave_db.num_linee_vuoto
+                    }
+                else:
+                    logger.error(f"❌ Autoclave ID {batch.autoclave_id} non trovata per batch {batch.id}")
+            
+            return {
+                "id": batch.id,
+                "nome": batch.nome,
+                "stato": batch.stato,
+                "autoclave_id": batch.autoclave_id,
+                "autoclave": autoclave_info,
                 "odl_ids": batch.odl_ids or [],
                 "configurazione_json": configurazione,
                 "parametri": batch.parametri,
@@ -269,7 +304,7 @@ def get_batch_nesting_result(
                     "efficiency_percentage": batch.efficiency,
                     "total_area_used_mm2": metrics.get('total_area_used_mm2', 0),
                     "total_weight_kg": batch.peso_totale_kg or 0,
-                    "positioned_tools": len(configurazione.get('tool_positions', [])),
+                    "positioned_tools": len(configurazione.get('tool_positions', [])) or len(configurazione.get('positioned_tools', [])),
                     "excluded_tools": 0  # TODO: calcolare gli esclusi se disponibili
                 },
                 "odls_data": [
@@ -293,34 +328,84 @@ def get_batch_nesting_result(
         batch_results = [format_batch_result(main_batch)]
         
         # Se richiesto, cerca batch correlati (multi-batch)
-        if multi and main_batch.created_at:
-            from datetime import timedelta
+        if multi:
+            correlated_batches = []
             
-            # Cerca batch creati nello stesso timeframe (±5 minuti)
-            time_window = timedelta(minutes=5)
-            start_time = main_batch.created_at - time_window
-            end_time = main_batch.created_at + time_window
+            # 🎯 CORRELAZIONE DRAFT: Se il batch è DRAFT, usa il sistema di correlazione avanzata
+            if hasattr(main_batch, 'stato') and main_batch.stato == StatoBatchNestingEnum.DRAFT.value:
+                logger.info(f"🔗 Ricerca correlazioni DRAFT per batch {batch_id}")
+                
+                # 🚀 Usa il nesting service singleton per le correlazioni DRAFT
+                from services.nesting_service import get_nesting_service
+                nesting_service = get_nesting_service()
+                
+                # Usa il sistema di correlazione DRAFT avanzata
+                draft_correlated_ids = nesting_service.get_correlated_draft_batches(db, batch_id)
+                
+                # Recupera i batch correlati dal database
+                if draft_correlated_ids:
+                    correlated_batches_query = db.query(BatchNesting).options(
+                        joinedload(BatchNesting.autoclave)
+                    ).filter(
+                        BatchNesting.id.in_(draft_correlated_ids),
+                        BatchNesting.id != batch_id  # Escludi il batch principale
+                    ).all()
+                    
+                    correlated_batches.extend(correlated_batches_query)
+                    
+                logger.info(f"🔗 Trovati {len(correlated_batches)} batch DRAFT correlati per {batch_id}")
+                
+            # 🚀 CORRELAZIONE UNIFICATA: Per TUTTI i batch (inclusi DRAFT)
+            if main_batch.created_at:
+                from datetime import timedelta
+                
+                # 🎯 STRATEGIA TEMPORALE MIGLIORATA: 
+                # 1. Finestra ±1 minuto per batch generati insieme
+                # 2. Se non trova nulla, espande a ±5 minuti
+                # 3. Filtra per autoclavi diverse (pattern multi-batch)
+                
+                time_windows = [
+                    timedelta(minutes=1),   # Prima prova: finestra stretta
+                    timedelta(minutes=5),   # Seconda prova: finestra ampia
+                ]
+                
+                for time_window in time_windows:
+                    start_time = main_batch.created_at - time_window
+                    end_time = main_batch.created_at + time_window
+                    
+                    related_batches = db.query(BatchNesting).options(
+                        joinedload(BatchNesting.autoclave)
+                    ).filter(
+                        BatchNesting.id != main_batch.id,
+                        BatchNesting.created_at >= start_time,
+                        BatchNesting.created_at <= end_time,
+                        # 🚀 Includi anche DRAFT per correlazioni complete
+                        BatchNesting.stato.in_(['draft', 'sospeso', 'confermato'])
+                    ).limit(20).all()
+                    
+                    logger.info(f"🔍 Candidati correlazione (±{time_window.total_seconds()/60:.0f}min): {len(related_batches)} batch")
+                    
+                    # 🎯 FILTRO MULTI-BATCH: Solo batch con autoclavi diverse
+                    multi_batch_candidates = []
+                    for rb in related_batches:
+                        if rb.autoclave_id != main_batch.autoclave_id:
+                            multi_batch_candidates.append(rb)
+                            logger.info(f"   ✅ Multi-batch candidato: {rb.id[:8]}... | Autoclave: {rb.autoclave.nome if rb.autoclave else rb.autoclave_id}")
+                    
+                    # Se troviamo correlazioni, usa queste e fermati
+                    if multi_batch_candidates:
+                        correlated_batches.extend(multi_batch_candidates)
+                        logger.info(f"🎯 MULTI-BATCH TROVATO (±{time_window.total_seconds()/60:.0f}min): {len(multi_batch_candidates)} batch correlati")
+                        break
+                        
+                if not correlated_batches:
+                    logger.info(f"📍 SINGLE-BATCH: Nessuna correlazione multi-batch trovata per {batch_id}")
+                
+                logger.info(f"🔗 Totale batch correlati: {len(correlated_batches)}")
             
-            related_batches = db.query(BatchNesting).options(
-                joinedload(BatchNesting.autoclave)
-            ).filter(
-                BatchNesting.id != main_batch.id,
-                BatchNesting.created_at >= start_time,
-                BatchNesting.created_at <= end_time,
-                BatchNesting.stato.in_(['sospeso', 'confermato'])
-            ).limit(10).all()
-            
-            # Filtra per autoclavi diverse (caratteristica del multi-batch)
-            truly_related = []
-            for rb in related_batches:
-                if rb.autoclave_id != main_batch.autoclave_id:
-                    truly_related.append(rb)
-            
-            # Aggiungi i batch correlati
-            for related_batch in truly_related:
-                batch_results.append(format_batch_result(related_batch))
-            
-            logger.info(f"🔗 Trovati {len(truly_related)} batch correlati per multi-batch {batch_id}")
+            # Aggiungi i batch correlati ai risultati
+            for correlated_batch in correlated_batches:
+                batch_results.append(format_batch_result(correlated_batch))
         
         # Ordina per autoclave_id per una visualizzazione coerente
         batch_results.sort(key=lambda x: x['autoclave_id'])

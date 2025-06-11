@@ -1,4 +1,5 @@
-# Router workflow batch (conferma, caricamento, cura, terminazione)
+# Router workflow batch - NUOVO FLUSSO SEMPLIFICATO
+# Flusso: DRAFT → SOSPESO → IN_CURA → TERMINATO
 
 import logging
 from typing import Optional
@@ -10,6 +11,7 @@ from api.database import get_db
 from models.batch_nesting import BatchNesting, StatoBatchNestingEnum
 from models.autoclave import Autoclave, StatoAutoclaveEnum
 from models.odl import ODL
+from models.tempo_fase import TempoFase
 from schemas.batch_nesting import BatchNestingResponse
 from .utils import (
     handle_database_error,
@@ -20,18 +22,24 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
-    tags=["Batch Nesting - Workflow"]
+    tags=["Batch Nesting - Workflow Semplificato"]
 )
 
 @router.patch("/{batch_id}/confirm", response_model=BatchNestingResponse,
-              summary="🔄 Conferma batch - Transizione SOSPESO → CONFERMATO")
+              summary="🔄 Conferma batch - Transizione DRAFT → SOSPESO")
 def confirm_batch_nesting(
     batch_id: str, 
     confermato_da_utente: str = Query(..., description="ID dell'utente che conferma il batch"),
     confermato_da_ruolo: str = Query(..., description="Ruolo dell'utente che conferma"),
     db: Session = Depends(get_db)
 ):
-    """Conferma un batch nesting"""
+    """
+    Conferma un batch dalla bozza allo stato sospeso (pronto per caricamento)
+    
+    Azioni automatiche:
+    - Batch: DRAFT → SOSPESO
+    - ODL: → "Attesa Cura" 
+    """
     try:
         # Trova il batch
         batch = db.query(BatchNesting).filter(BatchNesting.id == batch_id).first()
@@ -39,37 +47,28 @@ def confirm_batch_nesting(
             raise HTTPException(status_code=404, detail="Batch non trovato")
         
         # Valida transizione di stato
-        validate_batch_state_transition(batch.stato, StatoBatchNestingEnum.CONFERMATO)
+        validate_batch_state_transition(batch.stato, StatoBatchNestingEnum.SOSPESO)
         
         # Aggiorna batch
-        batch.stato = StatoBatchNestingEnum.CONFERMATO
+        batch.stato = StatoBatchNestingEnum.SOSPESO.value
         batch.confermato_da_utente = confermato_da_utente
         batch.confermato_da_ruolo = confermato_da_ruolo
         batch.data_conferma = datetime.now()
         
-        # Aggiorna ODL associate a "Cura"
+        # Aggiorna ODL associate a "Attesa Cura"
         if batch.odl_ids:
             odls = db.query(ODL).filter(ODL.id.in_(batch.odl_ids)).all()
             for odl in odls:
-                if odl.status != "Cura":
-                    odl.status = "Cura"
+                if odl.status != "Attesa Cura":
+                    odl.status = "Attesa Cura"
                     odl.updated_at = datetime.now()
-                    logger.info(f"📋 ODL {odl.id} aggiornato a stato CURA")
-        
-        # Aggiorna autoclave a "IN_USO"
-        if batch.autoclave_id:
-            autoclave = db.query(Autoclave).filter(Autoclave.id == batch.autoclave_id).first()
-            if autoclave and autoclave.stato != StatoAutoclaveEnum.IN_USO:
-                autoclave.stato = StatoAutoclaveEnum.IN_USO
-                autoclave.updated_at = datetime.now()
-                logger.info(f"🏭 Autoclave {autoclave.id} aggiornata a stato IN_USO")
+                    logger.info(f"📋 ODL {odl.id} aggiornato a stato ATTESA CURA")
         
         db.commit()
         db.refresh(batch)
         
-        logger.info(f"✅ Batch {batch_id} confermato da {confermato_da_utente}")
+        logger.info(f"✅ Batch {batch_id} confermato da {confermato_da_utente} - pronto per caricamento")
         
-        # Converti a BatchNestingResponse appropriato
         return format_batch_for_response(batch)
         
     except HTTPException:
@@ -77,83 +76,92 @@ def confirm_batch_nesting(
     except Exception as e:
         return handle_database_error(db, e, f"conferma batch {batch_id}")
 
-@router.patch("/{batch_id}/load", response_model=BatchNestingResponse,
-              summary="🔄 Carica batch - Transizione CONFERMATO → LOADED")
-def load_batch_nesting(
+@router.patch("/{batch_id}/start-cure", response_model=BatchNestingResponse,
+              summary="🔄 Inizia cura - Transizione SOSPESO → IN_CURA")
+def start_cure_batch_nesting(
     batch_id: str,
-    caricato_da_utente: str = Query(..., description="ID dell'utente che carica il batch"),
-    caricato_da_ruolo: str = Query(..., description="Ruolo dell'utente che carica"),
+    caricato_da_utente: str = Query(..., description="ID dell'utente che carica l'autoclave"),
+    caricato_da_ruolo: str = Query(..., description="Ruolo dell'utente che carica l'autoclave"),
     db: Session = Depends(get_db)
 ):
-    """Carica un batch nell'autoclave"""
+    """
+    Inizia il ciclo di cura caricando l'autoclave
+    
+    Azioni automatiche:
+    - Batch: SOSPESO → IN_CURA
+    - ODL: "Attesa Cura" → "Cura"
+    - Autoclave: DISPONIBILE → IN_USO
+    - Timing: Inizia conteggio durata cura
+    """
     try:
         batch = db.query(BatchNesting).filter(BatchNesting.id == batch_id).first()
         if not batch:
             raise HTTPException(status_code=404, detail="Batch non trovato")
         
         # Valida transizione di stato
-        validate_batch_state_transition(batch.stato, StatoBatchNestingEnum.LOADED)
+        validate_batch_state_transition(batch.stato, StatoBatchNestingEnum.IN_CURA)
         
         # Aggiorna batch
-        batch.stato = StatoBatchNestingEnum.LOADED
+        batch.stato = StatoBatchNestingEnum.IN_CURA.value
         batch.caricato_da_utente = caricato_da_utente
         batch.caricato_da_ruolo = caricato_da_ruolo
-        batch.data_caricamento = datetime.now()
+        
+        # Aggiorna ODL associate a "Cura" + REGISTRA TEMPO INIZIO CURA
+        if batch.odl_ids:
+            odls = db.query(ODL).filter(ODL.id.in_(batch.odl_ids)).all()
+            for odl in odls:
+                if odl.status != "Cura":
+                    odl.status = "Cura"
+                    odl.updated_at = datetime.now()
+                    
+                    # ✅ REGISTRA INIZIO CURA tramite TempoFase 
+                    tempo_cura = TempoFase(
+                        odl_id=odl.id,
+                        fase="cura",
+                        inizio_fase=datetime.now(),
+                        note=f"Cura iniziata da {caricato_da_utente} (batch {batch_id})"
+                    )
+                    db.add(tempo_cura)
+                    
+                    logger.info(f"📋 ODL {odl.id} aggiornato a stato CURA + TIMING REGISTRATO")
+        
+        # Aggiorna autoclave a "IN_USO"
+        if batch.autoclave_id:
+            autoclave = db.query(Autoclave).filter(Autoclave.id == batch.autoclave_id).first()
+            if autoclave and autoclave.stato != StatoAutoclaveEnum.IN_USO.value:
+                autoclave.stato = StatoAutoclaveEnum.IN_USO.value
+                autoclave.updated_at = datetime.now()
+                logger.info(f"🏭 Autoclave {autoclave.id} aggiornata a stato IN_USO - CURA INIZIATA")
         
         db.commit()
         db.refresh(batch)
         
-        logger.info(f"✅ Batch {batch_id} caricato da {caricato_da_utente}")
+        logger.info(f"✅ Cura INIZIATA per batch {batch_id} da {caricato_da_utente} - timing attivo")
+        
         return format_batch_for_response(batch)
         
     except HTTPException:
         raise
     except Exception as e:
-        return handle_database_error(db, e, f"caricamento batch {batch_id}")
-
-@router.patch("/{batch_id}/cure", response_model=BatchNestingResponse,
-              summary="🔄 Avvia cura - Transizione LOADED → CURED")  
-def cure_batch_nesting(
-    batch_id: str,
-    avviato_da_utente: str = Query(..., description="ID dell'utente che avvia la cura"),
-    avviato_da_ruolo: str = Query(..., description="Ruolo dell'utente che avvia la cura"),
-    db: Session = Depends(get_db)
-):
-    """Avvia la cura del batch"""
-    try:
-        batch = db.query(BatchNesting).filter(BatchNesting.id == batch_id).first()
-        if not batch:
-            raise HTTPException(status_code=404, detail="Batch non trovato")
-        
-        # Valida transizione di stato
-        validate_batch_state_transition(batch.stato, StatoBatchNestingEnum.CURED)
-        
-        # Aggiorna batch
-        batch.stato = StatoBatchNestingEnum.CURED
-        batch.avviato_da_utente = avviato_da_utente
-        batch.avviato_da_ruolo = avviato_da_ruolo
-        batch.data_avvio_cura = datetime.now()
-        
-        db.commit()
-        db.refresh(batch)
-        
-        logger.info(f"✅ Cura avviata per batch {batch_id} da {avviato_da_utente}")
-        return format_batch_for_response(batch)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        return handle_database_error(db, e, f"avvio cura batch {batch_id}")
+        return handle_database_error(db, e, f"inizio cura batch {batch_id}")
 
 @router.patch("/{batch_id}/terminate", response_model=BatchNestingResponse,
-              summary="🔄 Termina batch - Transizione CURED → TERMINATO")
+              summary="🔄 Termina cura - Transizione IN_CURA → TERMINATO")
 def terminate_batch_nesting(
     batch_id: str,
-    terminato_da_utente: str = Query(..., description="ID dell'utente che termina il batch"),
-    terminato_da_ruolo: str = Query(..., description="Ruolo dell'utente che termina"),
+    terminato_da_utente: str = Query(..., description="ID dell'utente che termina la cura"),
+    terminato_da_ruolo: str = Query(..., description="Ruolo dell'utente che termina la cura"),
     db: Session = Depends(get_db)
 ):
-    """Termina un batch completando la cura"""
+    """
+    Termina il ciclo di cura completando il workflow
+    
+    Azioni automatiche:
+    - Batch: IN_CURA → TERMINATO
+    - ODL: "Cura" → "Finito"
+    - Autoclave: IN_USO → DISPONIBILE
+    - Timing: Calcola durata effettiva cura
+    """
     try:
         batch = db.query(BatchNesting).filter(BatchNesting.id == batch_id).first()
         if not batch:
@@ -163,113 +171,64 @@ def terminate_batch_nesting(
         validate_batch_state_transition(batch.stato, StatoBatchNestingEnum.TERMINATO)
         
         # Aggiorna batch
-        batch.stato = StatoBatchNestingEnum.TERMINATO
+        batch.stato = StatoBatchNestingEnum.TERMINATO.value
         batch.terminato_da_utente = terminato_da_utente
         batch.terminato_da_ruolo = terminato_da_ruolo
-        batch.data_termine = datetime.now()
         
-        # Aggiorna ODL associate a "Finito"
+        # Aggiorna ODL associate a "Finito" + REGISTRA FINE CURA
         if batch.odl_ids:
             odls = db.query(ODL).filter(ODL.id.in_(batch.odl_ids)).all()
             for odl in odls:
                 if odl.status != "Finito":
                     odl.status = "Finito"
                     odl.updated_at = datetime.now()
-                    logger.info(f"📋 ODL {odl.id} aggiornato a stato FINITO")
+                    
+                    # ✅ COMPLETA TIMING CURA tramite TempoFase
+                    tempo_cura = db.query(TempoFase).filter(
+                        TempoFase.odl_id == odl.id,
+                        TempoFase.fase == "cura", 
+                        TempoFase.fine_fase.is_(None)
+                    ).first()
+                    
+                    if tempo_cura:
+                        tempo_cura.fine_fase = datetime.now()
+                        # Calcola durata in minuti
+                        delta = tempo_cura.fine_fase - tempo_cura.inizio_fase
+                        tempo_cura.durata_minuti = int(delta.total_seconds() / 60)
+                        tempo_cura.note = f"{tempo_cura.note or ''} | Completato da {terminato_da_utente}"
+                        
+                        logger.info(f"📋 ODL {odl.id} aggiornato a stato FINITO + TIMING COMPLETATO ({tempo_cura.durata_minuti}min)")
+                    else:
+                        logger.warning(f"⚠️ ODL {odl.id}: record TempoFase cura non trovato")
         
         # Aggiorna autoclave a "DISPONIBILE"
         if batch.autoclave_id:
             autoclave = db.query(Autoclave).filter(Autoclave.id == batch.autoclave_id).first()
-            if autoclave and autoclave.stato != StatoAutoclaveEnum.DISPONIBILE:
-                autoclave.stato = StatoAutoclaveEnum.DISPONIBILE
+            if autoclave and autoclave.stato != StatoAutoclaveEnum.DISPONIBILE.value:
+                autoclave.stato = StatoAutoclaveEnum.DISPONIBILE.value
                 autoclave.updated_at = datetime.now()
-                logger.info(f"🏭 Autoclave {autoclave.id} aggiornata a stato DISPONIBILE")
+                logger.info(f"🏭 Autoclave {autoclave.id} aggiornata a stato DISPONIBILE - CURA COMPLETATA")
         
         db.commit()
         db.refresh(batch)
         
-        logger.info(f"✅ Batch {batch_id} terminato da {terminato_da_utente}")
+        logger.info(f"✅ Cura COMPLETATA per batch {batch_id} da {terminato_da_utente} - Timing registrato via TempoFase")
+        
         return format_batch_for_response(batch)
         
     except HTTPException:
         raise
     except Exception as e:
-        return handle_database_error(db, e, f"terminazione batch {batch_id}")
+        return handle_database_error(db, e, f"terminazione cura batch {batch_id}")
 
-# Endpoint legacy per compatibilità
+# 🗑️ ENDPOINT LEGACY - Mantengono compatibilità ma reindirizzano al nuovo flusso
 @router.patch("/{batch_id}/conferma", response_model=BatchNestingResponse,
-              summary="⚠️ DEPRECATO: usa /confirm")
+              summary="⚠️ LEGACY: usa /confirm")
 def conferma_batch_nesting_legacy(
     batch_id: str,
     confermato_da_utente: str = Query(...),
     confermato_da_ruolo: str = Query(...),
     db: Session = Depends(get_db)
 ):
-    """Endpoint legacy - usa /confirm"""
-    # Implementazione diretta per evitare problemi di ordine di definizione
-    try:
-        # Trova il batch
-        batch = db.query(BatchNesting).filter(BatchNesting.id == batch_id).first()
-        if not batch:
-            raise HTTPException(status_code=404, detail="Batch non trovato")
-        
-        # Valida transizione di stato
-        validate_batch_state_transition(batch.stato, StatoBatchNestingEnum.CONFERMATO)
-        
-        # Aggiorna batch
-        batch.stato = StatoBatchNestingEnum.CONFERMATO
-        batch.confermato_da_utente = confermato_da_utente
-        batch.confermato_da_ruolo = confermato_da_ruolo
-        batch.data_conferma = datetime.now()
-        
-        # Aggiorna ODL associate a "Cura"
-        if batch.odl_ids:
-            odls = db.query(ODL).filter(ODL.id.in_(batch.odl_ids)).all()
-            for odl in odls:
-                if odl.status != "Cura":
-                    odl.status = "Cura"
-                    odl.updated_at = datetime.now()
-                    logger.info(f"📋 ODL {odl.id} aggiornato a stato CURA")
-        
-        # Aggiorna autoclave a "IN_USO"
-        if batch.autoclave_id:
-            autoclave = db.query(Autoclave).filter(Autoclave.id == batch.autoclave_id).first()
-            if autoclave and autoclave.stato != StatoAutoclaveEnum.IN_USO:
-                autoclave.stato = StatoAutoclaveEnum.IN_USO
-                autoclave.updated_at = datetime.now()
-                logger.info(f"🏭 Autoclave {autoclave.id} aggiornata a stato IN_USO")
-        
-        db.commit()
-        db.refresh(batch)
-        
-        logger.info(f"✅ Batch {batch_id} confermato da {confermato_da_utente}")
-        
-        # Converti a BatchNestingResponse appropriato
-        return format_batch_for_response(batch)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        return handle_database_error(db, e, f"conferma batch {batch_id}")
-
-@router.patch("/{batch_id}/loaded", response_model=BatchNestingResponse,
-              summary="⚠️ ALIAS: usa /load")
-def load_batch_nesting_legacy(
-    batch_id: str,
-    caricato_da_utente: str = Query(...),
-    caricato_da_ruolo: str = Query(...),
-    db: Session = Depends(get_db)
-):
-    """Endpoint legacy - usa /load"""
-    return load_batch_nesting(batch_id, caricato_da_utente, caricato_da_ruolo, db)
-
-@router.patch("/{batch_id}/cured", response_model=BatchNestingResponse,
-              summary="⚠️ ALIAS: usa /cure") 
-def cure_batch_nesting_legacy(
-    batch_id: str,
-    avviato_da_utente: str = Query(...),
-    avviato_da_ruolo: str = Query(...),
-    db: Session = Depends(get_db)
-):
-    """Endpoint legacy - usa /cure"""
-    return cure_batch_nesting(batch_id, avviato_da_utente, avviato_da_ruolo, db) 
+    """Endpoint legacy - reindirizza a /confirm"""
+    return confirm_batch_nesting(batch_id, confermato_da_utente, confermato_da_ruolo, db) 

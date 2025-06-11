@@ -224,19 +224,25 @@ export default function NestingPage() {
       console.log('📤 ODL selezionati:', selectedOdls)
       console.log('📤 Autoclavi selezionate:', selectedAutoclavi)
 
-      let response
-      if (selectedAutoclavi.length === 1) {
-        response = await batchNestingApi.genera({
-          odl_ids: selectedOdls.map(String),
-          autoclave_ids: selectedAutoclavi.map(String),
-          parametri: roundedParams
+      // 🚀 BEST PRACTICE: NESTING SEMPRE MULTI-BATCH
+      // Non c'è più distinzione confusa - il sistema usa sempre l'approccio multi-batch
+      // Single-batch è semplicemente un caso speciale del multi-batch
+      // 🎯 INDICAZIONE CHIARA MODALITÀ MULTI-AUTOCLAVE
+      if (selectedAutoclavi.length > 1) {
+        console.log('🚀 MODALITÀ MULTI-AUTOCLAVE ATTIVA:', selectedAutoclavi.length, 'autoclavi selezionate')
+        toast({
+          title: 'Modalità Multi-Autoclave',
+          description: `Generazione automatica per ${selectedAutoclavi.length} autoclavi selezionate`,
+          variant: 'default'
         })
       } else {
-        response = await batchNestingApi.generaMulti({
-          odl_ids: selectedOdls.map(String),
-          parametri: roundedParams
-        })
+        console.log('🚀 MODALITÀ SINGLE-AUTOCLAVE:', selectedAutoclavi.length, 'autoclave selezionata')
       }
+      
+      const response = await batchNestingApi.generaMulti({
+        odl_ids: selectedOdls.map(String),
+        parametri: roundedParams
+      })
 
       console.log('✅ Risposta API nesting:', response)
 
@@ -246,7 +252,9 @@ export default function NestingPage() {
           description: response.message
         })
         
-        router.push(`/nesting/result/${response.best_batch_id}${selectedAutoclavi.length > 1 ? '?multi=true' : ''}`)
+        // 🎯 BEST PRACTICE: REDIRECT SEMPLIFICATO SENZA PARAMETRI CONFUSI
+        // La pagina risultati ora rileva automaticamente se è multi-batch
+        router.push(`/nesting/result/${response.best_batch_id}`)
       } else {
         throw new Error(response.message || 'Generazione fallita')
       }

@@ -80,7 +80,7 @@ class BatchService:
                 "odl_ids": odl_ids,
                 "parametri": parameters or {},
                 "configurazione_json": nesting_result,
-                "stato": StatoBatchNestingEnum.SOSPESO.value,
+                "stato": StatoBatchNestingEnum.DRAFT.value,
                 "creato_da_utente": creato_da_utente,
                 "creato_da_ruolo": creato_da_ruolo,
                 "numero_nesting": len(odl_ids),

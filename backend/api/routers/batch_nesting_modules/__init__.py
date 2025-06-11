@@ -14,11 +14,13 @@ from .generation import router as generation_router
 from .workflow import router as workflow_router
 from .results import router as results_router
 from .maintenance import router as maintenance_router
+from .draft import router as draft_router
 
 __all__ = [
     "crud_router",
     "generation_router", 
     "workflow_router",
     "results_router",
-    "maintenance_router"
+    "maintenance_router",
+    "draft_router"
 ] 

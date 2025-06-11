@@ -8,12 +8,10 @@ from schemas.autoclave import AutoclaveResponse
 
 # Enum per rappresentare i vari stati di un batch nesting
 class StatoBatchNestingEnum(str, Enum):
-    DRAFT = "draft"
-    SOSPESO = "sospeso"
-    CONFERMATO = "confermato"
-    LOADED = "loaded"
-    CURED = "cured"
-    TERMINATO = "terminato"
+    DRAFT = "draft"           # Risultati generati, NON persistiti se non confermati
+    SOSPESO = "sospeso"       # Confermato dall'operatore, pronto per caricamento  
+    IN_CURA = "in_cura"       # Autoclave caricata, cura in corso, timing attivo
+    TERMINATO = "terminato"   # Cura completata, workflow chiuso
 
 # Schema per i parametri di nesting
 class ParametriNesting(BaseModel):
