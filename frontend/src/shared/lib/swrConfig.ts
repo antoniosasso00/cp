@@ -7,7 +7,7 @@ import { SWRConfiguration } from 'swr'
  * • Cache dati per 15 secondi (dedupingInterval)
  * • Rivalidazione automatica quando la tab torna in focus
  * • Rivalidazione quando la connessione torna online
- * • Retry ridotti per evitare loop infiniti
+ * • Retry automatico in caso di errori
  * • Cache infinita per ridurre richieste duplicate
  */
 export const swrConfig: SWRConfiguration = {
@@ -15,16 +15,16 @@ export const swrConfig: SWRConfiguration = {
   dedupingInterval: 15000,
   
   // 🔄 RIVALIDAZIONE: Comportamenti smart per UX ottimale
-  revalidateOnFocus: false,          // ❌ DISABILITATO: evita loop su focus
+  revalidateOnFocus: true,           // Aggiorna quando l'utente torna nella tab
   revalidateOnReconnect: true,       // Aggiorna quando la connessione torna
   revalidateIfStale: true,           // Aggiorna se i dati sono "vecchi"
   
   // ⏱️ TIMING: Gestione intelligente dei tempi
-  errorRetryInterval: 10000,         // ⬆️ INCREMENTATO: 10 secondi invece di 5
-  focusThrottleInterval: 10000,      // ⬆️ INCREMENTATO: 10 secondi invece di 5
+  errorRetryInterval: 5000,          // Riprova dopo 5 secondi in caso di errore
+  focusThrottleInterval: 5000,       // Limita rivalidazioni su focus a max 1 ogni 5s
   
-  // 🎛️ RETRY: Gestione errori più conservativa per evitare loop
-  errorRetryCount: 1,                // ⬇️ RIDOTTO: Solo 1 tentativo invece di 3
+  // 🎛️ RETRY: Gestione errori resiliente
+  errorRetryCount: 3,                // Massimo 3 tentativi in caso di errore
   
   // 📱 RESPONSIVE: Comportamento ottimizzato per mobile
   refreshWhenOffline: false,         // Non fare richieste quando offline
@@ -81,7 +81,7 @@ export const heavyDataConfig: SWRConfiguration = {
   revalidateOnFocus: false,          // Non rivalidare automaticamente su focus
   
   // 🎯 PERFORMANCE: Meno aggiornamenti per componenti costosi
-  errorRetryCount: 0,                // ❌ NESSUN RETRY per dati pesanti
+  errorRetryCount: 1,                // Solo 1 retry per dati pesanti
   focusThrottleInterval: 30000,      // Throttle di 30 secondi
 }
 
@@ -93,10 +93,9 @@ export const realTimeConfig: SWRConfiguration = {
   // ⚡ REAL-TIME: Aggiornamenti più frequenti
   dedupingInterval: 5000,            // 5 secondi per dati real-time
   refreshInterval: 10000,            // Auto-refresh ogni 10 secondi
-  revalidateOnFocus: false,          // ❌ DISABILITATO: evita loop continui
+  revalidateOnFocus: true,           // Sempre aggiornare su focus
   
   // 🔄 RESPONSIVITA': Più reattivo per dashboard
-  errorRetryInterval: 15000,         // ⬆️ INCREMENTATO: Retry più lento
-  focusThrottleInterval: 15000,      // ⬆️ INCREMENTATO: Throttle aumentato
-  errorRetryCount: 1,                // ⬇️ RIDOTTO: Solo 1 retry
+  errorRetryInterval: 2000,          // Retry più veloce
+  focusThrottleInterval: 2000,       // Throttle ridotto
 } 

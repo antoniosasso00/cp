@@ -345,45 +345,45 @@ class CompleteNestingSeed:
         
         self.db.flush()
         
-        # 3. Crea tools con dimensioni molto diversificate (30 tools unici)
+        # 3. Crea tools con dimensioni molto diversificate (30 tools unici) - MAX 4500mm
         tool_configs = [
-            # STRUTTURALI - Tools grandi e pesanti
-            ("STRUCT-WING-BRACKET-L", 400, 350, 28.0, "Acciaio Inox"),
-            ("STRUCT-WING-BRACKET-R", 400, 350, 28.0, "Acciaio Inox"),
-            ("STRUCT-ENGINE-MOUNT-F", 500, 400, 45.0, "Acciaio Maraging"),
-            ("STRUCT-ENGINE-MOUNT-R", 500, 400, 45.0, "Acciaio Maraging"),
-            ("STRUCT-LANDING-MAIN", 600, 450, 65.0, "Acciaio Inox"),
-            ("STRUCT-LANDING-NOSE", 400, 300, 35.0, "Acciaio Inox"),
-            ("STRUCT-FUSELAGE-F", 800, 300, 40.0, "Alluminio 7075"),
-            ("STRUCT-FUSELAGE-R", 800, 300, 40.0, "Alluminio 7075"),
-            ("STRUCT-TAIL-VERTICAL", 350, 600, 25.0, "Alluminio 7075"),
-            ("STRUCT-TAIL-HORIZONTAL", 450, 250, 18.0, "Alluminio 7075"),
-            ("STRUCT-WING-SPAR-L", 900, 200, 22.0, "Fibra di Carbonio"),
-            ("STRUCT-WING-SPAR-R", 900, 200, 22.0, "Fibra di Carbonio"),
+            # STRUTTURALI - Tools grandi e pesanti (fino a 4500mm)
+            ("STRUCT-WING-BRACKET-L", 1200, 900, 85.0, "Acciaio Inox"),
+            ("STRUCT-WING-BRACKET-R", 1200, 900, 85.0, "Acciaio Inox"),
+            ("STRUCT-ENGINE-MOUNT-F", 1500, 1200, 145.0, "Acciaio Maraging"),
+            ("STRUCT-ENGINE-MOUNT-R", 1500, 1200, 145.0, "Acciaio Maraging"),
+            ("STRUCT-LANDING-MAIN", 1800, 1350, 265.0, "Acciaio Inox"),
+            ("STRUCT-LANDING-NOSE", 1200, 900, 135.0, "Acciaio Inox"),
+            ("STRUCT-FUSELAGE-F", 2400, 900, 180.0, "Alluminio 7075"),
+            ("STRUCT-FUSELAGE-R", 2400, 900, 180.0, "Alluminio 7075"),
+            ("STRUCT-TAIL-VERTICAL", 1050, 1800, 125.0, "Alluminio 7075"),
+            ("STRUCT-TAIL-HORIZONTAL", 1350, 750, 98.0, "Alluminio 7075"),
+            ("STRUCT-WING-SPAR-L", 4500, 600, 220.0, "Fibra di Carbonio"),  # MAX SIZE
+            ("STRUCT-WING-SPAR-R", 4500, 600, 220.0, "Fibra di Carbonio"),  # MAX SIZE
             
-            # PROPULSIONE - Tools precisione media
-            ("ENGINE-INLET-DUCT", 300, 350, 22.0, "Titanio Ti-6Al-4V"),
-            ("ENGINE-EXHAUST-NOZZLE", 250, 300, 20.0, "Titanio Ti-6Al-4V"),
-            ("ENGINE-FAN-BLADE", 150, 400, 12.0, "Titanio Ti-6Al-4V"),
-            ("ENGINE-COMPRESSOR", 280, 280, 25.0, "Acciaio Inox"),
-            ("ENGINE-TURBINE-DISK", 320, 320, 35.0, "Superleghe Inconel"),
-            ("ENGINE-COMBUSTION-CHAMBER", 400, 400, 30.0, "Superleghe Inconel"),
+            # PROPULSIONE - Tools precisione media (grandi)
+            ("ENGINE-INLET-DUCT", 900, 1050, 122.0, "Titanio Ti-6Al-4V"),
+            ("ENGINE-EXHAUST-NOZZLE", 750, 900, 120.0, "Titanio Ti-6Al-4V"),
+            ("ENGINE-FAN-BLADE", 450, 1200, 72.0, "Titanio Ti-6Al-4V"),
+            ("ENGINE-COMPRESSOR", 840, 840, 125.0, "Acciaio Inox"),
+            ("ENGINE-TURBINE-DISK", 960, 960, 235.0, "Superleghe Inconel"),
+            ("ENGINE-COMBUSTION-CHAMBER", 1200, 1200, 230.0, "Superleghe Inconel"),
             
-            # CONTROLLI - Tools lunghi e sottili
-            ("CONTROL-AILERON-L", 800, 200, 15.0, "Alluminio 7075"),
-            ("CONTROL-AILERON-R", 800, 200, 15.0, "Alluminio 7075"),
-            ("CONTROL-RUDDER", 400, 300, 18.0, "Alluminio 7075"),
-            ("CONTROL-ELEVATOR", 600, 250, 16.0, "Alluminio 7075"),
-            ("CONTROL-TRIM-TAB", 200, 150, 5.0, "Alluminio 6061"),
-            ("CONTROL-FLAP-MAIN", 700, 250, 20.0, "Alluminio 7075"),
+            # CONTROLLI - Tools lunghi e sottili (molto lunghi)
+            ("CONTROL-AILERON-L", 3200, 800, 115.0, "Alluminio 7075"),
+            ("CONTROL-AILERON-R", 3200, 800, 115.0, "Alluminio 7075"),
+            ("CONTROL-RUDDER", 1600, 1200, 118.0, "Alluminio 7075"),
+            ("CONTROL-ELEVATOR", 2400, 1000, 116.0, "Alluminio 7075"),
+            ("CONTROL-TRIM-TAB", 800, 600, 25.0, "Alluminio 6061"),
+            ("CONTROL-FLAP-MAIN", 2800, 1000, 120.0, "Alluminio 7075"),
             
-            # ELETTRONICA - Tools piccoli e leggeri
-            ("ELEC-AVIONICS-NAV", 200, 150, 4.0, "Alluminio 6061"),
-            ("ELEC-AVIONICS-COM", 180, 120, 3.5, "Alluminio 6061"),
-            ("ELEC-FLIGHT-CONTROL", 250, 200, 6.0, "Alluminio 6061"),
-            ("ELEC-ENGINE-CONTROL", 220, 180, 5.5, "Alluminio 6061"),
-            ("ELEC-POWER-DIST", 300, 250, 8.0, "Alluminio 6061"),
-            ("ELEC-WEATHER-RADAR", 350, 200, 7.0, "Alluminio 6061")
+            # ELETTRONICA - Tools medi (aumentati considerevolmente)
+            ("ELEC-AVIONICS-NAV", 800, 600, 34.0, "Alluminio 6061"),
+            ("ELEC-AVIONICS-COM", 720, 480, 25.5, "Alluminio 6061"),
+            ("ELEC-FLIGHT-CONTROL", 1000, 800, 46.0, "Alluminio 6061"),
+            ("ELEC-ENGINE-CONTROL", 880, 720, 35.5, "Alluminio 6061"),
+            ("ELEC-POWER-DIST", 1200, 1000, 58.0, "Alluminio 6061"),
+            ("ELEC-WEATHER-RADAR", 1400, 800, 67.0, "Alluminio 6061")
         ]
         
         tools_create = []

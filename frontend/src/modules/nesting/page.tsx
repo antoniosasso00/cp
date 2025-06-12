@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card'
 import { Button } from '@/shared/components/ui/button'
@@ -22,9 +22,12 @@ import {
   Zap,
   Shield,
   Target,
-  RotateCcw
+  RotateCcw,
+  Gauge,
+  Rocket
 } from 'lucide-react'
 import { batchNestingApi } from '@/shared/lib/api'
+import { GenerationProgressBar } from '@/shared/components/ui/generation-progress-bar'
 
 interface ODLItem {
   id: number
@@ -54,7 +57,7 @@ interface NestingParams {
   min_distance_mm: number
 }
 
-// Preset parametri
+// Preset parametri - ottimizzati dal test stress aeronautico
 const PARAMETRI_PRESET = {
   CONSERVATIVO: {
     padding_mm: 15,
@@ -70,11 +73,25 @@ const PARAMETRI_PRESET = {
     descrizione: 'Bilanciamento tra sicurezza ed efficienza',
     icon: Target
   },
+  AEROSPACE_OPTIMIZED: {
+    padding_mm: 5,
+    min_distance_mm: 10,
+    nome: 'Aerospace Ottimizzato',
+    descrizione: 'Ottimizzato per componenti aeronautici - test stress validati',
+    icon: Target
+  },
+  TIGHT_PACKING: {
+    padding_mm: 3,
+    min_distance_mm: 7,
+    nome: 'Packing Stretto',
+    descrizione: 'Massima densità per tool compatibili',
+    icon: Target
+  },
   AGGRESSIVO: {
     padding_mm: 1,
-    min_distance_mm: 1,
-    nome: 'Aggressivo',
-    descrizione: 'Massima efficienza, controllo accurato',
+    min_distance_mm: 2,
+    nome: 'Ultra Aggressivo',
+    descrizione: 'Massima efficienza - controllo accurato richiesto',
     icon: Zap
   },
 }
@@ -93,10 +110,10 @@ export default function NestingPage() {
   const [selectedOdls, setSelectedOdls] = useState<number[]>([])
   const [selectedAutoclavi, setSelectedAutoclavi] = useState<number[]>([])
 
-  // Parameters
+  // Parameters - inizializzato con preset aerospace ottimizzato
   const [params, setParams] = useState<NestingParams>({
-    padding_mm: 10,
-    min_distance_mm: 8
+    padding_mm: 5,
+    min_distance_mm: 10
   })
 
   useEffect(() => {
@@ -156,13 +173,13 @@ export default function NestingPage() {
 
   const resetToDefault = () => {
     setParams({
-      padding_mm: 10,
-      min_distance_mm: 8
+      padding_mm: 5,
+      min_distance_mm: 10
     })
     
     toast({
       title: 'Parametri ripristinati',
-      description: 'Valori impostati a standard predefiniti'
+      description: 'Valori impostati a preset aerospace ottimizzato'
     })
   }
 
@@ -224,25 +241,44 @@ export default function NestingPage() {
       console.log('📤 ODL selezionati:', selectedOdls)
       console.log('📤 Autoclavi selezionate:', selectedAutoclavi)
 
-      // 🚀 BEST PRACTICE: NESTING SEMPRE MULTI-BATCH
-      // Non c'è più distinzione confusa - il sistema usa sempre l'approccio multi-batch
-      // Single-batch è semplicemente un caso speciale del multi-batch
-      // 🎯 INDICAZIONE CHIARA MODALITÀ MULTI-AUTOCLAVE
-      if (selectedAutoclavi.length > 1) {
-        console.log('🚀 MODALITÀ MULTI-AUTOCLAVE ATTIVA:', selectedAutoclavi.length, 'autoclavi selezionate')
+      // 🎯 NUOVO: Logica di generazione basata su selezione autoclavi
+      let response;
+      
+      if (selectedAutoclavi.length === 1) {
+        console.log('🎯 SINGLE-AUTOCLAVE GENERATION: Una sola autoclave selezionata');
+        toast({
+          title: 'Modalità Single-Autoclave',
+          description: `Generazione per autoclave singola selezionata`,
+          variant: 'default'
+        });
+        
+        response = await batchNestingApi.generaMulti({
+          odl_ids: selectedOdls.map(String),
+          autoclave_ids: selectedAutoclavi.map(String), // 🆕 Passa autoclavi selezionate
+          parametri: roundedParams
+        });
+      } else if (selectedAutoclavi.length > 1) {
+        console.log('🎯 MULTI-AUTOCLAVE GENERATION: Multiple autoclavi selezionate');
         toast({
           title: 'Modalità Multi-Autoclave',
-          description: `Generazione automatica per ${selectedAutoclavi.length} autoclavi selezionate`,
+          description: `Generazione per ${selectedAutoclavi.length} autoclavi selezionate`,
           variant: 'default'
-        })
+        });
+        
+        response = await batchNestingApi.generaMulti({
+          odl_ids: selectedOdls.map(String),
+          autoclave_ids: selectedAutoclavi.map(String), // 🆕 Passa autoclavi selezionate
+          parametri: roundedParams
+        });
       } else {
-        console.log('🚀 MODALITÀ SINGLE-AUTOCLAVE:', selectedAutoclavi.length, 'autoclave selezionata')
+        // Fallback: nessuna autoclave selezionata (non dovrebbe succedere per validazione)
+        console.log('🎯 AUTO-DISCOVERY GENERATION: Fallback a tutte le autoclavi');
+        
+        response = await batchNestingApi.generaMulti({
+          odl_ids: selectedOdls.map(String),
+          parametri: roundedParams
+        });
       }
-      
-      const response = await batchNestingApi.generaMulti({
-        odl_ids: selectedOdls.map(String),
-        parametri: roundedParams
-      })
 
       console.log('✅ Risposta API nesting:', response)
 
@@ -319,6 +355,12 @@ export default function NestingPage() {
     }
   }
 
+  // Callback per completamento progresso
+  const handleProgressComplete = useCallback(() => {
+    // Il progresso è completato ma la generazione continua,
+    // non fare nulla qui perché la logica di completamento è gestita nella try/catch
+  }, []);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-96">
@@ -345,6 +387,27 @@ export default function NestingPage() {
           Lista Batch
         </Button>
       </div>
+
+      {/* Progress Bar Dettagliata durante la generazione */}
+      {generating && (
+        <Card className="border-blue-200 bg-blue-50/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-blue-800">
+              <Rocket className="h-5 w-5" />
+              Generazione in Corso
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <GenerationProgressBar
+              isGenerating={generating}
+              selectedOdlCount={selectedOdls.length}
+              selectedAutoclaveCount={selectedAutoclavi.length}
+              variant="detailed"
+              onComplete={handleProgressComplete}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* ODL Selection */}
@@ -614,10 +677,16 @@ export default function NestingPage() {
                 size="lg"
               >
                 {generating ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generazione...
-                  </>
+                  <div className="flex items-center gap-3 w-full">
+                    <GenerationProgressBar
+                      isGenerating={generating}
+                      selectedOdlCount={selectedOdls.length}
+                      selectedAutoclaveCount={selectedAutoclavi.length}
+                      variant="compact"
+                      className="flex-1"
+                      onComplete={handleProgressComplete}
+                    />
+                  </div>
                 ) : (
                   <>
                     <PlayCircle className="mr-2 h-4 w-4" />
@@ -630,6 +699,7 @@ export default function NestingPage() {
                 onClick={loadData}
                 variant="outline"
                 className="w-full"
+                disabled={generating}
               >
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Aggiorna Dati

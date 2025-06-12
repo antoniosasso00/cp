@@ -419,8 +419,8 @@ def get_batch_nesting_result(
                 # 3. Filtra per autoclavi diverse (pattern multi-batch)
                 
                 time_windows = [
-                    timedelta(minutes=1),   # Prima prova: finestra stretta
-                    timedelta(minutes=5),   # Seconda prova: finestra ampia
+                    timedelta(minutes=5),   # Prima prova: finestra ampia per multi-batch lenti
+                    timedelta(minutes=10),  # Seconda prova: finestra ultra-ampia per generazioni lunghe
                 ]
                 
                 for time_window in time_windows:
@@ -446,20 +446,28 @@ def get_batch_nesting_result(
                             multi_batch_candidates.append(rb)
                             logger.info(f"   ✅ Multi-batch candidato: {rb.id[:8]}... | Autoclave: {rb.autoclave.nome if rb.autoclave else rb.autoclave_id}")
                     
-                    # Se troviamo correlazioni, usa queste e fermati
+                    # Se troviamo correlazioni, usa queste e fermati SOLO se abbiamo un numero significativo
                     if multi_batch_candidates:
                         correlated_batches.extend(multi_batch_candidates)
                         logger.info(f"🎯 MULTI-BATCH TROVATO (±{time_window.total_seconds()/60:.0f}min): {len(multi_batch_candidates)} batch correlati")
-                        break
+                        
+                        # Per multi-batch con molte autoclavi, continua a cercare se abbiamo pochi risultati
+                        if len(multi_batch_candidates) >= 2 or time_window.total_seconds() >= 600:  # >= 2 batch o >= 10 min
+                            break
+                        else:
+                            logger.info(f"🔍 Continuando ricerca: solo {len(multi_batch_candidates)} batch trovati, potrebbero essercene altri")
                         
                 if not correlated_batches:
                     logger.info(f"📍 SINGLE-BATCH: Nessuna correlazione multi-batch trovata per {batch_id}")
                 
                 logger.info(f"🔗 Totale batch correlati: {len(correlated_batches)}")
             
-            # Aggiungi i batch correlati ai risultati
+            # Aggiungi i batch correlati ai risultati (rimuovi duplicati)
+            added_batch_ids = {main_batch.id}  # Track per evitare duplicati
             for correlated_batch in correlated_batches:
-                batch_results.append(format_batch_result(correlated_batch))
+                if correlated_batch.id not in added_batch_ids:
+                    batch_results.append(format_batch_result(correlated_batch))
+                    added_batch_ids.add(correlated_batch.id)
         
         # Ordina per autoclave_id per una visualizzazione coerente
         batch_results.sort(key=lambda x: x['autoclave_id'])

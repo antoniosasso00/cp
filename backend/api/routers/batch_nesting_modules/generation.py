@@ -59,6 +59,11 @@ class NestingMultiRequest(BaseModel):
     odl_ids: List[str]
     parametri: NestingParametri = NestingParametri()
 
+class NestingMultiFilteredRequest(BaseModel):
+    odl_ids: List[str]
+    autoclave_ids: List[str]
+    parametri: NestingParametri = NestingParametri()
+
 class NestingResponse(BaseModel):
     batch_id: Optional[str] = ""
     message: str
@@ -237,6 +242,290 @@ def get_nesting_data(db: Session = Depends(get_db)):
 
 # ========== ENDPOINT GENERAZIONE NESTING ==========
 
+# 🆕 NUOVO: Endpoint per generazione single-batch con autoclave specifica
+@router.post("/genera", response_model=NestingResponse,
+             summary="🎯 Genera batch singolo per autoclave specifica")
+def genera_nesting_single_autoclave(
+    request: NestingRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    🎯 GENERA BATCH SINGOLO PER AUTOCLAVE SPECIFICA
+    ===============================================
+    
+    Genera un batch nesting per una specifica autoclave selezionata dall'utente.
+    Questo endpoint NON distribuisce gli ODL su multiple autoclavi.
+    
+    Args:
+        request: Richiesta con ODL, autoclave specifica e parametri
+        
+    Returns:
+        Risultato nesting per la singola autoclave specificata
+    """
+    start_time = time.time()
+    logger.info(f"🎯 === SINGLE-BATCH START === ODL: {len(request.odl_ids)}, Autoclave: {request.autoclave_ids}")
+    
+    try:
+        # Converti IDs da string a int
+        try:
+            odl_ids_int = [int(odl_id) for odl_id in request.odl_ids]
+            autoclave_ids_int = [int(autoclave_id) for autoclave_id in request.autoclave_ids]
+            logger.info(f"📋 ODL IDs: {odl_ids_int}, Autoclave IDs: {autoclave_ids_int}")
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"IDs non validi (devono essere numeri interi): {str(e)}"
+            )
+        
+        # Verifica che sia stata selezionata una sola autoclave
+        if len(autoclave_ids_int) != 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Endpoint single-batch richiede esattamente 1 autoclave, ricevute: {len(autoclave_ids_int)}"
+            )
+        
+        autoclave_id = autoclave_ids_int[0]
+        
+        # Verifica che l'autoclave sia disponibile
+        autoclave = db.query(Autoclave).filter(
+            Autoclave.id == autoclave_id,
+            Autoclave.stato == StatoAutoclaveEnum.DISPONIBILE
+        ).first()
+        
+        if not autoclave:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Autoclave {autoclave_id} non disponibile o non trovata"
+            )
+        
+        # Verifica ODL
+        odl_list = db.query(ODL).filter(
+            ODL.id.in_(odl_ids_int),
+            ODL.status == "Attesa Cura"
+        ).all()
+        
+        if not odl_list:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Nessun ODL valido trovato in stato 'Attesa Cura' tra gli ID: {odl_ids_int}"
+            )
+        
+        # Genera nesting per la singola autoclave
+        result = generate_nesting(
+            db=db,
+            odl_ids=odl_ids_int,
+            autoclave_id=autoclave_id,
+            parametri=request.parametri
+        )
+        
+        if result['success']:
+            response = NestingResponse(
+                batch_id=result.get('batch_id', ''),
+                message=f"Batch generato per autoclave {autoclave.nome}",
+                odl_count=len(odl_ids_int),
+                autoclave_count=1,
+                positioned_tools=result.get('positioned_tools_data', []),
+                excluded_odls=result.get('excluded_odls', []),
+                efficiency=result.get('efficiency', 0.0),
+                total_weight=result.get('total_weight', 0.0),
+                algorithm_status=result.get('algorithm_status', 'SUCCESS'),
+                success=True,
+                validation_report={},
+                fixes_applied=[]
+            )
+            
+            execution_time = time.time() - start_time
+            logger.info(f"✅ SINGLE-BATCH SUCCESS: {execution_time:.2f}s, Efficienza: {result.get('efficiency', 0):.1f}%")
+            return response
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Generazione fallita: {result.get('message', 'Errore sconosciuto')}"
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Errore single-batch: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore interno nella generazione single-batch: {str(e)}"
+        )
+
+# 🆕 NUOVO: Endpoint per generazione multi-batch con autoclavi filtrate
+@router.post("/genera-multi-filtered", status_code=status.HTTP_200_OK,
+             summary="🎯 Genera batch multipli per autoclavi specifiche selezionate")
+def genera_multi_aerospace_filtered(
+    request: NestingMultiFilteredRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    🎯 GENERA BATCH MULTIPLI PER AUTOCLAVI SPECIFICHE
+    ===============================================
+    
+    Genera batch nesting solo per le autoclavi specificamente selezionate dall'utente.
+    A differenza di /genera-multi che usa tutte le autoclavi disponibili,
+    questo endpoint rispetta la selezione dell'utente.
+    
+    Args:
+        request: Richiesta con ODL, autoclavi specifiche e parametri
+        
+    Returns:
+        Multi-batch results per le autoclavi selezionate
+    """
+    start_time = time.time()
+    logger.info(f"🎯 === MULTI-FILTERED START === ODL: {len(request.odl_ids)}, Autoclavi: {len(request.autoclave_ids)}")
+    
+    try:
+        # Converti IDs da string a int
+        try:
+            odl_ids_int = [int(odl_id) for odl_id in request.odl_ids]
+            autoclave_ids_int = [int(autoclave_id) for autoclave_id in request.autoclave_ids]
+            logger.info(f"📋 ODL IDs: {odl_ids_int}, Autoclave IDs: {autoclave_ids_int}")
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"IDs non validi (devono essere numeri interi): {str(e)}"
+            )
+        
+        # Verifica che siano state selezionate multiple autoclavi
+        if len(autoclave_ids_int) < 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Endpoint multi-filtered richiede almeno 2 autoclavi, ricevute: {len(autoclave_ids_int)}"
+            )
+        
+        # Recupera solo le autoclavi selezionate e disponibili
+        autoclavi_selezionate = db.query(Autoclave).filter(
+            Autoclave.id.in_(autoclave_ids_int),
+            Autoclave.stato == StatoAutoclaveEnum.DISPONIBILE
+        ).all()
+        
+        if not autoclavi_selezionate:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Nessuna autoclave selezionata è disponibile"
+            )
+        
+        # Verifica ODL
+        odl_list = db.query(ODL).filter(
+            ODL.id.in_(odl_ids_int),
+            ODL.status == "Attesa Cura"
+        ).all()
+        
+        if not odl_list:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Nessun ODL valido trovato in stato 'Attesa Cura' tra gli ID: {odl_ids_int}"
+            )
+        
+        # Distribuisci ODL tra le autoclavi selezionate (non tutte disponibili)
+        distribution = _distribute_odls_aerospace_grade(odl_list, autoclavi_selezionate)
+        
+        # Genera nesting per ogni autoclave selezionata
+        batch_results = []
+        success_count = 0
+        error_count = 0
+        
+        for autoclave in autoclavi_selezionate:
+            autoclave_odl_ids = distribution.get(autoclave.id, [])
+            
+            if not autoclave_odl_ids:
+                continue
+                
+            try:
+                result = generate_nesting(
+                    db=db,
+                    odl_ids=autoclave_odl_ids,
+                    autoclave_id=autoclave.id,
+                    parametri=request.parametri
+                )
+                
+                if result['success']:
+                    # 🔧 FIX CRITICO: Usa direttamente il batch_id restituito da generate_nesting
+                    # che ora crea già correttamente il batch nel database
+                    batch_results.append({
+                        'autoclave_id': autoclave.id,
+                        'autoclave_nome': autoclave.nome,
+                        'batch_id': result.get('batch_id'),  # 🔧 FIX: Usa ID reale dal database
+                        'efficiency': result.get('efficiency', 0),
+                        'total_weight': result.get('total_weight', 0),
+                        'positioned_tools': result.get('positioned_tools', 0),
+                        'excluded_odls': result.get('excluded_odls', 0),
+                        'success': True,
+                        'message': f'Batch generato con successo per {autoclave.nome}'
+                    })
+                    success_count += 1
+                else:
+                    # Gestione fallimento più semplice
+                    batch_results.append({
+                        'batch_id': None,
+                        'autoclave_id': autoclave.id,
+                        'autoclave_nome': autoclave.nome,
+                        'efficiency': 0,
+                        'total_weight': 0,
+                        'positioned_tools': 0,
+                        'excluded_odls': len(autoclave_odl_ids),
+                        'success': False,
+                        'message': result.get('message', f'Nesting fallito per {autoclave.nome}')
+                    })
+                    error_count += 1
+                    
+            except Exception as e:
+                logger.error(f"❌ Errore generazione autoclave {autoclave.nome}: {str(e)}")
+                batch_results.append({
+                    'batch_id': None,
+                    'autoclave_id': autoclave.id,
+                    'autoclave_nome': autoclave.nome,
+                    'efficiency': 0,
+                    'total_weight': 0,
+                    'positioned_tools': 0,
+                    'excluded_odls': len(autoclave_odl_ids),
+                    'success': False,
+                    'message': f"Errore: {str(e)}"
+                })
+                error_count += 1
+        
+        # 🔧 FIX: Trova il batch migliore con controllo validità ID
+        best_batch_id = None
+        best_efficiency = 0
+        for batch in batch_results:
+            if (batch['success'] and 
+                batch['efficiency'] > best_efficiency and 
+                batch.get('batch_id') and 
+                batch['batch_id'] != 'pending_creation'):  # 🔧 Escludi placeholder invalidi
+                best_efficiency = batch['efficiency']
+                best_batch_id = batch['batch_id']
+        
+        # Calcola efficienza media
+        successful_batches = [b for b in batch_results if b['success']]
+        avg_efficiency = sum(b['efficiency'] for b in successful_batches) / len(successful_batches) if successful_batches else 0
+        
+        execution_time = time.time() - start_time
+        logger.info(f"✅ MULTI-FILTERED SUCCESS: {execution_time:.2f}s, {success_count}/{len(autoclavi_selezionate)} autoclavi")
+        
+        return {
+            'success': success_count > 0,
+            'message': f"Multi-Autoclave filtrato completato: {success_count} batch generati su {len(autoclavi_selezionate)} autoclavi selezionate",
+            'total_autoclavi': len(autoclavi_selezionate),
+            'success_count': success_count,
+            'error_count': error_count,
+            'best_batch_id': best_batch_id,
+            'avg_efficiency': avg_efficiency,
+            'batch_results': batch_results,
+            'is_real_multi_batch': len(successful_batches) > 1,
+            'unique_autoclavi_count': len(set(b['autoclave_id'] for b in successful_batches))
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Errore multi-filtered: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore interno nella generazione multi-filtered: {str(e)}"
+        )
+
 # 🚨 ENDPOINT LEGACY RIMOSSO - AEROSPACE UNIFIED ARCHITECTURE
 # 
 # L'endpoint /genera è stato sostituito dal sistema unificato /genera-multi
@@ -390,83 +679,53 @@ def genera_multi_aerospace_unified(
                 )
                 
                 if result['success']:
-                    # 🚀 TUTTO INTEGRATO nel NestingService - nessun servizio esterno
-                    from services.nesting_service import get_nesting_service, NestingParameters, NestingResult, ToolPosition
-                    
-                    nesting_service = get_nesting_service()
-                    
-                    # Converti result in NestingResult
-                    positioned_tools = []
-                    for tool_data in result.get('positioned_tools_data', []):
-                        positioned_tools.append(ToolPosition(
-                            odl_id=tool_data['odl_id'],
-                            x=tool_data['x'],
-                            y=tool_data['y'],
-                            width=tool_data['width'],
-                            height=tool_data['height'],
-                            peso=tool_data['peso'],
-                            rotated=tool_data['rotated'],
-                            lines_used=tool_data['lines_used']
-                        ))
-                    
-                    nesting_result = NestingResult(
-                        positioned_tools=positioned_tools,
-                        excluded_odls=[],
-                        total_weight=result.get('total_weight', 0),
-                        used_area=sum(t.width * t.height for t in positioned_tools),
-                        total_area=autoclave.lunghezza * autoclave.larghezza_piano,
-                        area_pct=result.get('efficiency', 0),
-                        lines_used=sum(t.lines_used for t in positioned_tools),
-                        efficiency=result.get('efficiency', 0),
-                        success=True,
-                        algorithm_status='SUCCESS'
-                    )
-                    
-                    # Parametri per il batch DRAFT
-                    parameters = NestingParameters(
-                        padding_mm=request.parametri.padding_mm,
-                        min_distance_mm=request.parametri.min_distance_mm,
-                        use_fallback=True,
-                        allow_heuristic=True
-                    )
-                    
-                    # 🎯 PREPARA CONTESTO MULTI-BATCH con generation_id univoco
-                    import uuid
-                    generation_id = f"gen_{uuid.uuid4().hex[:12]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                    
-                    multi_batch_context = {
-                        'generation_id': generation_id,
-                        'total_autoclavi': len(autoclavi_disponibili),
-                        'autoclave_ids': [a.id for a in autoclavi_disponibili],
-                        'strategy_mode': 'MULTI_AUTOCLAVE_AEROSPACE',
-                        'odl_count': len(autoclave_odl_ids),
-                        'result_classification': 'AEROSPACE_MULTI'
-                    }
-                    
-                    # 🆕 Crea batch DRAFT direttamente nel NestingService
-                    draft_id = nesting_service._create_robust_batch(
-                        db=db,
-                        nesting_result=nesting_result,
-                        autoclave_id=autoclave.id,
-                        parameters=parameters,
-                        multi_batch_context=multi_batch_context
-                    )
-                    
+                    # 🔧 FIX CRITICO: Usa direttamente il batch_id restituito da generate_nesting
+                    # che ora crea già correttamente il batch nel database
                     batch_results.append({
                         'autoclave_id': autoclave.id,
                         'autoclave_nome': autoclave.nome,
-                        'batch_id': draft_id,  # 🆕 Usa ID del batch DRAFT temporaneo
+                        'batch_id': result.get('batch_id'),  # 🔧 FIX: Usa ID reale dal database
                         'efficiency': result.get('efficiency', 0),
+                        'total_weight': result.get('total_weight', 0),
+                        'positioned_tools': result.get('positioned_tools', 0),
+                        'excluded_odls': result.get('excluded_odls', 0),
                         'success': True,
-                        'is_draft': True  # 🆕 Indica che è un batch DRAFT
+                        'message': f'Batch generato con successo per {autoclave.nome}'
                     })
                     success_count += 1
                 else:
+                    # Gestione fallimento più semplice
+                    batch_results.append({
+                        'batch_id': None,
+                        'autoclave_id': autoclave.id,
+                        'autoclave_nome': autoclave.nome,
+                        'efficiency': 0,
+                        'total_weight': 0,
+                        'positioned_tools': 0,
+                        'excluded_odls': len(autoclave_odl_ids),
+                        'success': False,
+                        'message': result.get('message', f'Nesting fallito per {autoclave.nome}')
+                    })
                     error_count += 1
                     
             except Exception as e:
                 logger.error(f"Errore generazione per {autoclave.nome}: {e}")
                 error_count += 1
+        
+        # 🔧 FIX CRITICO: Trova il batch migliore per efficienza con controllo validità ID
+        best_batch_id = None
+        best_efficiency = 0
+        for batch in batch_results:
+            if (batch['success'] and 
+                batch['efficiency'] > best_efficiency and 
+                batch.get('batch_id') and 
+                batch['batch_id'] != 'pending_creation'):  # 🔧 Escludi placeholder invalidi
+                best_efficiency = batch['efficiency']
+                best_batch_id = batch['batch_id']
+        
+        # Calcola efficienza media
+        successful_batches = [b for b in batch_results if b['success']]
+        avg_efficiency = sum(b['efficiency'] for b in successful_batches) / len(successful_batches) if successful_batches else 0
         
         # Prepara risposta
         return {
@@ -477,7 +736,8 @@ def genera_multi_aerospace_unified(
             "error_count": error_count,
             "total_autoclavi": len(autoclavi_disponibili),
             "is_real_multi_batch": success_count > 1,
-            "best_batch_id": batch_results[0]['batch_id'] if batch_results else None
+            "best_batch_id": best_batch_id,  # 🔧 FIX: Usa batch con migliore efficienza
+            "avg_efficiency": avg_efficiency  # 🆕 Aggiungi efficienza media
         }
         
     except HTTPException:
@@ -862,6 +1122,14 @@ def generate_nesting(
         if result and result.success:
             logger.info(f"✅ AEROSPACE NESTING SUCCESS: {result.efficiency:.1f}%")
             
+            # 🔧 FIX CRITICO: Crea REALMENTE il batch nel database invece di restituire placeholder
+            batch_id = nesting_service._create_robust_batch(
+                db=db,
+                nesting_result=result,
+                autoclave_id=autoclave_id,
+                parameters=parameters
+            )
+            
             # 🔧 FIX: Estrai dati dettagliati dei tool posizionati
             positioned_tools_data = []
             for tool in result.positioned_tools:
@@ -883,7 +1151,7 @@ def generate_nesting(
                 'positioned_tools': len(result.positioned_tools),
                 'positioned_tools_data': positioned_tools_data,  # ✅ Aggiunto dati dettagliati
                 'excluded_odls': len(result.excluded_odls),
-                'batch_id': 'pending_creation',
+                'batch_id': batch_id,  # 🔧 FIX CRITICO: Usa ID reale del batch creato
                 'message': f'Nesting aerospace completato: {result.efficiency:.1f}% efficienza'
             }
         else:

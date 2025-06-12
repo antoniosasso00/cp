@@ -1282,6 +1282,7 @@ export const batchNestingApi = {
   // 🚀 AEROSPACE: Endpoint multi-batch con bypass degli interceptor problematici
   generaMulti: async (request: {
     odl_ids: string[];
+    autoclave_ids?: string[]; // 🆕 NUOVO: Supporto selezione autoclave specifica
     parametri: {
       padding_mm: number;
       min_distance_mm: number;
@@ -1289,8 +1290,38 @@ export const batchNestingApi = {
   }) => {
     console.log('🚀 AEROSPACE GENERA-MULTI: Bypass interceptor per evitare false interpretazioni di errore');
     
-    const fullUrl = `${API_BASE_URL}/batch_nesting/genera-multi`;
-    console.log(`🌐 DIRECT FETCH: POST ${fullUrl}`, request);
+    // 🎯 NUOVO: Determina l'endpoint corretto in base alla selezione autoclavi
+    let endpoint = '/batch_nesting/genera-multi'; // Default: multi-batch per tutte le autoclavi
+    let requestBody = request;
+    
+    // Se sono specificate autoclavi, usa comportamento diverso
+    if (request.autoclave_ids && request.autoclave_ids.length > 0) {
+      if (request.autoclave_ids.length === 1) {
+        // Una sola autoclave selezionata: usa endpoint singolo
+        console.log('🎯 SINGLE-AUTOCLAVE MODE: Una sola autoclave selezionata');
+        endpoint = '/batch_nesting/genera';
+        requestBody = {
+          odl_ids: request.odl_ids,
+          autoclave_ids: request.autoclave_ids,
+          parametri: request.parametri
+        };
+      } else {
+        // Multiple autoclavi selezionate: usa endpoint multi con filtro
+        console.log('🎯 MULTI-AUTOCLAVE MODE: Multiple autoclavi selezionate');
+        endpoint = '/batch_nesting/genera-multi-filtered';
+        requestBody = {
+          odl_ids: request.odl_ids,
+          autoclave_ids: request.autoclave_ids,
+          parametri: request.parametri
+        };
+      }
+    } else {
+      // Nessuna autoclave specificata: comportamento default (tutte le autoclavi)
+      console.log('🎯 AUTO-DISCOVERY MODE: Nessuna autoclave specificata, usa tutte disponibili');
+    }
+    
+    const fullUrl = `${API_BASE_URL}${endpoint}`;
+    console.log(`🌐 DIRECT FETCH: POST ${fullUrl}`, requestBody);
 
     try {
       const response = await fetch(fullUrl, {
@@ -1298,7 +1329,7 @@ export const batchNestingApi = {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(request),
+        body: JSON.stringify(requestBody),
         cache: 'no-store',
       });
 

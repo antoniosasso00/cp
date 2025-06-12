@@ -27,6 +27,7 @@ export * from "./toast"
 export * from "./toaster"
 export * from "./use-toast"
 export * from "./progress"
+export * from "./generation-progress-bar"
 
 // Overlay Components
 export * from "./dialog"

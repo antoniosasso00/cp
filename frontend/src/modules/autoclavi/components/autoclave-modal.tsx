@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
@@ -59,21 +59,56 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
   const form = useForm<AutoclaveFormValues>({
     resolver: zodResolver(autoclaveSchema),
     defaultValues: {
-      nome: editingItem?.nome || '',
-      codice: editingItem?.codice || '',
-      lunghezza: editingItem?.lunghezza || 0,
-      larghezza_piano: editingItem?.larghezza_piano || 0,
-      num_linee_vuoto: editingItem?.num_linee_vuoto || 0,
-      stato: editingItem?.stato || 'DISPONIBILE',
-      temperatura_max: editingItem?.temperatura_max || 0,
-      pressione_max: editingItem?.pressione_max || 0,
-      // ✅ NUOVO: Carico massimo per nesting su due piani
-      max_load_kg: editingItem?.max_load_kg || 1000,
-      produttore: editingItem?.produttore || '',
-      anno_produzione: editingItem?.anno_produzione || undefined,
-      note: editingItem?.note || '',
+      nome: '',
+      codice: '',
+      lunghezza: 0,
+      larghezza_piano: 0,
+      num_linee_vuoto: 0,
+      stato: 'DISPONIBILE',
+      temperatura_max: 0,
+      pressione_max: 0,
+      max_load_kg: 1000,
+      produttore: '',
+      anno_produzione: undefined,
+      note: '',
     },
   })
+
+  // ✅ FIX: Aggiorna i valori del form quando editingItem cambia
+  useEffect(() => {
+    if (editingItem) {
+      form.reset({
+        nome: editingItem.nome || '',
+        codice: editingItem.codice || '',
+        lunghezza: editingItem.lunghezza || 0,
+        larghezza_piano: editingItem.larghezza_piano || 0,
+        num_linee_vuoto: editingItem.num_linee_vuoto || 0,
+        stato: editingItem.stato || 'DISPONIBILE',
+        temperatura_max: editingItem.temperatura_max || 0,
+        pressione_max: editingItem.pressione_max || 0,
+        max_load_kg: editingItem.max_load_kg || 1000,
+        produttore: editingItem.produttore || '',
+        anno_produzione: editingItem.anno_produzione || undefined,
+        note: editingItem.note || '',
+      })
+    } else {
+      // Reset per nuovo item
+      form.reset({
+        nome: '',
+        codice: '',
+        lunghezza: 0,
+        larghezza_piano: 0,
+        num_linee_vuoto: 0,
+        stato: 'DISPONIBILE',
+        temperatura_max: 0,
+        pressione_max: 0,
+        max_load_kg: 1000,
+        produttore: '',
+        anno_produzione: undefined,
+        note: '',
+      })
+    }
+  }, [editingItem, form])
 
   const onSubmit = async (data: AutoclaveFormValues) => {
     try {
@@ -263,7 +298,7 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Stato</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Seleziona lo stato" />
