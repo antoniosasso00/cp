@@ -1,0 +1,236 @@
+{
+  "success": true,
+  "message": "Mock nesting 2L per test frontend - 5 tool (3 al livello 0, 2 al livello 1)",
+  "is_mock": true,
+  "mock_scenario": "REALISTIC_AEROSPACE_MIXED_LEVELS",
+  "positioned_tools": [
+    {
+      "odl_id": 5,
+      "tool_id": 12,
+      "x": 50.0,
+      "y": 100.0,
+      "width": 400.0,
+      "height": 300.0,
+      "rotated": false,
+      "weight_kg": 35.5,
+      "level": 0,
+      "z_position": 0.0,
+      "lines_used": 2,
+      "part_number": "WING-BRACKET-001",
+      "descrizione_breve": "Staffa ala principale",
+      "numero_odl": "ODL-240001"
+    },
+    {
+      "odl_id": 7,
+      "tool_id": 15,
+      "x": 500.0,
+      "y": 150.0,
+      "width": 350.0,
+      "height": 200.0,
+      "rotated": false,
+      "weight_kg": 28.3,
+      "level": 0,
+      "z_position": 0.0,
+      "lines_used": 1,
+      "part_number": "FUSELAGE-PANEL-003",
+      "descrizione_breve": "Pannello fusoliera centrale",
+      "numero_odl": "ODL-240007"
+    },
+    {
+      "odl_id": 12,
+      "tool_id": 22,
+      "x": 100.0,
+      "y": 450.0,
+      "width": 300.0,
+      "height": 150.0,
+      "rotated": false,
+      "weight_kg": 22.8,
+      "level": 0,
+      "z_position": 0.0,
+      "lines_used": 1,
+      "part_number": "LANDING-GEAR-COVER",
+      "descrizione_breve": "Copertura carrello atterraggio",
+      "numero_odl": "ODL-240012"
+    },
+    {
+      "odl_id": 9,
+      "tool_id": 18,
+      "x": 200.0,
+      "y": 80.0,
+      "width": 250.0,
+      "height": 180.0,
+      "rotated": true,
+      "weight_kg": 18.7,
+      "level": 1,
+      "z_position": 100.0,
+      "lines_used": 1,
+      "part_number": "ENGINE-MOUNT-BRACKET",
+      "descrizione_breve": "Supporto motore rotato",
+      "numero_odl": "ODL-240009"
+    },
+    {
+      "odl_id": 15,
+      "tool_id": 28,
+      "x": 550.0,
+      "y": 400.0,
+      "width": 200.0,
+      "height": 160.0,
+      "rotated": false,
+      "weight_kg": 15.2,
+      "level": 1,
+      "z_position": 100.0,
+      "lines_used": 1,
+      "part_number": "CONTROL-SURFACE-TAB",
+      "descrizione_breve": "Aletta superficie controllo",
+      "numero_odl": "ODL-240015"
+    }
+  ],
+  "cavalletti": [
+    {
+      "x": 220.0,
+      "y": 100.0,
+      "width": 80.0,
+      "height": 60.0,
+      "tool_odl_id": 9,
+      "tool_id": 18,
+      "sequence_number": 0,
+      "center_x": 260.0,
+      "center_y": 130.0,
+      "support_area_mm2": 4800.0,
+      "height_mm": 100.0,
+      "load_capacity_kg": 50.0
+    },
+    {
+      "x": 370.0,
+      "y": 100.0,
+      "width": 80.0,
+      "height": 60.0,
+      "tool_odl_id": 9,
+      "tool_id": 18,
+      "sequence_number": 1,
+      "center_x": 410.0,
+      "center_y": 130.0,
+      "support_area_mm2": 4800.0,
+      "height_mm": 100.0,
+      "load_capacity_kg": 50.0
+    },
+    {
+      "x": 570.0,
+      "y": 420.0,
+      "width": 80.0,
+      "height": 60.0,
+      "tool_odl_id": 15,
+      "tool_id": 28,
+      "sequence_number": 0,
+      "center_x": 610.0,
+      "center_y": 450.0,
+      "support_area_mm2": 4800.0,
+      "height_mm": 100.0,
+      "load_capacity_kg": 50.0
+    },
+    {
+      "x": 670.0,
+      "y": 420.0,
+      "width": 80.0,
+      "height": 60.0,
+      "tool_odl_id": 15,
+      "tool_id": 28,
+      "sequence_number": 1,
+      "center_x": 710.0,
+      "center_y": 450.0,
+      "support_area_mm2": 4800.0,
+      "height_mm": 100.0,
+      "load_capacity_kg": 50.0
+    }
+  ],
+  "excluded_odls": [
+    {
+      "odl_id": 25,
+      "reason": "Dimensioni eccessive per nesting 2L",
+      "part_number": "LARGE-WING-SECTION",
+      "tool_dimensions": "1200x900mm",
+      "weight_kg": 85.0
+    }
+  ],
+  "excluded_reasons": {
+    "Dimensioni eccessive per nesting 2L": 1
+  },
+  "overlaps": null,
+  "metrics": {
+    "area_utilization_pct": 73.8,
+    "vacuum_util_pct": 60.0,
+    "efficiency_score": 67.2,
+    "weight_utilization_pct": 58.4,
+    "time_solver_ms": 3250.0,
+    "fallback_used": false,
+    "heuristic_iters": 4,
+    "algorithm_status": "CP-SAT_OPTIMAL_2L",
+    "total_area_cm2": 195600.0,
+    "total_weight_kg": 120.5,
+    "vacuum_lines_used": 6,
+    "pieces_positioned": 5,
+    "pieces_excluded": 1,
+    "level_0_tools": 3,
+    "level_1_tools": 2,
+    "stands_used": 4,
+    "max_z_height_mm": 100.0,
+    "weight_distribution": {
+      "level_0_kg": 86.6,
+      "level_1_kg": 33.9,
+      "balance_ratio": 0.72
+    }
+  },
+  "canvas_config": {
+    "canvas_width": 900.0,
+    "canvas_height": 650.0,
+    "scale_factor": 1.0,
+    "autoclave_dimensions": {
+      "length_mm": 900.0,
+      "width_mm": 650.0,
+      "height_mm": 200.0,
+      "max_load_kg": 500.0,
+      "vacuum_lines": 10
+    }
+  },
+  "level_statistics": {
+    "level_0": {
+      "tool_count": 3,
+      "total_weight_kg": 86.6,
+      "total_area_mm2": 195000.0,
+      "area_utilization_pct": 33.3,
+      "avg_tool_size_mm2": 65000.0
+    },
+    "level_1": {
+      "tool_count": 2,
+      "total_weight_kg": 33.9,
+      "total_area_mm2": 73800.0,
+      "area_utilization_pct": 12.6,
+      "avg_tool_size_mm2": 36900.0,
+      "stands_required": 4,
+      "avg_stands_per_tool": 2.0,
+      "z_clearance_mm": 100.0
+    }
+  },
+  "validation_report": {
+    "bounds_check": "PASSED",
+    "overlap_check": "PASSED",
+    "weight_distribution": "OPTIMAL",
+    "stand_placement": "VALID",
+    "clearance_verification": "PASSED",
+    "vacuum_line_allocation": "WITHIN_LIMITS"
+  },
+  "algorithm_details": {
+    "solver_used": "CP-SAT_2L",
+    "optimization_target": "MULTI_LEVEL_EFFICIENCY",
+    "constraints_applied": [
+      "NO_OVERLAP_2D",
+      "WEIGHT_LIMIT_PER_LEVEL", 
+      "STAND_PLACEMENT_RULES",
+      "VACUUM_LINE_CAPACITY",
+      "Z_CLEARANCE_MIN_100MM"
+    ],
+    "iterations": 127,
+    "convergence_time_ms": 3250.0,
+    "final_objective_value": 0.672
+  }
+} 

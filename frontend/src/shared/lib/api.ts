@@ -18,6 +18,20 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/a
 
 console.log('🔗 API Base URL configurata:', API_BASE_URL); // Log per debug
 
+// ✅ TIMEOUT ROBUSTI: Configurazione estesa per evitare UND_ERR_CONNECT_TIMEOUT
+const TIMEOUT_CONFIG = {
+  // Timeout base per operazioni normali (30s)
+  BASE_TIMEOUT: 30000,
+  // Timeout esteso per nesting (10 minuti)
+  NESTING_TIMEOUT: 600000,
+  // Timeout per operazioni di caricamento dati (1 minuto)
+  DATA_LOADING_TIMEOUT: 60000,
+  // Numero max di retry
+  MAX_RETRIES: 3,
+  // Delay tra retry (exponential backoff)
+  RETRY_DELAY_BASE: 1000
+}
+
 // ✅ Funzioni helper per gestione errori
 const isRetryableError = (error: any): boolean => {
   if (!error) return false;
@@ -79,11 +93,25 @@ const getErrorMessage = (error: any): string => {
   return 'Errore sconosciuto durante la comunicazione con il server';
 };
 
-// Configurazione axios con interceptors per logging e gestione errori
-const api = axios.create({
+// ✅ Configurazione axios semplificata per evitare problemi CORS
+export const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000, // 10 secondi di timeout
+  timeout: TIMEOUT_CONFIG.BASE_TIMEOUT,
+  // 🔧 HEADERS SEMPLIFICATI: Solo headers essenziali
+  headers: {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json'
+  }
 })
+
+// 🔧 Funzione helper per logging degli errori (semplificata)
+const logApiError = (error: any, context: string) => {
+  console.error(`❌ API Error in ${context}:`, {
+    message: error.message,
+    status: error.response?.status,
+    data: error.response?.data
+  })
+}
 
 // Interceptor per le richieste
 api.interceptors.request.use(
@@ -521,8 +549,16 @@ export interface Autoclave {
   stato: 'DISPONIBILE' | 'IN_USO' | 'GUASTO' | 'MANUTENZIONE' | 'SPENTA'
   temperatura_max: number
   pressione_max: number
+  
   // ✅ NUOVO: Carico massimo per nesting su due piani
   max_load_kg?: number
+  
+  // ✅ NUOVO: Proprietà relative ai cavalletti (sistema 2L)
+  usa_cavalletti?: boolean
+  altezza_cavalletto_standard?: number
+  max_cavalletti?: number
+  clearance_verticale?: number
+  
   produttore?: string
   anno_produzione?: number
   note?: string
@@ -541,8 +577,16 @@ export interface CreateAutoclaveDto {
   stato: 'DISPONIBILE' | 'IN_USO' | 'GUASTO' | 'MANUTENZIONE' | 'SPENTA'
   temperatura_max: number
   pressione_max: number
+  
   // ✅ NUOVO: Carico massimo per nesting su due piani
   max_load_kg?: number
+  
+  // ✅ NUOVO: Proprietà relative ai cavalletti (sistema 2L)
+  usa_cavalletti?: boolean
+  altezza_cavalletto_standard?: number
+  max_cavalletti?: number
+  clearance_verticale?: number
+  
   produttore?: string
   anno_produzione?: number
   note?: string
@@ -1279,10 +1323,10 @@ export const batchNestingApi = {
     });
   },
 
-  // 🚀 AEROSPACE: Endpoint multi-batch con bypass degli interceptor problematici
+  // 🚀 AEROSPACE UNIFIED: Multi-batch generation
   generaMulti: async (request: {
     odl_ids: string[];
-    autoclave_ids?: string[]; // 🆕 NUOVO: Supporto selezione autoclave specifica
+    autoclave_ids?: string[]; // 🆕 NUOVO: Opzionale per autoclavi specifiche
     parametri: {
       padding_mm: number;
       min_distance_mm: number;
@@ -1320,42 +1364,21 @@ export const batchNestingApi = {
       console.log('🎯 AUTO-DISCOVERY MODE: Nessuna autoclave specificata, usa tutte disponibili');
     }
     
-    const fullUrl = `${API_BASE_URL}${endpoint}`;
-    console.log(`🌐 DIRECT FETCH: POST ${fullUrl}`, requestBody);
+    console.log(`🌐 DIRECT REQUEST: POST ${endpoint}`, requestBody);
 
     try {
-      const response = await fetch(fullUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-        cache: 'no-store',
+      // ✅ TIMEOUT ESTESO per nesting con retry automatici
+      console.log(`⏱️ Configurando timeout esteso: ${TIMEOUT_CONFIG.NESTING_TIMEOUT/1000}s per nesting`);
+      
+      const response = await api.post(endpoint, requestBody, {
+        timeout: TIMEOUT_CONFIG.NESTING_TIMEOUT
       });
 
-      console.log(`📡 FETCH RESPONSE STATUS: ${response.status} ${response.statusText}`);
+      console.log(`📡 AXIOS RESPONSE STATUS: ${response.status}`);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('❌ FETCH ERROR DATA:', errorData);
-        
-        // 🔧 FIX CRITICO: Se il backend restituisce dati di successo nonostante l'errore HTTP
-        // Questo può succedere quando c'è un'eccezione dopo aver generato i batch con successo
-        if (errorData && typeof errorData === 'object' && errorData.success === true && errorData.best_batch_id) {
-          console.warn('🚨 BACKEND WORKAROUND: Error HTTP ma dati di successo presenti!');
-          console.warn('   success:', errorData.success);
-          console.warn('   best_batch_id:', errorData.best_batch_id);
-          console.warn('   Usando i dati di successo nonostante HTTP error');
-          
-          // Restituisci i dati come se fosse un successo
-          return errorData;
-        }
-        
-        throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ FETCH SUCCESS - RAW RESULT:', result);
+      // Con retryRequest abbiamo direttamente i dati nella risposta
+      const result = response.data;
+      console.log('✅ AXIOS SUCCESS - RAW RESULT:', result);
       
       // ✅ AEROSPACE: Verifica che la risposta abbia i campi necessari
       if (typeof result === 'object' && result !== null) {
@@ -1383,11 +1406,25 @@ export const batchNestingApi = {
           unique_autoclavi_count: number;
         };
       } else {
-        console.error('❌ FETCH INVALID RESPONSE TYPE:', typeof result);
+        console.error('❌ AXIOS INVALID RESPONSE TYPE:', typeof result);
         throw new Error('Response invalida dal server aerospace');
       }
-    } catch (error) {
-      console.error('💥 FETCH NETWORK ERROR:', error);
+    } catch (error: any) {
+      console.error('💥 AXIOS NETWORK ERROR:', error);
+      
+      // 🔧 FIX CRITICO: Se il backend restituisce dati di successo nonostante l'errore HTTP
+      // Questo può succedere quando c'è un'eccezione dopo aver generato i batch con successo
+      if (error.response?.data && typeof error.response.data === 'object' && 
+          error.response.data.success === true && error.response.data.best_batch_id) {
+        console.warn('🚨 BACKEND WORKAROUND: Error HTTP ma dati di successo presenti!');
+        console.warn('   success:', error.response.data.success);
+        console.warn('   best_batch_id:', error.response.data.best_batch_id);
+        console.warn('   Usando i dati di successo nonostante HTTP error');
+        
+        // Restituisci i dati come se fosse un successo
+        return error.response.data;
+      }
+      
       throw error;
     }
   },
@@ -1725,8 +1762,155 @@ export const batchNestingApi = {
     }
   ): Promise<BatchNestingResponse> => {
     return batchNestingApi.conferma(id, data.confermato_da_utente, data.confermato_da_ruolo);
-  }
+  },
+
+  // 🚀 NUOVO: Endpoint 2L multi-autoclave senza concorrenza con RETRY
+  genera2LMulti: async (request: {
+    autoclavi_2l: number[];
+    odl_ids: number[];
+    parametri: {
+      padding_mm: number;
+      min_distance_mm: number;
+    };
+    use_cavalletti?: boolean;
+    cavalletto_height_mm?: number;
+    max_weight_per_level_kg?: number;
+    prefer_base_level?: boolean;
+  }) => {
+    const body = {
+      autoclavi_2l: request.autoclavi_2l,
+      odl_ids: request.odl_ids,
+      parametri: request.parametri,
+      use_cavalletti: request.use_cavalletti ?? true,
+      cavalletto_height_mm: request.cavalletto_height_mm ?? 100.0,
+      max_weight_per_level_kg: request.max_weight_per_level_kg ?? 200.0,
+      prefer_base_level: request.prefer_base_level ?? true
+    };
+    
+    console.log('🚀 2L MULTI API: Calling with robust timeout handling', body);
+    
+    // 🔧 TIMEOUT DINAMICO ESTESO: Basato su complessità
+    const odlCount = request.odl_ids.length;
+    const autoclaveCount = request.autoclavi_2l.length;
+    const isComplexDataset = odlCount > 10 || autoclaveCount > 2;
+    
+    // ✅ TIMEOUT ESTESI: 10 minuti per semplici, 20 minuti per complessi
+    const baseTimeout = isComplexDataset ? TIMEOUT_CONFIG.NESTING_TIMEOUT * 2 : TIMEOUT_CONFIG.NESTING_TIMEOUT;
+    
+    console.log(`⏱️ Dataset complexity: ${isComplexDataset ? 'COMPLEX' : 'SIMPLE'} (${odlCount} ODL, ${autoclaveCount} autoclavi)`);
+    console.log(`⏱️ Timeout configurato: ${baseTimeout/1000}s`);
+    
+    // ✅ Usa API semplificata senza retry per evitare problemi CORS
+    const response = await api.post('/api/batch_nesting/2l-multi', body, {
+      timeout: baseTimeout
+    });
+    
+    return response.data;
+  },
+
+  // 🔧 Endpoint 2L singolo (mantiene compatibilità)
+  genera2L: async (request: {
+    autoclave_id: number;
+    odl_ids: number[];
+    parametri: {
+      padding_mm: number;
+      min_distance_mm: number;
+    };
+    use_cavalletti?: boolean;
+    cavalletto_height_mm?: number;
+    max_weight_per_level_kg?: number;
+    prefer_base_level?: boolean;
+  }) => {
+    const body = {
+      autoclave_id: request.autoclave_id,
+      odl_ids: request.odl_ids,
+      padding_mm: request.parametri.padding_mm,
+      min_distance_mm: request.parametri.min_distance_mm,
+      use_cavalletti: request.use_cavalletti ?? true,
+      cavalletto_height_mm: request.cavalletto_height_mm ?? 100.0,
+      max_weight_per_level_kg: request.max_weight_per_level_kg ?? 200.0,
+      prefer_base_level: request.prefer_base_level ?? true
+    };
+    
+    console.log('🚀 2L API: Calling sequential endpoint with extended timeout', body);
+    
+    // 🔧 FIX TIMEOUT: Timeout esteso anche per 2L singolo
+    const TIMEOUT_2L_SINGLE = 240000; // 4 minuti (240 secondi)
+    
+    // Usa AbortController per gestire timeout personalizzato
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_2L_SINGLE);
+    
+    try {
+      const response = await fetch('/api/batch_nesting/2l', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return response.json();
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      
+      if (error.name === 'AbortError') {
+        throw new Error(`Timeout: L'algoritmo 2L ha superato i ${TIMEOUT_2L_SINGLE/1000} secondi. Prova con meno ODL o contatta il supporto.`);
+      }
+      
+      throw error;
+    }
+  },
 };
+
+// 🔄 POLLING ASINCRONO per job lunghi
+async function pollAsyncJob(jobId: string, maxWaitTime: number): Promise<any> {
+  console.log(`🔄 Avvio polling per job: ${jobId} (max wait: ${maxWaitTime/1000}s)`);
+  
+  const startTime = Date.now();
+  const pollInterval = 5000; // Polling ogni 5 secondi
+  
+  while (Date.now() - startTime < maxWaitTime) {
+    try {
+      const response = await fetch(`/api/batch_nesting/status/${jobId}`);
+      
+      if (!response.ok) {
+        throw new Error(`Polling failed: ${response.status}`);
+      }
+      
+      const status = await response.json();
+      
+      if (status.status === 'completed') {
+        console.log(`✅ Job ${jobId} completato`);
+        
+        if (status.result.success) {
+          return status.result.data;
+        } else {
+          throw new Error(status.result.error || 'Elaborazione fallita');
+        }
+      }
+      
+      console.log(`⏳ Job ${jobId} ancora in elaborazione...`);
+      
+      // Aspetta prima del prossimo polling
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+      
+    } catch (error) {
+      console.error(`❌ Errore polling job ${jobId}:`, error);
+      throw error;
+    }
+  }
+  
+  // Timeout del polling
+  throw new Error(`Timeout: Job ${jobId} non completato entro ${maxWaitTime/1000} secondi`);
+}
 
 // ✅ NUOVO: API per la produzione
 

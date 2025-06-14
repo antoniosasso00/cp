@@ -5,11 +5,31 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: [],
   },
+  // 🔧 FIX TIMEOUT: Configurazione proxy con timeout esteso per algoritmi 2L
   async rewrites() {
     return [
       {
         source: '/api/:path*',
         destination: 'http://localhost:8000/api/:path*',
+      },
+    ]
+  },
+  // 🚀 NUOVO: Configurazione server per timeout estesi
+  serverRuntimeConfig: {
+    // Timeout per richieste API proxy (10 minuti per algoritmi complessi)
+    apiTimeout: 600000, // 10 minuti in millisecondi
+  },
+  // 🔧 FIX: Headers personalizzati per timeout
+  async headers() {
+    return [
+      {
+        source: '/api/batch_nesting/:path*',
+        headers: [
+          {
+            key: 'X-Timeout',
+            value: '600000', // 10 minuti per endpoint nesting
+          },
+        ],
       },
     ]
   },

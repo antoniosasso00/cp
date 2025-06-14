@@ -35,6 +35,13 @@ interface ToolPosition {
   descrizione_breve?: string    // Descrizione della parte
   tool_nome?: string           // Nome tool come fallback
   peso?: number                // Peso per tooltip
+  
+  // 🆕 NUOVI CAMPI 2L: Supporto per livelli e cavalletti
+  level?: number               // 0 = piano base, 1 = su cavalletti (opzionale per retrocompatibilità)
+  z_position?: number          // Posizione Z (altezza)
+  lines_used?: number          // Linee vuoto utilizzate
+  tool_id?: number             // ID del tool
+  weight_kg?: number           // Peso in kg (alternativo a peso)
 }
 
 interface AutoclaveInfo {
@@ -49,6 +56,7 @@ interface BatchCanvasData {
   configurazione_json?: {
     tool_positions?: ToolPosition[]     // ✅ Formato database standard
     positioned_tools?: ToolPosition[]   // ✅ Formato draft
+    cavalletti?: Cavalletto[]           // 🆕 Supporto cavalletti
     canvas_width?: number
     canvas_height?: number
   }
@@ -108,11 +116,19 @@ const getToolDisplayInfo = (tool: ToolPosition) => {
   // Dimensioni del tool
   const dimensioni = `${formatDimension(tool.width)} × ${formatDimension(tool.height)}`
   
+  // 🆕 INFO 2L: Livello e altezza
+  const level = tool.level !== undefined ? tool.level : 0 // Default 0 per retrocompatibilità
+  const levelText = level === 0 ? 'Piano' : 'Cavalletti'
+  const zPosition = tool.z_position !== undefined ? `${tool.z_position}mm` : '-'
+  
   return {
     numeroODL,
     partNumber,
     descrizione,
-    dimensioni
+    dimensioni,
+    level,
+    levelText,
+    zPosition
   }
 }
 
@@ -150,6 +166,45 @@ const getToolsFromBatch = (batchData: BatchCanvasData): ToolPosition[] => {
          []
 }
 
+// 🆕 HELPER: Ottiene cavalletti dal batch
+const getCavallettiFromBatch = (batchData: BatchCanvasData): Cavalletto[] => {
+  if (!batchData.configurazione_json?.cavalletti) return []
+  return batchData.configurazione_json.cavalletti
+}
+
+// 🆕 HELPER: Separa tool per livello (retrocompatibilità)
+const separateToolsByLevel = (tools: ToolPosition[]) => {
+  const level0Tools = tools.filter(tool => (tool.level ?? 0) === 0) // Default level 0 per retrocompatibilità
+  const level1Tools = tools.filter(tool => tool.level === 1)
+  
+  return { level0Tools, level1Tools }
+}
+
+// 🆕 HELPER: Verifica se il batch ha supporto 2L
+const isBatch2L = (batchData: BatchCanvasData): boolean => {
+  const tools = getToolsFromBatch(batchData)
+  const cavalletti = getCavallettiFromBatch(batchData)
+  
+  // Considera 2L se ha tool con level definito o cavalletti
+  return tools.some(tool => tool.level !== undefined) || cavalletti.length > 0
+}
+
+// 🆕 NUOVA INTERFACCIA: Supporto cavalletti
+interface Cavalletto {
+  x: number
+  y: number
+  width: number
+  height: number
+  tool_odl_id: number
+  tool_id?: number
+  sequence_number: number
+  center_x: number
+  center_y: number
+  support_area_mm2: number
+  height_mm: number
+  load_capacity_kg: number
+}
+
 export default function NestingCanvas({ batchData }: NestingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -180,6 +235,23 @@ export default function NestingCanvas({ batchData }: NestingCanvasProps) {
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+
+    // 🆕 PARSING 2L: Ottieni dati con nuovi helper
+    const allTools = getToolsFromBatch(batchData)
+    const cavalletti = getCavallettiFromBatch(batchData)
+    const is2L = isBatch2L(batchData)
+    const { level0Tools, level1Tools } = separateToolsByLevel(allTools)
+
+    // 🔍 DEBUG: Log dati parsing per verifica compatibilità
+    console.log('🔍 NESTING CANVAS - Parsing Data:', {
+      is2L,
+      totalTools: allTools.length,
+      level0Count: level0Tools.length,
+      level1Count: level1Tools.length,
+      cavallettiCount: cavalletti.length,
+      allTools: allTools.map(t => ({ id: t.odl_id, level: t.level ?? 'undefined' })),
+      cavalletti: cavalletti.map(c => ({ odl_id: c.tool_odl_id, sequence: c.sequence_number }))
+    })
 
     // Canvas dimensions responsive
     const container = containerRef.current
@@ -245,10 +317,9 @@ export default function NestingCanvas({ batchData }: NestingCanvasProps) {
       }
     }
 
-    // Draw tools con informazioni migliorate
-    const toolPositions = getToolsFromBatch(batchData)
-    
-    toolPositions.forEach((tool, index) => {
+    // Draw tools con informazioni migliorate - usa i tool già analizzati
+    // Per ora renderizziamo tutti i tool (level 0 e 1) nello stesso modo per mantenere retrocompatibilità
+    allTools.forEach((tool, index) => {
       if (tool.x == null || tool.y == null || tool.width == null || tool.height == null) return
 
       const toolX = offsetX + tool.x * scale

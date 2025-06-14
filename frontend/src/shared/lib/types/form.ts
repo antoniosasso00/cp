@@ -46,6 +46,16 @@ export const autoclaveSchema = z.object({
   temperatura_max: z.number().min(0, 'La temperatura deve essere positiva'),
   pressione_max: z.number().min(0, 'La pressione deve essere positiva'),
   stato: z.enum(['DISPONIBILE', 'IN_USO', 'MANUTENZIONE', 'GUASTO', 'SPENTA']),
+  
+  // ✅ NUOVO: Carico massimo per nesting su due piani
+  max_load_kg: z.number().min(0, 'Il carico massimo deve essere positivo').optional(),
+  
+  // ✅ NUOVO: Proprietà relative ai cavalletti (sistema 2L)
+  usa_cavalletti: z.boolean().optional(),
+  altezza_cavalletto_standard: z.number().min(0, 'L\'altezza cavalletto deve essere positiva').optional(),
+  max_cavalletti: z.number().min(0, 'Il numero massimo cavalletti deve essere positivo').optional(),
+  clearance_verticale: z.number().min(0, 'Il clearance verticale deve essere positivo').optional(),
+  
   produttore: z.string().optional(),
   anno_produzione: z.number().optional(),
   note: z.string().optional(),

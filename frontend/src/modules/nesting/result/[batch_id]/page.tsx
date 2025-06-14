@@ -21,7 +21,9 @@ import {
   Award,
   Save,
   AlertCircle,
-  Clock
+  Clock,
+  Layers,
+  Layers3
 } from 'lucide-react'
 import { batchNestingApi } from '@/shared/lib/api'
 import { formatDateTime } from '@/shared/lib/utils'
@@ -33,13 +35,29 @@ import { useDraftLifecycle } from '@/shared/hooks/use-draft-lifecycle'
 import { DraftActionDialog } from './components/DraftActionDialog'
 import { ExitPageDialog } from './components/ExitPageDialog'
 
-// Dynamic import for canvas component
+// 🎯 SMART CANVAS LOADING: Dynamic import con auto-detection 2L
 const NestingCanvas = dynamic(() => import('./components/NestingCanvas'), {
   loading: () => (
     <div className="flex items-center justify-center h-96 bg-gray-50 border rounded-lg">
       <div className="text-center space-y-3">
         <Loader2 className="h-8 w-8 text-blue-500 mx-auto animate-spin" />
-        <p className="text-sm text-gray-600">Caricamento canvas...</p>
+        <p className="text-sm text-gray-600">Caricamento canvas 1L...</p>
+      </div>
+    </div>
+  ),
+  ssr: false
+})
+
+const NestingCanvas2L = dynamic(() => import('./components/NestingCanvas2L').then(mod => ({ default: mod.NestingCanvas2L })), {
+  loading: () => (
+    <div className="flex items-center justify-center h-96 bg-gray-50 border rounded-lg">
+      <div className="text-center space-y-3">
+        <Loader2 className="h-8 w-8 text-amber-500 mx-auto animate-spin" />
+        <p className="text-sm text-gray-600">Caricamento canvas 2L...</p>
+        <div className="flex items-center justify-center gap-1 text-xs text-amber-600">
+          <Layers3 className="h-3 w-3" />
+          <span>Modalità Multi-Livello</span>
+        </div>
       </div>
     </div>
   ),
@@ -100,6 +118,93 @@ const getToolsFromBatch = (batch: any) => {
   return batch?.configurazione_json?.tool_positions || batch?.configurazione_json?.positioned_tools || []
 }
 
+// 🛡️ HELPER: Ottiene cavalletti dal batch
+const getCavallettiFromBatch = (batch: any) => {
+  if (!batch?.configurazione_json?.cavalletti) return []
+  return batch.configurazione_json.cavalletti
+}
+
+// 🎯 NUOVA FUNZIONE: Auto-detection batch 2L (logica unificata)
+const isBatch2L = (batch: any): boolean => {
+  if (!batch?.configurazione_json) return false
+  
+  const tools = getToolsFromBatch(batch)
+  const cavalletti = getCavallettiFromBatch(batch)
+  
+  // Detection criteri multipli per robustezza
+  const hasLevelDefined = tools.some((tool: any) => tool.level !== undefined)
+  const hasCavalletti = cavalletti.length > 0
+  const hasZPosition = tools.some((tool: any) => tool.z_position !== undefined)
+  const hasLinesUsed = tools.some((tool: any) => tool.lines_used !== undefined)
+  
+  // Considera 2L se almeno uno dei criteri è vero
+  return hasLevelDefined || hasCavalletti || hasZPosition || hasLinesUsed
+}
+
+// 🎯 COMPONENTE SMART CANVAS: Sceglie automaticamente il canvas giusto
+const SmartCanvas: React.FC<{ batchData: any }> = ({ batchData }) => {
+  const is2L = isBatch2L(batchData)
+  
+  console.log('🎯 SMART CANVAS - Auto-detection:', {
+    batchId: batchData.id,
+    is2L,
+    tools: getToolsFromBatch(batchData).length,
+    cavalletti: getCavallettiFromBatch(batchData).length,
+    hasLevels: getToolsFromBatch(batchData).some((t: any) => t.level !== undefined)
+  })
+
+  if (is2L) {
+    // 🟡 BATCH 2L: Usa canvas specializzato
+    const tools = getToolsFromBatch(batchData)
+    const cavalletti = getCavallettiFromBatch(batchData)
+    const canvasWidth = batchData.autoclave?.lunghezza || 1000
+    const canvasHeight = batchData.autoclave?.larghezza_piano || 800
+    
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 p-2 rounded-lg border border-amber-200">
+          <Layers3 className="h-4 w-4" />
+          <span className="font-medium">Batch 2L rilevato - Canvas multi-livello attivo</span>
+          <Badge variant="secondary" className="ml-auto">
+            L0: {tools.filter((t: any) => (t.level ?? 0) === 0).length} | 
+            L1: {tools.filter((t: any) => t.level === 1).length}
+          </Badge>
+        </div>
+        
+        <NestingCanvas2L
+          positioned_tools={tools}
+          cavalletti={cavalletti}
+          canvas_width={canvasWidth}
+          canvas_height={canvasHeight}
+          showLevelFilter={true}
+        />
+      </div>
+    )
+  } else {
+    // 🔵 BATCH 1L: Usa canvas standard (retrocompatibilità)
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 p-2 rounded-lg border border-blue-200">
+          <Layers className="h-4 w-4" />
+          <span className="font-medium">Batch 1L standard - Canvas tradizionale</span>
+          <Badge variant="secondary" className="ml-auto">
+            Tools: {getToolsFromBatch(batchData).length}
+          </Badge>
+        </div>
+        
+        <NestingCanvas
+          batchData={{
+            id: batchData.id,
+            configurazione_json: batchData.configurazione_json,
+            autoclave: batchData.autoclave,
+            metrics: batchData.metrics
+          }}
+        />  
+      </div>
+    )
+  }
+}
+
 // 🛡️ HELPER: Verifica se il batch è una bozza salvabile
 const isDraftBatch = (batch: any) => {
   if (!batch || !batch.stato) return false
@@ -137,7 +242,13 @@ export default function NestingResultPage() {
   const { toast } = useStandardToast()
 
   const batchId = params.batch_id as string
-  // Removed confusing URL parameters - auto-detection is now the default
+  
+  // 🔧 PARAMETERS: Enhanced URL parameter support for 2L debugging
+  const isMultiMode = searchParams.get('multi') === 'true'
+  const has2L = searchParams.get('has_2l') === 'true'
+  const showAll = searchParams.get('show_all') === 'true'
+  
+  console.log('🎯 URL Params for 2L debugging:', { batchId, isMultiMode, has2L, showAll })
 
   const [batchData, setBatchData] = useState<BatchData | null>(null)
   const [allBatches, setAllBatches] = useState<BatchData[]>([])
@@ -235,6 +346,15 @@ export default function NestingResultPage() {
       if (response.batch_results && Array.isArray(response.batch_results) && response.batch_results.length > 1) {
         // ✅ MULTI-BATCH AUTO-RILEVATO: ordina per efficienza e arricchisci con dati autoclave
         console.log('🔧 MULTI-BATCH: Arricchimento dati autoclave per batch DRAFT...')
+        
+        // 🔧 DEBUG: Aggiungi logging per 2L detection
+        const batch2LCount = response.batch_results.filter((batch: BatchData) => isBatch2L(batch)).length
+        console.log(`📊 MULTI-BATCH ANALYSIS: ${response.batch_results.length} batch trovati, ${batch2LCount} sono 2L`)
+        
+        response.batch_results.forEach((batch: BatchData, index: number) => {
+          const is2L = isBatch2L(batch)
+          console.log(`   Batch ${index + 1}: ${batch.id} - Type: ${is2L ? '2L' : '1L'} - Autoclave: ${batch.autoclave_id}`)
+        })
         
         // 🚀 PERFORMANCE: Process autoclave data in parallel
         const enrichedBatches = await Promise.all(
@@ -444,6 +564,13 @@ export default function NestingResultPage() {
     bestEfficiency: Math.max(...allBatches.map(b => b.metrics?.efficiency_percentage || 0))
   } : null
 
+  // 🆕 Analisi batch misti (2L + 1L)
+  const mixedBatchStats = isMultiBatch ? {
+    batch2L: allBatches.filter(b => isBatch2L(b)),
+    batch1L: allBatches.filter(b => !isBatch2L(b)),
+    hasMixedConfiguration: allBatches.some(b => isBatch2L(b)) && allBatches.some(b => !isBatch2L(b))
+  } : null
+
   return (
     <div className="container mx-auto p-6 space-y-6 max-w-7xl">
       {/* EXIT CONFIRMATION DIALOG */}
@@ -556,6 +683,35 @@ export default function NestingResultPage() {
         </div>
       </div>
 
+      {/* 🆕 Pannello Informativo Batch Misti */}
+      {isMultiBatch && mixedBatchStats?.hasMixedConfiguration && (
+        <Card className="border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50">
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-amber-100 rounded-lg">
+                <Layers3 className="h-5 w-5 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-medium text-amber-800">Configurazione Batch Mista Rilevata</h3>
+                <p className="text-sm text-amber-700">
+                  {mixedBatchStats.batch2L.length} batch generati con nesting 2L (cavalletti) + {mixedBatchStats.batch1L.length} batch con nesting 1L standard
+                </p>
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-100">
+                  <Layers3 className="h-3 w-3 mr-1" />
+                  {mixedBatchStats.batch2L.length} × 2L
+                </Badge>
+                <Badge variant="outline" className="text-blue-700 border-blue-300 bg-blue-100">
+                  <Layers className="h-3 w-3 mr-1" />
+                  {mixedBatchStats.batch1L.length} × 1L
+                </Badge>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Multi-batch Tabs */}
       {isMultiBatch && (
         <Card>
@@ -568,26 +724,39 @@ export default function NestingResultPage() {
           <CardContent>
             <Tabs value={selectedBatchId} onValueChange={handleBatchChange} className="w-full">
               <TabsList className="grid w-full grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 h-auto">
-                {allBatches.map((batch, index) => (
-                  <TabsTrigger 
-                    key={batch.id} 
-                    value={batch.id}
-                    className="flex flex-col items-center p-3 h-auto data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                  >
-                    <div className="flex items-center gap-2">
-                      {index === 0 && <Award className="h-4 w-4 text-yellow-500" />}
-                      <span className="font-medium">
-                        {batch.autoclave?.nome || `Autoclave ${batch.autoclave_id}`}
-                      </span>
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      Efficienza: {batch.metrics?.efficiency_percentage?.toFixed(1) || '0.0'}%
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Tool: {batch.metrics?.positioned_tools || 0}
-                    </div>
-                  </TabsTrigger>
-                ))}
+                {allBatches.map((batch, index) => {
+                  const is2L = isBatch2L(batch)
+                  return (
+                    <TabsTrigger 
+                      key={batch.id} 
+                      value={batch.id}
+                      className="flex flex-col items-center p-3 h-auto data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                    >
+                      <div className="flex items-center gap-2">
+                        {index === 0 && <Award className="h-4 w-4 text-yellow-500" />}
+                        <span className="font-medium">
+                          {batch.autoclave?.nome || `Autoclave ${batch.autoclave_id}`}
+                        </span>
+                        {/* 🆕 INDICATORE 2L/1L */}
+                        {is2L ? (
+                          <Layers3 className="h-3 w-3 text-amber-600" />
+                        ) : (
+                          <Layers className="h-3 w-3 text-blue-600" />
+                        )}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        Efficienza: {batch.metrics?.efficiency_percentage?.toFixed(1) || '0.0'}%
+                      </div>
+                      <div className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span>Tool: {batch.metrics?.positioned_tools || 0}</span>
+                        {/* 🆕 BADGE MODALITÀ */}
+                        <Badge variant="outline" className={`text-xs px-1 py-0 ${is2L ? 'text-amber-600 border-amber-300' : 'text-blue-600 border-blue-300'}`}>
+                          {is2L ? '2L' : '1L'}
+                        </Badge>
+                      </div>
+                    </TabsTrigger>
+                  )
+                })}
               </TabsList>
 
               {allBatches.map((batch, index) => (
@@ -609,14 +778,7 @@ export default function NestingResultPage() {
                           </CardTitle>
                         </CardHeader>
                         <CardContent>
-                          <NestingCanvas
-                            batchData={{
-                              id: batch.id,
-                              configurazione_json: batch.configurazione_json,
-                              autoclave: batch.autoclave,
-                              metrics: batch.metrics
-                            }}
-                          />
+                          <SmartCanvas batchData={batch} />
                         </CardContent>
                       </Card>
                     </div>
@@ -814,14 +976,7 @@ export default function NestingResultPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <NestingCanvas
-                  batchData={{
-                    id: batchData.id,
-                    configurazione_json: batchData.configurazione_json,
-                    autoclave: batchData.autoclave,
-                    metrics: batchData.metrics
-                  }}
-                />
+                <SmartCanvas batchData={batchData} />
               </CardContent>
             </Card>
           </div>

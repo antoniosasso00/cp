@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { AutoclaveModal } from './components/autoclave-modal'
-import { autoclavesApi, type Autoclave } from '@/lib/api'
+import { autoclavesApi, type Autoclave } from '@/shared/lib/api'
 import { 
   Loader2, 
   MoreHorizontal, 
@@ -150,6 +150,7 @@ export default function AutoclaviPage() {
               <TableHead>Codice</TableHead>
               <TableHead className="text-center">Dimensioni (mm)</TableHead>
               <TableHead className="text-center">Linee Vuoto</TableHead>
+              <TableHead className="text-center"># Cavalletti</TableHead>
               <TableHead>Produttore</TableHead>
               <TableHead className="text-center">Stato</TableHead>
               <TableHead className="text-right">Azioni</TableHead>
@@ -158,7 +159,7 @@ export default function AutoclaviPage() {
           <TableBody>
             {filteredAutoclavi.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8">
+                <TableCell colSpan={8} className="text-center py-8">
                   Nessuna autoclave trovata
                 </TableCell>
               </TableRow>
@@ -171,6 +172,17 @@ export default function AutoclaviPage() {
                     {item.lunghezza} x {item.larghezza_piano}
                   </TableCell>
                   <TableCell className="text-center">{item.num_linee_vuoto}</TableCell>
+                  <TableCell className="text-center">
+                    {item.usa_cavalletti ? (
+                      <Badge variant="secondary" className="gap-1">
+                        🔧 {item.max_cavalletti || 0} cavalletti
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs text-muted-foreground">
+                        ❌ Non supportati
+                      </Badge>
+                    )}
+                  </TableCell>
                   <TableCell>{item.produttore || '-'}</TableCell>
                   <TableCell className="text-center">
                     <Badge variant={getStatoBadgeVariant(item.stato)}>

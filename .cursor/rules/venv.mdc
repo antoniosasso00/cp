@@ -1,0 +1,7 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Puoi attivare l'ambiente virutale con il comando .venv/scripts/activate.ps1 dal root della repository
+

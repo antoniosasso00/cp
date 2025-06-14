@@ -3,7 +3,7 @@ Models package initialization
 """
 
 # Importa i moduli per un più facile accesso
-from . import catalogo, ciclo_cura, parte, tool, autoclave, associations
+from . import catalogo, ciclo_cura, parte, tool, autoclave, associations, cavalletto
 
 # Esporta le classi principali per un più facile import
 from .base import Base, TimestampMixin
@@ -11,6 +11,7 @@ from .catalogo import Catalogo
 from .parte import Parte
 from .tool import Tool
 from .autoclave import Autoclave, StatoAutoclaveEnum
+from .cavalletto import Cavalletto
 from .ciclo_cura import CicloCura
 from .associations import parte_tool_association
 from .odl import ODL
@@ -35,6 +36,7 @@ __all__ = [
     "Tool", 
     "Autoclave",
     "StatoAutoclaveEnum",
+    "Cavalletto",
     "CicloCura",
     "parte_tool_association",
     "ODL",

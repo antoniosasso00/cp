@@ -9,7 +9,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form'
+import { Switch } from '@/components/ui/switch'
+import { Badge } from '@/components/ui/badge'
 import { autoclavesApi } from '@/lib/api'
 
 const autoclaveSchema = z.object({
@@ -21,8 +23,16 @@ const autoclaveSchema = z.object({
   stato: z.enum(['DISPONIBILE', 'IN_USO', 'GUASTO', 'MANUTENZIONE', 'SPENTA']),
   temperatura_max: z.number().min(0, 'La temperatura deve essere positiva'),
   pressione_max: z.number().min(0, 'La pressione deve essere positiva'),
+  
   // ✅ NUOVO: Carico massimo per nesting su due piani
   max_load_kg: z.number().min(0, 'Il carico massimo deve essere positivo').optional(),
+  
+  // ✅ NUOVO: Proprietà relative ai cavalletti (sistema 2L)
+  usa_cavalletti: z.boolean().optional(),
+  altezza_cavalletto_standard: z.number().min(0, 'L\'altezza cavalletto deve essere positiva').optional(),
+  max_cavalletti: z.number().min(0, 'Il numero massimo cavalletti deve essere positivo').optional(),
+  clearance_verticale: z.number().min(0, 'Il clearance verticale deve essere positivo').optional(),
+  
   produttore: z.string().optional(),
   anno_produzione: z.number().optional(),
   note: z.string().optional(),
@@ -43,8 +53,16 @@ interface AutoclaveModalProps {
     stato: 'DISPONIBILE' | 'IN_USO' | 'GUASTO' | 'MANUTENZIONE' | 'SPENTA'
     temperatura_max: number
     pressione_max: number
+    
     // ✅ NUOVO: Carico massimo per nesting su due piani
     max_load_kg?: number
+    
+    // ✅ NUOVO: Proprietà relative ai cavalletti (sistema 2L)
+    usa_cavalletti?: boolean
+    altezza_cavalletto_standard?: number
+    max_cavalletti?: number
+    clearance_verticale?: number
+    
     produttore?: string
     anno_produzione?: number
     note?: string
@@ -68,6 +86,13 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
       temperatura_max: 0,
       pressione_max: 0,
       max_load_kg: 1000,
+      
+      // ✅ Valori di default per nuove autoclavi - CAVALLETTI DISABILITATI di default
+      usa_cavalletti: false,
+      altezza_cavalletto_standard: undefined,
+      max_cavalletti: undefined,
+      clearance_verticale: undefined,
+      
       produttore: '',
       anno_produzione: undefined,
       note: '',
@@ -87,12 +112,19 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
         temperatura_max: editingItem.temperatura_max || 0,
         pressione_max: editingItem.pressione_max || 0,
         max_load_kg: editingItem.max_load_kg || 1000,
+        
+        // ✅ Campi sistema 2L per editing - mantieni valori esistenti o default
+        usa_cavalletti: editingItem.usa_cavalletti || false,
+        altezza_cavalletto_standard: editingItem.altezza_cavalletto_standard || undefined,
+        max_cavalletti: editingItem.max_cavalletti || undefined,
+        clearance_verticale: editingItem.clearance_verticale || undefined,
+        
         produttore: editingItem.produttore || '',
         anno_produzione: editingItem.anno_produzione || undefined,
         note: editingItem.note || '',
       })
     } else {
-      // Reset per nuovo item
+      // Reset per nuovo item - CAVALLETTI DISABILITATI di default
       form.reset({
         nome: '',
         codice: '',
@@ -103,6 +135,13 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
         temperatura_max: 0,
         pressione_max: 0,
         max_load_kg: 1000,
+        
+        // ✅ Nuove autoclavi: cavalletti DISABILITATI di default (opzionale)
+        usa_cavalletti: false,
+        altezza_cavalletto_standard: undefined,
+        max_cavalletti: undefined,
+        clearance_verticale: undefined,
+        
         produttore: '',
         anno_produzione: undefined,
         note: '',
@@ -409,6 +448,154 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
                 </FormItem>
               )}
             />
+
+            {/* ✅ NUOVO: Sezione Sistema Cavalletti 2L - OPZIONALE */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-medium border-b pb-2 flex-1">🔧 Sistema Cavalletti (Opzionale)</h3>
+                <Badge variant="outline" className="text-xs">
+                  {form.watch('usa_cavalletti') ? '✅ ABILITATO' : '❌ DISABILITATO'}
+                </Badge>
+              </div>
+              
+              <FormField
+                control={form.control}
+                name="usa_cavalletti"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-base">Abilita Sistema Cavalletti</FormLabel>
+                      <FormDescription>
+                        🏗️ Permette nesting su due livelli con cavalletti di supporto.<br/>
+                        <span className="text-muted-foreground text-xs">
+                          ⚠️ Non tutte le autoclavi supportano i cavalletti - lasciare disabilitato se non supportati
+                        </span>
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+
+              {form.watch('usa_cavalletti') && (
+                <div className="space-y-4">
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <p className="text-sm text-green-800 font-medium">
+                      ✅ Sistema cavalletti abilitato - Configura i parametri sottostanti
+                    </p>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/20 rounded-lg">
+                    <FormField
+                      control={form.control}
+                      name="max_cavalletti"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Max Cavalletti</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="number"
+                              min="1"
+                              max="10"
+                              placeholder="es. 2"
+                              {...field}
+                              value={field.value || ''}
+                              onChange={e => {
+                                const value = e.target.value
+                                if (value === '') {
+                                  field.onChange(null)
+                                } else {
+                                  const numValue = Number(value)
+                                  if (!isNaN(numValue) && numValue >= 1) {
+                                    field.onChange(numValue)
+                                  }
+                                }
+                              }}
+                            />
+                          </FormControl>
+                          <FormDescription className="text-xs">
+                            Numero supportato dall'autoclave
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                  <FormField
+                    control={form.control}
+                    name="altezza_cavalletto_standard"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Altezza Cavalletto (mm)</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="number"
+                            min="50"
+                            max="500"
+                            placeholder="150"
+                            {...field}
+                            value={field.value || ''}
+                            onChange={e => {
+                              const value = e.target.value
+                              if (value === '') {
+                                field.onChange(null)
+                              } else {
+                                const numValue = Number(value)
+                                if (!isNaN(numValue) && numValue >= 50) {
+                                  field.onChange(numValue)
+                                }
+                              }
+                            }}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="clearance_verticale"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Clearance Verticale (mm)</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="number"
+                            min="10"
+                            max="100"
+                            placeholder="20"
+                            {...field}
+                            value={field.value || ''}
+                            onChange={e => {
+                              const value = e.target.value
+                              if (value === '') {
+                                field.onChange(null)
+                              } else {
+                                const numValue = Number(value)
+                                if (!isNaN(numValue) && numValue >= 10) {
+                                  field.onChange(numValue)
+                                }
+                              }
+                            }}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Spazio minimo tra tool e livello superiore
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  </div>
+                </div>
+              )}
+            </div>
 
             <FormField
               control={form.control}

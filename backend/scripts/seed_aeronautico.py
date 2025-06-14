@@ -122,8 +122,8 @@ def create_cicli_cura(session):
     return cicli_creati
 
 def create_autoclavi(session):
-    """Crea 3 autoclavi con specifiche aeronautiche realistiche"""
-    print("🏭 Creazione autoclavi aeronautiche...")
+    """Crea 3 autoclavi con specifiche aeronautiche realistiche e supporto 2L"""
+    print("🏭 Creazione autoclavi aeronautiche con supporto 2L...")
     
     autoclavi_data = [
         {
@@ -138,7 +138,13 @@ def create_autoclavi(session):
             "stato": StatoAutoclaveEnum.DISPONIBILE,
             "produttore": "Panini Aerospace",
             "anno_produzione": 2021,
-            "note": "Autoclave extra-large per compositi aeronautici di grandi dimensioni - 8m x 1.9m"
+            "note": "Autoclave extra-large per compositi aeronautici - 8m x 1.9m - Supporto cavalletti 2L",
+            # 🆕 SUPPORTO 2L CON CAVALLETTI
+            "usa_cavalletti": True,
+            "altezza_cavalletto_standard": 100.0,  # 100mm come da specifiche
+            "max_cavalletti": 6,  # Molti cavalletti per autoclave grande
+            "clearance_verticale": 50.0,  # 50mm di clearance
+            "peso_max_per_cavalletto_kg": 300.0  # 300kg per cavalletto - capacità elevata
         },
         {
             "nome": "AEROSPACE_ISMAR_L",
@@ -152,7 +158,13 @@ def create_autoclavi(session):
             "stato": StatoAutoclaveEnum.DISPONIBILE,
             "produttore": "ISMAR Systems",
             "anno_produzione": 2020,
-            "note": "Autoclave large per componenti strutturali - 4.5m x 1.9m"
+            "note": "Autoclave large per componenti strutturali - 4.5m x 1.9m - Supporto cavalletti 2L",
+            # 🆕 SUPPORTO 2L CON CAVALLETTI LIMITATO
+            "usa_cavalletti": True,
+            "altezza_cavalletto_standard": 100.0,  # 100mm come da specifiche
+            "max_cavalletti": 4,  # Cavalletti limitati per autoclave media
+            "clearance_verticale": 40.0,  # 40mm di clearance
+            "peso_max_per_cavalletto_kg": 250.0  # 250kg per cavalletto - capacità media
         },
         {
             "nome": "AEROSPACE_MAROSO_M",
@@ -166,7 +178,13 @@ def create_autoclavi(session):
             "stato": StatoAutoclaveEnum.DISPONIBILE,
             "produttore": "Maroso Technologies",
             "anno_produzione": 2019,
-            "note": "Autoclave medium per componenti specializzati - 2.9m x 1.9m"
+            "note": "Autoclave medium per componenti specializzati - 2.9m x 1.9m - Solo piano base",
+            # 🆕 SOLO PIANO BASE (NESSUN CAVALLETTO)
+            "usa_cavalletti": False,
+            "altezza_cavalletto_standard": None,
+            "max_cavalletti": 0,
+            "clearance_verticale": None,
+            "peso_max_per_cavalletto_kg": None  # Non usa cavalletti
         }
     ]
     
@@ -177,7 +195,7 @@ def create_autoclavi(session):
         autoclavi_create.append(autoclave)
     
     session.commit()
-    print(f"✅ Create {len(autoclavi_create)} autoclavi")
+    print(f"✅ Create {len(autoclavi_create)} autoclavi con configurazione 2L")
     return autoclavi_create
 
 def generate_aeronautical_tools(session):
@@ -424,7 +442,7 @@ def generate_aeronautical_odl(session, parts):
 def print_summary(cicli_cura, autoclavi, tools, parts, odl_list):
     """Stampa un riepilogo dei dati generati"""
     print("\n" + "="*60)
-    print("🚀 SEED AERONAUTICO COMPLETATO CON SUCCESSO!")
+    print("🚀 SEED AERONAUTICO 2L COMPLETATO CON SUCCESSO!")
     print("="*60)
     
     print(f"\n📊 RIEPILOGO DATI GENERATI:")
@@ -446,10 +464,20 @@ def print_summary(cicli_cura, autoclavi, tools, parts, odl_list):
     print(f"   • Peso: {min(pesi):.1f}-{max(pesi):.1f}kg (media: {sum(pesi)/len(pesi):.1f}kg)")
     print(f"   • Valvole per tool: 2")
     
-    print(f"\n🏭 AUTOCLAVI DISPONIBILI:")
+    print(f"\n🏭 AUTOCLAVI CON SUPPORTO 2L:")
     for autoclave in autoclavi:
-        print(f"   • {autoclave.nome}: {autoclave.lunghezza}x{autoclave.larghezza_piano}mm")
+        cavalletti_status = "🟢 2L ATTIVO" if autoclave.usa_cavalletti else "🔴 Solo piano base"
+        print(f"   • {autoclave.nome}: {autoclave.lunghezza}x{autoclave.larghezza_piano}mm - {cavalletti_status}")
         print(f"     Linee vuoto: {autoclave.num_linee_vuoto}, Max load: {autoclave.max_load_kg}kg")
+        
+        if autoclave.usa_cavalletti:
+            print(f"     🔧 Cavalletti: H={autoclave.altezza_cavalletto_standard}mm, Max={autoclave.max_cavalletti}, Clearance={autoclave.clearance_verticale}mm")
+            print(f"     🔄 Livello 0: Piano base autoclave")
+            print(f"     🔄 Livello 1: Cavalletti supporto (+{autoclave.altezza_cavalletto_standard}mm)")
+            print(f"     📊 Peso per cavalletto: {autoclave.peso_max_per_cavalletto_kg}kg")
+            max_peso_livello_1 = autoclave.peso_max_per_cavalletto_kg * autoclave.max_cavalletti
+            print(f"     📊 Peso max livello 1: {max_peso_livello_1:.0f}kg ({autoclave.max_cavalletti} cavalletti × {autoclave.peso_max_per_cavalletto_kg}kg)")
+            print(f"     🔒 Vincolo totale: Max {autoclave.max_load_kg}kg complessivi")
     
     print(f"\n🔄 CICLI DI CURA:")
     for ciclo in cicli_cura:
@@ -467,7 +495,16 @@ def print_summary(cicli_cura, autoclavi, tools, parts, odl_list):
     for priority, count in sorted(priority_counts.items()):
         print(f"     - Priorità {priority}: {count} ODL")
     
-    print(f"\n✅ Il database è ora pronto per testare il comportamento del nesting aeronautico!")
+    print(f"\n🆕 MODALITÀ 2L SUPPORTATA:")
+    cavalletti_count = sum(1 for a in autoclavi if a.usa_cavalletti)
+    print(f"   • Autoclavi con supporto cavalletti: {cavalletti_count}/{len(autoclavi)}")
+    print(f"   • Livello 0: Piano base dell'autoclave")
+    print(f"   • Livello 1: Cavalletti di supporto (100mm altezza)")
+    print(f"   • Peso dinamico: Basato su capacità × numero cavalletti utilizzati")
+    print(f"   • Compatibilità: Multi-batch supportato")
+    print(f"   • Vincolo: Peso totale ≤ carico massimo autoclave")
+    
+    print(f"\n✅ Il database è ora pronto per testare il nesting aeronautico 2L!")
     print("="*60)
 
 def main():

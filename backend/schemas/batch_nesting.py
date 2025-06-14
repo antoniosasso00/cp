@@ -331,3 +331,358 @@ class NestingSolveResponse(BaseModel):
                 "solved_at": "2025-06-02T12:30:45.123456"
             }
         } 
+
+# ========== SCHEMI PER NESTING A DUE LIVELLI v2.0 ==========
+
+class PosizionamentoTool2L(BaseModel):
+    """Schema per la posizione di un tool nel nesting a due livelli"""
+    # Campi base compatibili con NestingToolPosition
+    odl_id: int = Field(..., description="ID dell'ODL")
+    tool_id: int = Field(..., description="ID del tool")
+    x: float = Field(..., description="Posizione X in mm")
+    y: float = Field(..., description="Posizione Y in mm")
+    width: float = Field(..., description="Larghezza in mm")
+    height: float = Field(..., description="Altezza in mm")
+    rotated: bool = Field(default=False, description="Se il tool è ruotato")
+    weight_kg: float = Field(..., description="Peso del tool in kg")
+    
+    # 🆕 NUOVO: Campo livello per nesting 2L
+    level: int = Field(..., description="Livello di posizionamento: 0=piano base, 1=su cavalletto")
+    
+    # Metadati aggiuntivi per il livello
+    z_position: Optional[float] = Field(None, description="Posizione Z calcolata basata sul livello (mm)")
+    lines_used: int = Field(default=1, description="Numero di linee vuoto utilizzate")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "odl_id": 5,
+                "tool_id": 12,
+                "x": 150.0,
+                "y": 300.0,
+                "width": 400.0,
+                "height": 250.0,
+                "rotated": False,
+                "weight_kg": 35.5,
+                "level": 1,
+                "z_position": 100.0,
+                "lines_used": 2
+            }
+        }
+
+class CavallettoPosizionamento(BaseModel):
+    """Schema per la posizione di un cavalletto sotto un tool"""
+    # Coordinate assolute del cavalletto
+    x: float = Field(..., description="Posizione X del cavalletto in mm")
+    y: float = Field(..., description="Posizione Y del cavalletto in mm")
+    width: float = Field(..., description="Larghezza del cavalletto in mm")
+    height: float = Field(..., description="Profondità del cavalletto in mm")
+    
+    # Riferimento al tool supportato
+    tool_odl_id: int = Field(..., description="ID ODL del tool che questo cavalletto supporta")
+    tool_id: Optional[int] = Field(None, description="ID del tool che questo cavalletto supporta")
+    sequence_number: int = Field(..., description="Numero di sequenza del cavalletto per questo tool (0, 1, 2...)")
+    
+    # Metadati aggiuntivi
+    center_x: Optional[float] = Field(None, description="Centro X del cavalletto (calcolato)")
+    center_y: Optional[float] = Field(None, description="Centro Y del cavalletto (calcolato)")
+    support_area_mm2: Optional[float] = Field(None, description="Area di supporto fornita in mm²")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "x": 200.0,
+                "y": 350.0,
+                "width": 80.0,
+                "height": 60.0,
+                "tool_odl_id": 5,
+                "tool_id": 12,
+                "sequence_number": 0,
+                "center_x": 240.0,
+                "center_y": 380.0,
+                "support_area_mm2": 4800.0
+            }
+        }
+
+class NestingMetrics2L(BaseModel):
+    """Schema per le metriche del nesting a due livelli"""
+    # Metriche base compatibili con NestingMetricsResponse
+    area_utilization_pct: float = Field(..., description="Percentuale utilizzo area totale")
+    vacuum_util_pct: float = Field(..., description="Percentuale utilizzo linee vuoto")
+    efficiency_score: float = Field(..., description="Score efficienza complessivo")
+    weight_utilization_pct: float = Field(..., description="Percentuale utilizzo peso")
+    
+    # Metriche tecniche
+    time_solver_ms: float = Field(..., description="Tempo risoluzione solver in ms")
+    fallback_used: bool = Field(..., description="Se è stato usato algoritmo fallback")
+    algorithm_status: str = Field(..., description="Stato algoritmo")
+    
+    # Statistiche fisiche totali
+    total_area_cm2: float = Field(..., description="Area totale utilizzata in cm²")
+    total_weight_kg: float = Field(..., description="Peso totale in kg")
+    vacuum_lines_used: int = Field(..., description="Linee vuoto utilizzate")
+    pieces_positioned: int = Field(..., description="Numero pezzi posizionati")
+    pieces_excluded: int = Field(..., description="Numero pezzi esclusi")
+    
+    # 🆕 NUOVO: Metriche specifiche per livelli
+    level_0_count: int = Field(default=0, description="Numero tool posizionati sul piano base")
+    level_1_count: int = Field(default=0, description="Numero tool posizionati su cavalletti")
+    level_0_weight_kg: float = Field(default=0.0, description="Peso totale sul piano base in kg")
+    level_1_weight_kg: float = Field(default=0.0, description="Peso totale su cavalletti in kg")
+    level_0_area_pct: float = Field(default=0.0, description="Percentuale area utilizzata livello 0")
+    level_1_area_pct: float = Field(default=0.0, description="Percentuale area utilizzata livello 1")
+    
+    # Metriche cavalletti
+    cavalletti_used: int = Field(default=0, description="Numero totale di cavalletti utilizzati")
+    cavalletti_coverage_pct: float = Field(default=0.0, description="Percentuale copertura cavalletti sui tool livello 1")
+    
+    # Score complessità e ottimizzazione
+    complexity_score: float = Field(default=0.0, description="Score di complessità del dataset")
+    timeout_used_seconds: float = Field(default=0.0, description="Timeout utilizzato dal solver")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "area_utilization_pct": 72.5,
+                "vacuum_util_pct": 85.0,
+                "efficiency_score": 76.8,
+                "weight_utilization_pct": 68.2,
+                "time_solver_ms": 3250.0,
+                "fallback_used": False,
+                "algorithm_status": "CP-SAT_OPTIMAL_2L",
+                "total_area_cm2": 174000.0,
+                "total_weight_kg": 341.0,
+                "vacuum_lines_used": 8,
+                "pieces_positioned": 15,
+                "pieces_excluded": 2,
+                "level_0_count": 8,
+                "level_1_count": 7,
+                "level_0_weight_kg": 180.5,
+                "level_1_weight_kg": 160.5,
+                "level_0_area_pct": 41.7,
+                "level_1_area_pct": 25.0,
+                "cavalletti_used": 14,
+                "cavalletti_coverage_pct": 92.5,
+                "complexity_score": 1.8,
+                "timeout_used_seconds": 3.25
+            }
+        }
+
+class NestingSolveRequest2L(BaseModel):
+    """Schema per la richiesta dell'endpoint solve a due livelli"""
+    autoclave_id: int = Field(..., description="ID dell'autoclave da utilizzare")
+    odl_ids: Optional[List[int]] = Field(None, description="IDs degli ODL da processare (None = tutti disponibili)")
+    
+    # Parametri base
+    padding_mm: float = Field(default=10.0, ge=0.1, le=100, description="Padding tra i tool (mm)")
+    min_distance_mm: float = Field(default=15.0, ge=0.1, le=50, description="Distanza minima dai bordi (mm)")
+    vacuum_lines_capacity: Optional[int] = Field(None, ge=1, le=50, description="Capacità massima linee vuoto")
+    
+    # 🆕 NUOVO: Parametri specifici per due livelli
+    use_cavalletti: bool = Field(default=True, description="Abilita utilizzo cavalletti (secondo livello)")
+    cavalletto_height_mm: float = Field(default=100.0, ge=50, le=200, description="Altezza standard cavalletti (mm)")
+    max_weight_per_level_kg: float = Field(default=200.0, ge=50, le=1000, description="Peso massimo per livello (kg)")
+    prefer_base_level: bool = Field(default=True, description="Preferisci posizionamento su piano base")
+    
+    # Parametri avanzati
+    allow_heuristic: bool = Field(default=True, description="Abilita euristiche avanzate")
+    timeout_override: Optional[int] = Field(None, ge=30, le=600, description="Override timeout (30-600s)")
+    heavy_piece_threshold_kg: float = Field(default=50.0, ge=0, description="Soglia peso per pezzi pesanti")
+    use_multithread: bool = Field(default=True, description="Utilizza solver multithread")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "autoclave_id": 1,
+                "odl_ids": [5, 6, 7, 8],
+                "padding_mm": 10.0,
+                "min_distance_mm": 15.0,
+                "vacuum_lines_capacity": 25,
+                "use_cavalletti": True,
+                "cavalletto_height_mm": 100.0,
+                "max_weight_per_level_kg": 200.0,
+                "prefer_base_level": True,
+                "allow_heuristic": True,
+                "timeout_override": 120,
+                "heavy_piece_threshold_kg": 50.0,
+                "use_multithread": True
+            }
+        }
+
+class NestingSolveResponse2L(BaseModel):
+    """Schema per la risposta dell'endpoint solve a due livelli"""
+    success: bool = Field(..., description="Se il nesting è stato risolto con successo")
+    message: str = Field(..., description="Messaggio descrittivo del risultato")
+    
+    # 🆕 NUOVO: Risultati posizionamento a due livelli
+    positioned_tools: List[PosizionamentoTool2L] = Field(default=[], description="Tool posizionati con informazioni livello")
+    cavalletti: List[CavallettoPosizionamento] = Field(default=[], description="Cavalletti utilizzati per il supporto")
+    excluded_odls: List[NestingExcludedODL] = Field(default=[], description="ODL esclusi")
+    
+    # Motivi di esclusione dettagliati
+    excluded_reasons: Dict[str, int] = Field(default={}, description="Riassunto motivi esclusione")
+    
+    # 🆕 NUOVO: Metriche dettagliate per due livelli
+    metrics: NestingMetrics2L = Field(..., description="Metriche dettagliate del nesting 2L")
+    
+    # Informazioni autoclave
+    autoclave_info: Dict[str, Any] = Field(..., description="Informazioni autoclave utilizzata")
+    
+    # Configurazione cavalletti utilizzata
+    cavalletti_config: Optional[Dict[str, Any]] = Field(None, description="Configurazione cavalletti utilizzata")
+    
+    # Timestamp
+    solved_at: datetime = Field(default_factory=datetime.now, description="Timestamp risoluzione")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "message": "Nesting 2L risolto con successo utilizzando algoritmo CP-SAT",
+                "positioned_tools": [
+                    {
+                        "odl_id": 5,
+                        "tool_id": 12,
+                        "x": 150.0,
+                        "y": 300.0,
+                        "width": 400.0,
+                        "height": 250.0,
+                        "rotated": False,
+                        "weight_kg": 35.5,
+                        "level": 0,
+                        "z_position": 0.0,
+                        "lines_used": 2
+                    },
+                    {
+                        "odl_id": 6,
+                        "tool_id": 15,
+                        "x": 200.0,
+                        "y": 100.0,
+                        "width": 300.0,
+                        "height": 200.0,
+                        "rotated": True,
+                        "weight_kg": 28.0,
+                        "level": 1,
+                        "z_position": 100.0,
+                        "lines_used": 1
+                    }
+                ],
+                "cavalletti": [
+                    {
+                        "x": 220.0,
+                        "y": 120.0,
+                        "width": 80.0,
+                        "height": 60.0,
+                        "tool_odl_id": 6,
+                        "tool_id": 15,
+                        "sequence_number": 0,
+                        "center_x": 260.0,
+                        "center_y": 150.0,
+                        "support_area_mm2": 4800.0
+                    },
+                    {
+                        "x": 220.0,
+                        "y": 240.0,
+                        "width": 80.0,
+                        "height": 60.0,
+                        "tool_odl_id": 6,
+                        "tool_id": 15,
+                        "sequence_number": 1,
+                        "center_x": 260.0,
+                        "center_y": 270.0,
+                        "support_area_mm2": 4800.0
+                    }
+                ],
+                "excluded_odls": [],
+                "excluded_reasons": {},
+                "metrics": {
+                    "area_utilization_pct": 72.5,
+                    "vacuum_util_pct": 85.0,
+                    "efficiency_score": 76.8,
+                    "weight_utilization_pct": 68.2,
+                    "time_solver_ms": 3250.0,
+                    "fallback_used": False,
+                    "algorithm_status": "CP-SAT_OPTIMAL_2L",
+                    "total_area_cm2": 174000.0,
+                    "total_weight_kg": 63.5,
+                    "vacuum_lines_used": 3,
+                    "pieces_positioned": 2,
+                    "pieces_excluded": 0,
+                    "level_0_count": 1,
+                    "level_1_count": 1,
+                    "level_0_weight_kg": 35.5,
+                    "level_1_weight_kg": 28.0,
+                    "level_0_area_pct": 41.7,
+                    "level_1_area_pct": 25.0,
+                    "cavalletti_used": 2,
+                    "cavalletti_coverage_pct": 95.0,
+                    "complexity_score": 1.8,
+                    "timeout_used_seconds": 3.25
+                },
+                "autoclave_info": {
+                    "id": 1,
+                    "nome": "AeroTest-2L",
+                    "larghezza_piano": 1200.0,
+                    "lunghezza": 2000.0,
+                    "max_load_kg": 500.0,
+                    "num_linee_vuoto": 10,
+                    "has_cavalletti": True,
+                    "cavalletto_height": 100.0
+                },
+                "cavalletti_config": {
+                    "cavalletto_width": 80.0,
+                    "cavalletto_height": 60.0,
+                    "min_distance_from_edge": 30.0,
+                    "max_span_without_support": 400.0,
+                    "prefer_symmetric": True
+                },
+                "solved_at": "2025-06-02T14:15:30.456789"
+            }
+        }
+
+# ========== SCHEMI DI COMPATIBILITÀ PER MIGRAZIONE ==========
+
+class NestingToolPositionCompat(BaseModel):
+    """Schema di compatibilità che supporta sia il formato tradizionale che 2L"""
+    # Campi base sempre presenti
+    odl_id: int = Field(..., description="ID dell'ODL")
+    tool_id: int = Field(..., description="ID del tool")
+    x: float = Field(..., description="Posizione X in mm")
+    y: float = Field(..., description="Posizione Y in mm")
+    width: float = Field(..., description="Larghezza in mm")
+    height: float = Field(..., description="Altezza in mm")
+    rotated: bool = Field(default=False, description="Se il tool è ruotato")
+    weight_kg: float = Field(..., description="Peso del tool in kg")
+    
+    # Campo per compatibilità con formato tradizionale
+    plane: Optional[int] = Field(None, description="Piano di posizionamento (legacy: 1 o 2)")
+    
+    # Campo per nesting 2L
+    level: Optional[int] = Field(None, description="Livello di posizionamento (2L: 0=piano, 1=cavalletto)")
+    
+    # Metadati aggiuntivi
+    z_position: Optional[float] = Field(None, description="Posizione Z calcolata")
+    lines_used: int = Field(default=1, description="Numero di linee vuoto utilizzate")
+    
+    def to_2l_format(self) -> PosizionamentoTool2L:
+        """Converte al formato 2L, mappando plane->level se necessario"""
+        level = self.level
+        if level is None and self.plane is not None:
+            # Mappa plane tradizionale (1,2) a level 2L (0,1)
+            level = max(0, self.plane - 1)
+        elif level is None:
+            level = 0  # Default al piano base
+            
+        return PosizionamentoTool2L(
+            odl_id=self.odl_id,
+            tool_id=self.tool_id,
+            x=self.x,
+            y=self.y,
+            width=self.width,
+            height=self.height,
+            rotated=self.rotated,
+            weight_kg=self.weight_kg,
+            level=level,
+            z_position=self.z_position or (level * 100.0),
+            lines_used=self.lines_used
+        ) 

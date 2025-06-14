@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, joinedload
 from datetime import datetime
 import time
 from pydantic import BaseModel
+import json
 
 from api.database import get_db
 from models.batch_nesting import BatchNesting, StatoBatchNestingEnum
@@ -26,7 +27,7 @@ from models.odl import ODL
 from models.parte import Parte
 from models.ciclo_cura import CicloCura
 from models.tool import Tool
-from services.nesting_service import NestingService, NestingParameters
+from services.nesting_service import NestingService, NestingParameters as ServiceNestingParameters
 from schemas.batch_nesting import (
     NestingSolveRequest, 
     NestingSolveResponse, 
@@ -34,7 +35,20 @@ from schemas.batch_nesting import (
     NestingToolPosition,
     NestingExcludedODL
 )
-from services.nesting.solver import NestingModel, NestingParameters, ToolInfo, AutoclaveInfo
+from services.nesting.solver import NestingModel, NestingParameters as SolverNestingParameters, ToolInfo, AutoclaveInfo
+from schemas.batch_nesting import (
+    NestingSolveRequest2L,
+    NestingSolveResponse2L,
+    PosizionamentoTool2L,
+    CavallettoPosizionamento,
+    NestingMetrics2L
+)
+from services.nesting.solver_2l import (
+    NestingModel2L,
+    NestingParameters2L,
+    ToolInfo2L,
+    AutoclaveInfo2L
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +77,16 @@ class NestingMultiFilteredRequest(BaseModel):
     odl_ids: List[str]
     autoclave_ids: List[str]
     parametri: NestingParametri = NestingParametri()
+
+class NestingMulti2LRequest(BaseModel):
+    """Request per endpoint multi-2L"""
+    autoclavi_2l: List[int]
+    odl_ids: List[int]
+    parametri: NestingParametri
+    use_cavalletti: bool = True
+    cavalletto_height_mm: float = 100.0
+    max_weight_per_level_kg: float = 200.0
+    prefer_base_level: bool = True
 
 class NestingResponse(BaseModel):
     batch_id: Optional[str] = ""
@@ -156,6 +180,7 @@ def get_nesting_data(db: Session = Depends(get_db)):
                 
                 odl_list.append({
                     "id": getattr(odl, 'id', None),
+                    "numero_odl": getattr(odl, 'numero_odl', None),
                     "status": getattr(odl, 'status', 'Unknown'),
                     "priorita": getattr(odl, 'priorita', 1),
                     "created_at": odl.created_at.isoformat() if hasattr(odl, 'created_at') and odl.created_at else None,
@@ -169,6 +194,7 @@ def get_nesting_data(db: Session = Depends(get_db)):
                 # Aggiungi comunque l'ODL con dati minimi
                 odl_list.append({
                     "id": getattr(odl, 'id', None),
+                    "numero_odl": getattr(odl, 'numero_odl', None),
                     "status": getattr(odl, 'status', 'Unknown'),
                     "priorita": getattr(odl, 'priorita', 1),
                     "created_at": odl.created_at.isoformat() if hasattr(odl, 'created_at') and odl.created_at else None,
@@ -204,7 +230,13 @@ def get_nesting_data(db: Session = Depends(get_db)):
                     "max_load_kg": getattr(autoclave, 'max_load_kg', 1000.0),
                     "num_linee_vuoto": getattr(autoclave, 'num_linee_vuoto', 10),
                     "produttore": getattr(autoclave, 'produttore', None),
-                    "anno_produzione": getattr(autoclave, 'anno_produzione', None)
+                    "anno_produzione": getattr(autoclave, 'anno_produzione', None),
+                    # ✅ FIX: Aggiunta campi 2L necessari per frontend
+                    "usa_cavalletti": getattr(autoclave, 'usa_cavalletti', False),
+                    "altezza_cavalletto_standard": getattr(autoclave, 'altezza_cavalletto_standard', None),
+                    "max_cavalletti": getattr(autoclave, 'max_cavalletti', 2),
+                    "clearance_verticale": getattr(autoclave, 'clearance_verticale', None),
+                    "peso_max_per_cavalletto_kg": getattr(autoclave, 'peso_max_per_cavalletto_kg', 300.0)
                 })
             except Exception as autoclave_error:
                 logger.warning(f"⚠️ Errore processando autoclave {getattr(autoclave, 'id', 'unknown')}: {str(autoclave_error)}")
@@ -230,7 +262,12 @@ def get_nesting_data(db: Session = Depends(get_db)):
             status="success"
         )
         
-        logger.info(f"✅ Dati nesting recuperati: {len(odl_list)} ODL, {len(autoclavi_list)} autoclavi")
+        # Debug logging per 2L
+        autoclavi_2l = [a for a in autoclavi_list if a.get('usa_cavalletti', False)]
+        logger.info(f"✅ Dati nesting recuperati: {len(odl_list)} ODL, {len(autoclavi_list)} autoclavi ({len(autoclavi_2l)} con 2L)")
+        if autoclavi_2l:
+            logger.info(f"🔧 Autoclavi 2L: {[f'{a['nome']} (cavalletti: {a.get('usa_cavalletti', False)})' for a in autoclavi_2l]}")
+        
         return response
         
     except Exception as e:
@@ -836,7 +873,7 @@ def solve_nesting_v1_4_12_demo(
             )
         
         # Configura parametri solver
-        solver_params = NestingParameters(
+        solver_params = SolverNestingParameters(
             padding_mm=int(request.padding_mm),
             min_distance_mm=int(request.min_distance_mm),
             vacuum_lines_capacity=request.vacuum_lines_capacity or autoclave.num_linee_vuoto,
@@ -1103,7 +1140,7 @@ def generate_nesting(
         nesting_service = get_nesting_service()
         
         # 🔧 FIX: Parametri conversione con tutti i campi necessari
-        parameters = NestingParameters(
+        parameters = ServiceNestingParameters(
             padding_mm=parametri.padding_mm,
             min_distance_mm=parametri.min_distance_mm,
             # vacuum_lines_capacity rimosso - ora preso dall'autoclave
@@ -1150,7 +1187,7 @@ def generate_nesting(
                 'total_weight': result.total_weight,
                 'positioned_tools': len(result.positioned_tools),
                 'positioned_tools_data': positioned_tools_data,  # ✅ Aggiunto dati dettagliati
-                'excluded_odls': len(result.excluded_odls),
+                'excluded_odls': result.excluded_odls if hasattr(result, 'excluded_odls') else [],
                 'batch_id': batch_id,  # 🔧 FIX CRITICO: Usa ID reale del batch creato
                 'message': f'Nesting aerospace completato: {result.efficiency:.1f}% efficienza'
             }
@@ -1162,7 +1199,7 @@ def generate_nesting(
                 'efficiency': 0.0,
                 'total_weight': 0.0,
                 'positioned_tools': 0,
-                'excluded_odls': len(odl_ids),
+                'excluded_odls': [{'odl_id': odl_id, 'motivo': error_msg} for odl_id in odl_ids],
                 'batch_id': None,
                 'message': f'Nesting aerospace fallito: {error_msg}'
             }
@@ -1174,7 +1211,7 @@ def generate_nesting(
             'efficiency': 0.0,
             'total_weight': 0.0,
             'positioned_tools': 0,
-            'excluded_odls': len(odl_ids),
+            'excluded_odls': [{'odl_id': odl_id, 'motivo': f'Errore critico: {str(e)}'} for odl_id in odl_ids],
             'batch_id': None,
             'message': f'Errore aerospace critico: {str(e)}'
         }
@@ -1222,3 +1259,721 @@ def cleanup_draft_correlations(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Errore durante cleanup correlazioni DRAFT: {str(e)}"
         )
+
+# ========== NUOVO ENDPOINT NESTING 2L - PARALLEL STRUCTURE ==========
+
+@router.post("/2l", response_model=NestingSolveResponse2L,
+             summary="🚀 Calcola il nesting 2D su due livelli (piano + cavalletti)",
+             description="Calcola il nesting 2D su due livelli (piano + cavalletti)")
+def solve_nesting_2l_batch(
+    request: NestingSolveRequest2L,
+    db: Session = Depends(get_db)
+):
+    """
+    🚀 ENDPOINT NESTING SOLVER 2L - BATCH MODE
+    ==========================================
+    
+    Risolve problemi di nesting 2D utilizzando due livelli fisici:
+    - Piano base dell'autoclave (livello 0)
+    - Cavalletti di supporto (livello 1)
+    
+    **Caratteristiche principali:**
+    - Algoritmi CP-SAT ottimizzati per due livelli
+    - Calcolo automatico posizione cavalletti
+    - Bilanciamento intelligente peso tra livelli
+    - Gestione interferenze cavalletti-tool
+    
+    **Parametri specifici 2L:**
+    - usa_cavalletti: Abilita/disabilita secondo livello
+    - cavalletto_height_mm: Altezza cavalletti (50-200mm)
+    - max_weight_per_level_kg: Peso massimo per livello
+    - prefer_base_level: Preferenza piano base
+    
+    **Output ottimizzato:**
+    - positioned_tools: Include campo 'level' (0=base, 1=cavalletto)
+    - cavalletti: Posizioni automatiche cavalletti calcolate
+    - metrics: Metriche separate per livello (level_0_count, level_1_count)
+    """
+    start_time = time.time()
+    logger.info(f"🚀 === NESTING 2L BATCH START === Autoclave: {request.autoclave_id}, ODL: {request.odl_ids}")
+    
+    try:
+        # 1. Recupera e valida autoclave
+        autoclave = db.query(Autoclave).filter(Autoclave.id == request.autoclave_id).first()
+        if not autoclave:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Autoclave con ID {request.autoclave_id} non trovata"
+            )
+        
+        # Verifica supporto cavalletti se richiesto
+        if request.use_cavalletti and not autoclave.usa_cavalletti:
+            logger.warning(f"⚠️ Autoclave {autoclave.nome} non supporta cavalletti, usa_cavalletti disabilitato")
+            request.use_cavalletti = False
+        
+        logger.info(f"🔧 Autoclave: {autoclave.nome}, Cavalletti: {'ON' if request.use_cavalletti else 'OFF'}")
+        
+        # 2. Recupera ODL da processare
+        if request.odl_ids:
+            # ODL specifici richiesti
+            odls_query = db.query(ODL).options(
+                joinedload(ODL.tool),
+                joinedload(ODL.parte)
+            ).filter(
+                ODL.id.in_(request.odl_ids),
+                ODL.status == "Attesa Cura"
+            )
+        else:
+            # Tutti gli ODL in attesa di cura (limite di sicurezza)
+            odls_query = db.query(ODL).options(
+                joinedload(ODL.tool),
+                joinedload(ODL.parte)
+            ).filter(ODL.status == "Attesa Cura").limit(20)
+        
+        odls = odls_query.all()
+        
+        if not odls:
+            return NestingSolveResponse2L(
+                success=False,
+                message="Nessun ODL disponibile per il nesting 2L",
+                positioned_tools=[],
+                cavalletti=[],
+                excluded_odls=[],
+                metrics=NestingMetrics2L(
+                    area_utilization_pct=0.0,
+                    vacuum_util_pct=0.0,
+                    efficiency_score=0.0,
+                    weight_utilization_pct=0.0,
+                    time_solver_ms=(time.time() - start_time) * 1000,
+                    fallback_used=False,
+                    algorithm_status="NO_ODL_AVAILABLE",
+                    total_area_cm2=0.0,
+                    total_weight_kg=0.0,
+                    vacuum_lines_used=0,
+                    pieces_positioned=0,
+                    pieces_excluded=len(request.odl_ids or []),
+                    level_0_count=0,
+                    level_1_count=0,
+                    level_0_weight_kg=0.0,
+                    level_1_weight_kg=0.0,
+                    level_0_area_pct=0.0,
+                    level_1_area_pct=0.0,
+                    cavalletti_used=0,
+                    cavalletti_coverage_pct=0.0,
+                    complexity_score=0.0,
+                    timeout_used_seconds=0.0
+                ),
+                autoclave_info={
+                    "id": autoclave.id,
+                    "nome": autoclave.nome,
+                    "dimensioni": f"{autoclave.lunghezza}x{autoclave.larghezza_piano}mm",
+                    "cavalletti_supportati": autoclave.usa_cavalletti
+                }
+            )
+        
+        logger.info(f"📋 ODL trovati: {len(odls)}")
+        
+        # 3. Converte ODL in ToolInfo2L
+        tools_2l = []
+        for odl in odls:
+            if not odl.tool:
+                logger.warning(f"⚠️ Tool non trovato per ODL {odl.id}")
+                continue
+                
+            if not odl.parte:
+                logger.warning(f"⚠️ Parte non trovata per ODL {odl.id}")
+                continue
+            
+            # Converte in ToolInfo2L usando la funzione esistente
+            tool_2l = _convert_db_to_tool_info_2l(odl, odl.tool, odl.parte)
+            tools_2l.append(tool_2l)
+            
+        logger.info(f"🔧 Tool convertiti per 2L: {len(tools_2l)}")
+        
+        if not tools_2l:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Nessun tool valido trovato per gli ODL specificati"
+            )
+        
+        # 4. Converte autoclave in AutoclaveInfo2L
+        autoclave_2l = _convert_db_to_autoclave_info_2l(autoclave)
+        
+        # ⚠️ VERIFICA SUPPORTO CAVALLETTI AUTOCLAVE
+        if request.use_cavalletti and not autoclave.usa_cavalletti:
+            logger.warning(f"⚠️ Richiesti cavalletti ma autoclave {autoclave.nome} non li supporta")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"L'autoclave {autoclave.nome} non supporta i cavalletti. Disabilitare 'use_cavalletti' nella richiesta."
+            )
+        
+        # Aggiorna con parametri richiesta E controllo autoclave
+        autoclave_2l.has_cavalletti = request.use_cavalletti and autoclave.usa_cavalletti
+        autoclave_2l.cavalletto_height = request.cavalletto_height_mm
+        
+        logger.info(f"🔧 Autoclave 2L configurata: {autoclave_2l.width}x{autoclave_2l.height}mm")
+        
+        # 5. Configura parametri solver 2L
+        parameters_2l = NestingParameters2L(
+            padding_mm=request.padding_mm,
+            min_distance_mm=request.min_distance_mm,
+            vacuum_lines_capacity=request.vacuum_lines_capacity or autoclave.num_linee_vuoto or 20,
+            use_cavalletti=request.use_cavalletti,
+            cavalletto_height_mm=request.cavalletto_height_mm,
+            prefer_base_level=request.prefer_base_level,
+            allow_heuristic=request.allow_heuristic,
+            use_multithread=request.use_multithread,
+            heavy_piece_threshold_kg=request.heavy_piece_threshold_kg
+        )
+        
+        # Override timeout se specificato
+        if request.timeout_override:
+            parameters_2l.base_timeout_seconds = float(request.timeout_override)
+            parameters_2l.max_timeout_seconds = float(request.timeout_override)
+        
+        # 6. Inizializza solver 2L e risolve usando solve_2l
+        solver_2l = NestingModel2L(parameters_2l)
+        logger.info(f"🎯 Avvio solver 2L batch...")
+        
+        # Chiama il metodo solve_2l del solver (come richiesto nelle specifiche)
+        solution_2l = solver_2l.solve_2l(tools_2l, autoclave_2l)
+        
+        # 7. Converte soluzione in risposta Pydantic usando metodo esistente
+        response = solver_2l.convert_to_pydantic_response(
+            solution_2l, 
+            autoclave_2l,
+            request_params=request.model_dump()
+        )
+        
+        # 🆕 SALVATAGGIO BATCH 2L: Salva sempre se l'algoritmo ha successo
+        if response.success and response.metrics.pieces_positioned > 0:
+            try:
+                # Prepara configurazione JSON per il batch
+                configurazione_json = {
+                    "positioned_tools": [tool.model_dump() for tool in response.positioned_tools],
+                    "cavalletti": [cav.model_dump() for cav in response.cavalletti],
+                    "autoclave_info": response.autoclave_info,
+                    "algorithm_used": response.metrics.algorithm_status,
+                    "parametri_usati": request.model_dump(),
+                    "is_2l_batch": True  # Flag per identificare batch 2L
+                }
+                
+                # 🎯 CREA BATCH 2L CON CAMPI CORRETTI E COMPLETI
+                batch = BatchNesting(
+                    nome=f"Batch 2L {autoclave.nome}",
+                    autoclave_id=autoclave.id,
+                    configurazione_json=configurazione_json,
+                    # ✅ Campi opzionali con valori di default sicuri
+                    efficiency=float(response.metrics.efficiency_score or 0.0),
+                    peso_totale_kg=int(response.metrics.total_weight_kg or 0),
+                    numero_nesting=1,
+                    area_totale_utilizzata=int(response.metrics.total_area_cm2 or 0),
+                    valvole_totali_utilizzate=int(response.metrics.vacuum_lines_used or 0),
+                    note=f"Batch 2L: {response.metrics.pieces_positioned} tool posizionati",
+                    # ✅ Tracciabilità 
+                    creato_da_utente="SYSTEM_2L",
+                    creato_da_ruolo="AUTO"
+                )
+                
+                db.add(batch)
+                db.commit()
+                db.refresh(batch)
+                
+                logger.info(f"💾 Batch 2L salvato nel database con ID: {batch.id}")
+                
+                # 🎯 SOLUZIONE SEMPLICE: Aggiungi batch_id direttamente alla risposta come dict
+                response_dict = response.model_dump()
+                response_dict["batch_id"] = str(batch.id)
+                response_dict["saved_to_database"] = True
+                
+                solve_time = (time.time() - start_time) * 1000
+                logger.info(f"✅ Nesting 2L batch completato in {solve_time:.1f}ms: {response.metrics.pieces_positioned} tool posizionati")
+                logger.info(f"📊 Distribuzione livelli: L0={response.metrics.level_0_count}, L1={response.metrics.level_1_count}")
+                logger.info(f"🎯 Batch ID per redirect frontend: {batch.id}")
+                
+                return response_dict
+                
+            except Exception as e:
+                logger.error(f"❌ Errore salvataggio batch 2L: {str(e)}")
+                logger.error(f"❌ Traceback completo: {str(e)}", exc_info=True)
+                
+                # ⚠️ Salvataggio fallito: restituisci risposta con errore
+                response_dict = response.model_dump()
+                response_dict["debug_error"] = f"Errore salvataggio: {str(e)}"
+                response_dict["saved_to_database"] = False
+                
+                return response_dict
+                
+        solve_time = (time.time() - start_time) * 1000
+        logger.info(f"✅ Nesting 2L batch completato in {solve_time:.1f}ms: {response.metrics.pieces_positioned} tool posizionati")
+        logger.info(f"📊 Distribuzione livelli: L0={response.metrics.level_0_count}, L1={response.metrics.level_1_count}")
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Errore solver 2L batch: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante il nesting 2L batch: {str(e)}"
+        )
+
+
+# ========== ENDPOINT NESTING 2L ORIGINALE ==========
+
+def _convert_db_to_tool_info_2l(odl: ODL, tool: Tool, parte: Parte) -> ToolInfo2L:
+    """Converte dati database in ToolInfo2L per il solver"""
+    # Verifica se il tool può essere usato su cavalletto (euristica basata su peso/dimensioni)
+    can_use_cavalletto = (
+        (tool.peso or 0) <= 50.0 and  # Peso massimo 50kg per cavalletti
+        (tool.larghezza_piano or 0) <= 500.0 and  # Dimensioni ragionevoli
+        (tool.lunghezza_piano or 0) <= 800.0
+    )
+    
+    return ToolInfo2L(
+        odl_id=odl.id,
+        width=tool.lunghezza_piano or 100.0,
+        height=tool.larghezza_piano or 100.0,
+        weight=tool.peso or 1.0,
+        lines_needed=parte.num_valvole_richieste or 1,
+        ciclo_cura_id=parte.ciclo_cura_id,
+        priority=1,
+        can_use_cavalletto=can_use_cavalletto,
+        preferred_level=None  # Lascia al solver decidere
+    )
+
+def _convert_db_to_autoclave_info_2l(autoclave: Autoclave) -> AutoclaveInfo2L:
+    """Converte dati autoclave database in AutoclaveInfo2L"""
+    return AutoclaveInfo2L(
+        id=autoclave.id,
+        width=autoclave.lunghezza or 1000.0,
+        height=autoclave.larghezza_piano or 800.0,
+        max_weight=autoclave.max_load_kg or 500.0,
+        max_lines=autoclave.num_linee_vuoto or 20,
+        has_cavalletti=autoclave.usa_cavalletti or False,
+        cavalletto_height=autoclave.altezza_cavalletto_standard or 100.0,
+        # 🆕 NUOVO: Peso dinamico per cavalletto dal database
+        peso_max_per_cavalletto_kg=autoclave.peso_max_per_cavalletto_kg or 300.0,
+        num_cavalletti_utilizzati=0  # Verrà calcolato dinamicamente dal solver
+    )
+
+# ========== NUOVO ENDPOINT CARICAMENTO BATCH 2L ==========
+
+@router.get("/result/{batch_id}", 
+            summary="🎯 Recupera risultati batch (1L o 2L) per visualizzazione")
+def get_batch_results(
+    batch_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    🎯 ENDPOINT UNIVERSALE PER BATCH 1L E 2L
+    ========================================
+    
+    Recupera i risultati di un batch (normale o 2L) dal database
+    per la visualizzazione nella pagina risultati.
+    
+    Args:
+        batch_id: ID del batch da recuperare
+        
+    Returns:
+        Configurazione batch con metadati per la visualizzazione
+    """
+    try:
+        logger.info(f"🔍 Richiesta caricamento batch: {batch_id}")
+        
+        # Cerca il batch nel database
+        batch = db.query(BatchNesting).filter(BatchNesting.id == batch_id).first()
+        
+        if not batch:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Batch con ID {batch_id} non trovato"
+            )
+        
+        # Verifica se è un batch 2L
+        is_2l_batch = False
+        if batch.configurazione_json:
+            is_2l_batch = batch.configurazione_json.get('is_2l_batch', False)
+        
+        # Prepara la risposta base
+        response_data = {
+            "id": str(batch.id),
+            "nome": batch.nome,
+            "stato": batch.stato.value if batch.stato else "draft",
+            "autoclave_id": batch.autoclave_id,
+            "efficiency_percentage": batch.efficiency_percentage,
+            "total_weight_kg": batch.total_weight_kg,
+            "positioned_tools_count": batch.positioned_tools_count,
+            "excluded_tools_count": batch.excluded_tools_count,
+            "algorithm_used": batch.algorithm_used,
+            "tempo_generazione_ms": batch.tempo_generazione_ms,
+            "created_at": batch.created_at.isoformat() if batch.created_at else None,
+            "updated_at": batch.updated_at.isoformat() if batch.updated_at else None,
+            "is_2l_batch": is_2l_batch
+        }
+        
+        # Aggiungi configurazione completa se disponibile
+        if batch.configurazione_json:
+            response_data["configurazione_json"] = batch.configurazione_json
+            
+            # Se è un batch 2L, aggiungi metadati specifici
+            if is_2l_batch:
+                positioned_tools = batch.configurazione_json.get('positioned_tools', [])
+                cavalletti = batch.configurazione_json.get('cavalletti', [])
+                
+                # Conta tool per livello
+                level_0_count = len([t for t in positioned_tools if t.get('level') == 0])
+                level_1_count = len([t for t in positioned_tools if t.get('level') == 1])
+                
+                response_data["level_0_count"] = level_0_count
+                response_data["level_1_count"] = level_1_count
+                response_data["cavalletti_count"] = len(cavalletti)
+                
+                logger.info(f"📊 Batch 2L caricato: L0={level_0_count}, L1={level_1_count}, cavalletti={len(cavalletti)}")
+        
+        # Recupera informazioni autoclave
+        if batch.autoclave_id:
+            autoclave = db.query(Autoclave).filter(Autoclave.id == batch.autoclave_id).first()
+            if autoclave:
+                response_data["autoclave"] = {
+                    "nome": autoclave.nome,
+                    "codice": autoclave.codice,
+                    "lunghezza": autoclave.lunghezza,
+                    "larghezza_piano": autoclave.larghezza_piano,
+                    "usa_cavalletti": autoclave.usa_cavalletti
+                }
+        
+        logger.info(f"✅ Batch caricato: {batch.nome} ({'2L' if is_2l_batch else '1L'})")
+        return response_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Errore caricamento batch {batch_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante il caricamento del batch: {str(e)}"
+        )
+
+# ========== NUOVO ENDPOINT MULTI-2L ==========
+
+@router.post("/2l-multi", response_model=Dict[str, Any],
+             summary="🚀 Nesting 2L multi-autoclave senza concorrenza",
+             description="Genera batch 2L per multiple autoclavi in sequenza per evitare problemi di concorrenza")
+def solve_nesting_2l_multi_batch(
+    request: NestingMulti2LRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    🚀 ENDPOINT NESTING SOLVER 2L MULTI-AUTOCLAVE - SEQUENZIALE
+    ===========================================================
+    
+    Risolve problemi di nesting 2D per multiple autoclavi SEQUENZIALMENTE
+    invece che in parallelo, evitando problemi di concorrenza del database.
+    
+    **Differenze chiave vs /2l:**
+    - Processa multiple autoclavi in un singolo request
+    - Esecuzione sequenziale invece che parallela
+    - Gestione transazioni database atomica
+    - Response unificata con tutti i risultati
+    
+    **Request format:**
+    {
+        "autoclavi_2l": [1, 2, 3],  // ID autoclavi con supporto 2L
+        "odl_ids": [5, 6, 7, 8],
+        "parametri": {"padding_mm": 5, "min_distance_mm": 10},
+        "use_cavalletti": true,
+        "cavalletto_height_mm": 100.0,
+        "max_weight_per_level_kg": 200.0,
+        "prefer_base_level": true
+    }
+    """
+    start_time = time.time()
+    logger.info(f"🚀 === NESTING 2L MULTI-BATCH START ===")
+    
+    try:
+        # Estrai parametri dalla richiesta Pydantic
+        autoclavi_2l_ids = request.autoclavi_2l
+        odl_ids = request.odl_ids
+        parametri = request.parametri
+        use_cavalletti = request.use_cavalletti
+        cavalletto_height_mm = request.cavalletto_height_mm
+        max_weight_per_level_kg = request.max_weight_per_level_kg
+        prefer_base_level = request.prefer_base_level
+        
+        if not autoclavi_2l_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Almeno un'autoclave 2L deve essere specificata"
+            )
+        
+        if not odl_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Almeno un ODL deve essere specificato"
+            )
+        
+        logger.info(f"📋 Multi-2L: {len(autoclavi_2l_ids)} autoclavi, {len(odl_ids)} ODL")
+        
+        batch_results = []
+        successful_batches = []
+        
+        # 🔄 PROCESSO SEQUENZIALE PER EVITARE CONCORRENZA
+        for autoclave_id in autoclavi_2l_ids:
+            try:
+                logger.info(f"🎯 Processando autoclave 2L: {autoclave_id}")
+                
+                # Crea richiesta per singola autoclave
+                single_request = NestingSolveRequest2L(
+                    autoclave_id=autoclave_id,
+                    odl_ids=odl_ids,
+                    padding_mm=parametri.padding_mm,
+                    min_distance_mm=parametri.min_distance_mm,
+                    use_cavalletti=use_cavalletti,
+                    cavalletto_height_mm=cavalletto_height_mm,
+                    max_weight_per_level_kg=max_weight_per_level_kg,
+                    prefer_base_level=prefer_base_level,
+                    allow_heuristic=True,
+                    use_multithread=True,
+                    heavy_piece_threshold_kg=50.0
+                )
+                
+                # 🔧 CHIAMATA SEQUENZIALE AL MOTORE 2L
+                # Usa la stessa logica del singolo endpoint ma in modo controllato
+                autoclave = db.query(Autoclave).filter(Autoclave.id == autoclave_id).first()
+                if not autoclave:
+                    logger.warning(f"⚠️ Autoclave {autoclave_id} non trovata")
+                    continue
+                
+                # Verifica supporto cavalletti
+                if use_cavalletti and not autoclave.usa_cavalletti:
+                    logger.warning(f"⚠️ Autoclave {autoclave.nome} non supporta cavalletti")
+                    continue
+                
+                # Recupera ODL da processare
+                odls = db.query(ODL).options(
+                    joinedload(ODL.tool),
+                    joinedload(ODL.parte)
+                ).filter(
+                    ODL.id.in_(odl_ids),
+                    ODL.status == "Attesa Cura"
+                ).all()
+                
+                if not odls:
+                    logger.warning(f"⚠️ Nessun ODL valido per autoclave {autoclave_id}")
+                    continue
+                
+                # Converte in ToolInfo2L
+                tools_2l = []
+                for odl in odls:
+                    if odl.tool and odl.parte:
+                        tool_2l = _convert_db_to_tool_info_2l(odl, odl.tool, odl.parte)
+                        tools_2l.append(tool_2l)
+                
+                if not tools_2l:
+                    logger.warning(f"⚠️ Nessun tool valido per autoclave {autoclave_id}")
+                    continue
+                
+                # Converte autoclave
+                autoclave_2l = _convert_db_to_autoclave_info_2l(autoclave)
+                autoclave_2l.has_cavalletti = use_cavalletti and autoclave.usa_cavalletti
+                autoclave_2l.cavalletto_height = cavalletto_height_mm
+                
+                # Configura parametri solver
+                parameters_2l = NestingParameters2L(
+                    padding_mm=single_request.padding_mm,
+                    min_distance_mm=single_request.min_distance_mm,
+                    vacuum_lines_capacity=autoclave.num_linee_vuoto or 20,
+                    use_cavalletti=use_cavalletti,
+                    cavalletto_height_mm=cavalletto_height_mm,
+                    prefer_base_level=prefer_base_level,
+                    allow_heuristic=True,
+                    use_multithread=True,
+                    heavy_piece_threshold_kg=50.0
+                )
+                
+                # Risolve nesting 2L
+                solver_2l = NestingModel2L(parameters_2l)
+                solution_2l = solver_2l.solve_2l(tools_2l, autoclave_2l)
+                response = solver_2l.convert_to_pydantic_response(
+                    solution_2l, 
+                    autoclave_2l,
+                    request_params=single_request.model_dump()
+                )
+                
+                # Salva batch se successo
+                if response.success and response.metrics.pieces_positioned > 0:
+                    try:
+                        # 🔧 FIX SERIALIZZAZIONE: Usa dict invece di model_dump per evitare errori di serializzazione
+                        def safe_serialize(obj):
+                            """Serializza in modo sicuro un oggetto Pydantic"""
+                            try:
+                                return obj.model_dump() if hasattr(obj, 'model_dump') else dict(obj)
+                            except Exception as e:
+                                logger.warning(f"⚠️ Fallback serialization per {type(obj)}: {e}")
+                                # Fallback: serializza manualmente i campi base
+                                if hasattr(obj, '__dict__'):
+                                    return {k: v for k, v in obj.__dict__.items() if not k.startswith('_')}
+                                return {}
+                        
+                        configurazione_json = {
+                            "positioned_tools": [safe_serialize(tool) for tool in response.positioned_tools],
+                            "cavalletti": [safe_serialize(cav) for cav in response.cavalletti],
+                            "autoclave_info": response.autoclave_info,
+                            "algorithm_used": response.metrics.algorithm_status,
+                            "parametri_usati": safe_serialize(single_request),
+                            "is_2l_batch": True
+                        }
+                        
+                        batch = BatchNesting(
+                            nome=f"Batch 2L {autoclave.nome}",
+                            autoclave_id=autoclave.id,
+                            configurazione_json=configurazione_json,
+                            efficiency=float(response.metrics.efficiency_score or 0.0),
+                            peso_totale_kg=int(response.metrics.total_weight_kg or 0),
+                            numero_nesting=1,
+                            area_totale_utilizzata=int(response.metrics.total_area_cm2 or 0),
+                            valvole_totali_utilizzate=int(response.metrics.vacuum_lines_used or 0),
+                            note=f"Batch 2L: {response.metrics.pieces_positioned} tool posizionati",
+                            creato_da_utente="SYSTEM_2L_MULTI",
+                            creato_da_ruolo="AUTO"
+                        )
+                        
+                        db.add(batch)
+                        db.commit()
+                        db.refresh(batch)
+                        
+                        # Aggiungi ai risultati di successo
+                        batch_result = {
+                            "batch_id": str(batch.id),
+                            "autoclave_id": autoclave_id,
+                            "autoclave_nome": autoclave.nome,
+                            "efficiency": float(response.metrics.efficiency_score or 0.0),
+                            "total_weight": float(response.metrics.total_weight_kg or 0.0),
+                            "positioned_tools": response.metrics.pieces_positioned,
+                            "excluded_odls": response.metrics.pieces_excluded,
+                            "success": True,
+                            "message": f"Batch 2L generato: {response.metrics.pieces_positioned} tool",
+                            "level_0_count": response.metrics.level_0_count,
+                            "level_1_count": response.metrics.level_1_count,
+                            "cavalletti_used": response.metrics.cavalletti_used
+                        }
+                        
+                        batch_results.append(batch_result)
+                        successful_batches.append(batch_result)
+                        
+                        logger.info(f"✅ Batch 2L salvato: {batch.id} per {autoclave.nome}")
+                        
+                    except Exception as save_error:
+                        logger.error(f"❌ Errore salvataggio batch 2L autoclave {autoclave_id}: {save_error}")
+                        batch_results.append({
+                            "batch_id": None,
+                            "autoclave_id": autoclave_id,
+                            "autoclave_nome": autoclave.nome,
+                            "success": False,
+                            "message": f"Errore salvataggio: {str(save_error)}"
+                        })
+                else:
+                    logger.warning(f"⚠️ Nesting 2L fallito per autoclave {autoclave_id}")
+                    batch_results.append({
+                        "batch_id": None,
+                        "autoclave_id": autoclave_id,
+                        "autoclave_nome": autoclave.nome,
+                        "success": False,
+                        "message": "Nesting fallito o nessun tool posizionato"
+                    })
+                        
+            except Exception as autoclave_error:
+                logger.error(f"❌ Errore processing autoclave {autoclave_id}: {autoclave_error}")
+                batch_results.append({
+                    "batch_id": None,
+                    "autoclave_id": autoclave_id,
+                    "success": False,
+                    "message": f"Errore processing: {str(autoclave_error)}"
+                })
+        
+        # Prepara risposta unificata
+        total_time = (time.time() - start_time) * 1000
+        success_count = len(successful_batches)
+        
+        if success_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Nessun batch 2L generato con successo"
+            )
+        
+        # Trova il batch migliore per efficienza
+        best_batch = max(successful_batches, key=lambda x: x.get('efficiency', 0))
+        best_batch_id = best_batch['batch_id']
+        
+        # Calcola statistiche aggregate
+        avg_efficiency = sum(r.get('efficiency', 0) for r in successful_batches) / success_count
+        total_tools = sum(r.get('positioned_tools', 0) for r in successful_batches)
+        
+        # 🔧 FIX SERIALIZZAZIONE: Costruisci la risposta in modo sicuro per evitare errori HTTP 500
+        try:
+            response_data = {
+                "success": True,
+                "message": f"Multi-2L completato: {success_count}/{len(autoclavi_2l_ids)} batch generati",
+                "total_autoclavi": len(autoclavi_2l_ids),
+                "success_count": success_count,
+                "error_count": len(autoclavi_2l_ids) - success_count,
+                "best_batch_id": best_batch_id,
+                "avg_efficiency": round(avg_efficiency, 2),
+                "total_positioned_tools": total_tools,
+                "batch_results": batch_results,
+                "is_real_multi_batch": True,
+                "processing_time_ms": round(total_time, 1),
+                "algorithm_type": "2L_MULTI_SEQUENTIAL"
+            }
+            
+            logger.info(f"✅ Multi-2L completato: {success_count} batch in {total_time:.1f}ms")
+            logger.info(f"🎯 Best batch: {best_batch_id} (efficienza {best_batch['efficiency']:.1f}%)")
+            
+            # 🔧 VERIFICA FINALE: Assicurati che la risposta sia JSON-serializable
+            json.dumps(response_data)  # Test serialization
+            
+            return response_data
+            
+        except Exception as serialization_error:
+            logger.error(f"❌ Errore serializzazione risposta Multi-2L: {serialization_error}")
+            logger.error(f"   Tipo errore: {type(serialization_error)}")
+            logger.error(f"   Response keys: {list(response_data.keys()) if 'response_data' in locals() else 'N/A'}")
+            
+            # 🆘 FALLBACK: Risposta minima ma funzionante
+            fallback_response = {
+                "success": True,
+                "message": f"Multi-2L completato: {success_count}/{len(autoclavi_2l_ids)} batch generati (serializzazione semplificata)",
+                "total_autoclavi": len(autoclavi_2l_ids),
+                "success_count": success_count,
+                "error_count": len(autoclavi_2l_ids) - success_count,
+                "best_batch_id": str(best_batch_id),
+                "avg_efficiency": float(round(avg_efficiency, 2)),
+                "algorithm_type": "2L_MULTI_SEQUENTIAL",
+                "batch_results": [
+                    {
+                        "batch_id": str(b.get('batch_id', '')),
+                        "autoclave_id": int(b.get('autoclave_id', 0)),
+                        "autoclave_nome": str(b.get('autoclave_nome', '')),
+                        "efficiency": float(b.get('efficiency', 0.0)),
+                        "success": bool(b.get('success', False)),
+                        "message": str(b.get('message', ''))
+                    }
+                    for b in successful_batches
+                ]
+            }
+            
+            logger.info(f"🆘 Usando risposta fallback per Multi-2L")
+            return fallback_response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Errore Multi-2L: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Errore durante multi-nesting 2L: {str(e)}"
+        )
+
+# ========== ENDPOINT NESTING 2L ORIGINALE ==========
