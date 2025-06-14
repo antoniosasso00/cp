@@ -673,26 +673,45 @@ class NestingModel:
             solver.parameters.linearization_level = 2  # Massima linearizzazione
             
             self.logger.info("🚀 AEROSPACE: Avvio risoluzione CP-SAT ottimizzata")
-            status = solver.Solve(model)
             
-            # 🔧 FIX CP-SAT: Log del risultato per debugging
-            if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-                self.logger.info(f"✅ CP-SAT SUCCESS: Status={status}, variabili corrette")
-                return self._extract_cpsat_solution(solver, sorted_tools, autoclave, variables, status, start_time)
-            elif status in [cp_model.INFEASIBLE, cp_model.UNKNOWN]:
-                self.logger.warning(f"⚠️ CP-SAT infeasible/unknown: {status}")
-                # Ritorna soluzione vuota per attivare fallback
-                return NestingSolution(
-                    layouts=[],
-                    excluded_odls=[],
-                    metrics=NestingMetrics(0, 0, 0, 0, len(tools), 0, 0, 0, False, False),
-                    success=False,
-                    algorithm_status=f"CP-SAT_{status}",
-                    message=f"CP-SAT non ha trovato soluzione: {status}"
-                )
-            else:
-                self.logger.warning(f"⚠️ CP-SAT status non gestito: {status}")
-                raise Exception(f"CP-SAT status non gestito: {status}")
+            try:
+                status = solver.Solve(model)
+                
+                # 🔧 FIX CP-SAT: Log del risultato per debugging
+                if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+                    self.logger.info(f"✅ CP-SAT SUCCESS: Status={status}, variabili corrette")
+                    return self._extract_cpsat_solution(solver, sorted_tools, autoclave, variables, status, start_time)
+                elif status in [cp_model.INFEASIBLE, cp_model.UNKNOWN]:
+                    self.logger.warning(f"⚠️ CP-SAT infeasible/unknown: {status}")
+                    # Ritorna soluzione vuota per attivare fallback
+                    return NestingSolution(
+                        layouts=[],
+                        excluded_odls=[],
+                        metrics=NestingMetrics(0, 0, 0, 0, len(sorted_tools), 0, 0, 0, False, False),
+                        success=False,
+                        algorithm_status=f"CP-SAT_{status}",
+                        message=f"CP-SAT non ha trovato soluzione: {status}"
+                    )
+                else:
+                    self.logger.warning(f"⚠️ CP-SAT status non gestito: {status}")
+                    raise Exception(f"CP-SAT status non gestito: {status}")
+                    
+            except Exception as solve_error:
+                error_msg = str(solve_error)
+                if "__le__()" in error_msg and "incompatible function arguments" in error_msg:
+                    self.logger.error(f"🚨 CP-SAT BoundedLinearExpression error: {error_msg}")
+                    self.logger.info("🔄 Fallback to greedy algorithm due to CP-SAT error")
+                    # Ritorna soluzione vuota per attivare fallback
+                    return NestingSolution(
+                        layouts=[],
+                        excluded_odls=[],
+                        metrics=NestingMetrics(0, 0, 0, 0, len(sorted_tools), 0, 0, 0, False, False),
+                        success=False,
+                        algorithm_status="CP-SAT_BOUNDEDLINEAR_ERROR",
+                        message=f"CP-SAT BoundedLinearExpression error, fallback required"
+                    )
+                else:
+                    raise solve_error
                 
         except Exception as e:
             # 🔧 FIX CP-SAT: Log dettagliato dell'errore per debugging

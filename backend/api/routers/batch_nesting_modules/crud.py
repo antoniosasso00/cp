@@ -200,8 +200,9 @@ def read_batch_nesting_full(batch_id: str, db: Session = Depends(get_db)):
         "total_weight": 0
     }
 
-@router.get("/result/{batch_id}", summary="🎯 Ottiene risultati di un batch nesting per la visualizzazione")
-def get_batch_nesting_result(
+# ❌ ENDPOINT RIMOSSO: Conflitto con results.py
+# @router.get("/result/{batch_id}", summary="🎯 Ottiene risultati di un batch nesting per la visualizzazione")
+def get_batch_nesting_result_DISABLED(
     batch_id: str, 
     multi: bool = Query(False, description="Se True, cerca batch correlati nello stesso timeframe"),
     db: Session = Depends(get_db)
@@ -379,7 +380,45 @@ def get_batch_nesting_result(
             }
         
         # Risultato principale
-        batch_results = [format_batch_result(main_batch)]
+        try:
+            logger.info(f"🔧 DEBUG: Tentativo format_batch_result per batch {batch_id}")
+            formatted_batch = format_batch_result(main_batch)
+            logger.info(f"✅ format_batch_result SUCCESS: {formatted_batch['id']} - {formatted_batch['nome']}")
+            batch_results = [formatted_batch]
+        except Exception as format_error:
+            logger.error(f"❌ ERRORE in format_batch_result per batch {batch_id}: {str(format_error)}")
+            logger.error(f"   Batch stato: {main_batch.stato}")
+            logger.error(f"   Batch autoclave_id: {main_batch.autoclave_id}")
+            logger.error(f"   Batch odl_ids: {main_batch.odl_ids}")
+            logger.error(f"   Traceback completo:", exc_info=True)
+            
+            # Fallback: crea risultato minimale per non bloccare completamente l'API
+            batch_results = [{
+                "id": main_batch.id,
+                "nome": main_batch.nome or "Batch senza nome",
+                "stato": main_batch.stato,
+                "autoclave_id": main_batch.autoclave_id,
+                "autoclave": None,
+                "odl_ids": main_batch.odl_ids or [],
+                "configurazione_json": {},
+                "parametri": main_batch.parametri,
+                "created_at": main_batch.created_at.isoformat() if main_batch.created_at else None,
+                "numero_nesting": main_batch.numero_nesting,
+                "peso_totale_kg": main_batch.peso_totale_kg,
+                "area_totale_utilizzata": main_batch.area_totale_utilizzata,
+                "valvole_totali_utilizzate": main_batch.valvole_totali_utilizzate,
+                "efficiency": main_batch.efficiency,
+                "note": main_batch.note,
+                "metrics": {
+                    "efficiency_percentage": main_batch.efficiency or 0,
+                    "total_area_used_mm2": 0,
+                    "total_weight_kg": main_batch.peso_totale_kg or 0,
+                    "positioned_tools": 0,
+                    "excluded_tools": 0
+                },
+                "odls_data": [],
+                "error": f"Errore format: {str(format_error)}"
+            }]
         
         # Se richiesto, cerca batch correlati (multi-batch)
         if multi:

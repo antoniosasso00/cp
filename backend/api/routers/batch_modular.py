@@ -24,14 +24,14 @@ router = APIRouter(
 )
 
 # Inclusione di tutti i router modulari
-# IMPORTANTE: Router con endpoint statici PRIMA di quelli con parametri dinamici
-# ✅ FIX DRAFT SUPPORT: crud_router PRIMA di results_router per priorità endpoint /result/{batch_id}
-router.include_router(generation_router, tags=["Batch Nesting - Generation"])  # /data, /genera, /solve
-router.include_router(maintenance_router, tags=["Batch Nesting - Maintenance"])  # /diagnosi, /cleanup, /bulk
-router.include_router(draft_router, tags=["Batch Nesting - Draft"])  # /draft, /draft/{id}/confirm
-router.include_router(workflow_router, tags=["Batch Nesting - Workflow"])  # /{batch_id}/confirm, etc.
-router.include_router(crud_router, tags=["Batch Nesting - CRUD"])  # /{batch_id} CON SUPPORTO DRAFT - PRIORITÀ
-router.include_router(results_router, tags=["Batch Nesting - Results"])  # /{batch_id}/statistics, etc.
+# ✅ PRIORITÀ ROUTING CORRETTA: Endpoint STATICI prima di quelli DINAMICI
+# 🚨 CRITICAL FIX: generation_router DEVE essere PRIMO per /2l-multi
+router.include_router(generation_router, tags=["Batch Nesting - Generation"])  # /data, /genera, /2l-multi, /solve - STATICI PRIORITARI
+router.include_router(maintenance_router, tags=["Batch Nesting - Maintenance"])  # /diagnosi, /cleanup, /bulk - STATICI
+router.include_router(draft_router, tags=["Batch Nesting - Draft"])  # /draft, /draft/{id}/confirm - STATICI
+router.include_router(results_router, tags=["Batch Nesting - Results"])  # /result/{batch_id} - MISTO
+router.include_router(workflow_router, tags=["Batch Nesting - Workflow"])  # /{batch_id}/confirm, etc. - DINAMICI
+router.include_router(crud_router, tags=["Batch Nesting - CRUD"])  # /{batch_id} - ENDPOINT DINAMICO ULTIMO (cattura tutto)
 
 # Struttura modulare completata:
 # ✅ CRUD: Operazioni base (CREATE, READ, UPDATE, DELETE)

@@ -55,6 +55,7 @@ export const autoclaveSchema = z.object({
   altezza_cavalletto_standard: z.number().min(0, 'L\'altezza cavalletto deve essere positiva').optional(),
   max_cavalletti: z.number().min(0, 'Il numero massimo cavalletti deve essere positivo').optional(),
   clearance_verticale: z.number().min(0, 'Il clearance verticale deve essere positivo').optional(),
+  peso_max_per_cavalletto_kg: z.number().min(0, 'Il peso massimo per cavalletto deve essere positivo').optional(),
   
   produttore: z.string().optional(),
   anno_produzione: z.number().optional(),

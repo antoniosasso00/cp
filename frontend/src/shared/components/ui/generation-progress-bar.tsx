@@ -107,8 +107,8 @@ export interface GenerationProgressBarProps {
   variant?: 'simple' | 'detailed';
   is2LMode?: boolean;
   onTimeout?: (phase: 'warning' | 'critical') => void;
-  isAsyncMode?: boolean; // 🚀 NUOVO: Supporto modalità asincrona
-  asyncJobId?: string;   // 🚀 NUOVO: ID job per polling
+  // isAsyncMode?: boolean; // ❌ RIMOSSO: Modalità asincrona disabilitata
+  // asyncJobId?: string;   // ❌ RIMOSSO: ID job per polling
 }
 
 export function GenerationProgressBar({
@@ -119,9 +119,9 @@ export function GenerationProgressBar({
   selectedAutoclaveCount = 1,
   variant = 'detailed',
   is2LMode = false,
-  onTimeout,
-  isAsyncMode = false,
-  asyncJobId
+  onTimeout
+  // isAsyncMode = false, // ❌ RIMOSSO: Modalità asincrona eliminata
+  // asyncJobId
 }: GenerationProgressBarProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -157,15 +157,13 @@ export function GenerationProgressBar({
     
     const totalComplexity = odlComplexityFactor * autoclaveComplexityFactor * levelComplexityFactor * datasetPenalty;
     
-    // 🚀 MODALITÀ ASINCRONA: Durata estesa per dataset complessi
-    const maxDuration = isAsyncMode 
-      ? (is2LMode ? 900000 : 600000) // 15min vs 10min per modalità asincrona
-      : (is2LMode ? 360000 : 240000); // 6min vs 4min per modalità sincrona
+    // ✅ MODALITÀ SEMPRE SINCRONA: Durata ottimizzata
+    const maxDuration = is2LMode ? 360000 : 240000; // 6min vs 4min - SEMPRE SINCRONO
     
     const calculatedDuration = Math.min(baseDuration * totalComplexity, maxDuration);
     
     return Math.round(calculatedDuration);
-  }, [selectedOdlCount, selectedAutoclaveCount, is2LMode, isAsyncMode]);
+  }, [selectedOdlCount, selectedAutoclaveCount, is2LMode]); // ❌ Rimosso isAsyncMode
 
   // 🔧 TIMEOUT DINAMICO BASATO SU ALGORITMI REALI
   const calculateTimeoutThresholds = useCallback(() => {
@@ -310,7 +308,7 @@ export function GenerationProgressBar({
       <div className={cn("space-y-2", className)}>
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">
-            {isAsyncMode ? '🔄 Elaborazione asincrona in corso...' : 'Generazione in corso...'}
+            Generazione in corso...
           </span>
           <span className="font-mono text-xs">
             {formatTime(elapsedTime)}

@@ -134,8 +134,19 @@ export default function NestingPage() {
     min_distance_mm: 10
   })
 
-  // New state for 2L configuration (rimozione campo altezza cavalletti)
+  // New state for 2L configuration - PARAMETRI CAVALLETTI CONFIGURABILI
   const [nesting2LSettings, setNesting2LSettings] = useState<Record<number, { enabled: boolean }>>({})
+  
+  // ✅ NUOVO: Parametri cavalletti configurabili dal frontend
+  const [cavallettiParams, setCavallettiParams] = useState({
+    min_distance_from_edge: 30.0,
+    max_span_without_support: 400.0,
+    min_distance_between_cavalletti: 200.0,
+    safety_margin_x: 5.0,
+    safety_margin_y: 5.0,
+    prefer_symmetric: true,
+    force_minimum_two: true
+  })
 
   useEffect(() => {
     loadData()
@@ -287,39 +298,67 @@ export default function NestingPage() {
         min_distance_mm: Math.round(params.min_distance_mm * 100) / 100
       }
 
-      // ✅ FIX TIMEOUT: Usa batchNestingApi.generaMulti che ha timeout esteso (10 minuti)
+      // 🔍 DETECTION SISTEMA 2L vs 1L STANDARD
+      const autoclavi2L = autoclaviWith2L.filter(id => selectedAutoclavi.includes(id))
+      const is2LGeneration = autoclavi2L.length > 0
+      
       console.log('🚀 NESTING GENERATION START:', {
         selectedOdls: selectedOdls.length,
         selectedAutoclavi: selectedAutoclavi.length,
         autoclaviWith2L: autoclaviWith2L.length,
+        autoclavi2LIds: autoclavi2L,
+        is2LGeneration,
         params: roundedParams
       })
 
-      const requestData = {
-        odl_ids: selectedOdls.map(String),
-        autoclave_ids: selectedAutoclavi.map(String),
-        parametri: roundedParams
+      let responseData;
+
+      if (is2LGeneration) {
+        // 🚀 FIXED: Usa l'endpoint 2L-multi corretto invece del fallback
+        console.log('🎯 MODALITÀ 2L: Usando endpoint 2l-multi corretto')
+        
+        const requestData = {
+          autoclavi_2l: autoclavi2L,  // Solo le autoclavi con 2L abilitato
+          odl_ids: selectedOdls,      // Mantieni come numeri per compatibilità 2L
+          parametri: roundedParams,
+          use_cavalletti: true,
+          prefer_base_level: true,
+          // ✅ NUOVO: Parametri cavalletti configurabili dal frontend
+          cavalletti_config: cavallettiParams
+          // ✅ RIMOSSO: valori hardcoded - il backend legge dal database autoclave
+        }
+
+        console.log('🔧 Parametri cavalletti: Letti dinamicamente dal database per ogni autoclave')
+        console.log('📡 Calling 2L-multi endpoint:', requestData)
+        responseData = await batchNestingApi.genera2LMulti(requestData)
+        
+      } else {
+        // ✅ NESTING 1L STANDARD MULTI-BATCH
+        console.log('🎯 MODALITÀ 1L: Usando endpoint genera-multi')
+        
+        const requestData = {
+          odl_ids: selectedOdls.map(String),
+          autoclave_ids: selectedAutoclavi.map(String),
+          parametri: roundedParams
+        }
+
+        console.log('📡 Calling 1L multi endpoint:', requestData)
+        responseData = await batchNestingApi.generaMulti(requestData)
       }
-
-      console.log('📡 Calling unified endpoint with EXTENDED TIMEOUT:', requestData)
-
-      // ✅ FIX CRITICO: Usa API wrapper con timeout esteso invece di chiamata diretta
-      const responseData = await batchNestingApi.generaMulti(requestData)
       
       console.log('✅ Response received:', responseData)
 
-      // ✅ GESTIONE RISPOSTA SEMPLIFICATA
+      // ✅ GESTIONE RISPOSTA UNIFICATA (1L e 2L)
       if (responseData.success && responseData.best_batch_id) {
         // Successo garantito
+        const generationType = is2LGeneration ? '2L Multi-Livello' : '1L Standard'
         toast({
-          title: 'Nesting generato con successo',
-          description: responseData.message || `Batch generato: ${responseData.best_batch_id}`
+          title: `Nesting ${generationType} generato con successo`,
+          description: responseData.message || `${responseData.success_count} batch generati`
         })
         
-        // Redirect semplice
-        const redirectUrl = `/nesting/result/${responseData.best_batch_id}${
-          selectedAutoclavi.length > 1 ? '?multi=true' : ''
-        }`
+        // 🚀 REDIRECT INTELLIGENTE: Usa ?multi=true per caricare tutti i batch correlati
+        const redirectUrl = `/nesting/result/${responseData.best_batch_id}?multi=true`
         
         console.log(`🚀 Redirecting to: ${redirectUrl}`)
         router.push(redirectUrl)
@@ -336,7 +375,7 @@ export default function NestingPage() {
       
       // ✅ MIGLIORE GESTIONE ERRORI TIMEOUT
       if (error.message?.includes('timeout') || error.name === 'AbortError') {
-        errorMessage = 'Timeout generazione - L\'algoritmo sta richiedendo più tempo del previsto. Prova con meno ODL o riprova più tardi.'
+        errorMessage = 'Timeout generazione - L\'algoritmo 2L sta richiedendo più tempo del previsto. Prova con meno ODL o riprova più tardi.'
       } else if (error.response?.data?.detail) {
         errorMessage = error.response.data.detail
       } else if (error.message) {
@@ -862,6 +901,134 @@ export default function NestingPage() {
                 </div>
               </div>
               
+              {/* ✅ NUOVO: Parametri Cavalletti Configurabili */}
+              {autoclaviWith2L.length > 0 && (
+                <>
+                  <Separator />
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm font-medium">🔧 Parametri Cavalletti (Sistema 2L)</Label>
+                      <Badge variant="outline" className="text-xs">
+                        {autoclaviWith2L.length} autoclave con 2L
+                      </Badge>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-green-50 rounded-lg">
+                      {/* Posizionamento */}
+                      <div className="space-y-3">
+                        <h5 className="text-sm font-medium text-green-900">📐 Posizionamento</h5>
+                        
+                        <div className="space-y-2">
+                          <Label className="text-xs">Distanza dai bordi (mm)</Label>
+                          <Input
+                            type="number"
+                            min="10"
+                            max="100"
+                            step="5"
+                            value={cavallettiParams.min_distance_from_edge}
+                            onChange={(e) => setCavallettiParams(prev => ({
+                              ...prev,
+                              min_distance_from_edge: Number(e.target.value)
+                            }))}
+                            className="h-8"
+                          />
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <Label className="text-xs">Distanza tra cavalletti (mm)</Label>
+                          <Input
+                            type="number"
+                            min="100"
+                            max="500"
+                            step="10"
+                            value={cavallettiParams.min_distance_between_cavalletti}
+                            onChange={(e) => setCavallettiParams(prev => ({
+                              ...prev,
+                              min_distance_between_cavalletti: Number(e.target.value)
+                            }))}
+                            className="h-8"
+                          />
+                        </div>
+                      </div>
+                      
+                      {/* Sicurezza */}
+                      <div className="space-y-3">
+                        <h5 className="text-sm font-medium text-green-900">🛡️ Margini Sicurezza</h5>
+                        
+                        <div className="space-y-2">
+                          <Label className="text-xs">Margine X (mm)</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            max="20"
+                            step="1"
+                            value={cavallettiParams.safety_margin_x}
+                            onChange={(e) => setCavallettiParams(prev => ({
+                              ...prev,
+                              safety_margin_x: Number(e.target.value)
+                            }))}
+                            className="h-8"
+                          />
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <Label className="text-xs">Margine Y (mm)</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            max="20"
+                            step="1"
+                            value={cavallettiParams.safety_margin_y}
+                            onChange={(e) => setCavallettiParams(prev => ({
+                              ...prev,
+                              safety_margin_y: Number(e.target.value)
+                            }))}
+                            className="h-8"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Opzioni avanzate */}
+                    <div className="space-y-3 p-3 bg-gray-50 rounded-lg">
+                      <h5 className="text-sm font-medium text-gray-900">⚙️ Opzioni Avanzate</h5>
+                      
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="prefer_symmetric"
+                          checked={cavallettiParams.prefer_symmetric}
+                          onChange={(e) => setCavallettiParams(prev => ({
+                            ...prev,
+                            prefer_symmetric: e.target.checked
+                          }))}
+                          className="rounded"
+                        />
+                        <Label htmlFor="prefer_symmetric" className="text-xs">
+                          Preferisci posizionamento simmetrico
+                        </Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="force_minimum_two"
+                          checked={cavallettiParams.force_minimum_two}
+                          onChange={(e) => setCavallettiParams(prev => ({
+                            ...prev,
+                            force_minimum_two: e.target.checked
+                          }))}
+                          className="rounded"
+                        />
+                        <Label htmlFor="force_minimum_two" className="text-xs">
+                          Forza almeno 2 cavalletti per tool grandi
+                        </Label>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
               <div className="bg-blue-50 p-4 rounded-lg">
                 <h4 className="text-sm font-medium text-blue-900 mb-2">
                   ℹ️ Informazioni Algoritmo Nesting
@@ -871,6 +1038,9 @@ export default function NestingPage() {
                   <p><strong>Cavalletti:</strong> Utilizzati solo quando il piano base è pieno o per ottimizzare l'efficienza</p>
                   <p><strong>Parametri:</strong> Padding e distanza minima applicati a tutti i livelli</p>
                   <p><strong>Ottimizzazione:</strong> Sistema aerospace-grade per massima efficienza di spazio</p>
+                  {autoclaviWith2L.length > 0 && (
+                    <p><strong>Cavalletti Fissi:</strong> I cavalletti sono segmenti trasversali che attraversano tutto il lato corto dell'autoclave</p>
+                  )}
                 </div>
               </div>
             </div>

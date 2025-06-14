@@ -319,7 +319,7 @@ def get_batch_statistics_summary(batches: List[BatchNesting]) -> Dict[str, Any]:
             "states_distribution": {}
         }
     
-    total_efficiency = sum(getattr(batch, 'efficiency_percentage', 0.0) for batch in batches)
+    total_efficiency = sum(batch.efficiency or 0.0 for batch in batches)
     total_weight = sum(getattr(batch, 'peso_totale', 0.0) for batch in batches)
     
     # Distribuzione stati

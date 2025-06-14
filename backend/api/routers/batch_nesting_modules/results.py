@@ -95,6 +95,158 @@ def enrich_tool_positions_with_odl_data(tool_positions: List[Dict[str, Any]], db
     logger.info(f"✅ Arricchiti {len(enriched_positions)} tool positions con dati ODL")
     return enriched_positions
 
+def format_batch_result(batch, db: Session) -> Dict[str, Any]:
+    """Formatta un batch per la visualizzazione nei risultati"""
+    try:
+        # Carica autoclave
+        autoclave = db.query(Autoclave).filter(Autoclave.id == batch.autoclave_id).first()
+        
+        # Carica ODL con relazioni
+        odls = []
+        if batch.odl_ids:
+            odls = db.query(ODL).options(
+                joinedload(ODL.parte),
+                joinedload(ODL.tool)
+            ).filter(ODL.id.in_(batch.odl_ids)).all()
+        
+        # Configurazione con fallback
+        configurazione = getattr(batch, 'configurazione_json', {}) or {}
+        
+        # Tool positions con arricchimento ODL
+        tool_positions = configurazione.get('tool_positions', [])
+        positioned_tools = configurazione.get('positioned_tools', [])
+        
+        # Usa positioned_tools se tool_positions è vuoto (nuovo formato)
+        if not tool_positions and positioned_tools:
+            tool_positions = positioned_tools
+        
+        # Arricchisci tool positions con dati ODL
+        enriched_tools = enrich_tool_positions_with_odl_data(tool_positions, db)
+        
+        return {
+            "id": str(batch.id),
+            "nome": batch.nome,
+            "stato": batch.stato,
+            "autoclave": {
+                "id": batch.autoclave_id,
+                "nome": autoclave.nome if autoclave else f"Autoclave {batch.autoclave_id}",
+                "tipo": getattr(autoclave, 'tipo', 'N/A') if autoclave else 'N/A'
+            },
+            "metrics": {
+                "efficiency_percentage": batch.efficiency or 0.0,
+                "positioned_tools_count": len(enriched_tools),
+                "total_weight_kg": batch.peso_totale_kg or 0,
+                "valvole_utilizzate": batch.valvole_totali_utilizzate or 0,
+                "area_utilizzata_cm2": batch.area_totale_utilizzata or 0
+            },
+            "odl_info": [format_odl_with_relations(odl) for odl in odls],
+            "configurazione_json": {
+                **configurazione,
+                "positioned_tools": enriched_tools  # Tool positions arricchiti
+            },
+            "created_at": batch.created_at.isoformat() if batch.created_at else None,
+            "updated_at": batch.updated_at.isoformat() if batch.updated_at else None
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Errore in format_batch_result per batch {batch.id}: {str(e)}")
+        # Restituisce un risultato minimale invece di fallire completamente
+        return {
+            "id": str(batch.id),
+            "nome": batch.nome or "Batch senza nome",
+            "stato": batch.stato or "unknown",
+            "autoclave": {"id": batch.autoclave_id, "nome": f"Autoclave {batch.autoclave_id}", "tipo": "N/A"},
+            "metrics": {"efficiency_percentage": 0.0, "positioned_tools_count": 0, "total_weight_kg": 0, "valvole_utilizzate": 0, "area_utilizzata_cm2": 0},
+            "odl_info": [],
+            "configurazione_json": {},
+            "created_at": batch.created_at.isoformat() if batch.created_at else None,
+            "updated_at": batch.updated_at.isoformat() if batch.updated_at else None,
+            "error": str(e)
+        }
+
+@router.get("/result/{batch_id}", summary="🎯 Ottiene risultati di un batch nesting per la visualizzazione")
+def get_batch_nesting_result(
+    batch_id: str, 
+    multi: bool = Query(False, description="Se True, cerca batch correlati nello stesso timeframe"),
+    db: Session = Depends(get_db)
+):
+    """
+    Ottiene i risultati di un batch nesting formattati per la visualizzazione frontend.
+    
+    Questo endpoint è specificamente progettato per la pagina di visualizzazione risultati
+    e restituisce un formato diverso dall'endpoint CRUD base.
+    """
+    try:
+        logger.info(f"🎯 GET result per batch_id: {batch_id}, multi: {multi}")
+        
+        # Carica il batch principale
+        main_batch = db.query(BatchNesting).options(
+            joinedload(BatchNesting.autoclave)
+        ).filter(BatchNesting.id == batch_id).first()
+        
+        if not main_batch:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Batch con ID {batch_id} non trovato"
+            )
+        
+        logger.info(f"✅ Batch trovato: {main_batch.nome}, stato: {main_batch.stato}")
+        
+        # Formato risultato principale
+        batch_results = []
+        try:
+            formatted_batch = format_batch_result(main_batch, db)
+            batch_results.append(formatted_batch)
+            logger.info(f"✅ Batch principale formattato correttamente")
+        except Exception as format_error:
+            logger.error(f"❌ Errore formattazione batch principale: {str(format_error)}")
+            # Continua senza il batch principale piuttosto che fallire completamente
+        
+        # Cerca batch correlati se richiesto multi-batch
+        related_batches = []
+        if multi and batch_results:  # Solo se il batch principale è stato formattato
+            try:
+                related_batches = find_related_batches(main_batch, db, max_results=10)
+                logger.info(f"🔍 Trovati {len(related_batches)} batch correlati")
+                
+                for related_batch in related_batches:
+                    try:
+                        formatted_related = format_batch_result(related_batch, db)
+                        batch_results.append(formatted_related)
+                    except Exception as related_error:
+                        logger.error(f"❌ Errore formattazione batch correlato {related_batch.id}: {str(related_error)}")
+                        # Continua con gli altri batch
+                        
+            except Exception as related_error:
+                logger.error(f"❌ Errore ricerca batch correlati: {str(related_error)}")
+                # Continua senza batch correlati
+        
+        # Ordina per efficienza decrescente
+        if len(batch_results) > 1:
+            batch_results.sort(key=lambda x: x.get('metrics', {}).get('efficiency_percentage', 0), reverse=True)
+        
+        # Determina il batch migliore
+        best_batch_id = batch_results[0]["id"] if batch_results else batch_id
+        
+        response = {
+            "batch_results": batch_results,
+            "total_batches": len(batch_results),
+            "is_multi_batch": len(batch_results) > 1,
+            "main_batch_id": batch_id,
+            "best_batch_id": best_batch_id,
+            "execution_timestamp": datetime.now().isoformat(),
+            "success": len(batch_results) > 0
+        }
+        
+        logger.info(f"✅ Risposta result preparata: {len(batch_results)} batch, is_multi: {response['is_multi_batch']}")
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Errore imprevisto in get_batch_nesting_result: {str(e)}")
+        return handle_database_error(db, e, f"risultati batch {batch_id}")
+
 @router.get("/{batch_id}/statistics", summary="Ottiene statistiche dettagliate del batch")
 def get_batch_statistics(batch_id: str, db: Session = Depends(get_db)):
     """Ottiene statistiche dettagliate del batch"""
@@ -135,7 +287,7 @@ def get_batch_statistics(batch_id: str, db: Session = Depends(get_db)):
             "batch_id": batch_id,
             "nome": batch.nome,
             "stato": batch.stato,
-            "efficiency": getattr(batch, 'efficiency_percentage', 0.0),
+            "efficiency": batch.efficiency or 0.0,
             "total_weight": total_weight,
             "total_volume": total_volume,
             "odl_count": len(odls),
@@ -213,7 +365,7 @@ def validate_nesting_layout(batch_id: str, db: Session = Depends(get_db)):
             errors.append("Autoclave non trovata")
         
         # Validazione efficienza
-        efficiency = getattr(batch, 'efficiency_percentage', 0.0)
+        efficiency = batch.efficiency or 0.0
         if efficiency < 60.0:
             warnings.append(f"Efficienza bassa: {efficiency:.1f}% (raccomandato >60%)")
         elif efficiency < 80.0:
@@ -275,7 +427,7 @@ def read_batch_nesting_full(batch_id: str, db: Session = Depends(get_db)):
                 "volume": getattr(batch.autoclave, 'volume', 0),
                 "stato": batch.autoclave.stato
             } if batch.autoclave else None,
-            "efficiency_percentage": getattr(batch, 'efficiency_percentage', 0.0),
+                                "efficiency_percentage": batch.efficiency or 0.0,
             "peso_totale": total_weight,
             "volume_totale": total_volume,
             "numero_nesting": getattr(batch, 'numero_nesting', 1),
@@ -345,7 +497,7 @@ def export_batch_nesting(
                 "nome": batch.nome,
                 "stato": batch.stato,
                 "autoclave": batch.autoclave.nome if batch.autoclave else "N/A",
-                "efficiency_percentage": getattr(batch, 'efficiency_percentage', 0.0),
+                "efficiency_percentage": batch.efficiency or 0.0,
                 "created_at": batch.created_at.strftime("%d/%m/%Y %H:%M") if batch.created_at else "N/A",
                 "data_conferma": batch.data_conferma.strftime("%d/%m/%Y %H:%M") if batch.data_conferma else "N/A",
             },

@@ -34,6 +34,45 @@ import { ExitConfirmationDialog } from '@/shared/components/ui/exit-confirmation
 import { useDraftLifecycle } from '@/shared/hooks/use-draft-lifecycle'
 import { DraftActionDialog } from './components/DraftActionDialog'
 import { ExitPageDialog } from './components/ExitPageDialog'
+import { CompatibilityTest } from './components/CompatibilityTest'
+
+// 🎯 INTERFACCE COMPLETE: Supporto per tool positioning unificato
+interface ToolPosition {
+  odl_id?: number
+  tool_id?: number
+  x: number
+  y: number
+  width: number
+  height: number
+  rotated?: boolean
+  weight_kg?: number
+  // 🆕 CAMPI 2L: Supporto per livelli e cavalletti
+  level?: number               // 0 = piano base, 1 = su cavalletti
+  z_position?: number          // Posizione Z (altezza)
+  lines_used?: number          // Linee vuoto utilizzate
+  // Informazioni aggiuntive
+  part_number?: string          // Part number della parte
+  part_number_tool?: string     // Part number del tool (diverso)
+  numero_odl?: string | number  // Numero ODL (non ID)
+  descrizione_breve?: string    // Descrizione della parte
+  tool_nome?: string           // Nome tool come fallback
+  peso?: number                // Peso per tooltip
+}
+
+interface Cavalletto {
+  x: number
+  y: number
+  width: number
+  height: number
+  tool_odl_id: number
+  tool_id?: number
+  sequence_number: number
+  center_x: number
+  center_y: number
+  support_area_mm2: number
+  height_mm: number
+  load_capacity_kg: number
+}
 
 // 🎯 SMART CANVAS LOADING: Dynamic import con auto-detection 2L
 const NestingCanvas = dynamic(() => import('./components/NestingCanvas'), {
@@ -112,53 +151,139 @@ const getSafeStatus = (stato: string | undefined): string => {
   return stato || 'undefined'
 }
 
-// 🛡️ HELPER: Gestione universale formati tool (compatibilità backward)
-const getToolsFromBatch = (batch: any) => {
-  // Prova prima il formato database standard, poi quello draft
-  return batch?.configurazione_json?.tool_positions || batch?.configurazione_json?.positioned_tools || []
+// 🛡️ HELPER: Ottiene tool dal batch (compatibilità universale)
+const getToolsFromBatch = (batchData: BatchData): ToolPosition[] => {
+  if (!batchData.configurazione_json) return []
+  
+  // 🎯 NUOVO: Parsing migliorato per compatibilità 2L/1L
+  let tools = batchData.configurazione_json.tool_positions || 
+              batchData.configurazione_json.positioned_tools || 
+              []
+  
+  // 🔧 FIX: Converte format 2L in formato compatibile con frontend
+  return tools.map((tool: any) => ({
+    odl_id: tool.odl_id || tool.id,
+    tool_id: tool.tool_id,
+    x: tool.x,
+    y: tool.y,
+    width: tool.width,
+    height: tool.height,
+    rotated: tool.rotated || false,
+    weight_kg: tool.weight_kg || tool.weight || tool.peso || 0,
+    // 🆕 CAMPI 2L (con fallback per retrocompatibilità)
+    level: tool.level !== undefined ? tool.level : 0,
+    z_position: tool.z_position || (tool.level === 1 ? 100 : 0),
+    lines_used: tool.lines_used || 1,
+    // Informazioni aggiuntive
+    part_number: tool.part_number,
+    part_number_tool: tool.part_number_tool,
+    numero_odl: typeof tool.numero_odl === 'string' ? tool.numero_odl : 
+              typeof tool.numero_odl === 'number' ? tool.numero_odl.toString() :
+              `ODL${String(tool.odl_id ?? 0).padStart(3, '0')}`,
+    descrizione_breve: tool.descrizione_breve,
+    tool_nome: tool.tool_nome,
+    peso: tool.peso || tool.weight_kg || tool.weight || 0
+  }))
 }
 
-// 🛡️ HELPER: Ottiene cavalletti dal batch
-const getCavallettiFromBatch = (batch: any) => {
-  if (!batch?.configurazione_json?.cavalletti) return []
-  return batch.configurazione_json.cavalletti
+// 🆕 HELPER: Ottiene cavalletti dal batch (nuovo per 2L)
+const getCavallettiFromBatch = (batchData: BatchData): Cavalletto[] => {
+  if (!batchData.configurazione_json?.cavalletti) return []
+  
+  return batchData.configurazione_json.cavalletti.map((cav: any) => ({
+    x: cav.x,
+    y: cav.y,
+    width: cav.width,
+    height: cav.height,
+    tool_odl_id: cav.tool_odl_id,
+    tool_id: cav.tool_id,
+    sequence_number: cav.sequence_number || 0,
+    center_x: cav.center_x || cav.x + cav.width / 2,
+    center_y: cav.center_y || cav.y + cav.height / 2,
+    support_area_mm2: cav.support_area_mm2 || cav.width * cav.height,
+    height_mm: cav.height_mm || 100,
+    load_capacity_kg: cav.load_capacity_kg || 300
+  }))
 }
 
-// 🎯 NUOVA FUNZIONE: Auto-detection batch 2L (logica unificata)
+// 🆕 HELPER: Verifica se il batch ha supporto 2L (migliorato)
 const isBatch2L = (batch: any): boolean => {
-  if (!batch?.configurazione_json) return false
+  if (!batch) return false
   
   const tools = getToolsFromBatch(batch)
   const cavalletti = getCavallettiFromBatch(batch)
+  const configJson = batch.configurazione_json || {}
   
-  // Detection criteri multipli per robustezza
-  const hasLevelDefined = tools.some((tool: any) => tool.level !== undefined)
+  // Criteri multipli per detection 2L
+  const has2LTools = tools.some(tool => 
+    tool.level !== undefined && tool.level !== null && tool.level > 0
+  )
   const hasCavalletti = cavalletti.length > 0
-  const hasZPosition = tools.some((tool: any) => tool.z_position !== undefined)
-  const hasLinesUsed = tools.some((tool: any) => tool.lines_used !== undefined)
+  const has2LMarkers = configJson.is_2l_batch === true || 
+                       configJson.algorithm_used?.includes('2L') ||
+                       configJson.level_0_count !== undefined ||
+                       configJson.level_1_count !== undefined
   
-  // Considera 2L se almeno uno dei criteri è vero
-  return hasLevelDefined || hasCavalletti || hasZPosition || hasLinesUsed
+  return has2LTools || hasCavalletti || has2LMarkers
 }
 
 // 🎯 COMPONENTE SMART CANVAS: Sceglie automaticamente il canvas giusto
 const SmartCanvas: React.FC<{ batchData: any }> = ({ batchData }) => {
   const is2L = isBatch2L(batchData)
+  const tools = getToolsFromBatch(batchData)
+  const cavalletti = getCavallettiFromBatch(batchData)
   
+  // 🔍 DEBUG COMPLETO: Log informazioni per troubleshooting
   console.log('🎯 SMART CANVAS - Auto-detection:', {
     batchId: batchData.id,
     is2L,
-    tools: getToolsFromBatch(batchData).length,
-    cavalletti: getCavallettiFromBatch(batchData).length,
-    hasLevels: getToolsFromBatch(batchData).some((t: any) => t.level !== undefined)
+    toolsCount: tools.length,
+    cavallettiCount: cavalletti.length,
+    hasLevels: tools.some((t: any) => t.level !== undefined && t.level !== null),
+    levelDistribution: {
+      level0: tools.filter(t => (t.level ?? 0) === 0).length,
+      level1: tools.filter(t => t.level === 1).length
+    },
+    // 🚨 DEBUG: Dati raw per verifica
+    rawConfigJson: batchData.configurazione_json ? Object.keys(batchData.configurazione_json) : [],
+    autoclaveData: batchData.autoclave ? 'presente' : 'mancante',
+    toolSample: tools.slice(0, 2) // Prime 2 tool per debug
   })
+
+  // 🛡️ VALIDAZIONE: Verifica dati canvas
+  const hasValidAutoclave = batchData.autoclave || batchData.autoclave_id
+  const canvasWidth = batchData.autoclave?.lunghezza || 1000
+  const canvasHeight = batchData.autoclave?.larghezza_piano || 800
+
+  if (!hasValidAutoclave) {
+    console.warn('⚠️ SMART CANVAS: Dati autoclave mancanti', batchData)
+    return (
+      <div className="flex items-center justify-center h-96 bg-red-50 border border-red-200 rounded-lg">
+        <div className="text-center space-y-3">
+          <AlertCircle className="h-8 w-8 text-red-500 mx-auto" />
+          <p className="text-red-700 font-medium">Errore Dati Autoclave</p>
+          <p className="text-red-600 text-sm">Impossibile visualizzare il canvas senza informazioni autoclave</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (tools.length === 0) {
+    console.warn('⚠️ SMART CANVAS: Nessun tool trovato', batchData.configurazione_json)
+    return (
+      <div className="flex items-center justify-center h-96 bg-yellow-50 border border-yellow-200 rounded-lg">
+        <div className="text-center space-y-3">
+          <Package className="h-8 w-8 text-yellow-500 mx-auto" />
+          <p className="text-yellow-700 font-medium">Nessun Tool Posizionato</p>
+          <p className="text-yellow-600 text-sm">Il batch non contiene tool da visualizzare</p>
+        </div>
+      </div>
+    )
+  }
 
   if (is2L) {
     // 🟡 BATCH 2L: Usa canvas specializzato
-    const tools = getToolsFromBatch(batchData)
-    const cavalletti = getCavallettiFromBatch(batchData)
-    const canvasWidth = batchData.autoclave?.lunghezza || 1000
-    const canvasHeight = batchData.autoclave?.larghezza_piano || 800
+    console.log('✅ SMART CANVAS: Rendering 2L con', tools.length, 'tool e', cavalletti.length, 'cavalletti')
     
     return (
       <div className="space-y-3">
@@ -172,7 +297,24 @@ const SmartCanvas: React.FC<{ batchData: any }> = ({ batchData }) => {
         </div>
         
         <NestingCanvas2L
-          positioned_tools={tools}
+          positioned_tools={tools.map(tool => ({
+            odl_id: tool.odl_id ?? 0,
+            tool_id: tool.tool_id ?? tool.odl_id ?? 0,
+            x: tool.x,
+            y: tool.y,
+            width: tool.width,
+            height: tool.height,
+            rotated: Boolean(tool.rotated),
+            weight_kg: tool.weight_kg ?? tool.peso ?? 0,
+            level: tool.level ?? 0,
+            z_position: tool.z_position ?? (tool.level === 1 ? 100 : 0),
+            lines_used: tool.lines_used ?? 1,
+            part_number: tool.part_number,
+            descrizione_breve: tool.descrizione_breve,
+            numero_odl: typeof tool.numero_odl === 'string' ? tool.numero_odl : 
+                      typeof tool.numero_odl === 'number' ? tool.numero_odl.toString() :
+                      `ODL${String(tool.odl_id ?? 0).padStart(3, '0')}`
+          }))}
           cavalletti={cavalletti}
           canvas_width={canvasWidth}
           canvas_height={canvasHeight}
@@ -182,13 +324,15 @@ const SmartCanvas: React.FC<{ batchData: any }> = ({ batchData }) => {
     )
   } else {
     // 🔵 BATCH 1L: Usa canvas standard (retrocompatibilità)
+    console.log('✅ SMART CANVAS: Rendering 1L con', tools.length, 'tool')
+    
     return (
       <div className="space-y-3">
         <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 p-2 rounded-lg border border-blue-200">
           <Layers className="h-4 w-4" />
           <span className="font-medium">Batch 1L standard - Canvas tradizionale</span>
           <Badge variant="secondary" className="ml-auto">
-            Tools: {getToolsFromBatch(batchData).length}
+            Tools: {tools.length}
           </Badge>
         </div>
         
@@ -1176,6 +1320,13 @@ export default function NestingResultPage() {
         onExitWithoutSaving={draftLifecycle.handleExitWithoutSaving}
         onStayOnPage={draftLifecycle.handleStayOnPage}
       />
+
+      {/* 🧪 DEBUG: Componente di test di compatibilità per troubleshooting */}
+      {batchData && process.env.NODE_ENV === 'development' && (
+        <div className="mt-6">
+          <CompatibilityTest batchData={batchData} />
+        </div>
+      )}
     </div>
   )
 } 

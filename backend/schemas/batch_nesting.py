@@ -335,40 +335,40 @@ class NestingSolveResponse(BaseModel):
 # ========== SCHEMI PER NESTING A DUE LIVELLI v2.0 ==========
 
 class PosizionamentoTool2L(BaseModel):
-    """Schema per la posizione di un tool nel nesting a due livelli"""
-    # Campi base compatibili con NestingToolPosition
+    """Schema per il posizionamento di un tool nel nesting 2L"""
     odl_id: int = Field(..., description="ID dell'ODL")
     tool_id: int = Field(..., description="ID del tool")
-    x: float = Field(..., description="Posizione X in mm")
-    y: float = Field(..., description="Posizione Y in mm")
-    width: float = Field(..., description="Larghezza in mm")
-    height: float = Field(..., description="Altezza in mm")
-    rotated: bool = Field(default=False, description="Se il tool è ruotato")
-    weight_kg: float = Field(..., description="Peso del tool in kg")
+    x: float = Field(..., description="Posizione X")
+    y: float = Field(..., description="Posizione Y") 
+    width: float = Field(..., gt=0, description="Larghezza del tool")
+    height: float = Field(..., gt=0, description="Altezza del tool")
+    rotated: bool = Field(False, description="Se il tool è ruotato di 90°")
+    weight_kg: float = Field(..., ge=0, description="Peso del tool in kg")
+    level: int = Field(..., ge=0, le=1, description="Livello: 0=piano base, 1=cavalletto")
+    z_position: float = Field(..., ge=0, description="Posizione Z (altezza dal piano base)")
+    lines_used: int = Field(..., ge=1, description="Numero di linee vuoto utilizzate")
+    # 🆕 NUOVI CAMPI per compatibilità frontend
+    part_number: Optional[str] = Field(None, description="Part number della parte")
+    descrizione_breve: Optional[str] = Field(None, description="Descrizione breve della parte")
+    numero_odl: Optional[str] = Field(None, description="Numero ODL formattato")
     
-    # 🆕 NUOVO: Campo livello per nesting 2L
-    level: int = Field(..., description="Livello di posizionamento: 0=piano base, 1=su cavalletto")
+    @validator('z_position', pre=True, always=True)
+    def validate_z_position(cls, v, values):
+        """Assicura che z_position sia coerente con il livello"""
+        level = values.get('level', 0)
+        if level == 0 and v != 0:
+            return 0.0  # Piano base deve essere a z=0
+        elif level == 1 and v == 0:
+            return 100.0  # Cavalletto ha altezza default 100mm
+        return float(v)
     
-    # Metadati aggiuntivi per il livello
-    z_position: Optional[float] = Field(None, description="Posizione Z calcolata basata sul livello (mm)")
-    lines_used: int = Field(default=1, description="Numero di linee vuoto utilizzate")
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "odl_id": 5,
-                "tool_id": 12,
-                "x": 150.0,
-                "y": 300.0,
-                "width": 400.0,
-                "height": 250.0,
-                "rotated": False,
-                "weight_kg": 35.5,
-                "level": 1,
-                "z_position": 100.0,
-                "lines_used": 2
-            }
-        }
+    @validator('numero_odl', pre=True, always=True)
+    def ensure_numero_odl_string(cls, v, values):
+        """Assicura che numero_odl sia sempre una stringa"""
+        if v is not None:
+            return str(v)
+        odl_id = values.get('odl_id', 0)
+        return f"ODL{str(odl_id).zfill(3)}"
 
 class CavallettoPosizionamento(BaseModel):
     """Schema per la posizione di un cavalletto sotto un tool"""
@@ -478,10 +478,10 @@ class NestingSolveRequest2L(BaseModel):
     min_distance_mm: float = Field(default=15.0, ge=0.1, le=50, description="Distanza minima dai bordi (mm)")
     vacuum_lines_capacity: Optional[int] = Field(None, ge=1, le=50, description="Capacità massima linee vuoto")
     
-    # 🆕 NUOVO: Parametri specifici per due livelli
+    # 🆕 PARAMETRI SPECIFICI 2L - cavalletto_height_mm rimosso (ora in AutoclaveInfo2L)
     use_cavalletti: bool = Field(default=True, description="Abilita utilizzo cavalletti (secondo livello)")
-    cavalletto_height_mm: float = Field(default=100.0, ge=50, le=200, description="Altezza standard cavalletti (mm)")
-    max_weight_per_level_kg: float = Field(default=200.0, ge=50, le=1000, description="Peso massimo per livello (kg)")
+    # cavalletto_height_mm: RIMOSSO - ora preso dal database autoclave tramite AutoclaveInfo2L.cavalletto_height
+    # max_weight_per_level_kg: RIMOSSO - ora preso dal database autoclave tramite AutoclaveInfo2L.peso_max_per_cavalletto_kg
     prefer_base_level: bool = Field(default=True, description="Preferisci posizionamento su piano base")
     
     # Parametri avanzati
@@ -499,8 +499,8 @@ class NestingSolveRequest2L(BaseModel):
                 "min_distance_mm": 15.0,
                 "vacuum_lines_capacity": 25,
                 "use_cavalletti": True,
-                "cavalletto_height_mm": 100.0,
-                "max_weight_per_level_kg": 200.0,
+                # "cavalletto_height_mm": RIMOSSO - ora dal database autoclave
+                # "max_weight_per_level_kg": RIMOSSO - ora dal database autoclave
                 "prefer_base_level": True,
                 "allow_heuristic": True,
                 "timeout_override": 120,

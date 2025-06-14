@@ -32,6 +32,11 @@ const autoclaveSchema = z.object({
   altezza_cavalletto_standard: z.number().min(0, 'L\'altezza cavalletto deve essere positiva').optional(),
   max_cavalletti: z.number().min(0, 'Il numero massimo cavalletti deve essere positivo').optional(),
   clearance_verticale: z.number().min(0, 'Il clearance verticale deve essere positivo').optional(),
+  peso_max_per_cavalletto_kg: z.number().min(0, 'Il peso massimo per cavalletto deve essere positivo').optional(),
+  
+  // ✅ NUOVO: Dimensioni fisiche cavalletti (per risolvere hardcoded nel solver_2l.py)
+  cavalletto_width: z.number().min(10, 'La larghezza cavalletto deve essere almeno 10mm').max(200, 'La larghezza massima è 200mm').optional(),
+  cavalletto_height: z.number().min(10, 'L\'altezza cavalletto deve essere almeno 10mm').max(200, 'L\'altezza massima è 200mm').optional(),
   
   produttore: z.string().optional(),
   anno_produzione: z.number().optional(),
@@ -62,6 +67,11 @@ interface AutoclaveModalProps {
     altezza_cavalletto_standard?: number
     max_cavalletti?: number
     clearance_verticale?: number
+    peso_max_per_cavalletto_kg?: number
+    
+    // ✅ NUOVO: Dimensioni fisiche cavalletti (per risolvere hardcoded nel solver_2l.py)
+    cavalletto_width?: number
+    cavalletto_height?: number
     
     produttore?: string
     anno_produzione?: number
@@ -93,6 +103,10 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
       max_cavalletti: undefined,
       clearance_verticale: undefined,
       
+      // ✅ NUOVO: Dimensioni cavalletti default (per sostituire hardcoded 80x60mm nel solver)
+      cavalletto_width: 80, // mm - era hardcoded nel solver_2l.py
+      cavalletto_height: 60, // mm - era hardcoded nel solver_2l.py
+      
       produttore: '',
       anno_produzione: undefined,
       note: '',
@@ -118,6 +132,11 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
         altezza_cavalletto_standard: editingItem.altezza_cavalletto_standard || undefined,
         max_cavalletti: editingItem.max_cavalletti || undefined,
         clearance_verticale: editingItem.clearance_verticale || undefined,
+        peso_max_per_cavalletto_kg: editingItem.peso_max_per_cavalletto_kg || undefined,
+        
+        // ✅ NUOVO: Dimensioni cavalletti per editing
+        cavalletto_width: editingItem.cavalletto_width || 80,
+        cavalletto_height: editingItem.cavalletto_height || 60,
         
         produttore: editingItem.produttore || '',
         anno_produzione: editingItem.anno_produzione || undefined,
@@ -141,6 +160,11 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
         altezza_cavalletto_standard: undefined,
         max_cavalletti: undefined,
         clearance_verticale: undefined,
+        peso_max_per_cavalletto_kg: undefined,
+        
+        // ✅ NUOVO: Dimensioni cavalletti default per reset
+        cavalletto_width: 80,
+        cavalletto_height: 60,
         
         produttore: '',
         anno_produzione: undefined,
@@ -490,7 +514,7 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
                     </p>
                   </div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/20 rounded-lg">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 p-4 bg-muted/20 rounded-lg">
                     <FormField
                       control={form.control}
                       name="max_cavalletti"
@@ -520,6 +544,42 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
                           </FormControl>
                           <FormDescription className="text-xs">
                             Numero supportato dall'autoclave
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="peso_max_per_cavalletto_kg"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Peso Max Cavalletto (kg)</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="number"
+                              min="1"
+                              max="1000"
+                              step="10"
+                              placeholder="es. 250"
+                              {...field}
+                              value={field.value || ''}
+                              onChange={e => {
+                                const value = e.target.value
+                                if (value === '') {
+                                  field.onChange(null)
+                                } else {
+                                  const numValue = Number(value)
+                                  if (!isNaN(numValue) && numValue >= 50) {
+                                    field.onChange(numValue)
+                                  }
+                                }
+                              }}
+                            />
+                          </FormControl>
+                          <FormDescription className="text-xs">
+                            🏋️ Capacità massima per cavalletto
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
@@ -592,6 +652,79 @@ export function AutoclaveModal({ open, onOpenChange, editingItem, onSuccess }: A
                       </FormItem>
                     )}
                   />
+                  
+                  {/* ✅ NUOVO: Campi dimensioni fisiche cavalletti (per eliminare hardcoded dal solver) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="cavalletto_width"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>📏 Larghezza Cavalletto (mm)</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="number"
+                              min="10"
+                              max="200"
+                              placeholder="80"
+                              {...field}
+                              value={field.value || ''}
+                              onChange={e => {
+                                const value = e.target.value
+                                if (value === '') {
+                                  field.onChange(null)
+                                } else {
+                                  const numValue = Number(value)
+                                  if (!isNaN(numValue) && numValue >= 10) {
+                                    field.onChange(numValue)
+                                  }
+                                }
+                              }}
+                            />
+                          </FormControl>
+                          <FormDescription className="text-xs">
+                            Sostituisce il valore hardcoded 80mm nel solver
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="cavalletto_height"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>📐 Altezza Cavalletto (mm)</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="number"
+                              min="10"
+                              max="200"
+                              placeholder="60"
+                              {...field}
+                              value={field.value || ''}
+                              onChange={e => {
+                                const value = e.target.value
+                                if (value === '') {
+                                  field.onChange(null)
+                                } else {
+                                  const numValue = Number(value)
+                                  if (!isNaN(numValue) && numValue >= 10) {
+                                    field.onChange(numValue)
+                                  }
+                                }
+                              }}
+                            />
+                          </FormControl>
+                          <FormDescription className="text-xs">
+                            Sostituisce il valore hardcoded 60mm nel solver
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
                   </div>
                 </div>
               )}

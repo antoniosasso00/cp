@@ -174,9 +174,14 @@ export default function AutoclaviPage() {
                   <TableCell className="text-center">{item.num_linee_vuoto}</TableCell>
                   <TableCell className="text-center">
                     {item.usa_cavalletti ? (
-                      <Badge variant="secondary" className="gap-1">
-                        🔧 {item.max_cavalletti || 0} cavalletti
-                      </Badge>
+                      <div className="space-y-1">
+                        <Badge variant="secondary" className="gap-1">
+                          🔧 {item.max_cavalletti || 0} cavalletti
+                        </Badge>
+                        <Badge variant="outline" className="text-xs">
+                          🏋️ {item.peso_max_per_cavalletto_kg || 0}kg max
+                        </Badge>
+                      </div>
                     ) : (
                       <Badge variant="outline" className="text-xs text-muted-foreground">
                         ❌ Non supportati

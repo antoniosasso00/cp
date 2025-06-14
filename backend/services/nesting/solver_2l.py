@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class NestingParameters2L:
-    """Parametri per l'algoritmo di nesting a due livelli"""
+    """Parametri per l'algoritmo di nesting a due livelli - CONFIGURABILI DAL FRONTEND"""
     # Parametri base (ereditati dal solver originale)
     padding_mm: float = 10.0
     min_distance_mm: float = 15.0
@@ -45,19 +45,18 @@ class NestingParameters2L:
     timeout_override: Optional[int] = None
     heavy_piece_threshold_kg: float = 50.0
     
-    # Parametri specifici per due livelli
+    # Parametri specifici per due livelli (configurabili dal frontend)
     use_cavalletti: bool = True  # Abilita secondo livello
-    cavalletto_height_mm: float = 100.0  # Altezza cavalletto
-    # 🗑️ RIMOSSO: max_weight_per_level_kg (ora calcolato dinamicamente)
+    # 🗑️ RIMOSSO: cavalletto_height_mm (ora dal database autoclave)
     prefer_base_level: bool = True  # Preferenza per il piano base
     
-    # Parametri avanzati
+    # Parametri avanzati (configurabili dal frontend)
     use_multithread: bool = True
     num_search_workers: int = 8
     base_timeout_seconds: float = 20.0
     max_timeout_seconds: float = 300.0
     
-    # Parametri per penalità/bonus
+    # Parametri per penalità/bonus (configurabili dal frontend)
     level_preference_weight: float = 0.1  # Peso preferenza livello base
     compactness_weight: float = 0.05
     area_weight: float = 0.85
@@ -93,19 +92,29 @@ class ToolInfo2L:
 
 @dataclass
 class AutoclaveInfo2L:
-    """Informazioni dell'autoclave per nesting a due livelli"""
+    """Informazioni dell'autoclave per nesting a due livelli - DATI DAL DATABASE"""
     id: int
     width: float
     height: float
     max_weight: float
     max_lines: int
     
-    # Specifiche cavalletti
+    # ✅ DINAMICO: Specifiche cavalletti dal database autoclave
     has_cavalletti: bool = False
-    cavalletto_height: float = 100.0
-    # 🆕 NUOVO: Peso dinamico basato su cavalletti utilizzati
-    peso_max_per_cavalletto_kg: float = 300.0
-    num_cavalletti_utilizzati: int = 0  # Calcolato dinamicamente
+    cavalletto_height: float = 100.0  # Altezza cavalletto (mm)
+    peso_max_per_cavalletto_kg: float = 300.0  # Peso max per cavalletto
+    
+    # ✅ NUOVO: Dimensioni fisiche cavalletti (dal database autoclave)
+    cavalletto_width: float = 80.0  # mm - larghezza fisica cavalletto (era hardcoded nel solver)
+    cavalletto_height_mm: float = 60.0  # mm - altezza fisica cavalletto (era hardcoded nel solver)
+    
+    # ✅ NUOVO: Campi aggiuntivi dal database
+    max_cavalletti: Optional[int] = None  # Numero massimo cavalletti supportati
+    cavalletto_thickness_mm: Optional[float] = None  # Spessore segmento cavalletto
+    clearance_verticale: Optional[float] = None  # Clearance verticale tra cavalletti
+    
+    # Calcolato dinamicamente durante il solve
+    num_cavalletti_utilizzati: int = 0
 
 @dataclass
 class NestingLayout2L:
@@ -180,31 +189,100 @@ class CavallettoPosition:
 
 @dataclass
 class CavallettiConfiguration:
-    """Configurazione per il calcolo dei cavalletti"""
-    # Dimensioni standard cavalletto
-    cavalletto_width: float = 80.0  # mm - larghezza standard
-    cavalletto_height: float = 60.0  # mm - profondità standard
+    """Configurazione per il calcolo dei cavalletti - VALORI DINAMICI DAL DATABASE"""
+    # ✅ NUOVO: Dimensioni fisiche cavalletti (dal database autoclave)
+    cavalletto_width: float = 80.0  # mm - larghezza fisica cavalletto (era hardcoded)
+    cavalletto_height: float = 60.0  # mm - altezza fisica cavalletto (era hardcoded)
     
-    # Parametri posizionamento
+    # Parametri posizionamento (configurabili dal frontend)
     min_distance_from_edge: float = 30.0  # mm - distanza minima dai bordi del tool
     max_span_without_support: float = 400.0  # mm - distanza massima tra cavalletti
     min_distance_between_cavalletti: float = 200.0  # mm - distanza minima tra cavalletti
     
-    # Margini di sicurezza
+    # Margini di sicurezza (configurabili dal frontend)
     safety_margin_x: float = 5.0  # mm - margine lungo X per evitare interferenze
     safety_margin_y: float = 5.0  # mm - margine lungo Y per evitare interferenze
     
-    # Strategie di posizionamento
+    # Strategie di posizionamento (configurabili dal frontend)
     prefer_symmetric: bool = True  # Preferisci posizionamento simmetrico
     force_minimum_two: bool = True  # Forza almeno 2 cavalletti per tool di media/grande dimensione
 
+@dataclass
+class CavallettoFixedPosition:
+    """Posizione di un cavalletto fisso dell'autoclave (segmento trasversale)"""
+    x: float  # Posizione X inizio segmento
+    y: float  # Posizione Y del segmento
+    width: float  # Lunghezza del segmento trasversale (= lato corto autoclave)
+    height: float  # Spessore del cavalletto (fisso, es. 60mm)
+    sequence_number: int  # Numero progressivo del cavalletto (0, 1, 2...)
+    orientation: str = "horizontal"  # Sempre orizzontale (trasversale)
+    
+    @property
+    def center_x(self) -> float:
+        return self.x + self.width / 2
+    
+    @property
+    def center_y(self) -> float:
+        return self.y + self.height / 2
+    
+    @property
+    def end_x(self) -> float:
+        return self.x + self.width
+    
+    @property
+    def end_y(self) -> float:
+        return self.y + self.height
+
+@dataclass
+class CavallettiFixedConfiguration:
+    """Configurazione per cavalletti fissi dell'autoclave - VALORI DINAMICI DAL DATABASE"""
+    # 🗑️ RIMOSSI VALORI HARDCODED - ora vengono passati dall'autoclave
+    
+    # Posizionamento (configurabili dal frontend)
+    distribute_evenly: bool = True  # Distribuisci uniformemente
+    min_distance_from_edges: float = 100.0  # Distanza minima dai bordi autoclave
+    min_spacing_between_cavalletti: float = 200.0  # Spaziatura minima tra cavalletti
+    
+    # Orientamento (sempre trasversale al lato corto)
+    orientation: str = "horizontal"  # I cavalletti sono sempre orizzontali
+
 class NestingModel2L:
-    """Modello di nesting a due livelli"""
+    """Modello di nesting a due livelli con supporto cavalletti - CONFIGURAZIONE DINAMICA"""
     
     def __init__(self, parameters: NestingParameters2L):
         self.parameters = parameters
         self.logger = logging.getLogger(__name__)
         
+        # ✅ NUOVO: Configurazione cavalletti dinamica dal frontend
+        self._cavalletti_config: Optional[CavallettiConfiguration] = None
+        
+        # Inizializza solver base per compatibilità
+        base_params = NestingParameters(
+            padding_mm=parameters.padding_mm,
+            min_distance_mm=parameters.min_distance_mm,
+            vacuum_lines_capacity=parameters.vacuum_lines_capacity,
+            use_fallback=parameters.use_fallback,
+            allow_heuristic=parameters.allow_heuristic,
+            timeout_override=parameters.timeout_override,
+            heavy_piece_threshold_kg=parameters.heavy_piece_threshold_kg,
+            use_multithread=parameters.use_multithread,
+            num_search_workers=parameters.num_search_workers,
+            base_timeout_seconds=parameters.base_timeout_seconds,
+            max_timeout_seconds=parameters.max_timeout_seconds
+        )
+        
+        self.base_solver = NestingModel(base_params)
+        
+        # Statistiche e metriche
+        self.stats = {
+            'total_solve_time': 0.0,
+            'level_0_solve_time': 0.0,
+            'level_1_solve_time': 0.0,
+            'cavalletti_calc_time': 0.0,
+            'solutions_attempted': 0,
+            'fallback_used': False
+        }
+    
     def _calculate_dynamic_weight_limits(
         self, 
         autoclave: AutoclaveInfo2L,
@@ -420,10 +498,21 @@ class NestingModel2L:
                 solver.parameters.num_search_workers = self.parameters.num_search_workers
             
             self.logger.info("🔄 [2L] Esecuzione CP-SAT...")
-            status = solver.Solve(model)
             
-            # Estrazione soluzione
-            return self._extract_cpsat_solution_2l(solver, tools, autoclave, variables, status, start_time)
+            try:
+                status = solver.Solve(model)
+                
+                # Estrazione soluzione
+                return self._extract_cpsat_solution_2l(solver, tools, autoclave, variables, status, start_time)
+                
+            except Exception as solve_error:
+                error_msg = str(solve_error)
+                if "__le__()" in error_msg and "incompatible function arguments" in error_msg:
+                    self.logger.error(f"🚨 [2L] CP-SAT BoundedLinearExpression error: {error_msg}")
+                    self.logger.info("🔄 [2L] Fallback to greedy algorithm due to CP-SAT error")
+                    return self._solve_greedy_2l(tools, autoclave, start_time)
+                else:
+                    raise solve_error
             
         except Exception as e:
             self.logger.error(f"❌ [2L] Errore CP-SAT: {str(e)}")
@@ -626,7 +715,11 @@ class NestingModel2L:
         if not autoclave.has_cavalletti:
             return
         
-        config = CavallettiConfiguration()
+        # ✅ NUOVO: Usa dimensioni dal database autoclave
+        config = CavallettiConfiguration(
+            cavalletto_width=autoclave.cavalletto_width,
+            cavalletto_height=autoclave.cavalletto_height_mm
+        )
         constraint_count = 0
         
         for i, tool_level_1 in enumerate(tools):
@@ -1096,6 +1189,11 @@ class NestingModel2L:
         # Converti layouts in PosizionamentoTool2L
         positioned_tools = []
         for layout in solution.layouts:
+            # 🆕 NUOVO: Recupera informazioni ODL per campi aggiuntivi
+            corresponding_odl = None
+            if hasattr(self, '_odl_cache'):
+                corresponding_odl = self._odl_cache.get(layout.odl_id)
+            
             tool_position = PosizionamentoTool2L(
                 odl_id=layout.odl_id,
                 tool_id=layout.odl_id,  # Assuming tool_id == odl_id for now
@@ -1107,12 +1205,16 @@ class NestingModel2L:
                 weight_kg=layout.weight,
                 level=layout.level,
                 z_position=layout.z_position,
-                lines_used=layout.lines_used
+                lines_used=layout.lines_used,
+                # 🆕 NUOVI CAMPI per compatibilità frontend
+                part_number=corresponding_odl.part_number if corresponding_odl else None,
+                descrizione_breve=corresponding_odl.descrizione_breve if corresponding_odl else None,
+                numero_odl=f"ODL{str(layout.odl_id).zfill(3)}"
             )
             positioned_tools.append(tool_position)
         
         # Calcola tutti i cavalletti per i tool di livello 1
-        all_cavalletti = self.calcola_tutti_cavalletti(solution.layouts)
+        all_cavalletti = self.calcola_tutti_cavalletti(solution.layouts, autoclave)
         
         # Converti cavalletti in CavallettoPosizionamento
         cavalletti_pydantic = []
@@ -1172,8 +1274,8 @@ class NestingModel2L:
         
         # Configurazione cavalletti utilizzata
         cavalletti_config = {
-            "cavalletto_width": 80.0,
-            "cavalletto_height": 60.0,
+            "cavalletto_width": autoclave.cavalletto_width or 80.0,  # ✅ DINAMICO: dal database invece di hardcoded
+            "cavalletto_height": autoclave.cavalletto_height or 60.0,  # ✅ DINAMICO: dal database invece di hardcoded
             "min_distance_from_edge": 30.0,
             "max_span_without_support": 400.0,
             "prefer_symmetric": True
@@ -1351,10 +1453,10 @@ class NestingModel2L:
             "cavalletto_height": 100.0
         }
         
-        # Configurazione cavalletti
+        # Configurazione cavalletti (esempio con valori di default)
         cavalletti_config = {
-            "cavalletto_width": 80.0,
-            "cavalletto_height": 60.0,
+            "cavalletto_width": 80.0,  # Valore di esempio - normalmente preso dal database autoclave
+            "cavalletto_height": 60.0,  # Valore di esempio - normalmente preso dal database autoclave
             "min_distance_from_edge": 30.0,
             "max_span_without_support": 400.0,
             "min_distance_between_cavalletti": 200.0,
@@ -1548,7 +1650,11 @@ class NestingModel2L:
         Calcola le posizioni dei cavalletti per il tool proposto e verifica che
         non si sovrappongano ai tool esistenti di livello 0.
         """
-        config = CavallettiConfiguration()
+        # ✅ NUOVO: Usa dimensioni di fallback (dovrebbe ricevere autoclave per usare dati reali)
+        config = CavallettiConfiguration(
+            cavalletto_width=80.0,  # Fallback - idealmente dovrebbe essere passato l'autoclave
+            cavalletto_height=60.0  # Fallback - idealmente dovrebbe essere passato l'autoclave
+        )
         
         # Crea layout temporaneo per il calcolo cavalletti
         temp_layout = NestingLayout2L(
@@ -1634,7 +1740,11 @@ class NestingModel2L:
             Lista delle posizioni dei cavalletti
         """
         if config is None:
-            config = CavallettiConfiguration()
+            # ✅ NUOVO: Usa dimensioni di default (dovrebbe essere passato dal chiamante)
+            config = CavallettiConfiguration(
+                cavalletto_width=80.0,  # Fallback - meglio passare da autoclave
+                cavalletto_height=60.0  # Fallback - meglio passare da autoclave
+            )
         
         # Determina orientazione e numero cavalletti
         main_dimension = max(tool_layout.width, tool_layout.height)
@@ -1851,9 +1961,9 @@ class NestingModel2L:
         
         self.logger.info("🔧 [2L] Calcolo automatico cavalletti per soluzione...")
         
-        # Calcola posizioni cavalletti per tutti i tool al livello 1
+        # 🏗️ AGGIORNATO: Calcola posizioni cavalletti fissi per autoclave
         tool_layouts = solution.layouts.copy()  # Copia per non modificare l'originale
-        cavalletti_positions = self.calcola_tutti_cavalletti(tool_layouts)
+        cavalletti_positions = self.calcola_tutti_cavalletti(tool_layouts, autoclave)
         
         if not cavalletti_positions:
             self.logger.info("🔸 Nessun cavalletto necessario (nessun tool al livello 1)")
@@ -1882,30 +1992,99 @@ class NestingModel2L:
         self.logger.info(f"✅ [2L] Cavalletti calcolati: {len(cavalletti_positions)} posizioni generate")
         
         return extended_solution
-    
+
     def calcola_tutti_cavalletti(
+        self, 
+        layouts: List[NestingLayout2L], 
+        autoclave: AutoclaveInfo2L, 
+        config: CavallettiConfiguration = None
+    ) -> List[CavallettoPosition]:
+        """
+        🏗️ CALCOLO CAVALLETTI AGGIORNATO: Utilizza il nuovo approccio con cavalletti fissi
+        
+        Calcola i cavalletti come segmenti fissi dell'autoclave che attraversano 
+        trasversalmente tutto il piano, poi li converte nel formato legacy per compatibilità.
+        
+        Args:
+            layouts: Lista di tutti i layout posizionati
+            autoclave: Informazioni autoclave per calcolo cavalletti fissi  
+            config: Configurazione cavalletti (legacy, mantenuto per compatibilità)
+            
+        Returns:
+            Lista completa di tutte le posizioni dei cavalletti (formato legacy)
+        """
+        
+        level_1_tools = [layout for layout in layouts if layout.level == 1]
+        
+        if not level_1_tools:
+            self.logger.info("🔧 Nessun tool al livello 1, nessun cavalletto necessario")
+            return []
+        
+        self.logger.info(f"🏗️ NUOVO APPROCCIO: Calcolo cavalletti fissi per {len(level_1_tools)} tool al livello 1")
+        
+        # ✅ PRIORITÀ: Usa configurazione dal frontend se disponibile
+        if config is None:
+            if hasattr(self, '_cavalletti_config') and self._cavalletti_config is not None:
+                config = self._cavalletti_config
+                self.logger.info("🔧 Usando configurazione cavalletti dal frontend")
+            else:
+                # ✅ NUOVO: Usa dimensioni dal database autoclave invece di valori hardcoded
+                config = CavallettiConfiguration(
+                    cavalletto_width=autoclave.cavalletto_width,
+                    cavalletto_height=autoclave.cavalletto_height_mm
+                )
+                self.logger.info("⚠️ Usando configurazione cavalletti di default con dimensioni dal database")
+        
+        # 🎯 APPROCCIO CORRETTO: Calcola cavalletti come segmenti fissi dell'autoclave
+        fixed_config = CavallettiFixedConfiguration(
+            distribute_evenly=True,
+            min_distance_from_edges=config.min_distance_from_edge,
+            min_spacing_between_cavalletti=config.min_distance_between_cavalletti,
+            orientation="horizontal"
+        )
+        cavalletti_fissi = self.calcola_cavalletti_fissi_autoclave(autoclave, fixed_config)
+        
+        if not cavalletti_fissi:
+            self.logger.warning("⚠️ Nessun cavalletto fisso calcolato per questa autoclave")
+            return []
+        
+        # 🔄 Conversione per compatibilità con codice esistente
+        legacy_cavalletti = self.converti_cavalletti_fissi_a_legacy(cavalletti_fissi, level_1_tools)
+        
+        # Verifica sovrapposizioni (mantenuto per compatibilità)
+        conflicts = self._check_cavalletti_conflicts(legacy_cavalletti)
+        if conflicts:
+            self.logger.warning(f"⚠️ Rilevati {len(conflicts)} conflitti tra cavalletti legacy")
+            for conflict in conflicts:
+                self.logger.warning(f"   Conflitto: {conflict}")
+        
+        self.logger.info(f"🏗️ Cavalletti fissi: {len(cavalletti_fissi)} → Legacy: {len(legacy_cavalletti)}")
+        
+        return legacy_cavalletti
+    
+    def calcola_tutti_cavalletti_legacy(
         self, 
         layouts: List[NestingLayout2L], 
         config: CavallettiConfiguration = None
     ) -> List[CavallettoPosition]:
         """
-        Calcola posizioni di tutti i cavalletti necessari per tutti i tool al livello 1
+        🔧 METODO LEGACY: Mantiene il vecchio approccio per compatibilità
         
-        Args:
-            layouts: Lista di tutti i layout posizionati
-            config: Configurazione cavalletti
-            
-        Returns:
-            Lista completa di tutte le posizioni dei cavalletti
+        Calcola cavalletti individuali per ogni tool (approccio precedente).
+        Mantenuto per fallback in caso di problemi con il nuovo sistema.
         """
         
         if config is None:
-            config = CavallettiConfiguration()
+            # ✅ NUOVO: Usa dimensioni dal database autoclave
+            config = CavallettiConfiguration(
+                cavalletto_width=80.0,  # Fallback di default - idealmente dovrebbe essere passato
+                cavalletto_height=60.0  # Fallback di default - idealmente dovrebbe essere passato
+            )
         
         all_cavalletti = []
         level_1_tools = [layout for layout in layouts if layout.level == 1]
         
-        self.logger.info(f"🔧 Calcolo cavalletti per {len(level_1_tools)} tool al livello 1")
+        self.logger.info(f"🔧 LEGACY: Calcolo cavalletti per {len(level_1_tools)} tool al livello 1")
         
         for tool_layout in level_1_tools:
             cavalletti = self.calcola_cavalletti_per_tool(tool_layout, config)
@@ -2363,7 +2542,11 @@ class NestingModel2L:
         tool_cavalletti = self.calcola_cavalletti_per_tool(temp_layout)
         
         # Check interferenza con cavalletti livello 0
-        config = CavallettiConfiguration()
+        # ✅ NUOVO: Usa dimensioni di fallback (dovrebbe ricevere autoclave per dati reali)
+        config = CavallettiConfiguration(
+            cavalletto_width=80.0,  # Fallback - meglio passare dall'autoclave
+            cavalletto_height=60.0  # Fallback - meglio passare dall'autoclave
+        )
         
         for cavalletto_1 in tool_cavalletti:
             for cavalletto_0 in cavalletti_level_0:
@@ -2424,3 +2607,202 @@ class NestingModel2L:
             algorithm_status=status,
             message=message
         ) 
+
+    def calcola_cavalletti_fissi_autoclave(
+        self, 
+        autoclave: AutoclaveInfo2L, 
+        config: CavallettiFixedConfiguration = None
+    ) -> List[CavallettoFixedPosition]:
+        """
+        🏗️ NUOVO APPROCCIO: Calcola i cavalletti come segmenti fissi dell'autoclave
+        
+        I cavalletti sono segmenti trasversali che attraversano tutto il lato corto dell'autoclave,
+        disposti in numero pari al massimo indicato per l'autoclave.
+        
+        Args:
+            autoclave: Informazioni autoclave
+            config: Configurazione cavalletti fissi
+            
+        Returns:
+            Lista delle posizioni dei cavalletti fissi
+        """
+        if config is None:
+            config = CavallettiFixedConfiguration()
+        
+        # ✅ DINAMICO: Numero cavalletti dal database autoclave
+        if not hasattr(autoclave, 'max_cavalletti') or autoclave.max_cavalletti is None:
+            self.logger.warning(f"⚠️ Autoclave {autoclave.id} non ha max_cavalletti definito")
+            return []
+            
+        num_cavalletti = autoclave.max_cavalletti
+        
+        if num_cavalletti <= 0:
+            self.logger.info("🏗️ Nessun cavalletto da posizionare per questa autoclave")
+            return []
+        
+        # Dimensioni autoclave
+        autoclave_width = autoclave.width   # Lato lungo dell'autoclave
+        autoclave_height = autoclave.height  # Lato corto dell'autoclave
+        
+        # 🎯 CORREZIONE LOGICA: I cavalletti sono segmenti trasversali
+        # - Si estendono per tutta la larghezza dell'autoclave (asse Y)
+        # - Si posizionano lungo la lunghezza dell'autoclave (asse X)
+        segment_width = autoclave_height   # Larghezza segmento = larghezza autoclave (asse Y)
+        
+        # ✅ DINAMICO: Spessore cavalletto dal database autoclave  
+        if not hasattr(autoclave, 'cavalletto_thickness_mm') or autoclave.cavalletto_thickness_mm is None:
+            # Fallback a valore ragionevole se non definito
+            segment_thickness = 60.0  # mm - valore di fallback
+            self.logger.warning(f"⚠️ Autoclave {autoclave.id} non ha cavalletto_thickness_mm, uso fallback {segment_thickness}mm")
+        else:
+            segment_thickness = autoclave.cavalletto_thickness_mm
+        
+        # Area utilizzabile per posizionamento lungo X (escludendo margini dai bordi)
+        usable_start_x = config.min_distance_from_edges
+        usable_end_x = autoclave_width - config.min_distance_from_edges - segment_thickness
+        usable_length_x = usable_end_x - usable_start_x
+        
+        if usable_length_x <= 0:
+            self.logger.warning(f"⚠️ Autoclave troppo stretta per posizionare cavalletti fissi")
+            return []
+        
+        self.logger.info(f"🏗️ Calcolo {num_cavalletti} cavalletti fissi per autoclave {autoclave.id}")
+        self.logger.debug(f"   Dimensioni autoclave: {autoclave_width}×{autoclave_height}mm")
+        self.logger.debug(f"   Dimensioni segmenti: {segment_thickness}×{segment_width}mm (spessore×larghezza)")
+        self.logger.debug(f"   Area utilizzabile X: {usable_start_x}-{usable_end_x}mm ({usable_length_x}mm)")
+        
+        cavalletti_positions = []
+        
+        if num_cavalletti == 1:
+            # Un solo cavalletto al centro
+            center_x = usable_start_x + (usable_length_x - segment_thickness) / 2
+            center_y = 0  # Inizia dal bordo dell'autoclave
+            
+            cavalletti_positions.append(CavallettoFixedPosition(
+                x=center_x,
+                y=center_y,
+                width=segment_width,  # Attraversa tutta la larghezza dell'autoclave
+                height=segment_thickness,
+                sequence_number=0,
+                orientation="horizontal"
+            ))
+            
+        elif num_cavalletti == 2:
+            # Due cavalletti: uno verso l'inizio, uno verso la fine
+            spacing = usable_length_x / 2
+            
+            positions_x = [
+                usable_start_x,
+                usable_start_x + spacing
+            ]
+            
+            for i, x_pos in enumerate(positions_x):
+                cavalletti_positions.append(CavallettoFixedPosition(
+                    x=x_pos,
+                    y=0,  # Inizia dal bordo dell'autoclave
+                    width=segment_width,  # Attraversa tutta la larghezza dell'autoclave
+                    height=segment_thickness,
+                    sequence_number=i,
+                    orientation="horizontal"
+                ))
+        
+        else:
+            # Tre o più cavalletti: distribuzione uniforme
+            if config.distribute_evenly:
+                # Distribuzione uniforme con spaziatura uguale
+                if num_cavalletti > 1:
+                    spacing = usable_length_x / (num_cavalletti - 1)
+                else:
+                    spacing = 0
+                
+                for i in range(num_cavalletti):
+                    x_pos = usable_start_x + i * spacing
+                    
+                    cavalletti_positions.append(CavallettoFixedPosition(
+                        x=x_pos,
+                        y=0,  # Inizia dal bordo dell'autoclave
+                        width=segment_width,  # Attraversa tutta la larghezza dell'autoclave
+                        height=segment_thickness,
+                        sequence_number=i,
+                        orientation="horizontal"
+                    ))
+            else:
+                # Distribuzione con spaziatura minima garantita
+                available_spacing = (usable_length_x - num_cavalletti * segment_thickness) / (num_cavalletti - 1) if num_cavalletti > 1 else 0
+                if available_spacing < config.min_spacing_between_cavalletti:
+                    self.logger.warning(f"⚠️ Spaziatura cavalletti ridotta: {available_spacing:.1f}mm < {config.min_spacing_between_cavalletti}mm")
+                
+                current_x = usable_start_x
+                for i in range(num_cavalletti):
+                    cavalletti_positions.append(CavallettoFixedPosition(
+                        x=current_x,
+                        y=0,  # Inizia dal bordo dell'autoclave
+                        width=segment_width,  # Attraversa tutta la larghezza dell'autoclave
+                        height=segment_thickness,
+                        sequence_number=i,
+                        orientation="horizontal"
+                    ))
+                    
+                    current_x += segment_thickness + available_spacing
+        
+        self.logger.info(f"🏗️ Generati {len(cavalletti_positions)} cavalletti fissi")
+        for i, cav in enumerate(cavalletti_positions):
+            self.logger.debug(f"   Cavalletto #{i}: X={cav.x:.1f}-{cav.end_x:.1f}mm, Y={cav.y:.1f}-{cav.end_y:.1f}mm")
+        
+        return cavalletti_positions
+    
+    def converti_cavalletti_fissi_a_legacy(
+        self, 
+        cavalletti_fissi: List[CavallettoFixedPosition], 
+        layouts_level_1: List[NestingLayout2L]
+    ) -> List[CavallettoPosition]:
+        """
+        🔄 CONVERSIONE COMPATIBILITÀ: Converte cavalletti fissi nel formato legacy
+        per mantenere compatibilità con il codice esistente
+        
+        Args:
+            cavalletti_fissi: Cavalletti fissi dell'autoclave
+            layouts_level_1: Tool posizionati al livello 1 (sui cavalletti)
+            
+        Returns:
+            Lista cavalletti nel formato legacy compatibile
+        """
+        legacy_cavalletti = []
+        
+        # Per ogni tool al livello 1, trova i cavalletti fissi che lo supportano
+        for tool_layout in layouts_level_1:
+            tool_cavalletti = []
+            
+            for cav_fisso in cavalletti_fissi:
+                # Verifica se il tool si sovrappone con questo cavalletto fisso
+                tool_start_x = tool_layout.x
+                tool_end_x = tool_layout.x + tool_layout.width
+                tool_start_y = tool_layout.y
+                tool_end_y = tool_layout.y + tool_layout.height
+                
+                cav_start_x = cav_fisso.x
+                cav_end_x = cav_fisso.end_x
+                cav_start_y = cav_fisso.y
+                cav_end_y = cav_fisso.end_y
+                
+                # Verifica sovrapposizione
+                overlap_x = not (tool_end_x <= cav_start_x or cav_end_x <= tool_start_x)
+                overlap_y = not (tool_end_y <= cav_start_y or cav_end_y <= tool_start_y)
+                
+                if overlap_x and overlap_y:
+                    # Il tool si sovrappone con questo cavalletto fisso
+                    # Crea una rappresentazione legacy del cavalletto
+                    legacy_cav = CavallettoPosition(
+                        x=cav_fisso.x,
+                        y=cav_fisso.y,
+                        width=cav_fisso.width,
+                        height=cav_fisso.height,
+                        tool_odl_id=tool_layout.odl_id,
+                        sequence_number=cav_fisso.sequence_number
+                    )
+                    tool_cavalletti.append(legacy_cav)
+            
+            legacy_cavalletti.extend(tool_cavalletti)
+        
+        self.logger.debug(f"🔄 Convertiti {len(legacy_cavalletti)} cavalletti fissi in formato legacy")
+        return legacy_cavalletti

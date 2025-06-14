@@ -135,8 +135,7 @@ export function useDraftLifecycle({
       const response = await fetch('/api/batch_nesting/draft/cleanup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // 🛡️ EDGE CASE: Add timeout for cleanup requests
-        signal: AbortSignal.timeout(10000)
+        // ✅ TIMEOUT RIMOSSO: Sincrono senza AbortSignal.timeout problematico
       })
 
       if (!response.ok && retries > 0) {

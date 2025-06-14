@@ -33,6 +33,11 @@ class AutoclaveBase(BaseModel):
     altezza_cavalletto_standard: Optional[float] = Field(None, gt=0, description="Altezza standard del cavalletto per questa autoclave in cm")
     max_cavalletti: Optional[int] = Field(None, ge=0, description="Numero massimo di cavalletti supportati dall'autoclave (0 = nessun cavalletto)")
     clearance_verticale: Optional[float] = Field(None, gt=0, description="Spazio verticale minimo richiesto tra cavalletti in cm")
+    peso_max_per_cavalletto_kg: Optional[float] = Field(None, gt=0, description="Peso massimo sopportabile per singolo cavalletto in kg")
+    
+    # ✅ NUOVO: Dimensioni fisiche cavalletti (per eliminare hardcoded dal solver_2l.py)
+    cavalletto_width: Optional[float] = Field(None, ge=10, le=200, description="Larghezza fisica del cavalletto in mm (era hardcoded 80mm nel solver)")
+    cavalletto_height: Optional[float] = Field(None, ge=10, le=200, description="Altezza fisica del cavalletto in mm (era hardcoded 60mm nel solver)")
     
     # Informazioni aggiuntive
     produttore: Optional[str] = Field(None, max_length=100, description="Nome del produttore dell'autoclave")
@@ -63,6 +68,11 @@ class AutoclaveUpdate(BaseModel):
     altezza_cavalletto_standard: Optional[float] = Field(None, gt=0, description="Altezza standard del cavalletto per questa autoclave in cm")
     max_cavalletti: Optional[int] = Field(None, ge=0, description="Numero massimo di cavalletti supportati dall'autoclave (0 = nessun cavalletto)")
     clearance_verticale: Optional[float] = Field(None, gt=0, description="Spazio verticale minimo richiesto tra cavalletti in cm")
+    peso_max_per_cavalletto_kg: Optional[float] = Field(None, gt=0, description="Peso massimo sopportabile per singolo cavalletto in kg")
+    
+    # ✅ NUOVO: Dimensioni fisiche cavalletti (per eliminare hardcoded dal solver_2l.py)
+    cavalletto_width: Optional[float] = Field(None, ge=10, le=200, description="Larghezza fisica del cavalletto in mm (era hardcoded 80mm nel solver)")
+    cavalletto_height: Optional[float] = Field(None, ge=10, le=200, description="Altezza fisica del cavalletto in mm (era hardcoded 60mm nel solver)")
     
     stato: Optional[StatoAutoclaveEnum] = Field(None, description="Stato attuale dell'autoclave")
     

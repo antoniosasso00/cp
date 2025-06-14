@@ -13,8 +13,8 @@ import {
   ProductionTimeEstimate
 } from './types/schedule';
 
-// ✅ PULITO: Rimosso /v1/ dal base URL, aggiunto /api per il fallback locale
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+// ✅ PULITO: Base URL corretto per Next.js (senza /api duplicato)
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 console.log('🔗 API Base URL configurata:', API_BASE_URL); // Log per debug
 
@@ -558,6 +558,7 @@ export interface Autoclave {
   altezza_cavalletto_standard?: number
   max_cavalletti?: number
   clearance_verticale?: number
+  peso_max_per_cavalletto_kg?: number
   
   produttore?: string
   anno_produzione?: number
@@ -586,6 +587,7 @@ export interface CreateAutoclaveDto {
   altezza_cavalletto_standard?: number
   max_cavalletti?: number
   clearance_verticale?: number
+  peso_max_per_cavalletto_kg?: number
   
   produttore?: string
   anno_produzione?: number
@@ -1332,10 +1334,10 @@ export const batchNestingApi = {
       min_distance_mm: number;
     };
   }) => {
-    console.log('🚀 AEROSPACE GENERA-MULTI: Bypass interceptor per evitare false interpretazioni di errore');
+    console.log('🚀 AEROSPACE GENERA-MULTI: Chiamata diretta al backend FastAPI');
     
     // 🎯 NUOVO: Determina l'endpoint corretto in base alla selezione autoclavi
-    let endpoint = '/batch_nesting/genera-multi'; // Default: multi-batch per tutte le autoclavi
+    let endpoint = '/api/batch_nesting/genera-multi'; // Default: multi-batch per tutte le autoclavi
     let requestBody = request;
     
     // Se sono specificate autoclavi, usa comportamento diverso
@@ -1343,7 +1345,7 @@ export const batchNestingApi = {
       if (request.autoclave_ids.length === 1) {
         // Una sola autoclave selezionata: usa endpoint singolo
         console.log('🎯 SINGLE-AUTOCLAVE MODE: Una sola autoclave selezionata');
-        endpoint = '/batch_nesting/genera';
+        endpoint = '/api/batch_nesting/genera';
         requestBody = {
           odl_ids: request.odl_ids,
           autoclave_ids: request.autoclave_ids,
@@ -1352,7 +1354,7 @@ export const batchNestingApi = {
       } else {
         // Multiple autoclavi selezionate: usa endpoint multi con filtro
         console.log('🎯 MULTI-AUTOCLAVE MODE: Multiple autoclavi selezionate');
-        endpoint = '/batch_nesting/genera-multi-filtered';
+        endpoint = '/api/batch_nesting/genera-multi-filtered';
         requestBody = {
           odl_ids: request.odl_ids,
           autoclave_ids: request.autoclave_ids,
@@ -1364,70 +1366,62 @@ export const batchNestingApi = {
       console.log('🎯 AUTO-DISCOVERY MODE: Nessuna autoclave specificata, usa tutte disponibili');
     }
     
-    console.log(`🌐 DIRECT REQUEST: POST ${endpoint}`, requestBody);
+    console.log(`🌐 DIRECT BACKEND REQUEST: POST ${endpoint}`, requestBody);
 
     try {
-      // ✅ TIMEOUT ESTESO per nesting con retry automatici
-      console.log(`⏱️ Configurando timeout esteso: ${TIMEOUT_CONFIG.NESTING_TIMEOUT/1000}s per nesting`);
+      // 🔧 FIX: Chiamata diretta al backend FastAPI invece di passare per Next.js API routes
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const fullUrl = `${backendUrl}${endpoint}`;
       
-      const response = await api.post(endpoint, requestBody, {
-        timeout: TIMEOUT_CONFIG.NESTING_TIMEOUT
-      });
-
-      console.log(`📡 AXIOS RESPONSE STATUS: ${response.status}`);
-
-      // Con retryRequest abbiamo direttamente i dati nella risposta
-      const result = response.data;
-      console.log('✅ AXIOS SUCCESS - RAW RESULT:', result);
+      console.log(`📡 Chiamando direttamente: ${fullUrl}`);
       
-      // ✅ AEROSPACE: Verifica che la risposta abbia i campi necessari
-      if (typeof result === 'object' && result !== null) {
-        console.log('🎯 AEROSPACE SUCCESS: Response object valid');
-        return result as {
-          success: boolean;
-          message: string;
-          total_autoclavi: number;
-          success_count: number;
-          error_count: number;
-          best_batch_id: string | null;
-          avg_efficiency: number;
-          batch_results: Array<{
-            batch_id: string | null;
-            autoclave_id: number;
-            autoclave_nome: string;
-            efficiency: number;
-            total_weight: number;
-            positioned_tools: number;
-            excluded_odls: number;
-            success: boolean;
-            message: string;
-          }>;
-          is_real_multi_batch: boolean;
-          unique_autoclavi_count: number;
-        };
-      } else {
-        console.error('❌ AXIOS INVALID RESPONSE TYPE:', typeof result);
-        throw new Error('Response invalida dal server aerospace');
-      }
-    } catch (error: any) {
-      console.error('💥 AXIOS NETWORK ERROR:', error);
+      // ✅ SINCRONO: Rimozione modalità asincrona - timeout semplice
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minuti timeout sincrono
       
-      // 🔧 FIX CRITICO: Se il backend restituisce dati di successo nonostante l'errore HTTP
-      // Questo può succedere quando c'è un'eccezione dopo aver generato i batch con successo
-      if (error.response?.data && typeof error.response.data === 'object' && 
-          error.response.data.success === true && error.response.data.best_batch_id) {
-        console.warn('🚨 BACKEND WORKAROUND: Error HTTP ma dati di successo presenti!');
-        console.warn('   success:', error.response.data.success);
-        console.warn('   best_batch_id:', error.response.data.best_batch_id);
-        console.warn('   Usando i dati di successo nonostante HTTP error');
+      try {
+        const response = await fetch(fullUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal, // Controllo timeout manuale
+        });
         
-        // Restituisci i dati come se fosse un successo
-        return error.response.data;
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          // 🔧 FIX ROBUSTEZZA: Verifica se nel corpo dell'errore ci sono dati di successo validi
+          try {
+            const errorData = await response.json();
+            
+            if (errorData.success === true && errorData.best_batch_id) {
+              console.warn('⚠️ HTTP ERROR MA DATI VALIDI: Backend ha restituito errore HTTP ma con dati di successo');
+              console.log('📊 Dati estratti da errore:', errorData);
+              return errorData; // Usa i dati di successo nonostante l'errore HTTP
+            }
+          } catch (parseError) {
+            console.error('❌ Errore parsing corpo errore HTTP:', parseError);
+          }
+          
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('✅ SUCCESS RESPONSE:', data);
+        return data;
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        throw fetchError;
       }
-      
+    } catch (error) {
+      console.error('❌ API GENERA-MULTI ERROR:', error);
       throw error;
     }
   },
+
+
 
   fetchBatchNestings: (params?: {
     skip?: number;
@@ -1782,12 +1776,15 @@ export const batchNestingApi = {
       odl_ids: request.odl_ids,
       parametri: request.parametri,
       use_cavalletti: request.use_cavalletti ?? true,
-      cavalletto_height_mm: request.cavalletto_height_mm ?? 100.0,
-      max_weight_per_level_kg: request.max_weight_per_level_kg ?? 200.0,
+      // ✅ RIMOSSO HARDCODED: Questi valori ora vengono letti dal database autoclave
+      // Se forniti dal frontend, li passa; altrimenti il backend usa i valori del database
+      ...(request.cavalletto_height_mm !== undefined && { cavalletto_height_mm: request.cavalletto_height_mm }),
+      ...(request.max_weight_per_level_kg !== undefined && { max_weight_per_level_kg: request.max_weight_per_level_kg }),
       prefer_base_level: request.prefer_base_level ?? true
     };
     
     console.log('🚀 2L MULTI API: Calling with robust timeout handling', body);
+    console.log('🎯 USING CORRECT METHOD: NextJS route /api/batch_nesting/2l-multi');
     
     // 🔧 TIMEOUT DINAMICO ESTESO: Basato su complessità
     const odlCount = request.odl_ids.length;
@@ -1800,12 +1797,36 @@ export const batchNestingApi = {
     console.log(`⏱️ Dataset complexity: ${isComplexDataset ? 'COMPLEX' : 'SIMPLE'} (${odlCount} ODL, ${autoclaveCount} autoclavi)`);
     console.log(`⏱️ Timeout configurato: ${baseTimeout/1000}s`);
     
-    // ✅ Usa API semplificata senza retry per evitare problemi CORS
-    const response = await api.post('/api/batch_nesting/2l-multi', body, {
-      timeout: baseTimeout
-    });
+    // ✅ Usa fetch diretto come la funzione genera2L per evitare problemi axios
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), baseTimeout);
     
-    return response.data;
+    try {
+      const response = await fetch('/api/batch_nesting/2l-multi', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return response.json();
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      
+      if (error.name === 'AbortError') {
+        throw new Error(`Timeout: L'algoritmo 2L Multi ha superato i ${baseTimeout/1000} secondi. Prova con meno ODL o contatta il supporto.`);
+      }
+      
+      throw error;
+    }
   },
 
   // 🔧 Endpoint 2L singolo (mantiene compatibilità)

@@ -49,6 +49,12 @@ class Autoclave(Base, TimestampMixin):
     peso_max_per_cavalletto_kg = Column(Float, nullable=True, default=300.0,
                                        doc="Peso massimo sopportabile per singolo cavalletto in kg")
     
+    # ✅ NUOVO: Dimensioni fisiche cavalletti (per eliminare hardcoded dal solver_2l.py)
+    cavalletto_width = Column(Float, nullable=True, default=80.0,
+                             doc="Larghezza fisica del cavalletto in mm (era hardcoded 80mm nel solver)")
+    cavalletto_height = Column(Float, nullable=True, default=60.0,
+                              doc="Altezza fisica del cavalletto in mm (era hardcoded 60mm nel solver)")
+    
     # Stato operativo
     stato = Column(
         PgEnum(StatoAutoclaveEnum, name="statoautoclave", create_type=True, validate_strings=True),
@@ -106,4 +112,4 @@ class Autoclave(Base, TimestampMixin):
         return base_area * max(0, altezza_utile)
     
     def __repr__(self):
-        return f"<Autoclave(id={self.id}, nome='{self.nome}', max_load={self.max_load_kg}kg, stato={self.stato.value}, usa_cavalletti={self.usa_cavalletti})>" 
+        return f"<Autoclave(id={self.id}, nome='{self.nome}', max_load={self.max_load_kg}kg, stato={self.stato.value}, usa_cavalletti={self.usa_cavalletti}, cavalletti={self.cavalletto_width}x{self.cavalletto_height}mm)>" 

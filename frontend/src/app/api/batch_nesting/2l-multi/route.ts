@@ -25,9 +25,9 @@ export async function POST(request: NextRequest) {
       environment: process.env.NODE_ENV
     })
     
-    // 🔧 TIMEOUT DINAMICO: Basato su ambiente e complessità
+    // 🔧 TIMEOUT DINAMICO: Basato su ambiente e complessità (esteso per 45+ ODL)
     const isProduction = process.env.NODE_ENV === 'production'
-    const baseTimeout = isProduction ? 300000 : 120000 // 5min prod, 2min dev
+    const baseTimeout = isProduction ? 600000 : 300000 // 10min prod, 5min dev
     
     // Calcola timeout dinamico basato su complessità
     const odlCount = body.odl_ids?.length || 0
@@ -37,8 +37,8 @@ export async function POST(request: NextRequest) {
     
     console.log(`⏱️ Timeout calcolato: ${dynamicTimeout/1000}s (base: ${baseTimeout/1000}s, complessità: ${complexityMultiplier.toFixed(2)}x)`)
     
-    // 🚀 IMPLEMENTAZIONE STREAMING: Per algoritmi lunghi
-    if (odlCount > 10 || autoclaveCount > 2) {
+    // 🚀 IMPLEMENTAZIONE STREAMING: Per algoritmi lunghi (soglia molto alta per evitare asincrono)
+    if (odlCount > 100 || autoclaveCount > 10) {
       return handleLongRunningRequest(body, dynamicTimeout)
     }
     
