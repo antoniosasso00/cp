@@ -726,36 +726,164 @@ class CavallettiOptimizerAdvanced:
         config: CavallettiConfiguration
     ) -> List[CavallettoPosition]:
         """
-        🔧 COLUMN STACKING COMPLETO: Implementazione basata su principi palletizing
+        🔧 COLUMN STACKING INTELLIGENTE: Preserva distribuzione uniforme quando vantaggiosa
         
-        ALGORITMO INDUSTRIALE:
-        - ✅ Raggruppa supporti per colonne potenziali
-        - ✅ Allinea per massima efficienza strutturale
-        - ✅ Ottimizza spacing tra colonne
-        - ✅ Applica principi brick stacking pattern
+        MIGLIORIA ALGORITMO:
+        - ✅ Valuta stabilità distribuzione uniforme vs column stacking
+        - ✅ Preserva distribuzione uniforme per tool singoli ben distribuiti
+        - ✅ Applica column stacking solo se migliora efficienza senza perdere stabilità
+        - ✅ Principi palletizing applicati solo quando appropriato
         """
         if len(cavalletti) <= 1:
             return cavalletti
         
-        self.logger.info("🔧 [COLUMN STACKING] Avvio allineamento colonne strutturali")
+        self.logger.info("🔧 [COLUMN STACKING INTELLIGENTE] Analisi distribuzione vs clustering")
         
-        # ✅ STEP 1: Identifica colonne potenziali
+        # ✅ STEP 1: Analizza distribuzione attuale
+        distribution_analysis = self._analyze_current_distribution(cavalletti)
+        
+        # ✅ STEP 2: Se distribuzione è già ottimale, preservala
+        if self._should_preserve_uniform_distribution(distribution_analysis, cavalletti):
+            self.logger.info("✅ Distribuzione uniforme preservata - ottimale per stabilità")
+            return cavalletti
+        
+        # ✅ STEP 3: Applica column stacking solo se vantaggioso
         columns = self._identify_potential_columns(cavalletti, config)
         
-        # ✅ STEP 2: Ottimizza ogni colonna
+        # Conta colonne che beneficiano realmente del raggruppamento
+        beneficial_columns = 0
+        for column in columns:
+            if len(column) > 1 and self._column_stacking_beneficial(column, config):
+                beneficial_columns += 1
+        
+        if beneficial_columns == 0:
+            self.logger.info("✅ Column stacking non vantaggioso - mantenuta distribuzione originale")
+            return cavalletti
+        
+        # ✅ STEP 4: Applica ottimizzazione selettiva
         optimized_columns = []
         for column in columns:
-            optimized_column = self._optimize_single_column(column, config)
-            optimized_columns.append(optimized_column)
+            if len(column) > 1 and self._column_stacking_beneficial(column, config):
+                optimized_column = self._optimize_single_column(column, config)
+                optimized_columns.append(optimized_column)
+            else:
+                # Mantieni distribuzione originale per questa colonna
+                optimized_columns.append(column)
         
-        # ✅ STEP 3: Applica spacing ottimale tra colonne
+        # ✅ STEP 5: Applica spacing ottimale tra colonne
         final_cavalletti = self._optimize_column_spacing(optimized_columns, config)
         
-        columns_optimized = len([col for col in columns if len(col) > 1])
-        if columns_optimized > 0:
-            self.logger.info(f"✅ Column Stacking: ottimizzate {columns_optimized} colonne strutturali")
+        if beneficial_columns > 0:
+            self.logger.info(f"✅ Column Stacking Selettivo: ottimizzate {beneficial_columns} colonne, preservate {len(columns) - beneficial_columns}")
         
         return final_cavalletti
+    
+    def _analyze_current_distribution(
+        self,
+        cavalletti: List[CavallettoPosition]
+    ) -> Dict[str, float]:
+        """
+        🔧 ANALIZZA DISTRIBUZIONE ATTUALE per determinare uniformità
+        """
+        if len(cavalletti) < 2:
+            return {"uniformity_score": 1.0, "max_gap": 0.0, "distribution_type": "single"}
+        
+        # Ordina per posizione X
+        sorted_cavs = sorted(cavalletti, key=lambda c: c.center_x)
+        
+        # Calcola gaps tra supporti consecutivi
+        gaps = []
+        for i in range(len(sorted_cavs) - 1):
+            gap = sorted_cavs[i + 1].center_x - sorted_cavs[i].center_x
+            gaps.append(gap)
+        
+        if not gaps:
+            return {"uniformity_score": 1.0, "max_gap": 0.0, "distribution_type": "single"}
+        
+        # Calcolo uniformity score
+        mean_gap = sum(gaps) / len(gaps)
+        gap_variance = sum((gap - mean_gap) ** 2 for gap in gaps) / len(gaps)
+        uniformity_score = 1.0 / (1.0 + gap_variance / (mean_gap ** 2)) if mean_gap > 0 else 0.0
+        
+        max_gap = max(gaps)
+        
+        # Determina tipo distribuzione
+        if uniformity_score > 0.8:
+            distribution_type = "uniform"
+        elif max_gap > mean_gap * 2:
+            distribution_type = "clustered"
+        else:
+            distribution_type = "mixed"
+        
+        return {
+            "uniformity_score": uniformity_score,
+            "max_gap": max_gap,
+            "mean_gap": mean_gap,
+            "distribution_type": distribution_type
+        }
+    
+    def _should_preserve_uniform_distribution(
+        self,
+        distribution_analysis: Dict[str, float],
+        cavalletti: List[CavallettoPosition]
+    ) -> bool:
+        """
+        🔧 DECISIONE: Preservare distribuzione uniforme?
+        
+        CRITERI:
+        - ✅ Distribuzione già molto uniforme (score > 0.8)
+        - ✅ Numero supporti limitato (<= 4 per tool singolo)
+        - ✅ Spacing ragionevole (200-800mm gap medio)
+        """
+        # Criterio 1: Alta uniformità
+        if distribution_analysis["uniformity_score"] > 0.8:
+            
+            # Criterio 2: Numero supporti ragionevole
+            if len(cavalletti) <= 4:
+                
+                # Criterio 3: Spacing nel range ottimale
+                mean_gap = distribution_analysis.get("mean_gap", 0)
+                if 200 <= mean_gap <= 800:  # Range spacing ottimale per stabilità
+                    return True
+        
+        return False
+    
+    def _column_stacking_beneficial(
+        self,
+        column: List[CavallettoPosition],
+        config: CavallettiConfiguration
+    ) -> bool:
+        """
+        🔧 VALUTA se column stacking è vantaggioso per questa colonna
+        
+        CRITERI BENEFICIO:
+        - ✅ Colonna ha almeno 3 supporti (beneficio materiale)
+        - ✅ Dispersione X significativa (> 100mm)
+        - ✅ Allineamento non comprometterebbe stabilità
+        """
+        if len(column) < 3:
+            return False  # Troppo pochi supporti per beneficio significativo
+        
+        # Calcola dispersione X
+        x_positions = [cav.center_x for cav in column]
+        x_range = max(x_positions) - min(x_positions)
+        
+        if x_range < 100.0:  # Già molto allineati
+            return False
+        
+        # Verifica che non ci siano tool troppo lunghi che necessitano distribuzione
+        max_tool_width = 0
+        for cav in column:
+            # Stima larghezza tool (approssimativa)
+            # In futuro si potrebbe passare layouts per calcolo preciso
+            estimated_tool_width = x_range * 1.5  # Stima conservativa
+            max_tool_width = max(max_tool_width, estimated_tool_width)
+        
+        # Se tool molto larghi, mantieni distribuzione
+        if max_tool_width > 800.0:  # mm
+            return False
+        
+        return True  # Column stacking vantaggioso
     
     def _identify_potential_columns(
         self,
