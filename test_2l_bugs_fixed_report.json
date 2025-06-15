@@ -1,0 +1,32 @@
+{
+  "overall_success": true,
+  "tests_passed": 2,
+  "total_tests": 2,
+  "elapsed_time_seconds": 15.711856365203857,
+  "test_details": [
+    {
+      "test_name": "BUG #1 - Minimo 2 Cavalletti",
+      "success": true,
+      "details": [],
+      "errors": []
+    },
+    {
+      "test_name": "BUG #2 - Visualizzazione Risultati",
+      "success": true,
+      "details": [
+        {
+          "batch_id": "7546d292-fd79-44ae-a031-7b60787ed833",
+          "has_positioned_tools": true,
+          "has_positioned_tools_data": true,
+          "has_cavalletti": true,
+          "has_autoclave_info": true,
+          "has_canvas_dimensions": true,
+          "has_level_counts": true,
+          "positioned_tools_count": 4,
+          "tool_data_complete": true
+        }
+      ],
+      "errors": []
+    }
+  ]
+}

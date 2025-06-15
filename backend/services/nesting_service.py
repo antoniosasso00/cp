@@ -1070,14 +1070,14 @@ class NestingService:
                 logger.error(f"Autoclave {autoclave_id} non trovata")
                 return None
             
-            # 🛡️ CONTROLLO DUPLICATI INTELLIGENTE: Verifica solo race conditions immediate (ultimi 10 secondi)
-            # con stesso set di ODL per evitare click multipli dell'utente
+            # 🔧 FIX CONTROLLO DUPLICATI: Verifica solo in stato DRAFT per evitare redirect a batch obsoleti
+            # Non controllare batch SOSPESO che potrebbero essere stati eliminati dall'UI
             ten_seconds_ago = datetime.now() - timedelta(seconds=10)
             odl_ids_set = set([tool.odl_id for tool in nesting_result.positioned_tools])
             
             existing_recent_batch = db.query(BatchNesting).filter(
                 BatchNesting.autoclave_id == autoclave_id,
-                BatchNesting.stato == StatoBatchNestingEnum.SOSPESO.value,
+                BatchNesting.stato == StatoBatchNestingEnum.DRAFT.value,  # 🔧 FIX: Solo DRAFT, non SOSPESO
                 BatchNesting.created_at >= ten_seconds_ago
             ).first()
             
@@ -1088,7 +1088,7 @@ class NestingService:
                 
                 # Solo se c'è sovrapposizione significativa (>80%) considera come duplicato
                 if overlap_ratio > 0.8:
-                    logger.warning(f"🛡️ VERO DUPLICATO PREVENUTO: Batch con ODL simili già creato {existing_recent_batch.created_at}")
+                    logger.warning(f"🛡️ VERO DUPLICATO PREVENUTO: Batch DRAFT con ODL simili già creato {existing_recent_batch.created_at}")
                     return str(existing_recent_batch.id)
                 else:
                     logger.info(f"✅ BATCH DIVERSO CONSENTITO: Overlap ODL solo {overlap_ratio:.1%}, procedo con creazione")

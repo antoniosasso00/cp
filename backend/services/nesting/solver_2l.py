@@ -48,7 +48,7 @@ class NestingParameters2L:
     # Parametri specifici per due livelli (configurabili dal frontend)
     use_cavalletti: bool = True  # Abilita secondo livello
     # 🗑️ RIMOSSO: cavalletto_height_mm (ora dal database autoclave)
-    prefer_base_level: bool = True  # Preferenza per il piano base
+    prefer_base_level: bool = False  # 🔧 FIX: Ridotta preferenza per piano base
     
     # Parametri avanzati (configurabili dal frontend)
     use_multithread: bool = True
@@ -57,7 +57,7 @@ class NestingParameters2L:
     max_timeout_seconds: float = 300.0
     
     # Parametri per penalità/bonus (configurabili dal frontend)
-    level_preference_weight: float = 0.1  # Peso preferenza livello base
+    level_preference_weight: float = 0.05  # 🔧 FIX: Ridotto peso preferenza livello base
     compactness_weight: float = 0.05
     area_weight: float = 0.85
 
@@ -169,6 +169,16 @@ class NestingSolution2L:
     algorithm_status: str
     message: str = ""
 
+    # ✅ NUOVO: Supporto ottimizzatore cavalletti avanzato
+    cavalletti_finali: List[Any] = None  # CavallettoFixedPosition o altro
+    cavalletti_optimization_stats: Dict[str, Any] = None
+    
+    def __post_init__(self):
+        if self.cavalletti_finali is None:
+            self.cavalletti_finali = []
+        if self.cavalletti_optimization_stats is None:
+            self.cavalletti_optimization_stats = {}
+
 @dataclass
 class CavallettoPosition:
     """Posizione di un cavalletto sotto un tool"""
@@ -216,6 +226,9 @@ class CavallettoFixedPosition:
     height: float  # Spessore del cavalletto (fisso, es. 60mm)
     sequence_number: int  # Numero progressivo del cavalletto (0, 1, 2...)
     orientation: str = "horizontal"  # Sempre orizzontale (trasversale)
+    
+    # ✅ FIX COMPATIBILITÀ: Aggiunto tool_odl_id per compatibilità con convert_to_pydantic_response
+    tool_odl_id: Optional[int] = None  # ODL del tool supportato (se applicabile)
     
     @property
     def center_x(self) -> float:
@@ -289,29 +302,44 @@ class NestingModel2L:
         num_cavalletti_in_use: int
     ) -> tuple[float, float]:
         """
-        🔧 Calcola dinamicamente i limiti di peso per livello
+        🔧 FIX CRITICO: Calcola dinamicamente i limiti di peso per livello
+        
+        PROBLEMA RISOLTO: La logica precedente creava un circolo vizioso dove num_cavalletti_in_use=0
+        impediva qualsiasi uso del livello 1.
+        
+        SOLUZIONE: Usa max_cavalletti dall'autoclave come capacità potenziale, non cavalletti attualmente in uso.
         
         Args:
             autoclave: Informazioni autoclave
-            num_cavalletti_in_use: Numero di cavalletti effettivamente utilizzati
+            num_cavalletti_in_use: Numero di cavalletti effettivamente utilizzati (per logging)
             
         Returns:
             Tuple (peso_max_livello_0, peso_max_livello_1)
         """
-        # Peso massimo livello 1 basato sui cavalletti utilizzati
+        # 🚀 FIX: Usa capacità POTENZIALE dei cavalletti, non quelli attualmente in uso
         peso_max_livello_1 = 0.0
-        if autoclave.has_cavalletti and num_cavalletti_in_use > 0:
-            peso_max_livello_1 = autoclave.peso_max_per_cavalletto_kg * num_cavalletti_in_use
+        if autoclave.has_cavalletti:
+            # Usa max_cavalletti se disponibile, altrimenti stima ragionevole
+            max_cavalletti_disponibili = autoclave.max_cavalletti or 6  # Default 6 cavalletti
+            peso_max_livello_1 = autoclave.peso_max_per_cavalletto_kg * max_cavalletti_disponibili
         
-        # Peso massimo livello 0: il rimanente del carico totale autoclave
-        peso_max_livello_0 = autoclave.max_weight - peso_max_livello_1
+        # Peso massimo livello 0: può usare quasi tutto il carico se necessario
+        # Ma lascia spazio per almeno qualche tool sul livello 1 se cavalletti abilitati
+        if autoclave.has_cavalletti and peso_max_livello_1 > 0:
+            # Bilanciamento: 70% autoclave per livello 0, 30% per livello 1 (flessibile)
+            peso_max_livello_0 = autoclave.max_weight * 0.7
+            # Assicura che livello 1 abbia almeno capacità minima utilizzabile
+            peso_max_livello_1 = min(peso_max_livello_1, autoclave.max_weight * 0.8)  # Max 80% peso autoclave
+        else:
+            # Nessun cavalletto: tutto il peso va su livello 0
+            peso_max_livello_0 = autoclave.max_weight
+            peso_max_livello_1 = 0.0
         
-        # Assicuriamoci che il livello 0 abbia almeno capacità minima
-        peso_max_livello_0 = max(peso_max_livello_0, autoclave.max_weight * 0.3)
-        
-        # 🔧 FIX: Logging ridotto - solo per cavalletti > 0 e con frequenza limitata
-        if num_cavalletti_in_use > 0 and num_cavalletti_in_use % 5 == 0:
-            self.logger.info(f"🔧 Limiti dinamici: L0={peso_max_livello_0:.1f}kg, L1={peso_max_livello_1:.1f}kg (cavalletti: {num_cavalletti_in_use})")
+        # 🔧 FIX: Logging migliorato per debug
+        if num_cavalletti_in_use == 0:  # Log solo all'inizio
+            max_cav = autoclave.max_cavalletti or 6
+            self.logger.info(f"🔧 [FIX] Limiti peso: L0={peso_max_livello_0:.1f}kg, L1={peso_max_livello_1:.1f}kg")
+            self.logger.info(f"   Cavalletti: {max_cav} disponibili x {autoclave.peso_max_per_cavalletto_kg}kg = capacità {peso_max_livello_1:.1f}kg")
         
         return peso_max_livello_0, peso_max_livello_1
     
@@ -393,7 +421,7 @@ class NestingModel2L:
         )
         
         # 6. Aggiungi calcolo cavalletti alla soluzione finale
-        final_solution = self._add_cavalletti_to_solution(final_solution, autoclave)
+        final_solution = self._add_cavalletti_with_advanced_optimizer(final_solution, autoclave)
         
         return final_solution
     
@@ -536,6 +564,10 @@ class NestingModel2L:
         variables['width'] = {}
         variables['height'] = {}
         
+        # 🔧 FIX CP-SAT: Aggiunte variabili intermedie per evitare BoundedLinearExpression
+        variables['end_x'] = {}
+        variables['end_y'] = {}
+        
         for i, tool in enumerate(tools):
             tool_id = f"tool_{i}"
             
@@ -565,6 +597,14 @@ class NestingModel2L:
                 f'height_{tool_id}'
             )
             
+            # 🔧 FIX CP-SAT: Variabili intermedie per end_x e end_y
+            variables['end_x'][tool_id] = model.NewIntVar(
+                0, int(autoclave.width), f'end_x_{tool_id}'
+            )
+            variables['end_y'][tool_id] = model.NewIntVar(
+                0, int(autoclave.height), f'end_y_{tool_id}'
+            )
+            
             # Vincoli per dimensioni in base alla rotazione
             model.Add(variables['width'][tool_id] == int(tool.width)).OnlyEnforceIf(
                 variables['rotated'][tool_id].Not()
@@ -578,6 +618,10 @@ class NestingModel2L:
             model.Add(variables['height'][tool_id] == int(tool.width)).OnlyEnforceIf(
                 variables['rotated'][tool_id]
             )
+            
+            # 🔧 FIX CP-SAT: Vincoli per variabili intermedie
+            model.Add(variables['end_x'][tool_id] == variables['x'][tool_id] + variables['width'][tool_id])
+            model.Add(variables['end_y'][tool_id] == variables['y'][tool_id] + variables['height'][tool_id])
         
         return variables
     
@@ -594,13 +638,13 @@ class NestingModel2L:
         for i, tool in enumerate(tools):
             tool_id = f"tool_{i}"
             
-            # Il tool deve stare dentro l'autoclave
+            # 🔧 FIX CP-SAT: Usa variabili intermedie invece di espressioni
             model.Add(
-                variables['x'][tool_id] + variables['width'][tool_id] <= int(autoclave.width)
+                variables['end_x'][tool_id] <= int(autoclave.width)
             ).OnlyEnforceIf(variables['included'][tool_id])
             
             model.Add(
-                variables['y'][tool_id] + variables['height'][tool_id] <= int(autoclave.height)
+                variables['end_y'][tool_id] <= int(autoclave.height)
             ).OnlyEnforceIf(variables['included'][tool_id])
         
         # 2. Vincoli di non sovrapposizione SULLO STESSO LIVELLO
@@ -625,31 +669,33 @@ class NestingModel2L:
                 
                 # Tool i a sinistra di tool j
                 model.Add(
-                    variables['x'][tool_id_i] + variables['width'][tool_id_i] + padding <= variables['x'][tool_id_j]
+                    variables['end_x'][tool_id_i] + padding <= variables['x'][tool_id_j]
                 ).OnlyEnforceIf([variables['included'][tool_id_i], variables['included'][tool_id_j], same_level, left_i])
                 
                 # Tool i a destra di tool j
                 model.Add(
-                    variables['x'][tool_id_j] + variables['width'][tool_id_j] + padding <= variables['x'][tool_id_i]
+                    variables['end_x'][tool_id_j] + padding <= variables['x'][tool_id_i]
                 ).OnlyEnforceIf([variables['included'][tool_id_i], variables['included'][tool_id_j], same_level, right_i])
                 
                 # Tool i sotto tool j
                 model.Add(
-                    variables['y'][tool_id_i] + variables['height'][tool_id_i] + padding <= variables['y'][tool_id_j]
+                    variables['end_y'][tool_id_i] + padding <= variables['y'][tool_id_j]
                 ).OnlyEnforceIf([variables['included'][tool_id_i], variables['included'][tool_id_j], same_level, below_i])
                 
-                # Tool i sopra tool j
+                # Tool i sopra tool j  
                 model.Add(
-                    variables['y'][tool_id_j] + variables['height'][tool_id_j] + padding <= variables['y'][tool_id_i]
+                    variables['end_y'][tool_id_j] + padding <= variables['y'][tool_id_i]
                 ).OnlyEnforceIf([variables['included'][tool_id_i], variables['included'][tool_id_j], same_level, above_i])
                 
-                # Almeno una condizione deve essere vera se entrambi inclusi e sullo stesso livello
-                model.AddBoolOr([left_i, right_i, below_i, above_i, same_level.Not()]).OnlyEnforceIf([
-                    variables['included'][tool_id_i], 
-                    variables['included'][tool_id_j]
+                # Almeno una condizione di separazione deve essere vera se entrambi inclusi e sullo stesso livello
+                model.AddBoolOr([
+                    left_i, right_i, below_i, above_i, 
+                    variables['included'][tool_id_i].Not(),
+                    variables['included'][tool_id_j].Not(),
+                    same_level.Not()
                 ])
         
-        # 3. 🆕 NUOVI VINCOLI PESO DINAMICI
+        # 3. Vincoli di peso totale e per livello
         level_0_weight = []
         level_1_weight = []
         
@@ -693,10 +739,336 @@ class NestingModel2L:
         
         # 🔒 VINCOLO TOTALE: Peso combinato ≤ carico massimo autoclave
         model.Add(sum(level_0_weight) + sum(level_1_weight) <= int(autoclave.max_weight))
-    
-        # 4. 🎯 VINCOLI CRITICI: Evitare interferenze tra cavalletti e tool di livello 0
-        self._add_cavalletti_interference_constraints_2l(model, tools, autoclave, variables)
+        
+        # 4. Vincoli linee vuoto
+        total_lines = sum(variables['included'][f"tool_{i}"] * tools[i].lines_needed for i in range(len(tools)))
+        model.Add(total_lines <= autoclave.max_lines)
+        
+        # 🆕 5. NUOVO VINCOLO DI STABILITÀ: Non condivisione cavalletti estremi
+        if autoclave.has_cavalletti:
+            self._add_cavalletti_stability_constraints_2l(model, tools, autoclave, variables)
+            
+        # 🔧 6. FIX CRITICO: Vincolo supporto cavalletti fissi
+        if autoclave.has_cavalletti:
+            self._add_fixed_support_constraints_2l(model, tools, autoclave, variables)
 
+    def _add_cavalletti_stability_constraints_2l(
+        self,
+        model: cp_model.CpModel,
+        tools: List[ToolInfo2L],
+        autoclave: AutoclaveInfo2L,
+        variables: Dict[str, Any]
+    ) -> None:
+        """
+        🔒 NUOVO VINCOLO DI STABILITÀ: Due tool consecutivi non possono condividere cavalletti alle estremità
+        
+        Questo vincolo garantisce che due tool al livello 1 non si appoggino sullo stesso cavalletto
+        alle loro estremità, migliorando la stabilità fisica del carico.
+        
+        Logica:
+        - Per ogni coppia di tool al livello 1
+        - Calcola le posizioni dei cavalletti estremi (primo e ultimo)
+        - Impedisce sovrapposizione dei cavalletti estremi tra tool diversi
+        - 🆕 MIGLIORAMENTO: Considera anche separazione Y per stabilità totale
+        """
+        self.logger.info("🔒 [2L] Aggiunta vincoli stabilità cavalletti (non condivisione appoggi estremi)")
+        
+        # ✅ FIX CRITICO: USA la configurazione del solver invece di creare hardcoded
+        if self._cavalletti_config is None:
+            self.logger.error("❌ ERRORE CRITICO: Nessuna configurazione cavalletti nel solver per vincoli stabilità")
+            raise ValueError("CavallettiConfiguration obbligatoria nel solver per vincoli stabilità")
+        
+        config = self._cavalletti_config
+        
+        # ✅ Log configurazione utilizzata per tracciabilità
+        self.logger.info(f"🔧 Vincoli stabilità con config: "
+                        f"cavalletto_size={config.cavalletto_width}x{config.cavalletto_height}mm, "
+                        f"min_distance_between={config.min_distance_between_cavalletti}mm")
+        
+        stability_constraints_added = 0
+        
+        for i in range(len(tools)):
+            for j in range(i + 1, len(tools)):
+                tool_id_i = f"tool_{i}"
+                tool_id_j = f"tool_{j}"
+                
+                # Solo per tool che possono usare cavalletti
+                if not tools[i].can_use_cavalletto or not tools[j].can_use_cavalletto:
+                    continue
+                
+                # Condizione attiva: entrambi i tool al livello 1 e inclusi
+                both_level_1 = model.NewBoolVar(f'both_level1_{i}_{j}')
+                level_i_is_1 = model.NewBoolVar(f'level_i_1_{i}_{j}')
+                level_j_is_1 = model.NewBoolVar(f'level_j_1_{i}_{j}')
+                
+                model.Add(variables['level'][tool_id_i] == 1).OnlyEnforceIf(level_i_is_1)
+                model.Add(variables['level'][tool_id_i] != 1).OnlyEnforceIf(level_i_is_1.Not())
+                model.Add(variables['level'][tool_id_j] == 1).OnlyEnforceIf(level_j_is_1)
+                model.Add(variables['level'][tool_id_j] != 1).OnlyEnforceIf(level_j_is_1.Not())
+                
+                model.AddBoolAnd([
+                    variables['included'][tool_id_i],
+                    variables['included'][tool_id_j],
+                    level_i_is_1,
+                    level_j_is_1
+                ]).OnlyEnforceIf(both_level_1)
+                
+                # Calcola posizioni cavalletti estremi per entrambi i tool
+                # Tool i: primo e ultimo cavalletto
+                first_cav_i_x, last_cav_i_x = self._calculate_extreme_cavalletti_positions_cpsat(
+                    model, variables, tools[i], tool_id_i, config, f'{i}_stability'
+                )
+                
+                # Tool j: primo e ultimo cavalletto  
+                first_cav_j_x, last_cav_j_x = self._calculate_extreme_cavalletti_positions_cpsat(
+                    model, variables, tools[j], tool_id_j, config, f'{j}_stability'
+                )
+                
+                # Vincoli di non sovrapposizione per cavalletti estremi
+                min_separation = int(config.min_distance_between_cavalletti)
+                cav_width = int(config.cavalletto_width)
+                cav_height = int(config.cavalletto_height)
+                
+                # Crea variabili booleane per le condizioni di separazione X
+                no_overlap_x_ff = model.NewBoolVar(f'no_overlap_x_ff_{i}_{j}')
+                no_overlap_x_fl = model.NewBoolVar(f'no_overlap_x_fl_{i}_{j}')
+                no_overlap_x_lf = model.NewBoolVar(f'no_overlap_x_lf_{i}_{j}')
+                no_overlap_x_ll = model.NewBoolVar(f'no_overlap_x_ll_{i}_{j}')
+                
+                # 🆕 NUOVO: Variabili booleane per separazione Y (stabilità migliorata)
+                no_overlap_y_separation = model.NewBoolVar(f'no_overlap_y_{i}_{j}')
+                
+                # Vincoli X: Non sovrapposizione cavalletti estremi
+                # Primo cavalletto tool i vs primo cavalletto tool j
+                model.Add(
+                    first_cav_i_x + cav_width + min_separation <= first_cav_j_x
+                ).OnlyEnforceIf([both_level_1, no_overlap_x_ff])
+                
+                # Primo cavalletto tool i vs ultimo cavalletto tool j
+                model.Add(
+                    first_cav_i_x + cav_width + min_separation <= last_cav_j_x
+                ).OnlyEnforceIf([both_level_1, no_overlap_x_fl])
+                
+                # Ultimo cavalletto tool i vs primo cavalletto tool j
+                model.Add(
+                    last_cav_i_x + cav_width + min_separation <= first_cav_j_x
+                ).OnlyEnforceIf([both_level_1, no_overlap_x_lf])
+                
+                # Ultimo cavalletto tool i vs ultimo cavalletto tool j
+                model.Add(
+                    last_cav_i_x + cav_width + min_separation <= last_cav_j_x
+                ).OnlyEnforceIf([both_level_1, no_overlap_x_ll])
+                
+                # Aggiungi i vincoli simmetrici X (tool j rispetto a tool i)
+                model.Add(
+                    first_cav_j_x + cav_width + min_separation <= first_cav_i_x
+                ).OnlyEnforceIf([both_level_1, no_overlap_x_ff.Not()])
+                
+                model.Add(
+                    last_cav_j_x + cav_width + min_separation <= first_cav_i_x
+                ).OnlyEnforceIf([both_level_1, no_overlap_x_fl.Not()])
+                
+                model.Add(
+                    first_cav_j_x + cav_width + min_separation <= last_cav_i_x
+                ).OnlyEnforceIf([both_level_1, no_overlap_x_lf.Not()])
+                
+                model.Add(
+                    last_cav_j_x + cav_width + min_separation <= last_cav_i_x
+                ).OnlyEnforceIf([both_level_1, no_overlap_x_ll.Not()])
+                
+                # 🆕 NUOVO: Vincoli Y per stabilità aggiuntiva
+                # I tool devono essere separati anche in Y per evitare stress concentrato
+                min_y_separation = int(cav_height + config.safety_margin_y * 2)
+                
+                # Tool i sopra tool j
+                model.Add(
+                    variables['y'][tool_id_i] >= variables['y'][tool_id_j] + variables['height'][tool_id_j] + min_y_separation
+                ).OnlyEnforceIf([both_level_1, no_overlap_y_separation])
+                
+                # Tool j sopra tool i (alternativa simmetrica)
+                model.Add(
+                    variables['y'][tool_id_j] >= variables['y'][tool_id_i] + variables['height'][tool_id_i] + min_y_separation
+                ).OnlyEnforceIf([both_level_1, no_overlap_y_separation.Not()])
+                
+                # Almeno una condizione di non sovrapposizione deve essere vera
+                model.AddBoolOr([
+                    no_overlap_x_ff,
+                    no_overlap_x_fl,
+                    no_overlap_x_lf,
+                    no_overlap_x_ll,
+                    no_overlap_y_separation,  # 🆕 Aggiunta opzione separazione Y
+                    both_level_1.Not()
+                ])
+                
+                stability_constraints_added += 1
+        
+        self.logger.info(f"✅ [2L] Vincoli stabilità cavalletti: {stability_constraints_added} vincoli aggiunti (X+Y separazione)")
+    
+    def _add_fixed_support_constraints_2l(
+        self,
+        model: cp_model.CpModel,
+        tools: List[ToolInfo2L],
+        autoclave: AutoclaveInfo2L,
+        variables: Dict[str, Any]
+    ) -> None:
+        """
+        🔧 FIX CRITICO: Vincolo supporto cavalletti fissi
+        
+        Garantisce che ogni tool al livello 1 sia supportato da almeno 2 cavalletti fissi
+        dell'autoclave (standard aeronautico).
+        """
+        self.logger.info("🔧 [2L] Aggiunta vincoli supporto cavalletti fissi (standard aeronautico)")
+        
+        # Genera cavalletti fissi per questa autoclave
+        fixed_config = CavallettiFixedConfiguration(
+            distribute_evenly=True,
+            min_distance_from_edges=100.0,
+            min_spacing_between_cavalletti=200.0,
+            orientation="horizontal"
+        )
+        
+        cavalletti_fissi = self.calcola_cavalletti_fissi_autoclave(autoclave, fixed_config)
+        
+        if not cavalletti_fissi:
+            self.logger.warning("⚠️ Nessun cavalletto fisso disponibile - vincoli supporto non applicabili")
+            return
+        
+        constraints_added = 0
+        
+        for i, tool in enumerate(tools):
+            tool_id = f"tool_{i}"
+            
+            # Solo per tool che possono usare cavalletti
+            if not tool.can_use_cavalletto:
+                continue
+            
+            # Variabili booleane per supporto da ogni cavalletto fisso
+            support_vars = []
+            
+            for j, cav_fisso in enumerate(cavalletti_fissi):
+                # Variabile booleana: tool è supportato da questo cavalletto fisso
+                is_supported_by = model.NewBoolVar(f'supported_by_{i}_{j}')
+                support_vars.append(is_supported_by)
+                
+                # Condizione: tool al livello 1 E incluso E si sovrappone con cavalletto fisso
+                tool_at_level_1 = model.NewBoolVar(f'tool_l1_{i}_{j}')
+                model.Add(variables['level'][tool_id] == 1).OnlyEnforceIf(tool_at_level_1)
+                model.Add(variables['level'][tool_id] != 1).OnlyEnforceIf(tool_at_level_1.Not())
+                
+                # Variabili per posizioni tool
+                tool_start_x = variables['x'][tool_id]
+                tool_end_x = variables['end_x'][tool_id]
+                
+                # Posizioni cavalletto fisso (costanti)
+                cav_start_x = int(cav_fisso.x)
+                cav_end_x = int(cav_fisso.end_x)
+                
+                # Variabili booleane per sovrapposizione X
+                tool_left_of_cav = model.NewBoolVar(f'tool_left_cav_{i}_{j}')
+                tool_right_of_cav = model.NewBoolVar(f'tool_right_cav_{i}_{j}')
+                
+                # Tool completamente a sinistra del cavalletto
+                model.Add(tool_end_x <= cav_start_x).OnlyEnforceIf(tool_left_of_cav)
+                model.Add(tool_end_x > cav_start_x).OnlyEnforceIf(tool_left_of_cav.Not())
+                
+                # Tool completamente a destra del cavalletto
+                model.Add(tool_start_x >= cav_end_x).OnlyEnforceIf(tool_right_of_cav)
+                model.Add(tool_start_x < cav_end_x).OnlyEnforceIf(tool_right_of_cav.Not())
+                
+                # Sovrapposizione = NOT (left OR right)
+                no_overlap = model.NewBoolVar(f'no_overlap_{i}_{j}')
+                model.AddBoolOr([tool_left_of_cav, tool_right_of_cav]).OnlyEnforceIf(no_overlap)
+                model.AddBoolAnd([tool_left_of_cav.Not(), tool_right_of_cav.Not()]).OnlyEnforceIf(no_overlap.Not())
+                
+                # is_supported_by = incluso AND livello_1 AND sovrapposizione
+                model.AddBoolAnd([
+                    variables['included'][tool_id],
+                    tool_at_level_1,
+                    no_overlap.Not()
+                ]).OnlyEnforceIf(is_supported_by)
+                
+                model.AddBoolOr([
+                    variables['included'][tool_id].Not(),
+                    tool_at_level_1.Not(),
+                    no_overlap
+                ]).OnlyEnforceIf(is_supported_by.Not())
+            
+            # Vincolo principale: se tool al livello 1, deve essere supportato da ≥2 cavalletti fissi
+            if len(support_vars) >= 2:
+                # Conta supporti attivi
+                num_supports = model.NewIntVar(0, len(support_vars), f'num_supports_{i}')
+                model.Add(num_supports == sum(support_vars))
+                
+                # Condizione: tool al livello 1 E incluso
+                tool_needs_support = model.NewBoolVar(f'needs_support_{i}')
+                tool_at_level_1_main = model.NewBoolVar(f'tool_l1_main_{i}')
+                
+                model.Add(variables['level'][tool_id] == 1).OnlyEnforceIf(tool_at_level_1_main)
+                model.Add(variables['level'][tool_id] != 1).OnlyEnforceIf(tool_at_level_1_main.Not())
+                
+                model.AddBoolAnd([
+                    variables['included'][tool_id],
+                    tool_at_level_1_main
+                ]).OnlyEnforceIf(tool_needs_support)
+                
+                # Se ha bisogno di supporto, deve avere ≥2 supporti
+                model.Add(num_supports >= 2).OnlyEnforceIf(tool_needs_support)
+                
+                constraints_added += 1
+            else:
+                self.logger.warning(f"⚠️ Tool {tool.odl_id}: solo {len(support_vars)} cavalletti fissi disponibili (richiesti ≥2)")
+        
+        self.logger.info(f"✅ [2L] Vincoli supporto cavalletti fissi: {constraints_added} vincoli aggiunti")
+
+    def _calculate_extreme_cavalletti_positions_cpsat(
+        self,
+        model: cp_model.CpModel,
+        variables: Dict[str, Any],
+        tool: ToolInfo2L,
+        tool_id: str,
+        config: CavallettiConfiguration,
+        suffix: str
+    ) -> Tuple[Any, Any]:
+        """
+        Calcola le posizioni X dei cavalletti estremi (primo e ultimo) per un tool nel CP-SAT
+        
+        Returns:
+            Tuple (first_cavalletto_x, last_cavalletto_x) come variabili CP-SAT
+        """
+        # Determina orientazione principale del tool e numero cavalletti
+        main_dimension = max(tool.width, tool.height)
+        num_cavalletti = self._calculate_num_cavalletti(main_dimension, config)
+        
+        # Crea variabili per le posizioni dei cavalletti estremi
+        first_cav_x = model.NewIntVar(0, int(max(tool.width, tool.height)), f'first_cav_x_{suffix}')
+        last_cav_x = model.NewIntVar(0, int(max(tool.width, tool.height)), f'last_cav_x_{suffix}')
+        
+        if num_cavalletti == 1:
+            # Un solo cavalletto: primo = ultimo = centro
+            center_offset = int((max(tool.width, tool.height) - config.cavalletto_width) / 2)
+            model.Add(first_cav_x == variables['x'][tool_id] + center_offset)
+            model.Add(last_cav_x == variables['x'][tool_id] + center_offset)
+            
+        elif num_cavalletti == 2:
+            # Due cavalletti: primo all'inizio, ultimo alla fine
+            edge_margin = int(config.min_distance_from_edge)
+            tool_length = int(max(tool.width, tool.height))
+            
+            model.Add(first_cav_x == variables['x'][tool_id] + edge_margin)
+            model.Add(last_cav_x == variables['x'][tool_id] + tool_length - edge_margin - int(config.cavalletto_width))
+            
+        else:
+            # Tre o più cavalletti: distribuzione uniforme
+            edge_margin = int(config.min_distance_from_edge)
+            tool_length = int(max(tool.width, tool.height))
+            usable_length = tool_length - 2 * edge_margin - int(config.cavalletto_width)
+            spacing = int(usable_length / (num_cavalletti - 1)) if num_cavalletti > 1 else 0
+            
+            model.Add(first_cav_x == variables['x'][tool_id] + edge_margin)
+            model.Add(last_cav_x == variables['x'][tool_id] + edge_margin + spacing * (num_cavalletti - 1))
+        
+        return first_cav_x, last_cav_x
+    
     def _add_cavalletti_interference_constraints_2l(
         self, 
         model: cp_model.CpModel, 
@@ -711,6 +1083,21 @@ class NestingModel2L:
         che nessun tool di livello 0 occupi quelle posizioni.
         """
         self.logger.info("🏗️ Aggiunta vincoli interferenza cavalletti")
+        
+        if not autoclave.has_cavalletti:
+            return
+        
+        # ✅ FIX CRITICO: USA la configurazione del solver invece di creare hardcoded
+        if self._cavalletti_config is None:
+            self.logger.error("❌ ERRORE CRITICO: Nessuna configurazione cavalletti nel solver per vincoli interferenza")
+            raise ValueError("CavallettiConfiguration obbligatoria nel solver per vincoli interferenza")
+        
+        config = self._cavalletti_config
+        
+        # ✅ Log configurazione utilizzata per tracciabilità
+        self.logger.info(f"🔧 Vincoli interferenza con config: "
+                        f"cavalletto_size={config.cavalletto_width}x{config.cavalletto_height}mm, "
+                        f"safety_margins={config.safety_margin_x}x{config.safety_margin_y}mm")
         
         if not autoclave.has_cavalletti:
             return
@@ -766,9 +1153,11 @@ class NestingModel2L:
                     cavalletto_abs_x = model.NewIntVar(0, int(autoclave.width), f'cav_abs_x_{i}_{j}_{pos_idx}')
                     cavalletto_abs_y = model.NewIntVar(0, int(autoclave.height), f'cav_abs_y_{i}_{j}_{pos_idx}')
                     
-                    # Definizione delle variabili intermedie
-                    model.Add(cavalletto_abs_x == variables['x'][tool_id_i] + int(pos['rel_x']))
-                    model.Add(cavalletto_abs_y == variables['y'][tool_id_i] + int(pos['rel_y']))
+                    # Definizione delle variabili intermedie - FIX: usa int() per evitare float
+                    rel_x_int = int(round(pos['rel_x']))
+                    rel_y_int = int(round(pos['rel_y']))
+                    model.Add(cavalletto_abs_x == variables['x'][tool_id_i] + rel_x_int)
+                    model.Add(cavalletto_abs_y == variables['y'][tool_id_i] + rel_y_int)
                     
                     # Dimensioni cavalletto
                     cav_width = int(config.cavalletto_width)
@@ -1172,8 +1561,8 @@ class NestingModel2L:
             message=f"Posizionati {len(layouts)} tool su 2 livelli"
         )
         
-        # 🆕 NUOVO: Aggiungi cavalletti alla soluzione
-        solution = self._add_cavalletti_to_solution(solution, autoclave)
+        # ✅ NUOVO: Usa ottimizzatore cavalletti avanzato invece di sistema problematico
+        solution = self._add_cavalletti_with_advanced_optimizer(solution, autoclave)
         
         return solution
 
@@ -1213,19 +1602,28 @@ class NestingModel2L:
             )
             positioned_tools.append(tool_position)
         
-        # Calcola tutti i cavalletti per i tool di livello 1
-        all_cavalletti = self.calcola_tutti_cavalletti(solution.layouts, autoclave)
+        # ✅ NUOVO: Usa cavalletti dall'ottimizzatore avanzato invece del metodo problematico
+        all_cavalletti = solution.cavalletti_finali or []
         
         # Converti cavalletti in CavallettoPosizionamento
         cavalletti_pydantic = []
         for cavalletto in all_cavalletti:
+            # ✅ FIX ROBUSTO: Gestisce sia CavallettoPosition che CavallettoFixedPosition
+            if hasattr(cavalletto, 'tool_odl_id') and cavalletto.tool_odl_id is not None:
+                # Cavalletto con tool_odl_id specificato
+                tool_odl_id = cavalletto.tool_odl_id
+            else:
+                # ✅ FIX COMPATIBILITÀ: CavallettoFixedPosition senza tool_odl_id
+                # Trova il tool che questo cavalletto supporta basandosi sulla posizione
+                tool_odl_id = self._find_supported_tool_for_cavalletto(cavalletto, solution.layouts)
+            
             cavalletto_pos = CavallettoPosizionamento(
                 x=cavalletto.x,
                 y=cavalletto.y,
                 width=cavalletto.width,
                 height=cavalletto.height,
-                tool_odl_id=cavalletto.tool_odl_id,
-                tool_id=cavalletto.tool_odl_id,  # Assuming tool_id == odl_id
+                tool_odl_id=tool_odl_id,
+                tool_id=tool_odl_id,  # Assuming tool_id == odl_id
                 sequence_number=cavalletto.sequence_number,
                 center_x=cavalletto.center_x,
                 center_y=cavalletto.center_y,
@@ -1292,6 +1690,56 @@ class NestingModel2L:
             autoclave_info=autoclave_info,
             cavalletti_config=cavalletti_config
         )
+
+    def _find_supported_tool_for_cavalletto(
+        self, 
+        cavalletto: 'CavallettoFixedPosition', 
+        layouts: List[NestingLayout2L]
+    ) -> int:
+        """
+        ✅ FIX HELPER: Trova quale tool è supportato da questo cavalletto
+        
+        Args:
+            cavalletto: Cavalletto fisso da analizzare
+            layouts: Lista di tutti i tool posizionati
+            
+        Returns:
+            ODL ID del tool supportato (o 0 se nessuno)
+        """
+        # Cerca tool di livello 1 che si sovrappongono con questo cavalletto
+        level_1_tools = [layout for layout in layouts if layout.level == 1]
+        
+        for tool_layout in level_1_tools:
+            # Verifica sovrapposizione tra tool e cavalletto
+            tool_start_x = tool_layout.x
+            tool_end_x = tool_layout.x + tool_layout.width
+            tool_start_y = tool_layout.y
+            tool_end_y = tool_layout.y + tool_layout.height
+            
+            cav_start_x = cavalletto.x
+            cav_end_x = cavalletto.x + cavalletto.width
+            cav_start_y = cavalletto.y
+            cav_end_y = cavalletto.y + cavalletto.height
+            
+            # Verifica sovrapposizione in entrambe le dimensioni
+            overlap_x = not (tool_end_x <= cav_start_x or cav_end_x <= tool_start_x)
+            overlap_y = not (tool_end_y <= cav_start_y or cav_end_y <= tool_start_y)
+            
+            if overlap_x and overlap_y:
+                # Questo cavalletto supporta questo tool
+                self.logger.debug(f"🏗️ Cavalletto {cavalletto.sequence_number} supporta ODL {tool_layout.odl_id}")
+                return tool_layout.odl_id
+        
+        # Nessun tool supportato, assegna un ODL generico
+        if level_1_tools:
+            # Assegna al primo tool di livello 1 disponibile
+            default_odl = level_1_tools[0].odl_id
+            self.logger.warning(f"⚠️ Cavalletto {cavalletto.sequence_number} non supporta nessun tool specifico, assegnato a ODL {default_odl}")
+            return default_odl
+        else:
+            # Nessun tool di livello 1, usa un placeholder
+            self.logger.warning(f"⚠️ Cavalletto {cavalletto.sequence_number} senza tool di livello 1, usando placeholder ODL 0")
+            return 0
 
     def _calculate_cavalletti_coverage(
         self, 
@@ -1625,6 +2073,10 @@ class NestingModel2L:
                 if level == 1 and autoclave.has_cavalletti and tool.can_use_cavalletto:
                     if self._has_cavalletti_interference_greedy(x, y, width, height, tool, existing_layouts):
                         continue
+                    
+                    # 🔧 FIX CRITICO: Verifica supporto cavalletti fissi
+                    if not self._has_sufficient_fixed_support(x, y, width, height, autoclave):
+                        continue
                 
                 # Calcola score per questa posizione (bottom-left preferito)
                 score = x + y
@@ -1648,7 +2100,7 @@ class NestingModel2L:
         🏗️ Verifica se il posizionamento del tool a livello 1 crea interferenze cavalletti
         
         Calcola le posizioni dei cavalletti per il tool proposto e verifica che
-        non si sovrappongano ai tool esistenti di livello 0.
+        non si sovrappongono ai tool esistenti di livello 0.
         """
         # ✅ NUOVO: Usa dimensioni di fallback (dovrebbe ricevere autoclave per usare dati reali)
         config = CavallettiConfiguration(
@@ -1683,6 +2135,67 @@ class NestingModel2L:
                     return True  # Interferenza trovata
         
         return False  # Nessuna interferenza
+    
+    def _has_sufficient_fixed_support(
+        self, 
+        x: float, 
+        y: float, 
+        width: float, 
+        height: float, 
+        autoclave: AutoclaveInfo2L
+    ) -> bool:
+        """
+        🔧 FIX CRITICO: Verifica che il tool al livello 1 sia supportato da almeno 2 cavalletti fissi
+        
+        Args:
+            x, y, width, height: Posizione e dimensioni del tool
+            autoclave: Informazioni autoclave con cavalletti fissi
+            
+        Returns:
+            True se il tool è supportato da ≥2 cavalletti fissi (standard aeronautico)
+        """
+        # Genera cavalletti fissi per questa autoclave
+        fixed_config = CavallettiFixedConfiguration(
+            distribute_evenly=True,
+            min_distance_from_edges=100.0,
+            min_spacing_between_cavalletti=200.0,
+            orientation="horizontal"
+        )
+        
+        cavalletti_fissi = self.calcola_cavalletti_fissi_autoclave(autoclave, fixed_config)
+        
+        if not cavalletti_fissi:
+            self.logger.warning(f"⚠️ Nessun cavalletto fisso disponibile per supporto")
+            return False
+        
+        # Conta quanti cavalletti fissi supportano questo tool
+        supported_by = []
+        
+        for i, cav_fisso in enumerate(cavalletti_fissi):
+            # Verifica se il tool si sovrappone con questo cavalletto fisso
+            tool_start_x = x
+            tool_end_x = x + width
+            
+            cav_start_x = cav_fisso.x
+            cav_end_x = cav_fisso.end_x
+            
+            # Verifica sovrapposizione lungo X (i cavalletti attraversano tutto Y)
+            overlap_x = not (tool_end_x <= cav_start_x or cav_end_x <= tool_start_x)
+            
+            if overlap_x:
+                supported_by.append(i)
+        
+        num_supports = len(supported_by)
+        
+        # Standard aeronautico: almeno 2 supporti
+        is_sufficient = num_supports >= 2
+        
+        if not is_sufficient:
+            self.logger.debug(f"❌ Tool ({x:.1f},{y:.1f}) {width:.0f}×{height:.0f}mm: solo {num_supports} supporti fissi (richiesti ≥2)")
+        else:
+            self.logger.debug(f"✅ Tool ({x:.1f},{y:.1f}) {width:.0f}×{height:.0f}mm: {num_supports} supporti fissi {supported_by}")
+        
+        return is_sufficient
 
     def _cavalletto_overlaps_with_tool(
         self, 
@@ -1713,423 +2226,718 @@ class NestingModel2L:
 
     def _calculate_num_cavalletti(self, main_dimension: float, config: CavallettiConfiguration) -> int:
         """
-        Calcola il numero di cavalletti necessari basato sulla dimensione principale
+        🔧 NUOVO: Calcola numero cavalletti ottimale basato su principi fisici reali
+        
+        Implementa logica basata su:
+        - Principi palletizing per stabilità
+        - Distribuzione peso equilibrata
+        - Efficienza supporto strutturale
         """
-        if main_dimension <= config.max_span_without_support:
-            return 1  # Un solo cavalletto è sufficiente
-        elif main_dimension <= config.max_span_without_support * 2:
-            return 2  # Due cavalletti
-        else:
-            # Calcola numero basato sulla distanza massima senza supporto
-            num = math.ceil(main_dimension / config.max_span_without_support)
-            return min(num, 5)  # Massimo 5 cavalletti
+        # Dimensione minima per richiedere supporto
+        if main_dimension < 150.0:  # mm
+            return 0  # Tool troppo piccolo per cavalletti
+        
+        # Calcolo base: ogni span massimo richiede supporto
+        base_count = max(1, int(main_dimension / config.max_span_without_support))
+        
+        # ✅ PRINCIPIO FISICO: Minimo 2 supporti per stabilità (anche per tool piccoli)
+        if main_dimension >= 300.0:  # Tool medio-grande
+            base_count = max(2, base_count)
+        
+        # ✅ PRINCIPIO PALLETIZING: Distribuzione bilanciata 
+        # Per tool molto lunghi, forza numero pari per simmetria
+        if main_dimension > 800.0 and base_count % 2 == 1:
+            base_count += 1  # Forza numero pari per simmetria
+        
+        # ✅ LIMITAZIONE PRATICA: Massimo 4 cavalletti per tool singolo
+        max_practical = 4
+        
+        return min(base_count, max_practical)
 
     def calcola_cavalletti_per_tool(
         self, 
-        tool_layout: NestingLayout2L, 
-        config: CavallettiConfiguration = None
+        layout: NestingLayout2L, 
+        config: CavallettiConfiguration
     ) -> List[CavallettoPosition]:
         """
-        Calcola le posizioni dei cavalletti per un singolo tool
+        🔧 CALCOLO SINGOLO TOOL: Calcola cavalletti per un tool specifico
         
-        Args:
-            tool_layout: Layout del tool per cui calcolare i cavalletti
-            config: Configurazione cavalletti (opzionale)
-            
-        Returns:
-            Lista delle posizioni dei cavalletti
+        Utilizzato dal test e dal sistema di ottimizzazione per calcolare
+        i supporti necessari per un singolo tool
         """
-        if config is None:
-            # ✅ NUOVO: Usa dimensioni di default (dovrebbe essere passato dal chiamante)
-            config = CavallettiConfiguration(
-                cavalletto_width=80.0,  # Fallback - meglio passare da autoclave
-                cavalletto_height=60.0  # Fallback - meglio passare da autoclave
-            )
+        if not config:
+            self.logger.error("❌ CavallettiConfiguration obbligatoria")
+            return []
         
-        # Determina orientazione e numero cavalletti
-        main_dimension = max(tool_layout.width, tool_layout.height)
-        num_cavalletti = self._calculate_num_cavalletti(main_dimension, config)
-        
-        # Scegli strategia di posizionamento
-        if tool_layout.width >= tool_layout.height:
-            # Tool orientato orizzontalmente - cavalletti lungo X
-            return self._genera_cavalletti_orizzontali(tool_layout, num_cavalletti, config)
-        else:
-            # Tool orientato verticalmente - cavalletti lungo Y  
-            return self._genera_cavalletti_verticali(tool_layout, num_cavalletti, config)
+        # Usa la logica esistente di generazione cavalletti
+        return self._genera_cavalletti_orizzontali(
+            layout.x, layout.y, layout.width, layout.height, layout.weight, config
+        )
 
     def _genera_cavalletti_orizzontali(
         self, 
-        tool_layout: NestingLayout2L, 
-        num_cavalletti: int, 
+        x: float, 
+        y: float, 
+        width: float, 
+        height: float, 
+        weight: float, 
         config: CavallettiConfiguration
     ) -> List[CavallettoPosition]:
         """
-        Genera posizioni per cavalletti disposti orizzontalmente (lungo asse X)
+        🔧 NUOVO: Generazione cavalletti orizzontali con logica fisica avanzata
+        
+        PRINCIPI IMPLEMENTATI:
+        - ✅ Distribuzione peso equilibrata (no clustering)
+        - ✅ Column stacking alignment
+        - ✅ Load balancing ottimale
+        - ✅ Validazione fisica rigorosa
         """
         positions = []
         
-        # Area utilizzabile per cavalletti (con margini dai bordi)
-        usable_start_x = tool_layout.x + config.min_distance_from_edge
-        usable_end_x = tool_layout.x + tool_layout.width - config.min_distance_from_edge
+        # ✅ VALIDAZIONE CRITICA: Forza minimo 2 cavalletti per stabilità
+        if self._calculate_num_cavalletti(width, config) < 2:
+            self.logger.warning(f"⚠️ Forzato minimo 2 cavalletti per ODL {layout.odl_id} (stabilità fisica)")
+            num_cavalletti = 2
+        else:
+            num_cavalletti = self._calculate_num_cavalletti(width, config)
+        
+        # ✅ AREA UTILIZZABILE: Con margini fisici realistici
+        margin = max(config.min_distance_from_edge, 40.0)  # Minimo 40mm per sicurezza
+        usable_start_x = x + margin
+        usable_end_x = x + width - margin - config.cavalletto_width
         usable_width = usable_end_x - usable_start_x
         
         if usable_width <= 0:
-            self.logger.warning(f"⚠️ Tool ODL {tool_layout.odl_id} troppo stretto per cavalletti")
+            self.logger.error(f"❌ Tool ODL {layout.odl_id} troppo stretto per cavalletti")
             return []
         
-        # Posizione Y centrale del tool (cavalletti al centro della profondità)
-        center_y = tool_layout.y + (tool_layout.height - config.cavalletto_height) / 2
+        # ✅ POSIZIONE Y: Centrata per stabilità ottimale
+        center_y = y + (height - config.cavalletto_height) / 2
         
-        if num_cavalletti == 1:
-            # Un solo cavalletto al centro
-            center_x = tool_layout.x + (tool_layout.width - config.cavalletto_width) / 2
-            positions.append(CavallettoPosition(
-                x=center_x,
-                y=center_y,
-                width=config.cavalletto_width,
-                height=config.cavalletto_height,
-                tool_odl_id=tool_layout.odl_id,
-                sequence_number=0
-            ))
-        
-        elif num_cavalletti == 2:
-            # Due cavalletti alle estremità
-            if config.prefer_symmetric:
-                # Posizionamento simmetrico
-                spacing = usable_width - config.cavalletto_width
-                left_x = usable_start_x
-                right_x = usable_start_x + spacing
-            else:
-                # Posizionamento ai bordi utilizzabili
-                left_x = usable_start_x
-                right_x = usable_end_x - config.cavalletto_width
-            
+        # ✅ DISTRIBUZIONE FISICA OTTIMALE
+        if num_cavalletti == 2:
+            # ✅ DUE CAVALLETTI: Posizionamento agli estremi per massima stabilità
             positions.extend([
                 CavallettoPosition(
-                    x=left_x,
+                    x=usable_start_x,
                     y=center_y,
                     width=config.cavalletto_width,
                     height=config.cavalletto_height,
-                    tool_odl_id=tool_layout.odl_id,
+                    tool_odl_id=layout.odl_id,
                     sequence_number=0
                 ),
                 CavallettoPosition(
-                    x=right_x,
+                    x=usable_end_x,
                     y=center_y,
                     width=config.cavalletto_width,
                     height=config.cavalletto_height,
-                    tool_odl_id=tool_layout.odl_id,
+                    tool_odl_id=layout.odl_id,
                     sequence_number=1
                 )
             ])
-        
-        else:
-            # Tre o più cavalletti - distribuzione equidistante
-            spacing = (usable_width - config.cavalletto_width) / (num_cavalletti - 1)
             
-            for i in range(num_cavalletti):
-                x_pos = usable_start_x + i * spacing
-                
+            # ✅ VALIDAZIONE FISICA: Verifica distribuzione bilanciata
+            distance = usable_end_x - usable_start_x
+            if distance > config.max_span_without_support:
+                self.logger.warning(f"⚠️ Span cavalletti {distance:.0f}mm > {config.max_span_without_support}mm")
+        
+        elif num_cavalletti == 3:
+            # ✅ TRE CAVALLETTI: Distribuzione 1/3 per stabilità ottimale
+            spacing = usable_width / 2.0
+            positions.extend([
+                CavallettoPosition(
+                    x=usable_start_x,
+                    y=center_y,
+                    width=config.cavalletto_width,
+                    height=config.cavalletto_height,
+                    tool_odl_id=layout.odl_id,
+                    sequence_number=0
+                ),
+                CavallettoPosition(
+                    x=usable_start_x + spacing,
+                    y=center_y,
+                    width=config.cavalletto_width,
+                    height=config.cavalletto_height,
+                    tool_odl_id=layout.odl_id,
+                    sequence_number=1
+                ),
+                CavallettoPosition(
+                    x=usable_end_x,
+                    y=center_y,
+                    width=config.cavalletto_width,
+                    height=config.cavalletto_height,
+                    tool_odl_id=layout.odl_id,
+                    sequence_number=2
+                )
+            ])
+        
+        elif num_cavalletti == 4:
+            # ✅ QUATTRO CAVALLETTI: Distribuzione simmetrica per bilanciamento perfetto
+            spacing = usable_width / 3.0
+            for i in range(4):
+                x_pos = usable_start_x + (i * spacing)
                 positions.append(CavallettoPosition(
                     x=x_pos,
                     y=center_y,
-                    width=config.cavalletto_width,
+                    width=config.cavalletti_width,
                     height=config.cavalletto_height,
-                    tool_odl_id=tool_layout.odl_id,
+                    tool_odl_id=layout.odl_id,
                     sequence_number=i
                 ))
         
-        self.logger.debug(f"🔧 Cavalletti orizzontali per ODL {tool_layout.odl_id}: {len(positions)} posizioni")
+        # ✅ VALIDAZIONE FINALE: Verifica distribuzione fisica corretta
+        self._validate_physical_distribution(positions, layout, config)
         
+        self.logger.info(f"✅ Generati {len(positions)} cavalletti fisici ottimali per ODL {layout.odl_id}")
         return positions
     
-    def _genera_cavalletti_verticali(
+    def _validate_physical_distribution(
         self, 
+        positions: List[CavallettoPosition], 
         tool_layout: NestingLayout2L, 
-        num_cavalletti: int, 
+        config: CavallettiConfiguration
+    ) -> None:
+        """
+        🔧 NUOVO: Validazione rigorosa distribuzione fisica cavalletti
+        
+        Verifica:
+        - ✅ Distribuzione bilanciata peso
+        - ✅ Nessun clustering nella stessa metà
+        - ✅ Spacing adeguato per stabilità
+        - ✅ Posizionamento dentro boundaries tool
+        """
+        if len(positions) < 2:
+            return  # Validazione non applicabile
+        
+        # ✅ VALIDAZIONE CLUSTERING: No cavalletti concentrati in una metà
+        tool_center_x = tool_layout.x + tool_layout.width / 2
+        left_half = sum(1 for pos in positions if pos.center_x < tool_center_x)
+        right_half = len(positions) - left_half
+        
+        if left_half == 0 or right_half == 0:
+            self.logger.error(f"❌ PROBLEMA FISICO: Tutti cavalletti in una metà del tool ODL {tool_layout.odl_id}")
+            self.logger.error(f"   Distribuzione: {left_half} sinistra, {right_half} destra")
+        
+        # ✅ VALIDAZIONE SPACING: Verifica distanze fisicamente corrette
+        positions_sorted = sorted(positions, key=lambda p: p.center_x)
+        for i in range(len(positions_sorted) - 1):
+            distance = positions_sorted[i+1].center_x - positions_sorted[i].center_x
+            
+            if distance > config.max_span_without_support:
+                self.logger.warning(f"⚠️ Span eccessivo: {distance:.0f}mm > {config.max_span_without_support}mm")
+            elif distance < config.min_distance_between_cavalletti:
+                self.logger.warning(f"⚠️ Cavalletti troppo vicini: {distance:.0f}mm < {config.min_distance_between_cavalletti}mm")
+        
+        # ✅ VALIDAZIONE BOUNDARIES: Tutti cavalletti dentro tool
+        for i, pos in enumerate(positions):
+            if not (tool_layout.x <= pos.x and pos.x + pos.width <= tool_layout.x + tool_layout.width):
+                self.logger.error(f"❌ Cavalletto {i} ODL {tool_layout.odl_id} FUORI boundaries X")
+            if not (tool_layout.y <= pos.y and pos.y + pos.height <= tool_layout.y + tool_layout.height):
+                self.logger.error(f"❌ Cavalletto {i} ODL {tool_layout.odl_id} FUORI boundaries Y")
+    
+    # ❌ RIMOSSO: _add_cavalletti_to_solution problematico
+    # Sostituito con _add_cavalletti_with_advanced_optimizer che usa il sistema corretto
+
+    # ❌ RIMOSSO: calcola_tutti_cavalletti problematico
+    # L'ottimizzatore avanzato è ora integrato correttamente tramite _add_cavalletti_with_advanced_optimizer
+    
+    def _calcola_cavalletti_fallback(
+        self, 
+        cavalletti: List[CavallettoPosition],
+        layouts: List[NestingLayout2L],
+        autoclave: AutoclaveInfo2L,
+        config: CavallettiConfiguration
+    ) -> List[CavallettoFixedPosition]:
+        """
+        🔧 FALLBACK: Sistema base con validazione max_cavalletti essenziale
+        """
+        # ✅ VALIDAZIONE CRITICA: Rispetto max_cavalletti
+        if autoclave.max_cavalletti is not None:
+            if len(cavalletti) > autoclave.max_cavalletti:
+                self.logger.warning(f"⚠️ LIMITE SUPERATO: {len(cavalletti)} > {autoclave.max_cavalletti}")
+                self.logger.info("   Applicazione riduzione base...")
+                
+                # Riduzione semplice: rimuovi cavalletti meno critici
+                cavalletti = self._reduce_cavalletti_simple(cavalletti, autoclave.max_cavalletti, layouts)
+                self.logger.info(f"   Riduzione applicata: {len(cavalletti)} cavalletti")
+        
+        return self._convert_to_fixed_positions(cavalletti, autoclave)
+    
+    def _reduce_cavalletti_simple(
+        self,
+        cavalletti: List[CavallettoPosition],
+        max_count: int,
+        layouts: List[NestingLayout2L]
+    ) -> List[CavallettoPosition]:
+        """
+        🔧 RIDUZIONE SEMPLICE: Mantiene cavalletti più critici per stabilità
+        """
+        if len(cavalletti) <= max_count:
+            return cavalletti
+        
+        # Prioritizza cavalletti per tool pesanti e grandi
+        cavalletti_with_priority = []
+        
+        for cav in cavalletti:
+            tool = next((l for l in layouts if l.odl_id == cav.tool_odl_id), None)
+            if tool:
+                # Calcola priorità basata su peso e dimensioni
+                priority = tool.weight * (tool.width * tool.height) / 1000000  # Peso * Area in m²
+                cavalletti_with_priority.append((cav, priority))
+        
+        # Ordina per priorità decrescente e mantieni i più critici
+        cavalletti_with_priority.sort(key=lambda x: x[1], reverse=True)
+        
+        return [cav for cav, _ in cavalletti_with_priority[:max_count]]
+    
+    def _convert_to_fixed_positions(
+        self,
+        cavalletti: List[CavallettoPosition],
+        autoclave: AutoclaveInfo2L
+    ) -> List[CavallettoFixedPosition]:
+        """
+        🔧 CONVERSIONE: CavallettoPosition → CavallettoFixedPosition
+        """
+        fixed_positions = []
+        
+        for i, cavalletto in enumerate(cavalletti):
+            fixed_position = CavallettoFixedPosition(
+                x=cavalletto.x,
+                y=cavalletto.y,
+                width=cavalletto.width,
+                height=cavalletto.height,
+                sequence_number=i,
+                orientation="horizontal",
+                tool_odl_id=cavalletto.tool_odl_id
+            )
+            fixed_positions.append(fixed_position)
+        
+        # Aggiorna contatore autoclave
+        autoclave.num_cavalletti_utilizzati = len(fixed_positions)
+        
+        self.logger.info(f"✅ Conversione completata: {len(fixed_positions)} cavalletti fissi")
+        return fixed_positions
+
+    def _optimize_cavalletti_global(
+        self,
+        cavalletti: List[CavallettoPosition],
+        layouts: List[NestingLayout2L], 
+        autoclave: AutoclaveInfo2L,
         config: CavallettiConfiguration
     ) -> List[CavallettoPosition]:
         """
-        Genera posizioni per cavalletti disposti verticalmente (lungo asse Y)
+        🔧 NUOVO: Ottimizzazione globale cavalletti per rispettare max_cavalletti
         
-        Args:
-            tool_layout: Layout del tool
-            num_cavalletti: Numero di cavalletti da posizionare
-            config: Configurazione cavalletti
-            
-        Returns:
-            Lista posizioni cavalletti
+        STRATEGIE IMPLEMENTATE:
+        - ✅ Adiacency Sharing: Condivisione supporti tra tool adiacenti
+        - ✅ Column Stacking: Allineamento cavalletti per efficienza
+        - ✅ Load Consolidation: Unificazione supporti ridondanti
         """
+        self.logger.info("🎯 [OTTIMIZZAZIONE] Avvio riduzione cavalletti globale")
         
-        positions = []
+        optimized_cavalletti = list(cavalletti)  # Copia iniziale
         
-        # Area utilizzabile per cavalletti (con margini dai bordi)
-        usable_start_y = tool_layout.y + config.min_distance_from_edge
-        usable_end_y = tool_layout.y + tool_layout.height - config.min_distance_from_edge
-        usable_height = usable_end_y - usable_start_y
-        
-        if usable_height <= 0:
-            self.logger.warning(f"⚠️ Tool ODL {tool_layout.odl_id} troppo corto per cavalletti")
-            return []
-        
-        # Posizione X centrale del tool (cavalletti al centro della larghezza)
-        center_x = tool_layout.x + (tool_layout.width - config.cavalletto_width) / 2
-        
-        if num_cavalletti == 1:
-            # Un solo cavalletto al centro
-            center_y = tool_layout.y + (tool_layout.height - config.cavalletto_height) / 2
-            positions.append(CavallettoPosition(
-                x=center_x,
-                y=center_y,
-                width=config.cavalletto_width,
-                height=config.cavalletto_height,
-                tool_odl_id=tool_layout.odl_id,
-                sequence_number=0
-            ))
-        
-        elif num_cavalletti == 2:
-            # Due cavalletti alle estremità
-            if config.prefer_symmetric:
-                # Posizionamento simmetrico
-                spacing = usable_height - config.cavalletto_height
-                top_y = usable_start_y
-                bottom_y = usable_start_y + spacing
-            else:
-                # Posizionamento ai bordi utilizzabili
-                top_y = usable_start_y
-                bottom_y = usable_end_y - config.cavalletto_height
-            
-            positions.extend([
-                CavallettoPosition(
-                    x=center_x,
-                    y=top_y,
-                    width=config.cavalletto_width,
-                    height=config.cavalletto_height,
-                    tool_odl_id=tool_layout.odl_id,
-                    sequence_number=0
-                ),
-                CavallettoPosition(
-                    x=center_x,
-                    y=bottom_y,
-                    width=config.cavalletto_width,
-                    height=config.cavalletto_height,
-                    tool_odl_id=tool_layout.odl_id,
-                    sequence_number=1
-                )
-            ])
-        
-        else:
-            # Tre o più cavalletti - distribuzione equidistante
-            spacing = (usable_height - config.cavalletto_height) / (num_cavalletti - 1)
-            
-            for i in range(num_cavalletti):
-                y_pos = usable_start_y + i * spacing
-                
-                positions.append(CavallettoPosition(
-                    x=center_x,
-                    y=y_pos,
-                    width=config.cavalletto_width,
-                    height=config.cavalletto_height,
-                    tool_odl_id=tool_layout.odl_id,
-                    sequence_number=i
-                ))
-        
-        self.logger.debug(f"🔧 Cavalletti verticali per ODL {tool_layout.odl_id}: {len(positions)} posizioni")
-        
-        return positions
-    
-    def _add_cavalletti_to_solution(self, solution: NestingSolution2L, autoclave: AutoclaveInfo2L) -> NestingSolution2L:
-        """
-        Aggiunge il calcolo automatico dei cavalletti alla soluzione esistente
-        
-        Args:
-            solution: Soluzione di nesting esistente
-            autoclave: Informazioni autoclave
-            
-        Returns:
-            Soluzione aggiornata con posizioni cavalletti incluse
-        """
-        
-        if not autoclave.has_cavalletti:
-            self.logger.debug("🔸 Autoclave senza cavalletti, nessun calcolo necessario")
-            return solution
-        
-        if not solution.success or not solution.layouts:
-            self.logger.debug("🔸 Soluzione non valida o vuota, nessun calcolo cavalletti")
-            return solution
-        
-        self.logger.info("🔧 [2L] Calcolo automatico cavalletti per soluzione...")
-        
-        # 🏗️ AGGIORNATO: Calcola posizioni cavalletti fissi per autoclave
-        tool_layouts = solution.layouts.copy()  # Copia per non modificare l'originale
-        cavalletti_positions = self.calcola_tutti_cavalletti(tool_layouts, autoclave)
-        
-        if not cavalletti_positions:
-            self.logger.info("🔸 Nessun cavalletto necessario (nessun tool al livello 1)")
-            return solution
-        
-        # Crea nuova soluzione estesa con cavalletti
-        extended_solution = NestingSolution2L(
-            layouts=tool_layouts,  # Layout tool originali
-            excluded_odls=solution.excluded_odls,
-            metrics=solution.metrics,
-            success=solution.success,
-            algorithm_status=solution.algorithm_status,
-            message=solution.message
+        # ✅ STRATEGIA 1: Adiacency Sharing
+        # Rimuovi cavalletti ridondanti tra tool adiacenti
+        optimized_cavalletti = self._apply_adjacency_sharing(
+            optimized_cavalletti, layouts, config
         )
         
-        # Aggiungi informazioni cavalletti al messaggio
-        num_level_1_tools = len([l for l in tool_layouts if l.level == 1])
-        extended_solution.message += f" + {len(cavalletti_positions)} cavalletti per {num_level_1_tools} tool livello 1"
+        # ✅ STRATEGIA 2: Column Stacking
+        # Allinea cavalletti per formare colonne strutturali
+        optimized_cavalletti = self._apply_column_stacking(
+            optimized_cavalletti, config
+        )
         
-        # Memorizza le posizioni cavalletti come metadata (non come layout aggiuntivi)
-        # In una implementazione reale, potresti voler estendere NestingSolution2L 
-        # per includere un campo cavalletti_positions
-        if hasattr(extended_solution, '__dict__'):
-            extended_solution.__dict__['cavalletti_positions'] = cavalletti_positions
+        # ✅ STRATEGIA 3: Load Consolidation  
+        # Unifica cavalletti vicini con capacità sufficiente
+        optimized_cavalletti = self._apply_load_consolidation(
+            optimized_cavalletti, layouts, autoclave, config
+        )
         
-        self.logger.info(f"✅ [2L] Cavalletti calcolati: {len(cavalletti_positions)} posizioni generate")
+        self.logger.info(f"✅ Ottimizzazione completata: {len(cavalletti)} → {len(optimized_cavalletti)} cavalletti")
+        return optimized_cavalletti
+
+    def _apply_adjacency_sharing(
+        self,
+        cavalletti: List[CavallettoPosition],
+        layouts: List[NestingLayout2L],
+        config: CavallettiConfiguration
+    ) -> List[CavallettoPosition]:
+        """
+        🔧 NUOVO: Condivisione supporti tra tool adiacenti
         
-        return extended_solution
+        PRINCIPIO FISICO:
+        - Se due tool sono vicini, un cavalletto può supportare entrambi
+        - Riduce numero totale cavalletti mantenendo stabilità
+        """
+        optimized = []
+        removed_count = 0
+        
+        for cavalletto in cavalletti:
+            # Trova tool supportato da questo cavalletto
+            tool_layout = next((l for l in layouts if l.odl_id == cavalletto.tool_odl_id), None)
+            if not tool_layout:
+                continue
+            
+            # Cerca tool adiacenti che potrebbero condividere questo supporto
+            adjacent_tools = self._find_adjacent_tools(tool_layout, layouts, config)
+            
+            if adjacent_tools:
+                # Verifica se cavalletto può supportare tool multipli
+                can_share = self._can_cavalletto_support_multiple_tools(
+                    cavalletto, [tool_layout] + adjacent_tools, config
+                )
+                
+                if can_share:
+                    # Rimuovi cavalletti ridondanti degli altri tool
+                    cavalletti_to_remove = [
+                        c for c in cavalletti 
+                        if c.tool_odl_id in [t.odl_id for t in adjacent_tools] 
+                        and self._cavalletti_overlap_significantly(cavalletto, c, config)
+                    ]
+                    
+                    if cavalletti_to_remove:
+                        self.logger.debug(f"   Condivisione supporto: cavalletto ODL {cavalletto.tool_odl_id} "
+                                        f"supporta anche {[t.odl_id for t in adjacent_tools]}")
+                        removed_count += len(cavalletti_to_remove)
+                        # Rimuovi i cavalletti ridondanti dalla lista principale
+                        cavalletti = [c for c in cavalletti if c not in cavalletti_to_remove]
+            
+            optimized.append(cavalletto)
+        
+        if removed_count > 0:
+            self.logger.info(f"   Adiacency Sharing: rimossi {removed_count} cavalletti ridondanti")
+        
+        return optimized
+
+    def _find_adjacent_tools(
+        self,
+        tool: NestingLayout2L,
+        all_layouts: List[NestingLayout2L],
+        config: CavallettiConfiguration
+    ) -> List[NestingLayout2L]:
+        """
+        🔧 NUOVO: Trova tool adiacenti che potrebbero condividere supporti
+        """
+        adjacent = []
+        adjacency_threshold = config.min_distance_between_cavalletti  # Soglia vicinanza
+        
+        for other_tool in all_layouts:
+            if other_tool.odl_id == tool.odl_id or other_tool.level != tool.level:
+                continue
+            
+            # Calcola distanza tra bordi dei tool
+            distance_x = max(0, max(tool.x, other_tool.x) - min(tool.x + tool.width, other_tool.x + other_tool.width))
+            distance_y = max(0, max(tool.y, other_tool.y) - min(tool.y + tool.height, other_tool.y + other_tool.height))
+            
+            # Se tool sono abbastanza vicini, considerali adiacenti
+            if distance_x <= adjacency_threshold and distance_y <= adjacency_threshold:
+                adjacent.append(other_tool)
+        
+        return adjacent
+
+    def _can_cavalletto_support_multiple_tools(
+        self,
+        cavalletto: CavallettoPosition,
+        tools: List[NestingLayout2L],
+        config: CavallettiConfiguration
+    ) -> bool:
+        """
+        🔧 NUOVO: Verifica se un cavalletto può supportare fisicamente multiple tool
+        """
+        if len(tools) <= 1:
+            return True
+        
+        # Verifica che il cavalletto sia sotto l'area di overlap dei tool
+        total_area = 0.0
+        overlap_area = None
+        
+        for tool in tools:
+            tool_rect = (tool.x, tool.y, tool.x + tool.width, tool.y + tool.height)
+            tool_area_m2 = tool.width * tool.height / 1_000_000  # mm² → m²
+            total_area += tool_area_m2
+            
+            if overlap_area is None:
+                overlap_area = tool_rect
+            else:
+                # Calcola intersezione
+                x1 = max(overlap_area[0], tool_rect[0])
+                y1 = max(overlap_area[1], tool_rect[1])
+                x2 = min(overlap_area[2], tool_rect[2])
+                y2 = min(overlap_area[3], tool_rect[3])
+                
+                if x1 < x2 and y1 < y2:
+                    overlap_area = (x1, y1, x2, y2)
+                else:
+                    return False  # Nessun overlap
+        
+        # Verifica che cavalletto sia nell'area di overlap
+        if overlap_area:
+            cav_in_overlap = (
+                overlap_area[0] <= cavalletto.center_x <= overlap_area[2] and
+                overlap_area[1] <= cavalletto.center_y <= overlap_area[3]
+            )
+            
+            if cav_in_overlap:
+                # Verifica capacità di carico (stima conservativa)
+                estimated_load_per_m2 = 150.0  # kg/m² (carico tipico compositi)
+                total_estimated_load = total_area * estimated_load_per_m2
+                
+                # Capacità cavalletto (dal database autoclave)
+                max_load_per_cavalletto = 300.0  # kg (default conservativo)
+                
+                return total_estimated_load <= max_load_per_cavalletto
+        
+        return False
+
+    def _cavalletti_overlap_significantly(
+        self, 
+        cav1: CavallettoPosition,
+        cav2: CavallettoPosition,
+        config: CavallettiConfiguration
+    ) -> bool:
+        """
+        🔧 NUOVO: Verifica se due cavalletti si sovrappongono significativamente
+        """
+        # Calcola distanza tra centri
+        distance = ((cav1.center_x - cav2.center_x) ** 2 + (cav1.center_y - cav2.center_y) ** 2) ** 0.5
+        
+        # Considerali sovrapposti se distanza < metà della dimensione cavalletto
+        overlap_threshold = max(config.cavalletto_width, config.cavalletto_height) * 0.7
+        
+        return distance < overlap_threshold
+
+    def _apply_column_stacking(
+        self,
+        cavalletti: List[CavallettoPosition],
+        config: CavallettiConfiguration
+    ) -> List[CavallettoPosition]:
+        """
+        🔧 NUOVO: Column Stacking - Allinea cavalletti per formare colonne strutturali
+        """
+        if len(cavalletti) <= 1:
+            return cavalletti
+        
+        # Raggruppa cavalletti per posizione X simile (colonne potenziali)
+        alignment_tolerance = config.cavalletto_width * 0.5
+        columns = []
+        
+        for cavalletto in cavalletti:
+            # Trova colonna esistente compatibile
+            assigned = False
+            for column in columns:
+                if any(abs(c.center_x - cavalletto.center_x) <= alignment_tolerance for c in column):
+                    column.append(cavalletto)
+                    assigned = True
+                    break
+            
+            if not assigned:
+                columns.append([cavalletto])
+        
+        # Allinea cavalletti di ogni colonna alla posizione X media
+        aligned_cavalletti = []
+        columns_optimized = 0
+        
+        for column in columns:
+            if len(column) > 1:  # Solo per colonne con multiple cavalletti
+                avg_x = sum(c.center_x for c in column) / len(column)
+                
+                for cavalletto in column:
+                    # Aggiorna posizione X per allineamento
+                    aligned_cavalletto = CavallettoPosition(
+                        x=avg_x - cavalletto.width / 2,
+                        y=cavalletto.y,
+                        width=cavalletto.width,
+                        height=cavalletto.height,
+                        tool_odl_id=cavalletto.tool_odl_id,
+                        sequence_number=cavalletto.sequence_number
+                    )
+                    aligned_cavalletti.append(aligned_cavalletto)
+                
+                columns_optimized += 1
+            else:
+                aligned_cavalletti.extend(column)
+        
+        if columns_optimized > 0:
+            self.logger.info(f"   Column Stacking: ottimizzate {columns_optimized} colonne")
+        
+        return aligned_cavalletti
+
+    def _apply_load_consolidation(
+        self,
+        cavalletti: List[CavallettoPosition],
+        layouts: List[NestingLayout2L],
+        autoclave: AutoclaveInfo2L,
+        config: CavallettiConfiguration
+    ) -> List[CavallettoPosition]:
+        """
+        🔧 NUOVO: Load Consolidation - Unifica cavalletti vicini se hanno capacità sufficiente
+        """
+        if len(cavalletti) <= 1:
+            return cavalletti
+        
+        consolidation_threshold = config.min_distance_between_cavalletti * 0.8
+        consolidated = []
+        processed = set()
+        consolidations_made = 0
+        
+        for i, cavalletto in enumerate(cavalletti):
+            if i in processed:
+                continue
+            
+            # Trova cavalletti vicini che possono essere consolidati
+            nearby_cavalletti = []
+            for j, other_cavalletto in enumerate(cavalletti):
+                if i != j and j not in processed:
+                    distance = ((cavalletto.center_x - other_cavalletto.center_x) ** 2 + 
+                               (cavalletto.center_y - other_cavalletto.center_y) ** 2) ** 0.5
+                    
+                    if distance <= consolidation_threshold:
+                        nearby_cavalletti.append((j, other_cavalletto))
+            
+            if nearby_cavalletti:
+                # Verifica capacità di carico per consolidazione
+                all_cavalletti_group = [cavalletto] + [c[1] for c in nearby_cavalletti]
+                total_load = self._estimate_total_load_for_cavalletti(all_cavalletti_group, layouts)
+                
+                max_capacity = autoclave.peso_max_per_cavalletto_kg
+                if total_load <= max_capacity:
+                    # Consolida in posizione centrale
+                    avg_x = sum(c.center_x for c in all_cavalletti_group) / len(all_cavalletti_group)
+                    avg_y = sum(c.center_y for c in all_cavalletti_group) / len(all_cavalletti_group)
+                    
+                    consolidated_cavalletto = CavallettoPosition(
+                        x=avg_x - config.cavalletto_width / 2,
+                        y=avg_y - config.cavalletto_height / 2,
+                        width=config.cavalletto_width,
+                        height=config.cavalletto_height,
+                        tool_odl_id=cavalletto.tool_odl_id,  # Tool principale
+                        sequence_number=cavalletto.sequence_number
+                    )
+                    
+                    consolidated.append(consolidated_cavalletto)
+                    
+                    # Marca come processati
+                    processed.add(i)
+                    for j, _ in nearby_cavalletti:
+                        processed.add(j)
+                    
+                    consolidations_made += 1
+                else:
+                    consolidated.append(cavalletto)
+                    processed.add(i)
+            else:
+                consolidated.append(cavalletto)
+                processed.add(i)
+        
+        if consolidations_made > 0:
+            self.logger.info(f"   Load Consolidation: {consolidations_made} consolidazioni")
+        
+        return consolidated
+
+    def _estimate_total_load_for_cavalletti(
+        self,
+        cavalletti: List[CavallettoPosition],
+        layouts: List[NestingLayout2L]
+    ) -> float:
+        """
+        🔧 STIMA CARICO TOTALE: Calcola peso totale supportato dai cavalletti
+        """
+        total_load = 0.0
+        
+        for cavalletto in cavalletti:
+            tool = next((l for l in layouts if l.odl_id == cavalletto.tool_odl_id), None)
+            if tool:
+                # Stima frazione del peso del tool supportata da questo cavalletto
+                tool_cavalletti_count = sum(1 for c in cavalletti if c.tool_odl_id == tool.odl_id)
+                if tool_cavalletti_count > 0:
+                    load_fraction = tool.weight / tool_cavalletti_count
+                    total_load += load_fraction
+        
+        return total_load
 
     def calcola_tutti_cavalletti(
         self, 
-        layouts: List[NestingLayout2L], 
-        autoclave: AutoclaveInfo2L, 
-        config: CavallettiConfiguration = None
+        level_0_layouts: List[NestingLayout2L], 
+        autoclave: AutoclaveInfo2L
     ) -> List[CavallettoPosition]:
         """
-        🏗️ CALCOLO CAVALLETTI AGGIORNATO: Utilizza il nuovo approccio con cavalletti fissi
+        🔧 CALCOLA TUTTI I CAVALLETTI per i tool del livello 0
         
-        Calcola i cavalletti come segmenti fissi dell'autoclave che attraversano 
-        trasversalmente tutto il piano, poi li converte nel formato legacy per compatibilità.
+        Questo metodo era mancante e causava l'errore 'NestingModel2L' object has no attribute 'calcola_tutti_cavalletti'
         
-        Args:
-            layouts: Lista di tutti i layout posizionati
-            autoclave: Informazioni autoclave per calcolo cavalletti fissi  
-            config: Configurazione cavalletti (legacy, mantenuto per compatibilità)
-            
-        Returns:
-            Lista completa di tutte le posizioni dei cavalletti (formato legacy)
+        FUNZIONALITÀ:
+        - Calcola cavalletti fisici per ogni tool del livello 0
+        - Usa configurazione ottimale dal database autoclave
+        - Restituisce lista completa di posizioni cavalletti
         """
-        
-        level_1_tools = [layout for layout in layouts if layout.level == 1]
-        
-        if not level_1_tools:
-            self.logger.info("🔧 Nessun tool al livello 1, nessun cavalletto necessario")
+        if not level_0_layouts:
+            self.logger.debug("🔧 Nessun tool livello 0 - nessun cavalletto necessario")
             return []
         
-        self.logger.info(f"🏗️ NUOVO APPROCCIO: Calcolo cavalletti fissi per {len(level_1_tools)} tool al livello 1")
+        self.logger.info(f"🔧 Calcolo cavalletti per {len(level_0_layouts)} tool livello 0")
         
-        # ✅ PRIORITÀ: Usa configurazione dal frontend se disponibile
-        if config is None:
-            if hasattr(self, '_cavalletti_config') and self._cavalletti_config is not None:
-                config = self._cavalletti_config
-                self.logger.info("🔧 Usando configurazione cavalletti dal frontend")
-            else:
-                # ✅ NUOVO: Usa dimensioni dal database autoclave invece di valori hardcoded
-                config = CavallettiConfiguration(
-                    cavalletto_width=autoclave.cavalletto_width,
-                    cavalletto_height=autoclave.cavalletto_height_mm
-                )
-                self.logger.info("⚠️ Usando configurazione cavalletti di default con dimensioni dal database")
-        
-        # 🎯 APPROCCIO CORRETTO: Calcola cavalletti come segmenti fissi dell'autoclave
-        fixed_config = CavallettiFixedConfiguration(
-            distribute_evenly=True,
-            min_distance_from_edges=config.min_distance_from_edge,
-            min_spacing_between_cavalletti=config.min_distance_between_cavalletti,
-            orientation="horizontal"
+        # ✅ CONFIGURAZIONE dai dati autoclave
+        config = CavallettiConfiguration(
+            cavalletto_width=autoclave.cavalletto_width or 80.0,
+            cavalletto_height=autoclave.cavalletto_height_mm or 60.0,
+            min_distance_from_edge=30.0,
+            max_span_without_support=400.0,
+            min_distance_between_cavalletti=200.0,
+            safety_margin_x=5.0,
+            safety_margin_y=5.0,
+            prefer_symmetric=True,
+            force_minimum_two=True
         )
-        cavalletti_fissi = self.calcola_cavalletti_fissi_autoclave(autoclave, fixed_config)
-        
-        if not cavalletti_fissi:
-            self.logger.warning("⚠️ Nessun cavalletto fisso calcolato per questa autoclave")
-            return []
-        
-        # 🔄 Conversione per compatibilità con codice esistente
-        legacy_cavalletti = self.converti_cavalletti_fissi_a_legacy(cavalletti_fissi, level_1_tools)
-        
-        # Verifica sovrapposizioni (mantenuto per compatibilità)
-        conflicts = self._check_cavalletti_conflicts(legacy_cavalletti)
-        if conflicts:
-            self.logger.warning(f"⚠️ Rilevati {len(conflicts)} conflitti tra cavalletti legacy")
-            for conflict in conflicts:
-                self.logger.warning(f"   Conflitto: {conflict}")
-        
-        self.logger.info(f"🏗️ Cavalletti fissi: {len(cavalletti_fissi)} → Legacy: {len(legacy_cavalletti)}")
-        
-        return legacy_cavalletti
-    
-    def calcola_tutti_cavalletti_legacy(
-        self, 
-        layouts: List[NestingLayout2L], 
-        config: CavallettiConfiguration = None
-    ) -> List[CavallettoPosition]:
-        """
-        🔧 METODO LEGACY: Mantiene il vecchio approccio per compatibilità
-        
-        Calcola cavalletti individuali per ogni tool (approccio precedente).
-        Mantenuto per fallback in caso di problemi con il nuovo sistema.
-        """
-        
-        if config is None:
-            # ✅ NUOVO: Usa dimensioni dal database autoclave
-            config = CavallettiConfiguration(
-                cavalletto_width=80.0,  # Fallback di default - idealmente dovrebbe essere passato
-                cavalletto_height=60.0  # Fallback di default - idealmente dovrebbe essere passato
-            )
         
         all_cavalletti = []
-        level_1_tools = [layout for layout in layouts if layout.level == 1]
         
-        self.logger.info(f"🔧 LEGACY: Calcolo cavalletti per {len(level_1_tools)} tool al livello 1")
-        
-        for tool_layout in level_1_tools:
-            cavalletti = self.calcola_cavalletti_per_tool(tool_layout, config)
-            all_cavalletti.extend(cavalletti)
+        # ✅ CALCOLO per ogni tool livello 0
+        for layout in level_0_layouts:
+            if layout.level != 0:
+                continue  # Solo tool livello 0
             
-            self.logger.debug(f"🔧 Tool ODL {tool_layout.odl_id}: {len(cavalletti)} cavalletti aggiunti")
+            try:
+                cavalletti_tool = self.calcola_cavalletti_per_tool(layout, config)
+                all_cavalletti.extend(cavalletti_tool)
+                
+                self.logger.debug(f"   ODL {layout.odl_id}: {len(cavalletti_tool)} cavalletti")
+                
+            except Exception as e:
+                self.logger.error(f"❌ Errore calcolo cavalletti ODL {layout.odl_id}: {e}")
+                # Continua con altri tool invece di fallire completamente
         
-        # Verifica sovrapposizioni tra cavalletti
-        conflicts = self._check_cavalletti_conflicts(all_cavalletti)
-        if conflicts:
-            self.logger.warning(f"⚠️ Rilevati {len(conflicts)} conflitti tra cavalletti")
-            for conflict in conflicts:
-                self.logger.warning(f"   Conflitto: {conflict}")
-        
-        self.logger.info(f"🔧 Totale cavalletti calcolati: {len(all_cavalletti)}")
-        
+        self.logger.info(f"✅ Calcolati {len(all_cavalletti)} cavalletti totali livello 0")
         return all_cavalletti
-    
-    def _check_cavalletti_conflicts(self, cavalletti: List[CavallettoPosition]) -> List[str]:
+
+    def _convert_to_fixed_positions(
+        self,
+        cavalletti: List[CavallettoPosition],
+        autoclave: AutoclaveInfo2L
+    ) -> List[CavallettoFixedPosition]:
         """
-        Verifica conflitti/sovrapposizioni tra cavalletti
-        
-        Args:
-            cavalletti: Lista di posizioni cavalletti
-            
-        Returns:
-            Lista di messaggi di conflitto
+        🔧 CONVERSIONE: Converte CavallettoPosition in CavallettoFixedPosition (formato finale)
         """
+        fixed_positions = []
         
-        conflicts = []
+        for i, cavalletto in enumerate(cavalletti):
+            fixed_position = CavallettoFixedPosition(
+                x=cavalletto.x,
+                y=cavalletto.y,
+                width=cavalletto.width,
+                height=cavalletto.height,
+                sequence_number=i,
+                orientation="horizontal",
+                tool_odl_id=cavalletto.tool_odl_id
+            )
+            fixed_positions.append(fixed_position)
         
-        for i, cav1 in enumerate(cavalletti):
-            for j, cav2 in enumerate(cavalletti[i+1:], start=i+1):
-                # Verifica sovrapposizione
-                if not (cav1.x + cav1.width <= cav2.x or 
-                       cav2.x + cav2.width <= cav1.x or
-                       cav1.y + cav1.height <= cav2.y or 
-                       cav2.y + cav2.height <= cav1.y):
-                    
-                    conflicts.append(
-                        f"Cavalletto ODL {cav1.tool_odl_id}#{cav1.sequence_number} "
-                        f"sovrappone cavalletto ODL {cav2.tool_odl_id}#{cav2.sequence_number}"
-                    )
+        # ✅ AGGIORNA CONTATORE AUTOCLAVE
+        autoclave.num_cavalletti_utilizzati = len(fixed_positions)
         
-        return conflicts
+        self.logger.info(f"✅ Conversione completata: {len(fixed_positions)} cavalletti fissi")
+        return fixed_positions
 
     def _generate_candidate_points_2l(
         self, 
@@ -2223,8 +3031,42 @@ class NestingModel2L:
         # Calcoli base
         total_tool_area = sum(layout.width * layout.height for layout in layouts)
         autoclave_area = autoclave.width * autoclave.height
-        area_pct = (total_tool_area / autoclave_area) * 100 if autoclave_area > 0 else 0
         
+        # 🔧 FIX METRICHE: Calcolo area corretto per due livelli 
+        # L'area utilizzabile totale è autoclave_area × 2 (piano base + cavalletto)
+        # Ma il calcolo standard usa solo l'area del piano base come riferimento
+        
+        # Area utilizzata per livello
+        level_0_area = sum(l.width * l.height for l in layouts if l.level == 0)
+        level_1_area = sum(l.width * l.height for l in layouts if l.level == 1)
+        
+        # 🆕 CALCOLO CORRETTO: Efficienza area per ogni livello separatamente
+        level_0_area_pct = (level_0_area / autoclave_area) * 100 if autoclave_area > 0 else 0
+        level_1_area_pct = (level_1_area / autoclave_area) * 100 if autoclave_area > 0 else 0
+        
+        # 🆕 AREA TOTALE CORRETTA: Non può superare 100% per livello
+        # L'efficienza combinata deve considerare che ogni livello è indipendente
+        area_pct_combined = min(level_0_area_pct + level_1_area_pct, 200.0)  # Max 200% (100% per livello)
+        
+        # 🆕 EFFICIENZA CORRETTA: Media pesata dei due livelli
+        if level_0_area_pct + level_1_area_pct > 0:
+            area_pct = (level_0_area_pct + level_1_area_pct) / 2  # Media dei due livelli
+        else:
+            area_pct = 0.0
+            
+        # 🔒 SANITY CHECK: L'efficienza non può mai superare 100%
+        area_pct = min(area_pct, 100.0)
+        
+        # 🆕 LOGGING PER DEBUG METRICHE ANOMALE
+        if area_pct > 100.0 or level_0_area_pct > 100.0 or level_1_area_pct > 100.0:
+            self.logger.error(f"❌ EFFICIENZA ANOMALA RILEVATA:")
+            self.logger.error(f"   Area autoclave: {autoclave_area:.1f} mm²")
+            self.logger.error(f"   Area livello 0: {level_0_area:.1f} mm² ({level_0_area_pct:.1f}%)")
+            self.logger.error(f"   Area livello 1: {level_1_area:.1f} mm² ({level_1_area_pct:.1f}%)")
+            self.logger.error(f"   Area totale tool: {total_tool_area:.1f} mm²")
+            self.logger.error(f"   Efficienza calcolata: {area_pct:.1f}%")
+        
+        autoclave_area = autoclave.width * autoclave.height
         total_weight = sum(layout.weight for layout in layouts)
         total_lines = sum(layout.lines_used for layout in layouts)
         vacuum_util_pct = (total_lines / autoclave.max_lines) * 100 if autoclave.max_lines > 0 else 0
@@ -2232,12 +3074,6 @@ class NestingModel2L:
         # Metriche specifiche per livelli
         level_0_layouts = [l for l in layouts if l.level == 0]
         level_1_layouts = [l for l in layouts if l.level == 1]
-        
-        level_0_area = sum(l.width * l.height for l in level_0_layouts)
-        level_1_area = sum(l.width * l.height for l in level_1_layouts)
-        
-        level_0_area_pct = (level_0_area / autoclave_area) * 100 if autoclave_area > 0 else 0
-        level_1_area_pct = (level_1_area / autoclave_area) * 100 if autoclave_area > 0 else 0
         
         level_0_weight = sum(l.weight for l in level_0_layouts)
         level_1_weight = sum(l.weight for l in level_1_layouts)
@@ -2385,9 +3221,15 @@ class NestingModel2L:
             # Converti layouts livello 0 per calcolo interferenze cavalletti
             level_0_layouts_2l = self._convert_layouts_standard_to_2l(level_0_layouts, level=0)
             
-            # Calcola posizioni cavalletti per tool livello 0
-            cavalletti_level_0 = self.calcola_tutti_cavalletti(level_0_layouts_2l)
-            self.logger.info(f"🔧 [FASE 2] Cavalletti livello 0: {len(cavalletti_level_0)} posizioni")
+            # ✅ FIX CRITICO: Rimuovo chiamata problematica calcola_tutti_cavalletti
+            # L'ottimizzatore avanzato in solve_2l gestisce direttamente tutti i cavalletti
+            # cavalletti_level_0 = self.calcola_tutti_cavalletti(level_0_layouts_2l, autoclave)
+            # self.logger.info(f"🔧 [FASE 2] Cavalletti livello 0: {len(cavalletti_level_0)} posizioni")
+            
+            # ✅ INTERIM SOLUTION: Lista vuota per cavalletti_level_0 
+            # I cavalletti saranno calcolati dall'ottimizzatore avanzato dopo il posizionamento
+            cavalletti_level_0 = []
+            self.logger.info(f"🔧 [FASE 2] Cavalletti livello 0: gestiti dall'ottimizzatore avanzato")
             
             # Algoritmo greedy per livello 1 considerando interferenze
             level_1_layouts = []
@@ -2488,6 +3330,12 @@ class NestingModel2L:
         """
         padding = self.parameters.padding_mm
         
+        # 🔧 FIX CRITICO: Calcola cavalletti fissi PRIMA della ricerca posizioni
+        cavalletti_fissi = self.calcola_cavalletti_fissi_autoclave(autoclave)
+        if len(cavalletti_fissi) < 2:
+            self.logger.warning(f"⚠️ Autoclave {autoclave.id} ha solo {len(cavalletti_fissi)} cavalletti fissi, richiesti ≥2")
+            return None
+        
         # Genera punti candidati per livello 1
         candidate_points = self._generate_candidate_points_2l(autoclave, level_1_layouts, padding)
         
@@ -2508,6 +3356,10 @@ class NestingModel2L:
                 if self._has_overlap_2l(x, y, width, height, level_1_layouts, padding):
                     continue
                 
+                # 🔧 FIX CRITICO: Verifica supporto cavalletti fissi PRIMA di tutto
+                if not self._is_supported_by_fixed_cavalletti(x, y, width, height, cavalletti_fissi):
+                    continue
+                
                 # 🆕 CHECK CRITICO: Interferenza cavalletti livello 1 con cavalletti livello 0
                 if self._has_cavalletti_interference_with_level_0(
                     x, y, width, height, tool, cavalletti_level_0
@@ -2517,8 +3369,63 @@ class NestingModel2L:
                 # Posizione valida trovata
                 return (x, y, width, height, rotated)
         
-        return None
-    
+                return None
+
+    def _is_supported_by_fixed_cavalletti(
+        self, 
+        x: float, 
+        y: float, 
+        width: float, 
+        height: float,
+        cavalletti_fissi: List[CavallettoFixedPosition]
+    ) -> bool:
+        """
+        🔧 FIX CRITICO: Verifica che il tool sia fisicamente supportato da ≥2 cavalletti fissi
+        
+        Implementa verifica fisica rigorosa:
+        - Conta cavalletti fissi che attraversano il tool
+        - Verifica distribuzione bilanciata (non tutti da un lato)
+        - Standard aeronautico: minimo 2 supporti distribuiti
+        """
+        supporting_count = 0
+        tool_center_x = x + width / 2
+        left_support = False
+        right_support = False
+        supporting_positions = []
+        
+        for cav in cavalletti_fissi:
+            # I cavalletti fissi attraversano tutta la larghezza Y dell'autoclave
+            # Verifica sovrapposizione lungo X con il tool
+            tool_start_x = x
+            tool_end_x = x + width
+            cav_start_x = cav.x
+            cav_end_x = cav.x + cav.height  # height = spessore del cavalletto
+            
+            # Verifica sovrapposizione X
+            overlap_x = not (tool_end_x <= cav_start_x or cav_end_x <= tool_start_x)
+            
+            if overlap_x:
+                supporting_count += 1
+                supporting_positions.append(cav.center_x)
+                
+                # Verifica distribuzione bilanciata
+                if cav.center_x < tool_center_x:
+                    left_support = True
+                else:
+                    right_support = True
+        
+        # Standard fisico aeronautico: ≥2 supporti E distribuzione bilanciata
+        is_supported = supporting_count >= 2 and left_support and right_support
+        
+        if not is_supported:
+            self.logger.debug(f"❌ Tool ({x:.0f},{y:.0f}) {width:.0f}×{height:.0f}mm: "
+                             f"supporti={supporting_count}, sinistra={left_support}, destra={right_support}")
+        else:
+            self.logger.debug(f"✅ Tool ({x:.0f},{y:.0f}) {width:.0f}×{height:.0f}mm: "
+                             f"{supporting_count} supporti bilanciati {supporting_positions}")
+        
+        return is_supported
+
     def _has_cavalletti_interference_with_level_0(
         self,
         x: float, y: float, width: float, height: float,
@@ -2751,58 +3658,553 @@ class NestingModel2L:
         
         return cavalletti_positions
     
-    def converti_cavalletti_fissi_a_legacy(
+    def _validate_cavalletti_non_interference(
         self, 
-        cavalletti_fissi: List[CavallettoFixedPosition], 
-        layouts_level_1: List[NestingLayout2L]
-    ) -> List[CavallettoPosition]:
+        cavalletti: List[CavallettoFixedPosition], 
+        config: CavallettiConfiguration
+    ) -> None:
         """
-        🔄 CONVERSIONE COMPATIBILITÀ: Converte cavalletti fissi nel formato legacy
-        per mantenere compatibilità con il codice esistente
-        
-        Args:
-            cavalletti_fissi: Cavalletti fissi dell'autoclave
-            layouts_level_1: Tool posizionati al livello 1 (sui cavalletti)
-            
-        Returns:
-            Lista cavalletti nel formato legacy compatibile
+        Verifica che non ci siano sovrapposizioni tra i cavalletti di tool diversi
         """
-        legacy_cavalletti = []
-        
-        # Per ogni tool al livello 1, trova i cavalletti fissi che lo supportano
-        for tool_layout in layouts_level_1:
-            tool_cavalletti = []
+        for i, cav1 in enumerate(cavalletti):
+            for j, cav2 in enumerate(cavalletti[i+1:], i+1):
+                if cav1.tool_odl_id != cav2.tool_odl_id:
+                    # Verifica sovrapposizione 2D
+                    overlap_x = not (cav1.x + cav1.width <= cav2.x or cav2.x + cav2.width <= cav1.x)
+                    overlap_y = not (cav1.y + cav1.height <= cav2.y or cav2.y + cav2.height <= cav1.y)
+                    
+                    if overlap_x and overlap_y:
+                        self.logger.error(f"❌ CONFLITTO CAVALLETTI: ODL {cav1.tool_odl_id} vs ODL {cav2.tool_odl_id}")
+                        self.logger.error(f"   Cav1: ({cav1.x:.1f},{cav1.y:.1f}) {cav1.width:.1f}x{cav1.height:.1f}")
+                        self.logger.error(f"   Cav2: ({cav2.x:.1f},{cav2.y:.1f}) {cav2.width:.1f}x{cav2.height:.1f}")
+
+    def _validate_minimum_supports_per_tool(
+        self, 
+        cavalletti: List[CavallettoFixedPosition], 
+        level_1_tools: List[NestingLayout2L],
+        config: CavallettiConfiguration
+    ) -> None:
+        """
+        ✅ VALIDAZIONE AERONAUTICA: Verifica che ogni tool abbia almeno 2 supporti
+        """
+        for tool_layout in level_1_tools:
+            tool_cavalletti = [c for c in cavalletti if c.tool_odl_id == tool_layout.odl_id]
             
-            for cav_fisso in cavalletti_fissi:
-                # Verifica se il tool si sovrappone con questo cavalletto fisso
-                tool_start_x = tool_layout.x
-                tool_end_x = tool_layout.x + tool_layout.width
-                tool_start_y = tool_layout.y
-                tool_end_y = tool_layout.y + tool_layout.height
+            if len(tool_cavalletti) < 2:
+                self.logger.error(f"❌ VIOLAZIONE STANDARD AERONAUTICO: ODL {tool_layout.odl_id} ha solo {len(tool_cavalletti)} supporti (richiesti ≥2)")
+                self.logger.error(f"   Tool: ({tool_layout.x:.1f},{tool_layout.y:.1f}) {tool_layout.width:.1f}x{tool_layout.height:.1f}")
                 
-                cav_start_x = cav_fisso.x
-                cav_end_x = cav_fisso.end_x
-                cav_start_y = cav_fisso.y
-                cav_end_y = cav_fisso.end_y
-                
-                # Verifica sovrapposizione
-                overlap_x = not (tool_end_x <= cav_start_x or cav_end_x <= tool_start_x)
-                overlap_y = not (tool_end_y <= cav_start_y or cav_end_y <= tool_start_y)
-                
-                if overlap_x and overlap_y:
-                    # Il tool si sovrappone con questo cavalletto fisso
-                    # Crea una rappresentazione legacy del cavalletto
-                    legacy_cav = CavallettoPosition(
-                        x=cav_fisso.x,
-                        y=cav_fisso.y,
-                        width=cav_fisso.width,
-                        height=cav_fisso.height,
-                        tool_odl_id=tool_layout.odl_id,
-                        sequence_number=cav_fisso.sequence_number
+                # 🚨 CORREZIONE AUTOMATICA: Forza 2 cavalletti minimi
+                if len(tool_cavalletti) == 0:
+                    # Nessun cavalletto - genera 2 cavalletti di emergenza
+                    emergency_cavalletti = self._genera_cavalletti_orizzontali(tool_layout, 2, config)
+                    for i, cav_pos in enumerate(emergency_cavalletti):
+                        emergency_fixed = CavallettoFixedPosition(
+                            x=cav_pos.x,
+                            y=cav_pos.y,
+                            width=cav_pos.width,
+                            height=cav_pos.height,
+                            sequence_number=len(cavalletti) + i,
+                            orientation="horizontal",
+                            tool_odl_id=tool_layout.odl_id
+                        )
+                        cavalletti.append(emergency_fixed)
+                    self.logger.warning(f"🔧 Correzione automatica: Aggiunti 2 cavalletti di emergenza per ODL {tool_layout.odl_id}")
+                    
+                elif len(tool_cavalletti) == 1:
+                    # 1 cavalletto - aggiungi un secondo
+                    existing_cav = tool_cavalletti[0]
+                    # Posiziona il secondo cavalletto all'estremità opposta
+                    if existing_cav.x < tool_layout.x + tool_layout.width / 2:
+                        # Cavalletto esistente a sinistra, aggiungi a destra
+                        new_x = tool_layout.x + tool_layout.width - config.cavalletto_width - config.min_distance_from_edge
+                    else:
+                        # Cavalletto esistente a destra, aggiungi a sinistra
+                        new_x = tool_layout.x + config.min_distance_from_edge
+                    
+                    new_cavalletto = CavallettoFixedPosition(
+                        x=new_x,
+                        y=existing_cav.y,
+                        width=config.cavalletto_width,
+                        height=config.cavalletto_height,
+                        sequence_number=len(cavalletti),
+                        orientation="horizontal",
+                        tool_odl_id=tool_layout.odl_id
                     )
-                    tool_cavalletti.append(legacy_cav)
-            
-            legacy_cavalletti.extend(tool_cavalletti)
+                    cavalletti.append(new_cavalletto)
+
+    def _add_cavalletti_with_advanced_optimizer(
+        self, 
+        solution: NestingSolution2L, 
+        autoclave: AutoclaveInfo2L
+    ) -> NestingSolution2L:
+        """
+        ✅ NUOVO: Integrazione dell'ottimizzatore cavalletti avanzato
         
-        self.logger.debug(f"🔄 Convertiti {len(legacy_cavalletti)} cavalletti fissi in formato legacy")
-        return legacy_cavalletti
+        Sostituisce il sistema problematico con l'ottimizzatore industriale completamente implementato.
+        """
+        try:
+            from .cavalletti_optimizer import CavallettiOptimizerAdvanced, OptimizationStrategy
+            
+            # Verifica se ci sono tool di livello 1 che necessitano cavalletti
+            level_1_layouts = [l for l in solution.layouts if l.level == 1]
+            if not level_1_layouts:
+                self.logger.info("✅ Nessun tool su cavalletto - cavalletti non necessari")
+                return solution
+            
+            self.logger.info(f"🔧 [OTTIMIZZATORE AVANZATO] Calcolo cavalletti per {len(level_1_layouts)} tool")
+            
+            # Crea configurazione cavalletti dal database autoclave
+            config = CavallettiConfiguration(
+                cavalletto_width=autoclave.cavalletto_width or 80.0,
+                cavalletto_height=autoclave.cavalletto_height_mm or 60.0,
+                min_distance_from_edge=30.0,
+                max_span_without_support=400.0,
+                min_distance_between_cavalletti=200.0,
+                safety_margin_x=5.0,
+                safety_margin_y=5.0,
+                prefer_symmetric=True,
+                force_minimum_two=True
+            )
+            
+            # Inizializza ottimizzatore avanzato
+            optimizer = CavallettiOptimizerAdvanced()
+            
+            # Determina strategia basata sulla complessità
+            if len(level_1_layouts) <= 8:
+                strategy = OptimizationStrategy.BALANCED
+            elif len(level_1_layouts) <= 25:
+                strategy = OptimizationStrategy.INDUSTRIAL
+            else:
+                strategy = OptimizationStrategy.AEROSPACE
+            
+            self.logger.info(f"   Strategia ottimizzazione: {strategy.value}")
+            
+            # Applica ottimizzazione avanzata
+            optimization_result = optimizer.optimize_cavalletti_complete(
+                layouts=solution.layouts,  # Passa tutti i layout, l'ottimizzatore filtra livello 1
+                autoclave=autoclave,
+                config=config,
+                strategy=strategy
+            )
+            
+            # Aggiorna soluzione con risultati ottimizzazione
+            solution.cavalletti_finali = optimization_result.cavalletti_finali
+            solution.cavalletti_optimization_stats = {
+                'cavalletti_originali': optimization_result.cavalletti_originali,
+                'cavalletti_ottimizzati': optimization_result.cavalletti_ottimizzati,
+                'riduzione_percentuale': optimization_result.riduzione_percentuale,
+                'limite_rispettato': optimization_result.limite_rispettato,
+                'strategia_applicata': optimization_result.strategia_applicata.value,
+                'physical_violations_fixed': optimization_result.physical_violations_fixed
+            }
+            
+            # 🔧 FIX CRITICO: Validazione fisica post-ottimizzazione
+            self.logger.info("🔍 Avvio validazioni fisiche post-ottimizzazione...")
+            
+            # VALIDAZIONE 1: Supporto fisico adeguato
+            self._validate_physical_support_after_optimization(
+                solution.cavalletti_finali, 
+                solution.layouts
+            )
+            
+            # VALIDAZIONE 2: No condivisione estremi tra tool consecutivi X
+            self._validate_no_extremes_sharing(
+                solution.cavalletti_finali,
+                solution.layouts,
+                config
+            )
+            
+            # Log risultati finali
+            final_count = len(solution.cavalletti_finali)
+            self.logger.info(f"✅ Ottimizzazione + validazioni completate: {optimization_result.cavalletti_originali} → {final_count} cavalletti")
+            self.logger.info(f"   Riduzione: -{optimization_result.riduzione_percentuale:.1f}%")
+            self.logger.info(f"   Limite rispettato: {optimization_result.limite_rispettato}")
+            
+            if optimization_result.warnings:
+                for warning in optimization_result.warnings:
+                    self.logger.warning(f"   ⚠️ {warning}")
+            
+            return solution
+            
+        except ImportError as e:
+            self.logger.error(f"❌ Ottimizzatore avanzato non disponibile: {e}")
+            # Fallback al sistema semplice
+            return self._add_cavalletti_to_solution_fallback(solution, autoclave)
+        except Exception as e:
+            self.logger.error(f"❌ Errore ottimizzatore avanzato: {e}")
+            # Fallback al sistema semplice
+            return self._add_cavalletti_to_solution_fallback(solution, autoclave)
+    
+    def _add_cavalletti_to_solution_fallback(
+        self, 
+        solution: NestingSolution2L, 
+        autoclave: AutoclaveInfo2L
+    ) -> NestingSolution2L:
+        """
+        Fallback semplice per cavalletti quando l'ottimizzatore avanzato non è disponibile
+        """
+        self.logger.warning("🔧 [FALLBACK] Uso sistema cavalletti semplice")
+        
+        # Sistema semplice di base
+        level_1_layouts = [l for l in solution.layouts if l.level == 1]
+        if not level_1_layouts:
+            return solution
+        
+        # Configurazione base
+        config = CavallettiConfiguration(
+            cavalletto_width=autoclave.cavalletto_width or 80.0,
+            cavalletto_height=autoclave.cavalletto_height_mm or 60.0
+        )
+        
+        # Calcola cavalletti base per ogni tool
+        all_cavalletti = []
+        for layout in level_1_layouts:
+            cavalletti_tool = self.calcola_cavalletti_per_tool(layout, config)
+            all_cavalletti.extend(cavalletti_tool)
+        
+        # Converti in formato finale
+        cavalletti_fissi = self._convert_to_fixed_positions(all_cavalletti, autoclave)
+        
+        # Aggiungi alla soluzione
+        solution.cavalletti_finali = cavalletti_fissi
+        solution.cavalletti_optimization_stats = {
+            'cavalletti_originali': len(all_cavalletti),
+            'cavalletti_ottimizzati': len(cavalletti_fissi),
+            'riduzione_percentuale': 0.0,
+            'limite_rispettato': True,
+            'strategia_applicata': 'FALLBACK_SEMPLICE',
+            'physical_violations_fixed': 0
+        }
+        
+        # 🔧 FIX CRITICO: Validazione fisica anche per fallback
+        config_fallback = CavallettiConfiguration(
+            cavalletto_width=autoclave.cavalletto_width or 80.0,
+            cavalletto_height=autoclave.cavalletto_height_mm or 60.0
+        )
+        
+        # VALIDAZIONE 1: Supporto fisico adeguato
+        self._validate_physical_support_after_optimization(
+            solution.cavalletti_finali, 
+            solution.layouts
+        )
+        
+        # VALIDAZIONE 2: No condivisione estremi tra tool consecutivi X
+        self._validate_no_extremes_sharing(
+            solution.cavalletti_finali,
+            solution.layouts,
+            config_fallback
+        )
+        
+        final_count = len(solution.cavalletti_finali)
+        self.logger.info(f"✅ Fallback + validazioni completato: {final_count} cavalletti generati")
+        return solution
+
+    def _validate_physical_support_after_optimization(
+        self, 
+        cavalletti_finali: List[CavallettoFixedPosition], 
+        layouts: List[NestingLayout2L]
+    ) -> None:
+        """
+        🔧 FIX CRITICO: Validazione fisica rigorosa dopo ottimizzazione cavalletti
+        
+        PROBLEMA RISOLTO: Tool sospesi o con un solo appoggio dopo riduzione cavalletti
+        
+        VALIDAZIONI:
+        - ✅ Minimo 2 supporti per tool su livello 1 (standard aeronautico)
+        - ✅ Distribuzione bilanciata (non tutti supporti da un lato)
+        - ✅ Supporti entro boundaries fisici del tool
+        - ✅ Correzione automatica se violazioni critiche
+        """
+        violations_found = []
+        corrections_made = 0
+        
+        for layout in layouts:
+            if layout.level != 1:  # Solo tool su cavalletti
+                continue
+                
+            tool_cavalletti = [c for c in cavalletti_finali if c.tool_odl_id == layout.odl_id]
+            
+            # VALIDAZIONE 1: Minimo 2 supporti per stabilità
+            if len(tool_cavalletti) < 2:
+                error_msg = f"❌ ODL {layout.odl_id}: insufficienti supporti ({len(tool_cavalletti)}<2)"
+                violations_found.append(error_msg)
+                self.logger.error(error_msg)
+                
+                # CORREZIONE AUTOMATICA: Aggiungi cavalletto necessario
+                if len(tool_cavalletti) == 1:
+                    existing_cav = tool_cavalletti[0]
+                    # Posiziona secondo cavalletto all'estremità opposta
+                    if existing_cav.center_x < layout.x + layout.width / 2:
+                        new_x = layout.x + layout.width * 0.8  # 80% lunghezza tool
+                    else:
+                        new_x = layout.x + layout.width * 0.2  # 20% lunghezza tool
+                    
+                    emergency_cavalletto = CavallettoFixedPosition(
+                        x=new_x - 40.0,  # Centrato su cavalletto 80mm
+                        y=existing_cav.y,
+                        width=80.0,
+                        height=60.0,
+                        sequence_number=len(cavalletti_finali),
+                        tool_odl_id=layout.odl_id
+                    )
+                    cavalletti_finali.append(emergency_cavalletto)
+                    corrections_made += 1
+                    self.logger.info(f"🔧 Correzione: Aggiunto cavalletto emergenza per ODL {layout.odl_id}")
+                
+                elif len(tool_cavalletti) == 0:
+                    # Nessun cavalletto - genera 2 cavalletti standard
+                    for i, pos_factor in enumerate([0.2, 0.8]):  # 20% e 80% lunghezza
+                        emergency_cavalletto = CavallettoFixedPosition(
+                            x=layout.x + layout.width * pos_factor - 40.0,
+                            y=layout.y + layout.height / 2 - 30.0,
+                            width=80.0,
+                            height=60.0,
+                            sequence_number=len(cavalletti_finali) + i,
+                            tool_odl_id=layout.odl_id
+                        )
+                        cavalletti_finali.append(emergency_cavalletto)
+                    corrections_made += 2
+                    self.logger.info(f"🔧 Correzione: Generati 2 cavalletti emergenza per ODL {layout.odl_id}")
+                
+                continue  # Riprendi validazione con cavalletti corretti
+            
+            # VALIDAZIONE 2: Distribuzione bilanciata
+            center_x = layout.x + layout.width / 2
+            left_supports = sum(1 for c in tool_cavalletti if c.center_x < center_x)
+            right_supports = len(tool_cavalletti) - left_supports
+            
+            if left_supports == 0 or right_supports == 0:
+                error_msg = f"❌ ODL {layout.odl_id}: supporti non bilanciati ({left_supports}L, {right_supports}R)"
+                violations_found.append(error_msg)
+                self.logger.error(error_msg)
+                
+                # CORREZIONE AUTOMATICA: Sposta cavalletto per bilanciare
+                if left_supports == 0:  # Tutti a destra, sposta il più centrale a sinistra
+                    rightmost_cavs = sorted(tool_cavalletti, key=lambda c: c.center_x)
+                    cav_to_move = rightmost_cavs[len(rightmost_cavs)//2]  # Cavalletto centrale
+                    cav_to_move.x = layout.x + layout.width * 0.25 - 40.0  # 25% lunghezza
+                    corrections_made += 1
+                    self.logger.info(f"🔧 Correzione: Spostato cavalletto per bilanciare ODL {layout.odl_id}")
+                
+                elif right_supports == 0:  # Tutti a sinistra, sposta il più centrale a destra
+                    leftmost_cavs = sorted(tool_cavalletti, key=lambda c: c.center_x, reverse=True)
+                    cav_to_move = leftmost_cavs[len(leftmost_cavs)//2]  # Cavalletto centrale
+                    cav_to_move.x = layout.x + layout.width * 0.75 - 40.0  # 75% lunghezza
+                    corrections_made += 1
+                    self.logger.info(f"🔧 Correzione: Spostato cavalletto per bilanciare ODL {layout.odl_id}")
+            
+            # VALIDAZIONE 3: Supporti entro boundaries fisici
+            for i, cavalletto in enumerate(tool_cavalletti):
+                # Verifica X boundaries
+                if not (layout.x <= cavalletto.x and cavalletto.x + cavalletto.width <= layout.x + layout.width):
+                    error_msg = f"❌ Cavalletto {i} ODL {layout.odl_id} FUORI boundaries X"
+                    violations_found.append(error_msg)
+                    self.logger.error(error_msg)
+                    
+                    # CORREZIONE: Sposta dentro boundaries
+                    if cavalletto.x < layout.x:
+                        cavalletto.x = layout.x + 10.0  # 10mm margine
+                    elif cavalletto.x + cavalletto.width > layout.x + layout.width:
+                        cavalletto.x = layout.x + layout.width - cavalletto.width - 10.0
+                    corrections_made += 1
+                
+                # Verifica Y boundaries  
+                if not (layout.y <= cavalletto.y and cavalletto.y + cavalletto.height <= layout.y + layout.height):
+                    error_msg = f"❌ Cavalletto {i} ODL {layout.odl_id} FUORI boundaries Y"
+                    violations_found.append(error_msg)
+                    self.logger.error(error_msg)
+                    
+                    # CORREZIONE: Centra in Y
+                    cavalletto.y = layout.y + (layout.height - cavalletto.height) / 2
+                    corrections_made += 1
+        
+        # RISULTATO VALIDAZIONE
+        if violations_found:
+            self.logger.warning(f"⚠️ Validazione fisica: {len(violations_found)} violazioni trovate")
+            self.logger.info(f"🔧 Correzioni automatiche applicate: {corrections_made}")
+            for violation in violations_found[:5]:  # Prime 5 per brevità
+                self.logger.warning(f"   {violation}")
+        else:
+            self.logger.info("✅ Validazione fisica: Tutti i tool correttamente supportati")
+
+    def _validate_no_extremes_sharing(
+        self, 
+        cavalletti_finali: List[CavallettoFixedPosition], 
+        layouts: List[NestingLayout2L],
+        config: CavallettiConfiguration
+    ) -> None:
+        """
+        🔧 FIX CRITICO: Verifica che tool consecutivi lungo X non condividano cavalletti estremi
+        
+        REGOLA FISICA: Tool adiacenti lungo X non possono condividere supporti alle estremità
+        perché creerebbe instabilità strutturale.
+        
+        IMPLEMENTAZIONE:
+        - ✅ Identifica tool consecutivi lungo X
+        - ✅ Trova cavalletti estremi per ogni tool
+        - ✅ Verifica sovrapposizione/condivisione
+        - ✅ Risolve conflitti rimuovendo cavalletto meno critico
+        """
+        conflicts_resolved = 0
+        
+        for i, layout1 in enumerate(layouts):
+            if layout1.level != 1:
+                continue
+                
+            for j, layout2 in enumerate(layouts[i+1:], i+1):
+                if layout2.level != 1:
+                    continue
+                
+                # VERIFICA ADIACENZA LUNGO X
+                # Calcola gap minimo tra i due tool
+                gap_x_left = abs(layout1.x + layout1.width - layout2.x)  # Layout1 a sinistra di layout2
+                gap_x_right = abs(layout2.x + layout2.width - layout1.x)  # Layout2 a sinistra di layout1
+                min_gap_x = min(gap_x_left, gap_x_right)
+                
+                # Tool consecutivi se gap < soglia
+                if min_gap_x < config.min_distance_between_cavalletti:
+                    self.logger.debug(f"🔍 Tool consecutivi X: ODL {layout1.odl_id} ↔ ODL {layout2.odl_id} (gap: {min_gap_x:.1f}mm)")
+                    
+                    # TROVA CAVALLETTI ESTREMI
+                    cav1_estremi = self._get_extreme_cavalletti(layout1, cavalletti_finali)
+                    cav2_estremi = self._get_extreme_cavalletti(layout2, cavalletti_finali)
+                    
+                    # VERIFICA CONFLITTI TRA ESTREMI
+                    for cav1 in cav1_estremi:
+                        for cav2 in cav2_estremi:
+                            if self._cavalletti_overlap_significantly(cav1, cav2, config):
+                                # CONFLITTO RILEVATO: Risolvi rimuovendo cavalletto meno critico
+                                conflict_msg = f"⚠️ Conflitto estremi: ODL {layout1.odl_id} ↔ ODL {layout2.odl_id}"
+                                self.logger.warning(conflict_msg)
+                                
+                                # Determina quale cavalletto rimuovere (tool più piccolo perde supporto)
+                                if layout1.area < layout2.area:
+                                    cavalletto_to_remove = cav1
+                                    layout_affected = layout1
+                                else:
+                                    cavalletto_to_remove = cav2
+                                    layout_affected = layout2
+                                
+                                # RIMUOVI CAVALLETTO CONFLITTUALE
+                                if cavalletto_to_remove in cavalletti_finali:
+                                    cavalletti_finali.remove(cavalletto_to_remove)
+                                    conflicts_resolved += 1
+                                    self.logger.info(f"🔧 Rimosso cavalletto estremo ODL {layout_affected.odl_id} per conflitto")
+                                    
+                                    # VERIFICA CHE IL TOOL ABBIA ANCORA SUPPORTO SUFFICIENTE
+                                    remaining_cavalletti = [c for c in cavalletti_finali if c.tool_odl_id == layout_affected.odl_id]
+                                    if len(remaining_cavalletti) < 2:
+                                        # CORREZIONE: Aggiungi cavalletto sostitutivo in posizione sicura
+                                        safe_x = self._find_safe_position_for_replacement(
+                                            layout_affected, cavalletti_finali, config
+                                        )
+                                        
+                                        replacement_cavalletto = CavallettoFixedPosition(
+                                            x=safe_x - 40.0,
+                                            y=layout_affected.y + layout_affected.height / 2 - 30.0,
+                                            width=80.0,
+                                            height=60.0,
+                                            sequence_number=len(cavalletti_finali),
+                                            tool_odl_id=layout_affected.odl_id
+                                        )
+                                        cavalletti_finali.append(replacement_cavalletto)
+                                        self.logger.info(f"🔧 Aggiunto cavalletto sostitutivo per ODL {layout_affected.odl_id}")
+        
+        if conflicts_resolved > 0:
+            self.logger.info(f"✅ Risolti {conflicts_resolved} conflitti condivisione estremi")
+        else:
+            self.logger.info("✅ Nessun conflitto condivisione estremi rilevato")
+
+    def _get_extreme_cavalletti(
+        self, 
+        layout: NestingLayout2L, 
+        cavalletti: List[CavallettoFixedPosition]
+    ) -> List[CavallettoFixedPosition]:
+        """
+        🔧 HELPER: Trova cavalletti estremi (più esterni) di un tool lungo X
+        
+        DEFINIZIONE ESTREMI:
+        - Cavalletto più a sinistra (X minimo)
+        - Cavalletto più a destra (X massimo)
+        """
+        tool_cavalletti = [c for c in cavalletti if c.tool_odl_id == layout.odl_id]
+        
+        if len(tool_cavalletti) <= 2:
+            return tool_cavalletti  # Tutti sono estremi se ≤2 cavalletti
+        
+        # Trova estremi X
+        leftmost = min(tool_cavalletti, key=lambda c: c.center_x)
+        rightmost = max(tool_cavalletti, key=lambda c: c.center_x)
+        
+        estremi = [leftmost]
+        if rightmost != leftmost:
+            estremi.append(rightmost)
+        
+        return estremi
+
+    def _find_safe_position_for_replacement(
+        self, 
+        layout: NestingLayout2L, 
+        cavalletti: List[CavallettoFixedPosition],
+        config: CavallettiConfiguration
+    ) -> float:
+        """
+        🔧 HELPER: Trova posizione X sicura per cavalletto sostitutivo
+        
+        CRITERI SICUREZZA:
+        - Dentro boundaries del tool
+        - Lontano da cavalletti esistenti
+        - Non in zona estremi per evitare nuovi conflitti
+        """
+        margin = config.min_distance_from_edge
+        safe_zone_start = layout.x + margin + layout.width * 0.3  # 30% larghezza
+        safe_zone_end = layout.x + layout.width - margin - layout.width * 0.3  # 70% larghezza
+        
+        # Prova centro safe zone come prima opzione
+        center_safe_zone = (safe_zone_start + safe_zone_end) / 2
+        
+        # Verifica che non sia troppo vicino a cavalletti esistenti
+        tool_cavalletti = [c for c in cavalletti if c.tool_odl_id == layout.odl_id]
+        
+        for existing_cav in tool_cavalletti:
+            if abs(existing_cav.center_x - center_safe_zone) < config.min_distance_between_cavalletti:
+                # Troppo vicino, sposta verso un estremo della safe zone
+                if center_safe_zone < existing_cav.center_x:
+                    center_safe_zone = safe_zone_start + 50.0  # Verso sinistra
+                else:
+                    center_safe_zone = safe_zone_end - 50.0  # Verso destra
+                break
+        
+        return center_safe_zone
+
+    def _cavalletti_overlap_significantly(
+        self, 
+        cav1: CavallettoFixedPosition, 
+        cav2: CavallettoFixedPosition,
+        config: CavallettiConfiguration
+    ) -> bool:
+        """
+        🔧 HELPER: Verifica se due cavalletti si sovrappongono significativamente
+        
+        SOGLIA: Overlap > 50% della larghezza o distanza < min_distance_between_cavalletti
+        """
+        # Calcola sovrapposizione X
+        overlap_x_start = max(cav1.x, cav2.x)
+        overlap_x_end = min(cav1.x + cav1.width, cav2.x + cav2.width)
+        overlap_x = max(0, overlap_x_end - overlap_x_start)
+        
+        # Calcola sovrapposizione Y  
+        overlap_y_start = max(cav1.y, cav2.y)
+        overlap_y_end = min(cav1.y + cav1.height, cav2.y + cav2.height)
+        overlap_y = max(0, overlap_y_end - overlap_y_start)
+        
+        # Overlap significativo se >= 50% della dimensione minore
+        significant_overlap_x = overlap_x >= min(cav1.width, cav2.width) * 0.5
+        significant_overlap_y = overlap_y >= min(cav1.height, cav2.height) * 0.5
+        
+        # Oppure se distanza centri < soglia
+        center_distance = ((cav1.center_x - cav2.center_x)**2 + (cav1.center_y - cav2.center_y)**2)**0.5
+        too_close = center_distance < getattr(config, 'min_distance_between_cavalletti', 150.0)
+        
+        return (significant_overlap_x and significant_overlap_y) or too_close

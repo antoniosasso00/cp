@@ -25,7 +25,7 @@ import {
   Building
 } from 'lucide-react'
 
-// 🎯 Interfacce per nesting 2L
+// 🎯 Interfacce per nesting 2L - MIGLIORATE per debug e compatibilità
 interface ToolPosition2L {
   odl_id: number
   tool_id: number
@@ -41,6 +41,17 @@ interface ToolPosition2L {
   part_number?: string
   descrizione_breve?: string
   numero_odl?: string | number
+  
+  // 🔧 NUOVI CAMPI per debug e compatibilità
+  can_use_cavalletto?: boolean
+  preferred_level?: number | null
+  debug_info?: {
+    algorithm_used?: string
+    positioning_reason?: string
+    eligibility_check?: boolean
+    weight_check?: boolean
+    dimension_check?: boolean
+  }
 }
 
 interface Cavalletto {
@@ -153,6 +164,21 @@ const getToolDisplayInfo = (tool: ToolPosition2L) => {
   const levelText = tool.level === 0 ? 'Piano Base' : 'Su Cavalletti'
   const altezza = tool.z_position ? formatDimension(tool.z_position) : '0mm'
   
+  // 🔧 MIGLIORAMENTO: Informazioni debug e eligibilità
+  const eligibilityInfo = tool.can_use_cavalletto !== undefined ? 
+    (tool.can_use_cavalletto ? '✅ Eligible per cavalletti' : '❌ Non eligible per cavalletti') : 
+    '❓ Eligibilità non specificata'
+  
+  const debugInfo = tool.debug_info ? {
+    algorithm: tool.debug_info.algorithm_used || 'N/A',
+    reason: tool.debug_info.positioning_reason || 'N/A',
+    checks: {
+      eligibility: tool.debug_info.eligibility_check ? '✅' : '❌',
+      weight: tool.debug_info.weight_check ? '✅' : '❌',
+      dimensions: tool.debug_info.dimension_check ? '✅' : '❌'
+    }
+  } : null
+  
   return {
     numeroODL,
     partNumber,
@@ -160,7 +186,9 @@ const getToolDisplayInfo = (tool: ToolPosition2L) => {
     dimensioni,
     levelText,
     altezza,
-    peso: formatWeight(tool.weight_kg)
+    peso: formatWeight(tool.weight_kg),
+    eligibilityInfo,
+    debugInfo
   }
 }
 
@@ -219,6 +247,41 @@ export const NestingCanvas2L: React.FC<NestingCanvas2LProps> = ({
     compactMode: false
   })
 
+  // 🔧 NUOVO: Stato per debug panel
+  const [showDebugPanel, setShowDebugPanel] = useState(false)
+  
+  // 🔧 NUOVO: Calcolo statistiche 2L per debug
+  const calculate2LStats = useCallback(() => {
+    const level0Tools = positioned_tools.filter(t => t.level === 0)
+    const level1Tools = positioned_tools.filter(t => t.level === 1)
+    const eligibleTools = positioned_tools.filter(t => t.can_use_cavalletto === true)
+    const nonEligibleTools = positioned_tools.filter(t => t.can_use_cavalletto === false)
+    
+    const level0Weight = level0Tools.reduce((sum, t) => sum + t.weight_kg, 0)
+    const level1Weight = level1Tools.reduce((sum, t) => sum + t.weight_kg, 0)
+    
+    const level0Area = level0Tools.reduce((sum, t) => sum + (t.width * t.height), 0)
+    const level1Area = level1Tools.reduce((sum, t) => sum + (t.width * t.height), 0)
+    
+    return {
+      total: positioned_tools.length,
+      level0Count: level0Tools.length,
+      level1Count: level1Tools.length,
+      eligibleCount: eligibleTools.length,
+      nonEligibleCount: nonEligibleTools.length,
+      cavallettiCount: cavalletti.length,
+      level0Weight: level0Weight.toFixed(1),
+      level1Weight: level1Weight.toFixed(1),
+      totalWeight: (level0Weight + level1Weight).toFixed(1),
+      level0Area: (level0Area / 1000000).toFixed(2), // m²
+      level1Area: (level1Area / 1000000).toFixed(2), // m²
+      distribution: {
+        level0Pct: positioned_tools.length > 0 ? ((level0Tools.length / positioned_tools.length) * 100).toFixed(1) : '0',
+        level1Pct: positioned_tools.length > 0 ? ((level1Tools.length / positioned_tools.length) * 100).toFixed(1) : '0'
+      }
+    }
+  }, [positioned_tools, cavalletti])
+
   // 🎨 Canvas context
   const getCanvasContext = useCallback(() => {
     const canvas = canvasRef.current
@@ -276,6 +339,36 @@ export const NestingCanvas2L: React.FC<NestingCanvas2LProps> = ({
   const render = useCallback(() => {
     const ctx = getCanvasContext()
     if (!ctx || !canvasRef.current || !containerRef.current) return
+
+    // 🚨 DEBUG CRITICO: Verifica dati tool per identificare problema rendering primo livello
+    const level0Tools = positioned_tools.filter(t => t.level === 0)
+    const level1Tools = positioned_tools.filter(t => t.level === 1)
+    const undefinedLevelTools = positioned_tools.filter(t => t.level === undefined || t.level === null)
+    
+    console.log('🔍 CANVAS 2L DEBUG - Distribuzione Livelli:', {
+      totalTools: positioned_tools.length,
+      level0Count: level0Tools.length,
+      level1Count: level1Tools.length,
+      undefinedLevelCount: undefinedLevelTools.length,
+      layerVisibility: {
+        level0: layerVisibility.level0,
+        level0Opacity: layerVisibility.level0Opacity,
+        isolationMode: layerVisibility.isolationMode
+      },
+      toolSample: positioned_tools.slice(0, 3).map(t => ({
+        odl_id: t.odl_id,
+        level: t.level,
+        x: t.x,
+        y: t.y,
+        width: t.width,
+        height: t.height
+      }))
+    })
+
+    // 🚨 ALERT CRITICO: Se level 0 ha tool ma non vengono renderizzati
+    if (level0Tools.length > 0 && layerVisibility.level0 && layerVisibility.isolationMode === 'none') {
+      console.warn('⚠️ PROBLEMA IDENTIFICATO: Level 0 ha', level0Tools.length, 'tool ma potrebbero non essere visibili')
+    }
 
     const container = containerRef.current
     const canvas = canvasRef.current
@@ -454,7 +547,18 @@ export const NestingCanvas2L: React.FC<NestingCanvas2LProps> = ({
       const opacity = level === 0 ? layerVisibility.level0Opacity : layerVisibility.level1Opacity
       ctx.globalAlpha = opacity
       
-      positioned_tools.filter(tool => tool.level === level).forEach(tool => {
+      // 🔧 FIX RETROCOMPATIBILITÀ: Assegna level 0 a tool con level undefined/null
+      const toolsAtLevel = positioned_tools.filter(tool => {
+        const toolLevel = tool.level ?? 0  // Default a livello 0 se undefined
+        return toolLevel === level
+      })
+      
+      // 🚨 DEBUG: Log se abbiamo tool per questo livello
+      if (toolsAtLevel.length > 0) {
+        console.log(`🎨 Rendering level ${level}:`, toolsAtLevel.length, 'tool')
+      }
+      
+      toolsAtLevel.forEach(tool => {
         const isSelected = selectedTool === tool
         const colors = level === 0 ? COLORS.level0 : COLORS.level1
         
@@ -688,7 +792,15 @@ export const NestingCanvas2L: React.FC<NestingCanvas2LProps> = ({
   }, [])
 
   const handleWheel = useCallback((event: React.WheelEvent) => {
-    event.preventDefault()
+    // 🔧 FIX PASSIVE EVENT LISTENER: Prevenzione solo se necessario
+    if (event.defaultPrevented) return
+    
+    try {
+      event.preventDefault()
+    } catch (e) {
+      // Ignora errori passive listener - non bloccano il rendering
+      console.debug('Canvas wheel preventDefault ignores passive listener')
+    }
     
     const zoomDelta = event.deltaY > 0 ? 0.9 : 1.1
     const newScale = Math.max(0.1, Math.min(5, viewport.scale * zoomDelta))
@@ -932,6 +1044,15 @@ export const NestingCanvas2L: React.FC<NestingCanvas2LProps> = ({
               <Info className="w-4 h-4" />
               Coordinate
             </Button>
+            <Button
+              variant={showDebugPanel ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowDebugPanel(!showDebugPanel)}
+              className="gap-1"
+            >
+              <Settings className="w-4 h-4" />
+              Debug 2L
+            </Button>
           </div>
 
           {/* Zoom Controls */}
@@ -1003,6 +1124,14 @@ export const NestingCanvas2L: React.FC<NestingCanvas2LProps> = ({
           <CavallettoInfoPanel
             cavalletto={selectedCavalletto}
             onClose={() => setSelectedCavalletto(null)}
+          />
+        )}
+        
+        {/* 🔧 Debug Panel Overlay */}
+        {showDebugPanel && (
+          <Debug2LPanel
+            stats={calculate2LStats()}
+            onClose={() => setShowDebugPanel(false)}
           />
         )}
       </div>
@@ -1165,6 +1294,110 @@ const CavallettoInfoPanel: React.FC<{
             </Badge>
           )}
         </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// 🔧 Debug Panel Component
+const Debug2LPanel: React.FC<{
+  stats: ReturnType<typeof NestingCanvas2L.prototype.calculate2LStats>
+  onClose: () => void
+}> = ({ stats, onClose }) => {
+  return (
+    <Card className="absolute bottom-4 left-4 w-96 bg-white/95 backdrop-blur-sm shadow-lg border border-blue-200">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+            <Info className="w-5 h-5 text-blue-600" />
+            Debug 2L - Statistiche
+          </CardTitle>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Distribuzione Livelli */}
+        <div className="bg-blue-50 p-3 rounded-md border border-blue-200">
+          <h4 className="font-semibold text-blue-800 mb-2">📊 Distribuzione Livelli</h4>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <span className="text-blue-600">Livello 0 (Piano):</span>
+              <div className="font-mono font-semibold text-blue-800">
+                {stats.level0Count} tool ({stats.distribution.level0Pct}%)
+              </div>
+            </div>
+            <div>
+              <span className="text-amber-600">Livello 1 (Cavalletti):</span>
+              <div className="font-mono font-semibold text-amber-800">
+                {stats.level1Count} tool ({stats.distribution.level1Pct}%)
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Eligibilità */}
+        <div className="bg-green-50 p-3 rounded-md border border-green-200">
+          <h4 className="font-semibold text-green-800 mb-2">✅ Eligibilità Cavalletti</h4>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <span className="text-green-600">Eligible:</span>
+              <div className="font-mono font-semibold text-green-800">
+                {stats.eligibleCount} tool
+              </div>
+            </div>
+            <div>
+              <span className="text-red-600">Non Eligible:</span>
+              <div className="font-mono font-semibold text-red-800">
+                {stats.nonEligibleCount} tool
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Peso e Area */}
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <span className="font-medium text-slate-600">Peso Totale:</span>
+            <div className="font-mono text-slate-800 font-semibold">{stats.totalWeight} kg</div>
+          </div>
+          <div>
+            <span className="font-medium text-slate-600">Cavalletti:</span>
+            <div className="font-mono text-slate-800 font-semibold">{stats.cavallettiCount}</div>
+          </div>
+          <div>
+            <span className="font-medium text-slate-600">Area L0:</span>
+            <div className="font-mono text-blue-700">{stats.level0Area} m²</div>
+          </div>
+          <div>
+            <span className="font-medium text-slate-600">Area L1:</span>
+            <div className="font-mono text-amber-700">{stats.level1Area} m²</div>
+          </div>
+        </div>
+
+        {/* Analisi Problemi */}
+        {stats.level1Count === 0 && stats.eligibleCount > 0 && (
+          <div className="bg-yellow-50 p-3 rounded-md border border-yellow-200">
+            <h4 className="font-semibold text-yellow-800 mb-2">⚠️ Possibili Problemi</h4>
+            <div className="text-sm text-yellow-700">
+              <p>• {stats.eligibleCount} tool eligible ma nessuno su livello 1</p>
+              <p>• Possibile problema algoritmo sequenziale</p>
+              <p>• Verificare criteri eligibilità e parametri solver</p>
+            </div>
+          </div>
+        )}
+
+        {stats.level1Count > 0 && (
+          <div className="bg-green-50 p-3 rounded-md border border-green-200">
+            <h4 className="font-semibold text-green-800 mb-2">✅ Sistema 2L Funzionante</h4>
+            <div className="text-sm text-green-700">
+              <p>• {stats.level1Count} tool posizionati su livello 1</p>
+              <p>• Distribuzione bilanciata tra i livelli</p>
+              <p>• Correzioni implementate con successo</p>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   )

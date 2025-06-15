@@ -1,0 +1,153 @@
+{
+  "positioned_tools": [
+    {
+      "odl_id": 1,
+      "tool_id": 101,
+      "x": 100,
+      "y": 150,
+      "width": 750,
+      "height": 450,
+      "rotated": false,
+      "weight_kg": 45.0,
+      "level": 0,
+      "z_position": 0,
+      "lines_used": 2,
+      "part_number": "PN-001",
+      "descrizione_breve": "Componente A",
+      "numero_odl": "ODL001",
+      "can_use_cavalletto": true,
+      "preferred_level": null,
+      "debug_info": {
+        "algorithm_used": "sequential_2l_v3",
+        "positioning_reason": "positioned_on_base_level",
+        "eligibility_check": true,
+        "weight_check": true,
+        "dimension_check": true
+      }
+    },
+    {
+      "odl_id": 2,
+      "tool_id": 102,
+      "x": 1000,
+      "y": 200,
+      "width": 900,
+      "height": 600,
+      "rotated": false,
+      "weight_kg": 75.0,
+      "level": 1,
+      "z_position": 100,
+      "lines_used": 3,
+      "part_number": "PN-002",
+      "descrizione_breve": "Componente B",
+      "numero_odl": "ODL002",
+      "can_use_cavalletto": true,
+      "preferred_level": null,
+      "debug_info": {
+        "algorithm_used": "sequential_2l_v3",
+        "positioning_reason": "positioned_on_cavalletti_level",
+        "eligibility_check": true,
+        "weight_check": true,
+        "dimension_check": true
+      }
+    },
+    {
+      "odl_id": 3,
+      "tool_id": 103,
+      "x": 2200,
+      "y": 300,
+      "width": 1100,
+      "height": 750,
+      "rotated": false,
+      "weight_kg": 95.0,
+      "level": 1,
+      "z_position": 100,
+      "lines_used": 4,
+      "part_number": "PN-003",
+      "descrizione_breve": "Componente C",
+      "numero_odl": "ODL003",
+      "can_use_cavalletto": true,
+      "preferred_level": null,
+      "debug_info": {
+        "algorithm_used": "sequential_2l_v3",
+        "positioning_reason": "positioned_on_cavalletti_level",
+        "eligibility_check": true,
+        "weight_check": true,
+        "dimension_check": true
+      }
+    }
+  ],
+  "cavalletti": [
+    {
+      "x": 1000,
+      "y": 0,
+      "width": 60,
+      "height": 1900,
+      "tool_odl_id": 2,
+      "tool_id": 102,
+      "sequence_number": 0,
+      "center_x": 1030,
+      "center_y": 950,
+      "support_area_mm2": 114000,
+      "height_mm": 100,
+      "load_capacity_kg": 250
+    },
+    {
+      "x": 1800,
+      "y": 0,
+      "width": 60,
+      "height": 1900,
+      "tool_odl_id": 2,
+      "tool_id": 102,
+      "sequence_number": 1,
+      "center_x": 1830,
+      "center_y": 950,
+      "support_area_mm2": 114000,
+      "height_mm": 100,
+      "load_capacity_kg": 250
+    },
+    {
+      "x": 2200,
+      "y": 0,
+      "width": 60,
+      "height": 1900,
+      "tool_odl_id": 3,
+      "tool_id": 103,
+      "sequence_number": 0,
+      "center_x": 2230,
+      "center_y": 950,
+      "support_area_mm2": 114000,
+      "height_mm": 100,
+      "load_capacity_kg": 250
+    },
+    {
+      "x": 3100,
+      "y": 0,
+      "width": 60,
+      "height": 1900,
+      "tool_odl_id": 3,
+      "tool_id": 103,
+      "sequence_number": 1,
+      "center_x": 3130,
+      "center_y": 950,
+      "support_area_mm2": 114000,
+      "height_mm": 100,
+      "load_capacity_kg": 250
+    }
+  ],
+  "canvas_width": 8000,
+  "canvas_height": 1900,
+  "metadata": {
+    "generated_at": "2025-06-14T21:05:41.349782",
+    "corrections_applied": true,
+    "algorithm_version": "sequential_2l_v3_corrected",
+    "eligibility_criteria": {
+      "max_weight_kg": 100,
+      "max_width_mm": 800,
+      "max_length_mm": 1200
+    },
+    "algorithm_params": {
+      "prefer_base_level": false,
+      "level_preference_weight": 0.05
+    }
+  }
+}

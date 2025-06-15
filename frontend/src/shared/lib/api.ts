@@ -1792,7 +1792,7 @@ export const batchNestingApi = {
     const isComplexDataset = odlCount > 10 || autoclaveCount > 2;
     
     // ✅ TIMEOUT ESTESI: 10 minuti per semplici, 20 minuti per complessi
-    const baseTimeout = isComplexDataset ? TIMEOUT_CONFIG.NESTING_TIMEOUT * 2 : TIMEOUT_CONFIG.NESTING_TIMEOUT;
+    const baseTimeout = isComplexDataset ? TIMEOUT_CONFIG.NESTING_TIMEOUT * 4 : TIMEOUT_CONFIG.NESTING_TIMEOUT * 2;
     
     console.log(`⏱️ Dataset complexity: ${isComplexDataset ? 'COMPLEX' : 'SIMPLE'} (${odlCount} ODL, ${autoclaveCount} autoclavi)`);
     console.log(`⏱️ Timeout configurato: ${baseTimeout/1000}s`);

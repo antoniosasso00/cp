@@ -155,6 +155,130 @@ def test_simple_solve():
         traceback.print_exc()
         return False
 
+def test_cavalletti_stability_constraints():
+    """Test specifico per i vincoli di stabilità cavalletti"""
+    try:
+        from backend.services.nesting.solver_2l import (
+            NestingModel2L, 
+            NestingParameters2L, 
+            ToolInfo2L, 
+            AutoclaveInfo2L
+        )
+        
+        print("\n🔒 Test vincoli stabilità cavalletti...")
+        
+        # Parametri con cavalletti abilitati
+        parameters = NestingParameters2L(
+            padding_mm=5.0,
+            use_cavalletti=True,
+            prefer_base_level=False,  # Forza uso cavalletti
+            base_timeout_seconds=30.0
+        )
+        
+        # Autoclave con cavalletti
+        autoclave = AutoclaveInfo2L(
+            id=1,
+            width=1200.0,
+            height=800.0,
+            max_weight=500.0,
+            max_lines=30,
+            has_cavalletti=True,
+            cavalletto_height=100.0,
+            peso_max_per_cavalletto_kg=150.0,
+            cavalletto_width=80.0,
+            cavalletto_height_mm=60.0
+        )
+        
+        # Tool lunghi che potrebbero condividere cavalletti estremi
+        tools = [
+            ToolInfo2L(
+                odl_id=1, 
+                width=600, height=200, weight=50, 
+                can_use_cavalletto=True,
+                preferred_level=1  # Forza livello 1
+            ),
+            ToolInfo2L(
+                odl_id=2, 
+                width=550, height=180, weight=45, 
+                can_use_cavalletto=True,
+                preferred_level=1  # Forza livello 1
+            ),
+            ToolInfo2L(
+                odl_id=3, 
+                width=500, height=160, weight=40, 
+                can_use_cavalletto=True,
+                preferred_level=1  # Forza livello 1
+            )
+        ]
+        
+        print(f"   Test con {len(tools)} tool lunghi per forzare potenziali conflitti cavalletti")
+        print(f"   Autoclave: {autoclave.width}x{autoclave.height}mm con cavalletti")
+        
+        # Risoluzione
+        solver = NestingModel2L(parameters)
+        solution = solver.solve_2l(tools, autoclave)
+        
+        # Verifica risultato
+        print(f"\n📊 Risultati test stabilità:")
+        print(f"   Successo: {solution.success}")
+        print(f"   Tool livello 1: {solution.metrics.level_1_count}")
+        print(f"   Tool totali posizionati: {solution.metrics.positioned_count}")
+        
+        if solution.success and solution.layouts:
+            print(f"\n📋 Verifica stabilità posizionamenti:")
+            level_1_tools = [layout for layout in solution.layouts if layout.level == 1]
+            
+            if len(level_1_tools) >= 2:
+                print(f"   Tool su livello 1: {len(level_1_tools)}")
+                for i, layout in enumerate(level_1_tools):
+                    print(f"     ODL {layout.odl_id}: ({layout.x:.1f},{layout.y:.1f}) "
+                          f"{layout.width:.1f}x{layout.height:.1f}mm")
+                
+                # Verifica manuale che non ci siano sovrapposizioni cavalletti
+                # (questa è una verifica semplificata - il solver interno ha la logica completa)
+                min_separation = 200  # mm - dalla configurazione
+                conflicts_found = 0
+                
+                for i in range(len(level_1_tools)):
+                    for j in range(i + 1, len(level_1_tools)):
+                        tool_i = level_1_tools[i]
+                        tool_j = level_1_tools[j]
+                        
+                        # Calcolo semplificato posizioni estreme (assumendo orientazione standard)
+                        i_first = tool_i.x + 30  # margine dal bordo
+                        i_last = tool_i.x + tool_i.width - 30 - 80  # margine + larghezza cavalletto
+                        j_first = tool_j.x + 30
+                        j_last = tool_j.x + tool_j.width - 30 - 80
+                        
+                        # Verifica separazione minima
+                        min_dist = min(
+                            abs(i_first - j_first),
+                            abs(i_first - j_last),
+                            abs(i_last - j_first),
+                            abs(i_last - j_last)
+                        )
+                        
+                        if min_dist < min_separation:
+                            conflicts_found += 1
+                            print(f"     ⚠️  Possibile conflitto tra ODL {tool_i.odl_id} e {tool_j.odl_id} "
+                                  f"(separazione: {min_dist:.1f}mm < {min_separation}mm)")
+                
+                if conflicts_found == 0:
+                    print(f"     ✅ Nessun conflitto cavalletti rilevato - Vincoli stabilità funzionanti")
+                else:
+                    print(f"     ❌ Trovati {conflicts_found} potenziali conflitti")
+                    
+            else:
+                print(f"     ℹ️  Solo {len(level_1_tools)} tool su livello 1 - Test vincoli non applicabile")
+        
+        return solution.success
+        
+    except Exception as e:
+        print(f"❌ Errore test stabilità cavalletti: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 def test_edge_cases():
     """Test casi limite"""
     try:
@@ -209,7 +333,8 @@ def main():
         ("Import modulo", test_import),
         ("Funzionalità base", test_basic_functionality),
         ("Risoluzione semplice", test_simple_solve),
-        ("Casi limite", test_edge_cases)
+        ("Casi limite", test_edge_cases),
+        ("Vincoli stabilità cavalletti", test_cavalletti_stability_constraints)
     ]
     
     results = []

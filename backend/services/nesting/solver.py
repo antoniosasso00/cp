@@ -238,26 +238,126 @@ class NestingModel:
     
     def _calculate_dynamic_timeout(self, tools: List[ToolInfo], complexity_score: float) -> float:
         """
-        🆕 NUOVO v3.0: Calcola timeout dinamico basato su complessità
-        Range: 20s (semplice) → 300s (ultra-complesso)
+        🆕 NUOVO v3.0: Calcola timeout dinamico OTTIMIZZATO con principi AWS
+        🔧 ANTI-TIMEOUT: Timeout adattivi con fallback rapidi e work amplification prevention
+        
+        Principi implementati:
+        - Timeout telescopici (edge->backend)
+        - Early exit per problemi complessi 
+        - Fallback rapidi per evitare work amplification
+        - Timeout differenziati per algoritmo (CP-SAT vs Greedy)
         """
         if not self.parameters.dynamic_timeout:
             return self.parameters.base_timeout_seconds
         
+        num_tools = len(tools)
         base = self.parameters.base_timeout_seconds
         max_timeout = self.parameters.max_timeout_seconds
         
-        # Timeout basato su complessità (0-100 → base-max)
-        complexity_factor = complexity_score / 100.0
-        dynamic_timeout = base + (max_timeout - base) * complexity_factor
+        # 🔧 TIMEOUT TELESCOPICI: Ridotti dal edge al backend
+        # Edge frontend: 300s -> API middleware: 120s -> Backend solver: 60s max
+        backend_max_timeout = min(max_timeout, 60.0)  # Hard cap per backend
         
-        # Bonus per grandi dataset
-        if len(tools) > 10:
-            dynamic_timeout *= 1.3
-        if len(tools) > 20:
-            dynamic_timeout *= 1.5
+        # 🚀 ALGORITMO TIMEOUT INTELLIGENTE v3.0
         
-        return min(dynamic_timeout, max_timeout)
+        # Fase 1: Calcolo base complessità
+        base_complexity_timeout = base + (complexity_score / 100.0) * (backend_max_timeout - base)
+        
+        # Fase 2: Fattori di scaling intelligenti
+        scaling_factors = []
+        
+        # Factor 1: Numero pezzi (non lineare - diminuisce efficienza con troppi pezzi)
+        if num_tools <= 5:
+            pieces_factor = 1.0  # Piccoli dataset: timeout standard
+        elif num_tools <= 15:
+            pieces_factor = 1.2  # Dataset medi: leggero aumento
+        elif num_tools <= 25:
+            pieces_factor = 1.1  # Dataset grandi: timeout minore (CP-SAT struggle)
+        else:
+            pieces_factor = 0.8  # Dataset enormi: timeout ridotto per fallback rapido
+        scaling_factors.append(pieces_factor)
+        
+        # Factor 2: Complessità geometrica (aspect ratio variance)
+        aspect_ratios = [max(t.width, t.height) / min(t.width, t.height) for t in tools]
+        aspect_variance = np.var(aspect_ratios) if len(aspect_ratios) > 1 else 0
+        
+        if aspect_variance > 10.0:  # Forme molto irregolari
+            geometry_factor = 0.7  # Riduce timeout - difficile convergenza
+        elif aspect_variance > 5.0:  # Forme moderatamente irregolari
+            geometry_factor = 0.9
+        else:  # Forme regolari
+            geometry_factor = 1.0
+        scaling_factors.append(geometry_factor)
+        
+        # Factor 3: Densità dataset (high density = more potential conflicts)
+        autoclave_area = 1000000  # Stima conservativa se non disponibile
+        total_tool_area = sum(t.area for t in tools)
+        density = total_tool_area / autoclave_area
+        
+        if density > 0.8:  # Alta densità - probabile timeout CP-SAT
+            density_factor = 0.6  # Timeout molto ridotto per fallback rapido
+        elif density > 0.6:  # Media densità
+            density_factor = 0.8
+        else:  # Bassa densità
+            density_factor = 1.0
+        scaling_factors.append(density_factor)
+        
+        # Factor 4: Multithread efficienza
+        if self.parameters.use_multithread and num_tools > 10:
+            multithread_factor = 1.3  # Timeout leggermente maggiore per multithread
+        else:
+            multithread_factor = 1.0
+        scaling_factors.append(multithread_factor)
+        
+        # Fase 3: Applicazione fattori con cap intelligenti
+        final_scaling = np.prod(scaling_factors)
+        dynamic_timeout = base_complexity_timeout * final_scaling
+        
+        # 🔧 CAPS INTELLIGENTI: Previene timeout estremi
+        
+        # Cap minimo: Mai sotto 5 secondi (tempo minimo per algoritmo base)
+        dynamic_timeout = max(5.0, dynamic_timeout)
+        
+        # Cap massimo adattivo: Basato su tipo problema
+        if num_tools > 30 or density > 0.7:
+            # Problemi ultra-complessi: cap aggressivo per fallback rapido
+            adaptive_max = min(30.0, backend_max_timeout)
+        elif num_tools > 15 or complexity_score > 70:
+            # Problemi complessi: cap moderato
+            adaptive_max = min(45.0, backend_max_timeout)
+        else:
+            # Problemi semplici: cap standard
+            adaptive_max = backend_max_timeout
+        
+        dynamic_timeout = min(dynamic_timeout, adaptive_max)
+        
+        # 🚀 TIMEOUT DIFFERENZIATO PER ALGORITMO
+        
+        # CP-SAT: Timeout principale (80% del tempo totale)
+        cpsat_timeout = dynamic_timeout * 0.8
+        
+        # Greedy Fallback: Timeout residuo (20% del tempo totale)
+        greedy_timeout = dynamic_timeout * 0.2
+        
+        # Store per uso negli algoritmi
+        self._cpsat_timeout = cpsat_timeout
+        self._greedy_timeout = greedy_timeout
+        
+        # 📊 LOGGING DIAGNOSTICO AVANZATO
+        self.logger.info(f"🕒 TIMEOUT ADATTIVO v3.0 CALCOLATO:")
+        self.logger.info(f"   📊 Input: {num_tools} tools, complessità {complexity_score:.1f}")
+        self.logger.info(f"   ⚙️ Fattori: pieces={pieces_factor:.2f}, geometry={geometry_factor:.2f}, density={density_factor:.2f}, multithread={multithread_factor:.2f}")
+        self.logger.info(f"   🎯 Timeout totale: {dynamic_timeout:.1f}s (base: {base}s, max: {adaptive_max:.1f}s)")
+        self.logger.info(f"   🔧 CP-SAT: {cpsat_timeout:.1f}s, Greedy: {greedy_timeout:.1f}s")
+        
+        # Avvisi per situazioni critiche
+        if dynamic_timeout < 10.0:
+            self.logger.warning(f"⚠️ TIMEOUT MOLTO RIDOTTO ({dynamic_timeout:.1f}s) - Problema complesso, fallback probabile")
+        
+        if num_tools > 25:
+            self.logger.warning(f"⚠️ DATASET GRANDE ({num_tools} tools) - Timeout ridotto per fallback rapido")
+        
+        return dynamic_timeout
     
     def _check_all_oversize(self, tools: List[ToolInfo], autoclave: AutoclaveInfo) -> bool:
         """Verifica se tutti i tool sono oversize per l'autoclave"""
@@ -863,24 +963,23 @@ class NestingModel:
                 variables['end_y'][tool_id] == variables['y'][tool_id]
             ).OnlyEnforceIf(variables['included'][tool_id].Not())
             
-            # 🔧 FIX CP-SAT: Vincoli di boundary per evitare uscite dall'autoclave
-            # Normale: end_x = x + width, end_y = y + height
+            # 🔧 FIX CP-SAT: Vincoli di boundary usando variabili intermedie per evitare BoundedLinearExpression
+            # Crea variabili per i limiti dell'autoclave
+            autoclave_width_limit = model.NewIntVar(0, round(autoclave.width), f'autoclave_width_limit_{tool_id}')
+            autoclave_height_limit = model.NewIntVar(0, round(autoclave.height), f'autoclave_height_limit_{tool_id}')
+            
+            # 🔧 FIX CP-SAT: Usa int() invece di round() per evitare errori BoundedLinearExpression
+            model.Add(autoclave_width_limit == int(autoclave.width - margin))
+            model.Add(autoclave_height_limit == int(autoclave.height - margin))
+            
+            # Vincoli di boundary usando variabili invece di valori float
             model.Add(
-                variables['end_x'][tool_id] <= round(autoclave.width - margin)
-            ).OnlyEnforceIf([variables['included'][tool_id], variables['rotated'][tool_id].Not()])
+                variables['end_x'][tool_id] <= autoclave_width_limit
+            ).OnlyEnforceIf(variables['included'][tool_id])
             
             model.Add(
-                variables['end_y'][tool_id] <= round(autoclave.height - margin)
-            ).OnlyEnforceIf([variables['included'][tool_id], variables['rotated'][tool_id].Not()])
-            
-            # Ruotato: end_x = x + height, end_y = y + width
-            model.Add(
-                variables['end_x'][tool_id] <= round(autoclave.width - margin)
-            ).OnlyEnforceIf([variables['included'][tool_id], variables['rotated'][tool_id]])
-            
-            model.Add(
-                variables['end_y'][tool_id] <= round(autoclave.height - margin)
-            ).OnlyEnforceIf([variables['included'][tool_id], variables['rotated'][tool_id]])
+                variables['end_y'][tool_id] <= autoclave_height_limit
+            ).OnlyEnforceIf(variables['included'][tool_id])
         
         return variables
     
@@ -1031,8 +1130,9 @@ class NestingModel:
             model.Add(variables['y'][tool_id] >= margin).OnlyEnforceIf(variables['included'][tool_id])
             
             # Vincoli di contenimento con dimensioni dinamiche (considera rotazione)
-            model.Add(variables['end_x'][tool_id] <= virtual_width - margin).OnlyEnforceIf(variables['included'][tool_id])
-            model.Add(variables['end_y'][tool_id] <= virtual_height - margin).OnlyEnforceIf(variables['included'][tool_id])
+            # 🔧 FIX CP-SAT: Usa int() per evitare errori BoundedLinearExpression  
+            model.Add(variables['end_x'][tool_id] <= int(virtual_width - margin)).OnlyEnforceIf(variables['included'][tool_id])
+            model.Add(variables['end_y'][tool_id] <= int(virtual_height - margin)).OnlyEnforceIf(variables['included'][tool_id])
         
         # 🚀 OTTIMIZZAZIONE v3.0: Vincoli non-overlap semplificati senza OnlyEnforceIf problematici
         # Usa approccio diretto con BigM invece di enforcement literals
@@ -1841,7 +1941,7 @@ class NestingModel:
                 current_lines += tool.lines_needed
         
         return new_layouts
-
+        
     def _collect_exclusion_reasons(
         self, 
         solution: NestingSolution, 
@@ -2233,22 +2333,11 @@ class NestingModel:
             
             for y in range(int(padding), int(autoclave.height - height) + 1, step):
                 for x in range(int(padding), int(autoclave.width - width) + 1, step):
-                    
                     if not self._has_overlap(x, y, width, height, existing_layouts):
-                        # Calcola spreco spazio
                         waste = self._calculate_wasted_space(x, y, width, height, existing_layouts, autoclave)
-                        
-                        # Bonus per posizioni bottom-left
-                        bottom_left_bonus = 1.0 / (1.0 + x * 0.01 + y * 0.01)
-                        adjusted_waste = waste / bottom_left_bonus
-                        
-                        if adjusted_waste < best_waste:
-                            best_waste = adjusted_waste
+                        if waste < best_waste:
                             best_position = (x, y, width, height, rotated)
-                            
-                            # Early exit per ODL 2 se trova posizione ottima
-                            if force_rotation and tool.odl_id == 2 and waste < 1000:
-                                return best_position
+                            best_waste = waste
         
         return best_position
     
@@ -2259,39 +2348,30 @@ class NestingModel:
         existing_layouts: List[NestingLayout], 
         padding: int
     ) -> Optional[Tuple[float, float, float, float, bool]]:
-        """🚀 Strategia 3: Corner-Fitting per spazi negli angoli"""
+        """🚀 Strategia 3: Corner-Fitting per spazi stretti"""
         
-        # Genera punti negli angoli degli oggetti esistenti
-        corner_points = set()
-        corner_points.add((padding, padding))  # Angolo origine
-        
-        for layout in existing_layouts:
-            # Angoli dell'oggetto
-            corners = [
-                (layout.x + layout.width + padding, layout.y),
-                (layout.x, layout.y + layout.height + padding),
-                (layout.x + layout.width + padding, layout.y + layout.height + padding)
-            ]
-            corner_points.update(corners)
-        
-        # Ordina per bottom-left
-        corner_list = sorted(corner_points, key=lambda p: (p[1], p[0]))
-        
-        # 🔄 NUOVO: Controlla se il tool deve essere forzatamente ruotato  
-        force_rotation = self._should_force_rotation(tool)
-        
-        # Prova orientamenti (o solo rotato se forzato)
+        # Prova orientamenti
         orientations = []
-        if not force_rotation and tool.width + padding <= autoclave.width and tool.height + padding <= autoclave.height:
+        if tool.width + padding <= autoclave.width and tool.height + padding <= autoclave.height:
             orientations.append((tool.width, tool.height, False))
         if tool.height + padding <= autoclave.width and tool.width + padding <= autoclave.height:
             orientations.append((tool.height, tool.width, True))
         
+        # Identifica corner basati sui layout esistenti
+        corners = [(padding, padding)]  # Angolo bottom-left
+        
+        for layout in existing_layouts:
+            corners.extend([
+                (layout.x + layout.width + padding, layout.y),
+                (layout.x, layout.y + layout.height + padding),
+                (layout.x + layout.width + padding, layout.y + layout.height + padding)
+            ])
+        
         for width, height, rotated in orientations:
-            for x, y in corner_list:
-                if x + width <= autoclave.width and y + height <= autoclave.height:
-                    if not self._has_overlap(x, y, width, height, existing_layouts):
-                        return (x, y, width, height, rotated)
+            for x, y in corners:
+                if (x + width <= autoclave.width and y + height <= autoclave.height and
+                    not self._has_overlap(x, y, width, height, existing_layouts)):
+                    return (x, y, width, height, rotated)
         
         return None
     
@@ -2302,39 +2382,24 @@ class NestingModel:
         existing_layouts: List[NestingLayout], 
         padding: int
     ) -> Optional[Tuple[float, float, float, float, bool]]:
-        """🚀 Strategia 4: Gap-Filling per riempire spazi vuoti"""
+        """🚀 Strategia 4: Gap-Filling per spazi residui"""
         
-        # Identifica gap disponibili
+        # Identifica gaps tra gli oggetti esistenti
         gaps = self._identify_gaps(existing_layouts, autoclave, padding)
         
-        # 🔄 ENHANCED: Controlla se il tool deve essere forzatamente ruotato  
-        force_rotation = self._should_force_rotation(tool)
-        
-        # Prova orientamenti (o solo rotato se forzato)
+        # Prova orientamenti
         orientations = []
-        if not force_rotation and tool.width + padding <= autoclave.width and tool.height + padding <= autoclave.height:
+        if tool.width + padding <= autoclave.width and tool.height + padding <= autoclave.height:
             orientations.append((tool.width, tool.height, False))
         if tool.height + padding <= autoclave.width and tool.width + padding <= autoclave.height:
             orientations.append((tool.height, tool.width, True))
-            
-        # Se forzata rotazione ma non entra ruotato, prova comunque normale come fallback
-        if force_rotation and not orientations:
-            if tool.width + padding <= autoclave.width and tool.height + padding <= autoclave.height:
-                orientations.append((tool.width, tool.height, False))
-                self.logger.warning(f"🔄 ODL {tool.odl_id}: Rotazione forzata fallita, uso orientamento normale")
         
-        for width, height, rotated in orientations:
-            # Prova a inserire il tool in ogni gap
-            for gap_x, gap_y, gap_w, gap_h in gaps:
-                if width <= gap_w and height <= gap_h:
-                    x, y = gap_x, gap_y
-                    
-                    if not self._has_overlap(x, y, width, height, existing_layouts):
-                        # Priorità per ODL 2 - prende il primo gap disponibile
-                        if force_rotation and tool.odl_id == 2:
-                            self.logger.info(f"🔄 ODL {tool.odl_id}: Gap filling prioritario in ({x}, {y})")
-                            return (x, y, width, height, rotated)
-                        return (x, y, width, height, rotated)
+        for gap_x, gap_y, gap_width, gap_height in gaps:
+            for width, height, rotated in orientations:
+                if (width <= gap_width and height <= gap_height and
+                    gap_x + width <= autoclave.width and gap_y + height <= autoclave.height and
+                    not self._has_overlap(gap_x, gap_y, width, height, existing_layouts)):
+                    return (gap_x, gap_y, width, height, rotated)
         
         return None
     
@@ -2468,7 +2533,7 @@ class NestingModel:
                 compacted.append(layout)
         
         return compacted
-
+    
     def _post_process_overlaps(
         self, 
         solution: NestingSolution, 
@@ -2522,599 +2587,6 @@ class NestingModel:
                 self.logger.error(f"🎯 Errore nella correzione overlap: {e}")
         
         return solution
-
-    def _apply_grasp_optimization(
-        self, 
-        initial_solution: NestingSolution, 
-        tools: List[ToolInfo], 
-        autoclave: AutoclaveInfo,
-        start_time: float
-    ) -> NestingSolution:
-        """
-        🚀 NUOVO v3.0: GRASP ottimizzato con Knowledge Transfer e Monte Carlo RL
-        Basato su ricerca scientifica 2024: elimina loop infiniti e migliora convergenza
-        """
-        
-        if not self.parameters.use_grasp_heuristic:
-            return initial_solution
-        
-        self.logger.info("🚀 GRASP v3.0: Inizializzazione con Knowledge Transfer")
-        
-        best_solution = initial_solution
-        num_tools = len(tools)
-        
-        # 🔧 OTTIMIZZAZIONE v3.0: Timeout dinamico ultraridotto basato su complessità
-        complexity_score = self._calculate_dataset_complexity(tools, autoclave) 
-        base_timeout = 15.0  # 🔧 RIDOTTO: Base 15s invece di 60s
-        max_timeout = 45.0   # 🔧 RIDOTTO: Max 45s invece di 240s
-        
-        # Timeout proporzionale a complessità (15s-45s range)
-        grasp_timeout = base_timeout + (max_timeout - base_timeout) * (complexity_score / 100.0)
-        if num_tools > 15:
-            grasp_timeout = min(grasp_timeout, 20.0)  # Cap a 20s per grandi dataset
-        
-        # 🔧 ITERAZIONI INTELLIGENTI v3.0: Basate su efficienza iniziale
-        if initial_solution.metrics.efficiency_score > 75.0:
-            max_iterations = 2  # Già buona, solo 2 tentativi
-        elif initial_solution.metrics.efficiency_score > 50.0:
-            max_iterations = 3  # Discreta, 3 tentativi
-        else:
-            max_iterations = min(5, self.parameters.max_iterations_grasp)  # Cap a 5
-        
-        self.logger.info(f"🔧 GRASP v3.0: timeout={grasp_timeout:.1f}s, iterazioni={max_iterations}, complessità={complexity_score:.1f}")
-        
-        # 🚀 NUOVO v3.0: Knowledge Transfer da pattern di successo
-        if self.parameters.enable_knowledge_transfer and self._successful_patterns:
-            knowledge_solution = self._apply_knowledge_transfer(tools, autoclave, start_time)
-            if knowledge_solution and knowledge_solution.metrics.efficiency_score > best_solution.metrics.efficiency_score:
-                best_solution = knowledge_solution
-                self.logger.info(f"🧠 Knowledge Transfer SUCCESS: {best_solution.metrics.efficiency_score:.1f}%")
-        
-        # Iterazioni GRASP ottimizzate
-        for iteration in range(max_iterations):
-            # 🔧 TIMEOUT CHECK: Verifica early ogni iterazione
-            if time.time() - start_time > grasp_timeout:
-                self.logger.warning(f"⏰ GRASP v3.0: Timeout ({grasp_timeout:.1f}s), stop early")
-                break
-            
-            self.logger.info(f"🚀 GRASP v3.0 Iteration {iteration + 1}/{max_iterations}")
-            
-            # FASE 1: Construction ottimizzata con Monte Carlo
-            if self.parameters.enable_monte_carlo_rl:
-                randomized_solution = self._grasp_construction_phase_monte_carlo(tools, autoclave, start_time)
-            else:
-                randomized_solution = self._grasp_construction_phase_optimized(tools, autoclave, start_time)
-            
-            # FASE 2: Local Search ultra-rapida (solo su soluzioni promettenti)
-            if (randomized_solution.success and 
-                randomized_solution.metrics.positioned_count > 0 and 
-                randomized_solution.metrics.efficiency_score > best_solution.metrics.efficiency_score - 5.0):
-                
-                improved_solution = self._grasp_local_search_fast(randomized_solution, tools, autoclave, start_time)
-                
-                # Aggiorna migliore soluzione se miglioramento
-                if improved_solution.metrics.efficiency_score > best_solution.metrics.efficiency_score:
-                    best_solution = improved_solution
-                    self.logger.info(f"🚀 GRASP v3.0: Nuova migliore soluzione: {best_solution.metrics.efficiency_score:.1f}%")
-                    
-                    # 🔧 SALVA PATTERN DI SUCCESSO per Knowledge Transfer
-                    if self.parameters.enable_knowledge_transfer:
-                        self._save_successful_pattern(tools, autoclave, improved_solution)
-                    
-                    # 🔧 EARLY EXIT: Target efficienza raggiunto
-                    if best_solution.metrics.efficiency_score > 85.0:
-                        self.logger.info(f"🎯 GRASP v3.0: Target efficienza raggiunto ({best_solution.metrics.efficiency_score:.1f}%), early exit")
-                        break
-        
-        # Aggiorna metriche
-        if best_solution != initial_solution:
-            best_solution.metrics.heuristic_iters = max_iterations
-            best_solution.metrics.algorithm_used = "GRASP_v3.0_OPTIMIZED"
-            best_solution.message += f" [GRASP v3.0: {max_iterations}iter, {grasp_timeout:.1f}s]"
-        
-        self.logger.info(f"🚀 GRASP v3.0 completato: efficienza finale {best_solution.metrics.efficiency_score:.1f}%")
-        return best_solution
-    
-    def _calculate_dataset_complexity(self, tools: List[ToolInfo], autoclave: AutoclaveInfo) -> float:
-        """
-        🆕 NUOVO v3.0: Calcola score di complessità del dataset per timeout dinamico
-        Basato su ricerca 2024: numero pezzi, densità, aspect ratio, vincoli
-        """
-        if not tools:
-            return 0.0
-        
-        # Fattori di complessità
-        num_pieces = len(tools)
-        autoclave_area = autoclave.width * autoclave.height
-        total_tool_area = sum(tool.width * tool.height for tool in tools)
-        density = (total_tool_area / autoclave_area) if autoclave_area > 0 else 0
-        
-        # Aspect ratio variance (forme irregolari = più complesso)
-        aspect_ratios = [max(tool.width, tool.height) / min(tool.width, tool.height) for tool in tools]
-        aspect_variance = sum((ar - 1.0) for ar in aspect_ratios) / len(aspect_ratios) if aspect_ratios else 0
-        
-        # Size variance (mix di dimensioni = più complesso)  
-        areas = [tool.width * tool.height for tool in tools]
-        avg_area = sum(areas) / len(areas) if areas else 0
-        size_variance = sum(abs(area - avg_area) for area in areas) / (avg_area * len(areas)) if avg_area > 0 else 0
-        
-        # Vincoli complessi
-        weight_constraints = sum(1 for tool in tools if tool.weight > self.parameters.heavy_piece_threshold_kg)
-        lines_pressure = sum(tool.lines_needed for tool in tools) / max(1, autoclave.max_lines)
-        
-        # Score composito (0-100)
-        complexity = min(100.0, (
-            num_pieces * 2.0 +           # Base: numero pezzi
-            density * 30.0 +             # Densità riempimento
-            aspect_variance * 10.0 +     # Forme irregolari
-            size_variance * 15.0 +       # Mix dimensioni
-            weight_constraints * 3.0 +   # Vincoli peso
-            lines_pressure * 10.0        # Pressione linee vuoto
-        ))
-        
-        return complexity
-    
-    def _apply_knowledge_transfer(self, tools: List[ToolInfo], autoclave: AutoclaveInfo, start_time: float) -> Optional[NestingSolution]:
-        """
-        🆕 NUOVO v3.0: Knowledge Transfer da pattern di successo precedenti
-        Basato su ricerca Nature 2024: riuso conoscenza per migliorare convergenza
-        """
-        if not self._successful_patterns:
-            return None
-        
-        # Trova pattern simile per numero di tool e dimensioni autoclave
-        similar_patterns = []
-        current_signature = (len(tools), autoclave.width, autoclave.height)
-        
-        for pattern in self._successful_patterns[-10:]:  # Solo ultimi 10 pattern
-            pattern_signature = pattern.get('signature', (0, 0, 0))
-            similarity = self._calculate_pattern_similarity(current_signature, pattern_signature)
-            if similarity > 0.8:  # Almeno 80% simile
-                similar_patterns.append((pattern, similarity))
-        
-        if not similar_patterns:
-            return None
-        
-        # Usa il pattern più simile
-        best_pattern = max(similar_patterns, key=lambda x: x[1])[0]
-        self.logger.info(f"🧠 Knowledge Transfer: Pattern simile trovato (similarity: {max(similar_patterns, key=lambda x: x[1])[1]:.2f})")
-        
-        # Prova ad applicare il pattern
-        try:
-            adapted_solution = self._adapt_pattern_to_current_problem(best_pattern, tools, autoclave, start_time)
-            return adapted_solution
-        except Exception as e:
-            self.logger.warning(f"🧠 Knowledge Transfer fallito: {str(e)}")
-            return None
-    
-    def _calculate_pattern_similarity(self, sig1: Tuple, sig2: Tuple) -> float:
-        """Calcola similarità tra due signature di pattern"""
-        if len(sig1) != len(sig2):
-            return 0.0
-        
-        similarities = []
-        for v1, v2 in zip(sig1, sig2):
-            if v1 == 0 and v2 == 0:
-                similarities.append(1.0)
-            elif v1 == 0 or v2 == 0:
-                similarities.append(0.0)
-            else:
-                similarity = min(v1, v2) / max(v1, v2)
-                similarities.append(similarity)
-        
-        return sum(similarities) / len(similarities)
-    
-    def _adapt_pattern_to_current_problem(self, pattern: Dict, tools: List[ToolInfo], autoclave: AutoclaveInfo, start_time: float) -> Optional[NestingSolution]:
-        """Adatta un pattern di successo al problema corrente"""
-        # Estrai strategia dal pattern
-        strategy = pattern.get('strategy', 'bottom_left_skyline')
-        rotation_preference = pattern.get('rotation_preference', 0.5)
-        
-        # Applica strategia con preferenze del pattern
-        if strategy == 'bottom_left_skyline':
-            layouts = self._apply_bl_ffd_algorithm_aerospace(tools, autoclave, self.parameters.padding_mm)
-        else:
-            layouts = self._apply_bl_ffd_algorithm_custom_order(tools, autoclave, self.parameters.padding_mm)
-        
-        # Crea soluzione
-        return self._create_solution_from_layouts(layouts, tools, autoclave, start_time, f"KNOWLEDGE_TRANSFER_{strategy}")
-    
-    def _save_successful_pattern(self, tools: List[ToolInfo], autoclave: AutoclaveInfo, solution: NestingSolution) -> None:
-        """Salva pattern di successo per Knowledge Transfer futuro"""
-        if solution.metrics.efficiency_score < 60.0:  # Solo pattern veramente buoni
-            return
-        
-        pattern = {
-            'signature': (len(tools), autoclave.width, autoclave.height),
-            'efficiency': solution.metrics.efficiency_score,
-            'strategy': solution.metrics.algorithm_used,
-            'rotation_preference': sum(1 for layout in solution.layouts if layout.rotated) / max(1, len(solution.layouts)),
-            'density': solution.metrics.area_pct,
-            'timestamp': time.time()
-        }
-        
-        self._successful_patterns.append(pattern)
-        
-        # Mantieni solo ultimi 20 pattern per memoria limitata
-        if len(self._successful_patterns) > 20:
-            self._successful_patterns = self._successful_patterns[-20:]
-        
-        self.logger.info(f"🧠 Pattern salvato: efficienza={solution.metrics.efficiency_score:.1f}%, strategia={solution.metrics.algorithm_used}")
-    
-    def _grasp_construction_phase_optimized(self, tools: List[ToolInfo], autoclave: AutoclaveInfo, start_time: float) -> NestingSolution:
-        """
-        🆕 NUOVO v3.0: Fase di costruzione GRASP ottimizzata per velocità
-        Basato su ricerca 2024: RCL (Restricted Candidate List) intelligente
-        """
-        # Parametri ottimizzati
-        alpha = 0.2  # 🔧 RIDOTTO: Più greedy (0.2 vs 0.3) per convergenza veloce
-        
-        layouts = []
-        available_tools = tools.copy()
-        
-        # Pre-ordina per aspetti critici (aerospace priority)
-        available_tools.sort(key=lambda t: (
-            -t.weight,  # Pezzi pesanti prima (vincoli critici)
-            -t.width * t.height,  # Pezzi grandi prima
-            -max(t.width, t.height) / min(t.width, t.height)  # Forme difficili prima
-        ))
-        
-        iteration_count = 0
-        max_iterations = len(tools) * 2  # Limite iterations per evitare loop
-        
-        while available_tools and iteration_count < max_iterations:
-            iteration_count += 1
-            
-            # Quick timeout check (ogni 5 tools)
-            if iteration_count % 5 == 0 and time.time() - start_time > 30.0:
-                self.logger.warning("⏰ GRASP Construction: Timeout construction phase")
-                break
-            
-            # Trova candidati veloci (max 8 invece di tutti)
-            candidates = []
-            for i, tool in enumerate(available_tools[:8]):  # 🔧 LIMITATO: Solo primi 8 per velocità
-                position = self._find_greedy_position(tool, autoclave, [
-                    (l.x, l.y, l.width, l.height) for l in layouts
-                ])
-                if position:
-                    x, y, width, height, rotated = position
-                    # Score semplificato
-                    area_score = width * height
-                    compactness = 1000.0 / (1.0 + x + y)  # Favorisce bottom-left
-                    total_score = area_score + compactness
-                    candidates.append((tool, position, total_score))
-            
-            if not candidates:
-                break
-            
-            # RCL semplificato e veloce
-            candidates.sort(key=lambda x: x[2], reverse=True)
-            best_score = candidates[0][2]
-            worst_score = candidates[-1][2]
-            threshold = worst_score + alpha * (best_score - worst_score)
-            
-            rcl = [c for c in candidates if c[2] >= threshold]
-            
-            # Selezione veloce
-            selected = random.choice(rcl) if rcl else candidates[0]
-            tool, position, _ = selected
-            x, y, width, height, rotated = position
-            
-            # Crea layout
-            layout = NestingLayout(
-                odl_id=tool.odl_id,
-                x=float(x), y=float(y),
-                width=float(width), height=float(height),
-                weight=tool.weight,
-                rotated=rotated,
-                lines_used=tool.lines_needed
-            )
-            layouts.append(layout)
-            available_tools.remove(tool)
-        
-        return self._create_solution_from_layouts(layouts, tools, autoclave, start_time, "GRASP_CONSTRUCTION_OPT")
-    
-    def _grasp_construction_phase_monte_carlo(self, tools: List[ToolInfo], autoclave: AutoclaveInfo, start_time: float) -> NestingSolution:
-        """
-        🆕 NUOVO v3.0: GRASP con Monte Carlo Reinforcement Learning
-        Basato su ricerca 2024: ottimizzazione sequenza con reinforcement
-        """
-        # Monte Carlo con statistics tracking
-        tool_scores = {}
-        for tool in tools:
-            key = f"{tool.width:.0f}x{tool.height:.0f}"
-            base_score = tool.width * tool.height
-            # Bonus da statistics precedenti
-            historical_bonus = self._placement_statistics.get(key, 0.0) * 100
-            tool_scores[tool.odl_id] = base_score + historical_bonus
-        
-        # Costruzione con preferenze Monte Carlo
-        layouts = []
-        available_tools = tools.copy()
-        
-        # Ordina per score Monte Carlo invece che greedy puro
-        available_tools.sort(key=lambda t: tool_scores.get(t.odl_id, 0), reverse=True)
-        
-        for tool in available_tools:
-            position = self._find_greedy_position(tool, autoclave, [
-                (l.x, l.y, l.width, l.height) for l in layouts
-            ])
-            if position:
-                x, y, width, height, rotated = position
-                layout = NestingLayout(
-                    odl_id=tool.odl_id,
-                    x=float(x), y=float(y),
-                    width=float(width), height=float(height),
-                    weight=tool.weight,
-                    rotated=rotated,
-                    lines_used=tool.lines_needed
-                )
-                layouts.append(layout)
-                
-                # Update statistics per reinforcement
-                key = f"{tool.width:.0f}x{tool.height:.0f}"
-                success_rate = 1.0  # Posizionato con successo
-                self._placement_statistics[key] = (
-                    self._placement_statistics.get(key, 0.5) * 0.9 + success_rate * 0.1
-                )
-        
-        return self._create_solution_from_layouts(layouts, tools, autoclave, start_time, "GRASP_MONTE_CARLO")
-    
-    def _grasp_local_search_fast(self, solution: NestingSolution, tools: List[ToolInfo], autoclave: AutoclaveInfo, start_time: float) -> NestingSolution:
-        """
-        🆕 NUOVO v3.0: Local Search ultra-veloce per GRASP
-        Elimina completamente i loop infiniti con algoritmo O(n) invece di O(n²)
-        """
-        if len(solution.layouts) <= 3:  # Skip per layout piccoli
-            return solution
-        
-        current_solution = solution
-        max_swaps = min(5, len(solution.layouts))  # Max 5 swap per velocità
-        timeout_local = 5.0  # 5s timeout per local search
-        
-        for swap_count in range(max_swaps):
-            if time.time() - start_time > timeout_local:
-                break
-            
-            # Prova ONE random swap veloce invece di tutti i possibili
-            layouts = current_solution.layouts.copy()
-            if len(layouts) >= 2:
-                i, j = random.sample(range(len(layouts)), 2)
-                
-                # Quick feasibility check prima di swap completo
-                can_swap = (layouts[i].width <= autoclave.width and
-                           layouts[i].height <= autoclave.height and
-                           layouts[j].width <= autoclave.width and
-                           layouts[j].height <= autoclave.height)
-                
-                if can_swap:
-                    # Swap posizioni
-                    layouts[i].x, layouts[j].x = layouts[j].x, layouts[i].x
-                    layouts[i].y, layouts[j].y = layouts[j].y, layouts[i].y
-                    
-                    # Quick validation
-                    if self._is_layout_valid_fast(layouts, autoclave):
-                        test_solution = self._create_solution_from_layouts(layouts, tools, autoclave, start_time, "GRASP_LOCAL_FAST")
-                        if test_solution.metrics.efficiency_score > current_solution.metrics.efficiency_score:
-                            current_solution = test_solution
-                            self.logger.info(f"🔧 Local Search Fast: swap migliorato {test_solution.metrics.efficiency_score:.1f}%")
-        
-        return current_solution
-    
-    def _grasp_construction_phase(
-        self, 
-        tools: List[ToolInfo], 
-        autoclave: AutoclaveInfo,
-        start_time: float
-    ) -> NestingSolution:
-        """
-        🚀 AEROSPACE GRASP: Fase di costruzione greedy randomizzata
-        """
-        
-        # Parametri GRASP
-        alpha = 0.3  # Parametro randomizzazione (0 = greedy puro, 1 = completamente random)
-        
-        layouts = []
-        available_tools = tools.copy()
-        random.shuffle(available_tools)  # Randomizzazione iniziale
-        
-        while available_tools:
-            # Calcola lista candidati ristretta (RCL)
-            candidate_list = []
-            
-            for tool in available_tools:
-                # Trova migliore posizione per questo tool
-                position = self._find_optimal_position_ffd(tool, autoclave, layouts, self.parameters.padding_mm)
-                if position:
-                    x, y, width, height, rotated = position
-                    # Score basato su multiple metriche
-                    area_score = width * height
-                    compactness_score = 1.0 / (1.0 + x + y)  # Favorisce bottom-left
-                    total_score = area_score * 0.8 + compactness_score * 0.2
-                    
-                    candidate_list.append((tool, position, total_score))
-            
-            if not candidate_list:
-                break
-            
-            # Ordina candidati per score
-            candidate_list.sort(key=lambda x: x[2], reverse=True)
-            
-            # Seleziona da RCL usando parametro alpha
-            best_score = candidate_list[0][2]
-            worst_score = candidate_list[-1][2]
-            threshold = worst_score + alpha * (best_score - worst_score)
-            
-            rcl = [c for c in candidate_list if c[2] >= threshold]
-            
-            # Selezione randomizzata da RCL
-            selected_tool, selected_position, _ = random.choice(rcl)
-            x, y, width, height, rotated = selected_position
-            
-            # Aggiungi layout
-            layout = NestingLayout(
-                odl_id=selected_tool.odl_id,
-                x=float(x),
-                y=float(y), 
-                width=float(width),
-                height=float(height),
-                weight=selected_tool.weight,
-                rotated=rotated,
-                lines_used=selected_tool.lines_needed
-            )
-            layouts.append(layout)
-            available_tools.remove(selected_tool)
-        
-        # Crea soluzione
-        return self._create_solution_from_layouts(layouts, tools, autoclave, start_time, "GRASP_CONSTRUCTION")
-    
-    def _grasp_local_search(
-        self, 
-        solution: NestingSolution, 
-        tools: List[ToolInfo], 
-        autoclave: AutoclaveInfo,
-        start_time: float
-    ) -> NestingSolution:
-        """
-        🚀 AEROSPACE GRASP: Local search per ottimizzazione fine
-        🔧 FIX LOOP INFINITO: Drasticamente semplificato per evitare blocchi
-        """
-        
-        current_solution = solution
-        improved = True
-        max_local_iterations = 10  # 🔧 RIDOTTO: Da 50 a 10 per evitare loop infiniti
-        local_iteration = 0
-        local_search_timeout = 10.0  # 🔧 RIDOTTO: Da 30s a 10s timeout drastico
-        local_start_time = time.time()
-        
-        # 🔧 FIX LOOP INFINITO: Early exit per dataset grandi
-        layouts_count = len(current_solution.layouts)
-        if layouts_count > 8:  # Con >8 tools, troppo costoso
-            self.logger.warning(f"🔧 GRASP Local Search SKIP: {layouts_count} tools troppi (>8), saltando ottimizzazione")
-            return current_solution
-        
-        while improved and local_iteration < max_local_iterations:
-            # 🔧 TIMEOUT CHECK: Verifica se il tempo è scaduto
-            if time.time() - local_start_time > local_search_timeout:
-                self.logger.warning(f"⏰ GRASP Local Search timeout dopo {local_search_timeout}s")
-                break
-                
-            improved = False
-            local_iteration += 1
-            
-            # 🔧 FIX PERFORMANCE: Drasticamente ridotto numero combinazioni
-            max_combinations = min(10, layouts_count)  # Max 10 test per iterazione
-            combinations_tested = 0
-            
-            # 🔧 FIX: Prova solo prime N combinazioni invece di tutte
-            import random
-            indices = list(range(len(current_solution.layouts)))
-            random.shuffle(indices)  # Randomizza per varietà
-            
-            # Test solo prime combinazioni invece di tutte le possibili
-            for idx, i in enumerate(indices):
-                if idx >= max_combinations:
-                    break
-                    
-                # Trova il prossimo indice per swap
-                j = indices[(idx + 1) % len(indices)]
-                if i == j:
-                    continue
-                    
-                combinations_tested += 1
-                
-                # 🔧 TIMEOUT CHECK: Check ogni 5 combinazioni
-                if combinations_tested % 5 == 0:
-                    if time.time() - local_start_time > local_search_timeout:
-                        self.logger.warning(f"⏰ GRASP: Timeout durante combinazioni")
-                        improved = False
-                        break
-                
-                # 🔧 FIX: Verifica preliminare dimensioni compatibili
-                layout_i = current_solution.layouts[i]
-                layout_j = current_solution.layouts[j]
-                
-                # Se le dimensioni sono troppo diverse, salta
-                size_diff_x = abs(layout_i.width - layout_j.width) / max(layout_i.width, layout_j.width)
-                size_diff_y = abs(layout_i.height - layout_j.height) / max(layout_i.height, layout_j.height)
-                if size_diff_x > 0.5 or size_diff_y > 0.5:  # >50% differenza
-                    continue
-                
-                # Prova a swappare posizioni (solo posizioni, non dimensioni)
-                test_layouts = current_solution.layouts.copy()
-                
-                # Swap SOLO posizioni, mantieni dimensioni originali
-                new_layout_i = NestingLayout(
-                    odl_id=layout_i.odl_id,
-                    x=layout_j.x,
-                    y=layout_j.y,
-                    width=layout_i.width,  # Mantieni dimensioni originali
-                    height=layout_i.height,
-                    weight=layout_i.weight,
-                    rotated=layout_i.rotated,
-                    lines_used=layout_i.lines_used
-                )
-                
-                new_layout_j = NestingLayout(
-                    odl_id=layout_j.odl_id,
-                    x=layout_i.x,
-                    y=layout_i.y,
-                    width=layout_j.width,  # Mantieni dimensioni originali
-                    height=layout_j.height,
-                    weight=layout_j.weight,
-                    rotated=layout_j.rotated,
-                    lines_used=layout_j.lines_used
-                )
-                
-                test_layouts[i] = new_layout_i
-                test_layouts[j] = new_layout_j
-                
-                # 🔧 FIX: Verifica VELOCE se almeno entra nei bounds
-                if (new_layout_i.x + new_layout_i.width > autoclave.width or
-                    new_layout_i.y + new_layout_i.height > autoclave.height or
-                    new_layout_j.x + new_layout_j.width > autoclave.width or
-                    new_layout_j.y + new_layout_j.height > autoclave.height):
-                    continue  # Skip se va fuori bounds
-                
-                # Verifica validità VELOCE (no overlap dettagliato)
-                if self._is_layout_valid_fast(test_layouts, autoclave):
-                    test_solution = self._create_solution_from_layouts(test_layouts, tools, autoclave, start_time, "GRASP_LOCAL_SEARCH")
-                    
-                    if test_solution.metrics.efficiency_score > current_solution.metrics.efficiency_score:
-                        current_solution = test_solution
-                        improved = True
-                        self.logger.info(f"🔧 GRASP Local: Miglioramento {test_solution.metrics.efficiency_score:.1f}% (iter {local_iteration})")
-                        break
-                
-                # 🔧 EARLY EXIT: Se nessun miglioramento dopo 5 test, esci
-                if combinations_tested >= 5 and not improved:
-                    break
-        
-        self.logger.info(f"🔧 GRASP Local Search completato: {local_iteration} iterazioni, {time.time() - local_start_time:.1f}s")
-        return current_solution
-    
-    def _is_layout_valid_fast(self, layouts: List[NestingLayout], autoclave: AutoclaveInfo) -> bool:
-        """
-        🔧 FIX PERFORMANCE: Verifica validità ULTRA-VELOCE per evitare loop infiniti
-        """
-        
-        # Verifica bounds VELOCE (già fatto sopra)
-        # Verifica overlap SEMPLIFICATA: solo primi N vs tutti
-        max_checks = min(len(layouts), 6)  # Max 6 layout da verificare
-        
-        for i in range(max_checks):
-            layout_i = layouts[i]
-            for j in range(i + 1, len(layouts)):
-                layout_j = layouts[j]
-                
-                # Verifica overlap VELOCE con tolleranza maggiore
-                if not (layout_i.x + layout_i.width <= layout_j.x + 1.0 or  # +1mm tolleranza
-                       layout_j.x + layout_j.width <= layout_i.x + 1.0 or
-                       layout_i.y + layout_i.height <= layout_j.y + 1.0 or
-                       layout_j.y + layout_j.height <= layout_i.y + 1.0):
-                    return False
-        
-        return True
     
     def _is_layout_valid(self, layouts: List[NestingLayout], autoclave: AutoclaveInfo) -> bool:
         """Verifica se un layout è valido (no overlap, dentro bounds)"""
@@ -3142,355 +2614,6 @@ class NestingModel:
                    layout1.y + layout1.height <= layout2.y or
                    layout2.y + layout2.height <= layout1.y)
     
-    def _create_solution_from_layouts(
-        self, 
-        layouts: List[NestingLayout], 
-        all_tools: List[ToolInfo], 
-        autoclave: AutoclaveInfo, 
-        start_time: float,
-        algorithm_name: str
-    ) -> NestingSolution:
-        """Crea NestingSolution da una lista di layout"""
-        
-        # Calcola esclusioni
-        positioned_ids = {layout.odl_id for layout in layouts}
-        excluded_odls = []
-        
-        for tool in all_tools:
-            if tool.odl_id not in positioned_ids:
-                excluded_odls.append({
-                    'odl_id': tool.odl_id,
-                    'motivo': f'Non posizionato da {algorithm_name}',
-                    'dettagli': f"Tool {tool.width}x{tool.height}mm non ha trovato posizione"
-                })
-        
-        # Calcola metriche
-        total_weight = sum(layout.weight for layout in layouts)
-        used_area = sum(layout.width * layout.height for layout in layouts)
-        total_lines = sum(layout.lines_used for layout in layouts)
-        
-        total_area = autoclave.width * autoclave.height
-        area_pct = (used_area / total_area * 100) if total_area > 0 else 0
-        vacuum_util_pct = (total_lines / self.parameters.vacuum_lines_capacity * 100) if self.parameters.vacuum_lines_capacity > 0 else 0
-        
-        # 🚀 AEROSPACE: Formula efficienza ottimizzata
-        efficiency_score = (self.parameters.area_weight * area_pct + 
-                           self.parameters.compactness_weight * area_pct +  # Approssimazione compattezza
-                           self.parameters.balance_weight * vacuum_util_pct)  # Approssimazione bilanciamento
-        
-        metrics = NestingMetrics(
-            area_pct=area_pct,
-            vacuum_util_pct=vacuum_util_pct,
-            lines_used=total_lines,
-            total_weight=total_weight,
-            positioned_count=len(layouts),
-            excluded_count=len(all_tools) - len(layouts),
-            efficiency_score=efficiency_score,
-            time_solver_ms=(time.time() - start_time) * 1000,
-            fallback_used=True,
-            heuristic_iters=0
-        )
-        
-        return NestingSolution(
-            layouts=layouts,
-            excluded_odls=excluded_odls,
-            metrics=metrics,
-            success=len(layouts) > 0,
-            algorithm_status=algorithm_name,
-            message=f"{algorithm_name} completato: {len(layouts)} ODL posizionati, efficienza {efficiency_score:.1f}%"
-        )
-
-    def _compact_and_retry_excluded(
-        self, 
-        existing_layouts: List[NestingLayout], 
-        all_tools: List[ToolInfo], 
-        autoclave: AutoclaveInfo
-    ) -> List[NestingLayout]:
-        """
-        🔧 ULTRA-AGGRESSIVA: Compattazione estremamente aggressiva per efficienza reale
-        """
-        
-        # Identifica tool esclusi
-        positioned_ids = {layout.odl_id for layout in existing_layouts}
-        excluded_tools = [tool for tool in all_tools if tool.odl_id not in positioned_ids]
-        
-        if not excluded_tools:
-            return existing_layouts
-        
-        self.logger.info(f"🔧 COMPATTAZIONE ULTRA-AGGRESSIVA: {len(excluded_tools)} ODL esclusi da recuperare")
-        
-        # FASE 1: Ricompattazione layouts esistenti con padding ultra-ridotto
-        positioned_tools = []
-        tools_dict = {tool.odl_id: tool for tool in all_tools}
-        
-        for layout in existing_layouts:
-            if layout.odl_id in tools_dict:
-                positioned_tools.append(tools_dict[layout.odl_id])
-        
-        # 🔧 FIX: Usa padding frontend anche per compattazione ultra-aggressiva  
-        ultra_compacted = self._apply_bl_ffd_algorithm_aerospace(positioned_tools, autoclave, padding=self.parameters.padding_mm)
-        
-        # FASE 2: Tentativo inserimento tool esclusi con padding zero (solo contatto)
-        final_layouts = ultra_compacted.copy()
-        recovered_count = 0
-        
-        # Ordina tool esclusi per area decrescente
-        excluded_tools.sort(key=lambda t: t.width * t.height, reverse=True)
-        
-        for tool in excluded_tools:
-            # Verifica vincoli globali
-            current_weight = sum(l.weight for l in final_layouts)
-            current_lines = sum(l.lines_used for l in final_layouts)
-            
-            if current_weight + tool.weight > autoclave.max_weight:
-                continue
-            if current_lines + tool.lines_needed > self.parameters.vacuum_lines_capacity:
-                continue
-            
-            # 🔧 RICERCA MICRO-SPAZI: Griglia ultra-fine 0.5mm
-            best_position = self._find_micro_space_position(tool, autoclave, final_layouts)
-            
-            if best_position:
-                x, y, width, height, rotated = best_position
-                layout = NestingLayout(
-                    odl_id=tool.odl_id,
-                    x=float(x),
-                    y=float(y),
-                    width=float(width),
-                    height=float(height),
-                    weight=tool.weight,
-                    rotated=rotated,
-                    lines_used=tool.lines_needed
-                )
-                final_layouts.append(layout)
-                recovered_count += 1
-                self.logger.info(f"🔧 RECUPERATO: ODL {tool.odl_id} in micro-spazio ({x:.1f}, {y:.1f})")
-        
-        # FASE 3: Se ancora ci sono esclusi, prova riarrangiamento completo
-        if recovered_count < len(excluded_tools) and len(final_layouts) > 0:
-            self.logger.info(f"🔧 RIARRANGIAMENTO COMPLETO: Tentativo layout da zero con tutti i tool")
-            
-            all_available_tools = positioned_tools + excluded_tools
-            complete_rearrangement = self._apply_bl_ffd_algorithm_aerospace(
-                all_available_tools, autoclave, padding=self.parameters.padding_mm  # 🔧 FIX: Usa padding frontend
-            )
-            
-            # Accetta solo se migliora significativamente
-            if len(complete_rearrangement) > len(final_layouts):
-                self.logger.info(f"🔧 RIARRANGIAMENTO: Miglioramento {len(final_layouts)} → {len(complete_rearrangement)} ODL")
-                final_layouts = complete_rearrangement
-                recovered_count = len(complete_rearrangement) - len(existing_layouts)
-        
-        self.logger.info(f"🔧 COMPATTAZIONE FINALE: {recovered_count} ODL recuperati, totale {len(final_layouts)}")
-        return final_layouts
-
-    def _find_micro_space_position(
-        self,
-        tool: ToolInfo,
-        autoclave: AutoclaveInfo,
-        existing_layouts: List[NestingLayout],
-        padding: float = None  # 🔧 FIX: Rimuovo valore hardcoded 0.1
-    ) -> Optional[Tuple[float, float, float, float, bool]]:
-        """
-        🔧 RICERCA MICRO-SPAZI: Trova spazi microscopici per tool esclusi
-        🔧 FIX CRITICO: Ora rispetta i parametri padding dell'utente invece di hardcode 0.1mm
-        """
-        
-        # 🔧 FIX: Usa padding dai parametri frontend se non specificato
-        if padding is None:
-            padding = self.parameters.padding_mm
-            
-        self.logger.debug(f"🔧 MICRO-SPACE: Ricerca per ODL {tool.odl_id} con padding {padding}mm (frontend)")
-        
-        # Prova entrambi gli orientamenti
-        orientations = []
-        if tool.width + padding <= autoclave.width and tool.height + padding <= autoclave.height:
-            orientations.append((tool.width, tool.height, False))
-        if tool.height + padding <= autoclave.width and tool.width + padding <= autoclave.height:
-            orientations.append((tool.height, tool.width, True))
-            
-        if not orientations:
-            self.logger.debug(f"🔧 MICRO-SPACE: ODL {tool.odl_id} troppo grande anche con padding {padding}mm")
-            return None
-        
-        # 🔧 GRIGLIA DINAMICA: Usa step basato su padding per efficienza 
-        step = max(2, int(padding // 2))  # Step proporzionale al padding, minimo 2mm
-        self.logger.debug(f"🔧 MICRO-SPACE: Step griglia {step}mm basato su padding {padding}mm")
-        
-        for width, height, rotated in orientations:
-            # Scansione sistematica con griglia ottimizzata
-            y = padding
-            while y + height <= autoclave.height:
-                x = padding
-                while x + width <= autoclave.width:
-                    # 🔧 FIX: Usa tolleranza proporzionale al padding invece di hardcode 0.05
-                    tolerance = min(0.1, padding * 0.1)  # Max 0.1mm o 10% del padding
-                    if not self._has_overlap_with_tolerance(x, y, width, height, existing_layouts, tolerance=tolerance):
-                        self.logger.debug(f"🔧 MICRO-SPACE: Posizione trovata per ODL {tool.odl_id} in ({x:.1f}, {y:.1f})")
-                        return (x, y, width, height, rotated)
-                    x += step
-                y += step
-        
-        self.logger.debug(f"🔧 MICRO-SPACE: Nessuna posizione trovata per ODL {tool.odl_id} con padding {padding}mm")
-        return None
-
-    def _has_overlap_with_tolerance(
-        self, 
-        x: float, 
-        y: float, 
-        width: float, 
-        height: float, 
-        layouts: List[NestingLayout],
-        tolerance: float = 0.05
-    ) -> bool:
-        """
-        🔧 CONTROLLO OVERLAP con tolleranza configurabile
-        ⚠️ NOTA: Default 0.05mm viene sovrascritto dalle funzioni chiamanti con valori proporzionali al padding
-        """
-        for layout in layouts:
-            # Calcola overlap con tolleranza ridotta
-            if not (x + width <= layout.x + tolerance or 
-                   x >= layout.x + layout.width - tolerance or 
-                   y + height <= layout.y + tolerance or 
-                   y >= layout.y + layout.height - tolerance):
-                return True
-        return False
-
-    def _strategy_space_optimization(
-        self, 
-        tool: ToolInfo, 
-        autoclave: AutoclaveInfo, 
-        existing_layouts: List[NestingLayout], 
-        padding: int
-    ) -> Optional[Tuple[float, float, float, float, bool]]:
-        """🔧 OTTIMIZZATO: Strategia principale per efficienza spazio massima"""
-        
-        # 🔧 ORIENTAMENTI INTELLIGENTI: Prova sempre entrambi per massima efficienza
-        orientations = []
-        if tool.width + padding <= autoclave.width and tool.height + padding <= autoclave.height:
-            orientations.append((tool.width, tool.height, False))
-        if tool.height + padding <= autoclave.width and tool.width + padding <= autoclave.height:
-            orientations.append((tool.height, tool.width, True))
-            
-        if not orientations:
-            return None
-            
-        best_position = None
-        best_efficiency = -1
-        
-        # 🔧 FIX: Griglia dinamica che rispetta i parametri frontend
-        step = max(2, int(padding // 2))  # Step proporzionale al padding, minimo 2mm
-        
-        for width, height, rotated in orientations:
-            for y in range(int(padding), int(autoclave.height - height) + 1, step):
-                for x in range(int(padding), int(autoclave.width - width) + 1, step):
-                    
-                    # Controlla sovrapposizioni
-                    if self._has_overlap(x, y, width, height, existing_layouts):
-                        continue
-                    
-                    # 🔧 EFFICIENZA SPAZIO: Calcola utilizzo spazio totale
-                    total_used_area = width * height
-                    for layout in existing_layouts:
-                        total_used_area += layout.width * layout.height
-                    
-                    total_autoclave_area = autoclave.width * autoclave.height
-                    space_efficiency = total_used_area / total_autoclave_area
-                    
-                    # 🔧 BONUS BOTTOM-LEFT: Ridotto per non interferire con efficienza
-                    bottom_left_bonus = 1.0 + (1.0 / (1.0 + x * 0.001 + y * 0.001)) * 0.05
-                    
-                    total_efficiency = space_efficiency * bottom_left_bonus
-                    
-                    if total_efficiency > best_efficiency:
-                        best_efficiency = total_efficiency
-                        best_position = (x, y, width, height, rotated)
-                        
-                        # 🔧 EARLY EXIT: Se efficienza è molto alta, accetta subito
-                        if space_efficiency > 0.8:  # 80% spazio utilizzato
-                            return best_position
-        
-        return best_position
-
-    def _try_smart_combinations(
-        self, 
-        tools: List[ToolInfo], 
-        autoclave: AutoclaveInfo, 
-        start_time: float
-    ) -> NestingSolution:
-        """
-        🚀 ALGORITMO SMART COMBINATIONS: Prova diverse combinazioni di ordinamento
-        per trovare il layout ottimale che posizioni tutti i tool
-        """
-        
-        self.logger.info(f"🚀 SMART COMBINATIONS: Testando {len(tools)} tool con ordinamenti alternativi")
-        
-        best_solution = None
-        best_count = 0
-        best_efficiency = 0
-        
-        # Strategia 1: ODL 2 per primo (priorità assoluta al tool problematico)
-        if any(t.odl_id == 2 for t in tools):
-            self.logger.info("🎯 STRATEGIA 1: ODL 2 prioritario")
-            odl2_first = sorted(tools, key=lambda t: (t.odl_id != 2, -t.width * t.height))
-            layouts1 = self._apply_bl_ffd_algorithm_custom_order(odl2_first, autoclave, padding=self.parameters.padding_mm)  # 🔧 FIX
-            if len(layouts1) > best_count:
-                best_count = len(layouts1)
-                best_solution = self._create_solution_from_layouts(layouts1, tools, autoclave, start_time, "SMART_ODL2_FIRST")
-                self.logger.info(f"🎯 STRATEGIA 1: Miglioramento {len(layouts1)} ODL posizionati")
-        
-        # Strategia 2: Tool più piccoli per primi (fill gaps first)
-        self.logger.info("🎯 STRATEGIA 2: Tool piccoli prioritari")
-        small_first = sorted(tools, key=lambda t: t.width * t.height)
-        layouts2 = self._apply_bl_ffd_algorithm_aerospace(small_first, autoclave, padding=self.parameters.padding_mm)  # 🔧 FIX
-        solution2 = self._create_solution_from_layouts(layouts2, tools, autoclave, start_time, "SMART_SMALL_FIRST")
-        if len(layouts2) > best_count or (len(layouts2) == best_count and solution2.metrics.efficiency_score > best_efficiency):
-            best_count = len(layouts2)
-            best_efficiency = solution2.metrics.efficiency_score
-            best_solution = solution2
-            self.logger.info(f"🎯 STRATEGIA 2: Miglioramento {len(layouts2)} ODL, {solution2.metrics.efficiency_score:.1f}%")
-        
-        # Strategia 3: Aspect ratio ottimizzato (long pieces first)
-        self.logger.info("🎯 STRATEGIA 3: Aspect ratio ottimizzato")
-        aspect_sorted = sorted(tools, key=lambda t: -(max(t.width, t.height) / min(t.width, t.height)))
-        layouts3 = self._apply_bl_ffd_algorithm_aerospace(aspect_sorted, autoclave, padding=self.parameters.padding_mm)  # 🔧 FIX
-        solution3 = self._create_solution_from_layouts(layouts3, tools, autoclave, start_time, "SMART_ASPECT_RATIO")
-        if len(layouts3) > best_count or (len(layouts3) == best_count and solution3.metrics.efficiency_score > best_efficiency):
-            best_count = len(layouts3)
-            best_efficiency = solution3.metrics.efficiency_score
-            best_solution = solution3
-            self.logger.info(f"🎯 STRATEGIA 3: Miglioramento {len(layouts3)} ODL, {solution3.metrics.efficiency_score:.1f}%")
-        
-        # Strategia 4: Layout compatto (width-first)
-        self.logger.info("🎯 STRATEGIA 4: Width-first compatto")
-        width_first = sorted(tools, key=lambda t: (-t.width, -t.height))
-        layouts4 = self._apply_bl_ffd_algorithm_aerospace(width_first, autoclave, padding=self.parameters.padding_mm)  # 🔧 FIX
-        solution4 = self._create_solution_from_layouts(layouts4, tools, autoclave, start_time, "SMART_WIDTH_FIRST")
-        if len(layouts4) > best_count or (len(layouts4) == best_count and solution4.metrics.efficiency_score > best_efficiency):
-            best_count = len(layouts4)
-            best_efficiency = solution4.metrics.efficiency_score
-            best_solution = solution4
-            self.logger.info(f"🎯 STRATEGIA 4: Miglioramento {len(layouts4)} ODL, {solution4.metrics.efficiency_score:.1f}%")
-        
-        # Strategia 5: Layout tetris (height-first)
-        self.logger.info("🎯 STRATEGIA 5: Height-first tetris")
-        height_first = sorted(tools, key=lambda t: (-t.height, -t.width))
-        layouts5 = self._apply_bl_ffd_algorithm_aerospace(height_first, autoclave, padding=self.parameters.padding_mm)  # 🔧 FIX
-        solution5 = self._create_solution_from_layouts(layouts5, tools, autoclave, start_time, "SMART_HEIGHT_FIRST")
-        if len(layouts5) > best_count or (len(layouts5) == best_count and solution5.metrics.efficiency_score > best_efficiency):
-            best_count = len(layouts5)
-            best_efficiency = solution5.metrics.efficiency_score
-            best_solution = solution5
-            self.logger.info(f"🎯 STRATEGIA 5: Miglioramento {len(layouts5)} ODL, {solution5.metrics.efficiency_score:.1f}%")
-        
-        # Se nessuna strategia ha migliorato, restituisci soluzione vuota
-        if best_solution is None:
-            self.logger.info("🎯 SMART COMBINATIONS: Nessun miglioramento trovato")
-            return self._create_empty_solution([], autoclave, start_time)
-        
-        self.logger.info(f"🚀 SMART COMBINATIONS: Miglior risultato {best_count} ODL, {best_efficiency:.1f}% con {best_solution.algorithm_status}")
-        return best_solution
-
     def _should_force_rotation(self, tool: ToolInfo) -> bool:
         """
         🔧 OTTIMIZZATO: Riduce rotazione forzata per aumentare efficienza
@@ -3501,104 +2624,318 @@ class NestingModel:
         Returns:
             True se il tool deve essere ruotato forzatamente
         """
-        # 🔧 FIX CRITICO: Rimuovi rotazione forzata ODL 2 che causa inefficienza
-        # ODL 2 non deve più essere forzatamente ruotato - lascia decidere all'algoritmo
-        
         # Solo tool con aspect ratio ESTREMAMENTE alto beneficiano della rotazione forzata
         aspect_ratio = max(tool.width, tool.height) / min(tool.width, tool.height)
         if aspect_ratio > 8.0:  # 🔧 AUMENTATO: Solo tool ultra-sottili (vs 3.0)
             self.logger.debug(f"🔄 ODL {tool.odl_id}: Rotazione forzata per aspect ratio estremo {aspect_ratio:.1f}")
             return True
             
-        # 🔧 DISABILITATO: Rimozione rotazione forzata per area grande
-        # Tool molto grandi dovrebbero avere libertà di orientamento per efficienza
-        
         return False
 
-    def _post_process_compaction(
+    def _strategy_space_optimization(
         self, 
-        solution: NestingSolution, 
-        tools: List[ToolInfo], 
-        autoclave: AutoclaveInfo
+        tool: ToolInfo, 
+        autoclave: AutoclaveInfo, 
+        existing_layouts: List[NestingLayout], 
+        padding: int
+    ) -> Optional[Tuple[float, float, float, float, bool]]:
+        """
+        🔧 FIX METODO MANCANTE: Strategia di ottimizzazione spazio
+        Cerca la posizione che minimizza lo spreco di spazio
+        """
+        best_position = None
+        min_waste = float('inf')
+        
+        # Genera punti candidati intelligenti
+        candidate_points = self._generate_smart_candidate_points(autoclave, existing_layouts, padding)
+        
+        for x, y in candidate_points:
+            # Prova orientamento normale
+            if (x + tool.width + padding <= autoclave.width and 
+                y + tool.height + padding <= autoclave.height):
+                
+                if not self._has_overlap(x, y, tool.width, tool.height, existing_layouts):
+                    waste = self._calculate_wasted_space(x, y, tool.width, tool.height, existing_layouts, autoclave)
+                    if waste < min_waste:
+                        min_waste = waste
+                        best_position = (x, y, tool.width, tool.height, False)
+            
+            # Prova orientamento ruotato
+            if (x + tool.height + padding <= autoclave.width and 
+                y + tool.width + padding <= autoclave.height):
+                
+                if not self._has_overlap(x, y, tool.height, tool.width, existing_layouts):
+                    waste = self._calculate_wasted_space(x, y, tool.height, tool.width, existing_layouts, autoclave)
+                    if waste < min_waste:
+                        min_waste = waste
+                        best_position = (x, y, tool.height, tool.width, True)
+        
+        return best_position
+
+    def _create_solution_from_layouts(
+        self,
+        layouts: List[NestingLayout],
+        tools: List[ToolInfo],
+        autoclave: AutoclaveInfo,
+        start_time: float,
+        algorithm_status: str
     ) -> NestingSolution:
         """
-        🚀 NUOVO: Post-processamento per compattazione finale e raggiungimento target efficienza
+        🔧 FIX METODO MANCANTE: Crea una soluzione completa dai layout posizionati
         
         Args:
-            solution: Soluzione iniziale da ottimizzare
-            tools: Lista tool originali
+            layouts: Lista dei layout posizionati
+            tools: Lista di tutti i tool originali
+            autoclave: Informazioni autoclave
+            start_time: Timestamp inizio risoluzione
+            algorithm_status: Nome dell'algoritmo utilizzato
+            
+        Returns:
+            NestingSolution completa con metriche calcolate
+        """
+        
+        # Calcola metriche dalle layout
+        total_area = autoclave.width * autoclave.height
+        used_area = sum(l.width * l.height for l in layouts)
+        total_weight = sum(l.weight for l in layouts)
+        total_lines = sum(l.lines_used for l in layouts)
+        
+        area_pct = (used_area / total_area * 100) if total_area > 0 else 0
+        vacuum_util_pct = (total_lines / self.parameters.vacuum_lines_capacity * 100) if self.parameters.vacuum_lines_capacity > 0 else 0
+        
+        # Calcola efficienza combinata (standard aerospace: 85% area + 15% vacuum)
+        efficiency_score = area_pct * 0.85 + vacuum_util_pct * 0.15
+        
+        # Determina se è stata usata rotazione
+        rotation_used = any(layout.rotated for layout in layouts)
+        
+        # Calcola ODL esclusi
+        positioned_ids = {l.odl_id for l in layouts}
+        excluded_odls = [
+            {
+                'odl_id': tool.odl_id,
+                'motivo': 'Non posizionato',
+                'dettagli': f"Tool non incluso nel layout finale"
+            }
+            for tool in tools if tool.odl_id not in positioned_ids
+        ]
+        
+        # Crea metriche
+        metrics = NestingMetrics(
+            area_pct=area_pct,
+            vacuum_util_pct=vacuum_util_pct,
+            lines_used=total_lines,
+            total_weight=total_weight,
+            positioned_count=len(layouts),
+            excluded_count=len(excluded_odls),
+            efficiency_score=efficiency_score,
+            time_solver_ms=(time.time() - start_time) * 1000,
+            fallback_used=True if "FALLBACK" in algorithm_status else False,
+            heuristic_iters=0,
+            rotation_used=rotation_used,
+            algorithm_used=algorithm_status
+        )
+        
+        success = len(layouts) > 0
+        message = f"{algorithm_status}: {len(layouts)} tool posizionati, efficienza {efficiency_score:.1f}%"
+        
+        return NestingSolution(
+            layouts=layouts,
+            excluded_odls=excluded_odls,
+            metrics=metrics,
+            success=success,
+            algorithm_status=algorithm_status,
+            message=message
+        )
+
+    def _apply_grasp_optimization(
+        self,
+        initial_solution: NestingSolution,
+        tools: List[ToolInfo],
+        autoclave: AutoclaveInfo,
+        start_time: float
+    ) -> NestingSolution:
+        """
+        🔧 FIX METODO MANCANTE: Applica ottimizzazione GRASP (wrapper per Ruin & Recreate)
+        
+        Args:
+            initial_solution: Soluzione iniziale da ottimizzare
+            tools: Lista di tutti i tool
+            autoclave: Informazioni autoclave
+            start_time: Timestamp inizio risoluzione
+            
+        Returns:
+            Soluzione ottimizzata tramite GRASP
+        """
+        
+        self.logger.info(f"🚀 GRASP: Inizio ottimizzazione da efficienza {initial_solution.metrics.efficiency_score:.1f}%")
+        
+        try:
+            # Usa il metodo esistente Ruin & Recreate che è l'implementazione GRASP reale
+            optimized_solution = self._apply_ruin_recreate_heuristic(
+                initial_solution, tools, autoclave, start_time
+            )
+            
+            # Verifica se c'è stato miglioramento
+            if optimized_solution.metrics.efficiency_score > initial_solution.metrics.efficiency_score:
+                improvement = optimized_solution.metrics.efficiency_score - initial_solution.metrics.efficiency_score
+                self.logger.info(f"🚀 GRASP: Miglioramento +{improvement:.2f}% → {optimized_solution.metrics.efficiency_score:.1f}%")
+                
+                # Aggiorna status per indicare che GRASP è stato applicato
+                if "_RRGH" not in optimized_solution.algorithm_status:
+                    optimized_solution.algorithm_status += "_GRASP"
+                    
+                return optimized_solution
+            else:
+                self.logger.info(f"🚀 GRASP: Nessun miglioramento, mantiene soluzione originale {initial_solution.metrics.efficiency_score:.1f}%")
+                return initial_solution
+                
+        except Exception as e:
+            self.logger.warning(f"🚀 GRASP: Errore durante ottimizzazione: {str(e)}")
+            return initial_solution
+
+    def _compact_and_retry_excluded(
+        self,
+        layouts: List[NestingLayout],
+        tools: List[ToolInfo],
+        autoclave: AutoclaveInfo
+    ) -> List[NestingLayout]:
+        """
+        🔧 FIX METODO MANCANTE: Compatta i layout esistenti e prova a inserire tool esclusi
+        
+        Args:
+            layouts: Layout attuali posizionati
+            tools: Lista completa dei tool
             autoclave: Informazioni autoclave
             
         Returns:
-            Soluzione ottimizzata con maggiore compattezza
+            Lista di layout compattati con eventuali tool aggiuntivi
         """
-        if not solution.layouts or solution.metrics.efficiency_score >= self.parameters.autoclave_efficiency_target:
-            return solution
+        
+        if not layouts:
+            return layouts
             
-        self.logger.info(f"🚀 POST-COMPACTION: Ottimizzazione finale per target {self.parameters.autoclave_efficiency_target:.1f}%")
+        self.logger.info(f"🔧 COMPATTAZIONE: Inizio con {len(layouts)} layout esistenti")
         
         try:
-            # Crea una copia dei layout per lavorare
-            original_layouts = solution.layouts.copy()
+            # 1. Compatta i layout esistenti usando il metodo esistente
+            padding_compatto = max(0.5, self.parameters.padding_mm * 0.5)  # Padding ridotto
+            compacted_layouts = self._compact_layout(layouts, autoclave, int(padding_compatto))
             
-            # 1. Riordina i layout per priorità (ODL 2 prima, poi per area decrescente)
-            sorted_layouts = sorted(original_layouts, key=lambda l: (l.odl_id != 2, -l.width * l.height))
+            # 2. Identifica tool esclusi
+            positioned_ids = {layout.odl_id for layout in compacted_layouts}
+            excluded_tools = [tool for tool in tools if tool.odl_id not in positioned_ids]
             
-            # 2. Ricrea il layout con algoritmo ultra-compatto
-            tools_dict = {tool.odl_id: tool for tool in tools}
-            compacted_tools = []
-            
-            for layout in sorted_layouts:
-                if layout.odl_id in tools_dict:
-                    compacted_tools.append(tools_dict[layout.odl_id])
-            
-            # 3. Applica algoritmo BL-FFD con padding dal frontend per consistenza  
-            ultra_compact_layouts = self._apply_bl_ffd_algorithm_aerospace(
-                compacted_tools, 
-                autoclave, 
-                padding=self.parameters.padding_mm  # 🔧 FIX: Usa padding frontend per consistenza
-            )
-            
-            # 4. Se migliora, applica anche strategia di riempimento gap
-            if len(ultra_compact_layouts) >= len(original_layouts):
-                # Calcola efficienza migliorata
-                total_area = sum(l.width * l.height for l in ultra_compact_layouts)
-                autoclave_area = autoclave.width * autoclave.height
-                new_area_pct = (total_area / autoclave_area * 100) if autoclave_area > 0 else 0
+            if not excluded_tools:
+                self.logger.info(f"🔧 COMPATTAZIONE: Nessun tool escluso da riprocessare")
+                return compacted_layouts
                 
-                # Se l'efficienza migliora significativamente, usa il nuovo layout
-                if new_area_pct > solution.metrics.area_pct + 2.0:  # Miglioramento minimo del 2%
-                    # Ricostruisci soluzione con layout compattato
-                    new_metrics = NestingMetrics(
-                        area_pct=new_area_pct,
-                        vacuum_util_pct=solution.metrics.vacuum_util_pct,
-                        lines_used=solution.metrics.lines_used,
-                        total_weight=solution.metrics.total_weight,
-                        positioned_count=len(ultra_compact_layouts),
-                        excluded_count=solution.metrics.excluded_count,
-                        efficiency_score=0.85 * new_area_pct + 0.15 * solution.metrics.vacuum_util_pct,
-                        time_solver_ms=solution.metrics.time_solver_ms,
-                        fallback_used=solution.metrics.fallback_used,
-                        heuristic_iters=solution.metrics.heuristic_iters + 1,
-                        rotation_used=any(l.rotated for l in ultra_compact_layouts)
-                    )
-                    
-                    new_solution = NestingSolution(
-                        layouts=ultra_compact_layouts,
-                        excluded_odls=solution.excluded_odls,
-                        metrics=new_metrics,
-                        success=True,
-                        algorithm_status="POST_COMPACTION_OPTIMIZED",
-                        message=f"Post-compattazione: efficienza migliorata da {solution.metrics.area_pct:.1f}% a {new_area_pct:.1f}%"
-                    )
-                    
-                    self.logger.info(f"✅ POST-COMPACTION: Efficienza migliorata {solution.metrics.area_pct:.1f}% → {new_area_pct:.1f}%")
-                    return new_solution
+            self.logger.info(f"🔧 COMPATTAZIONE: Tentativo reinserimento {len(excluded_tools)} tool esclusi")
             
-            # Se non migliora abbastanza, restituisci la soluzione originale
-            self.logger.info(f"📊 POST-COMPACTION: Nessun miglioramento significativo, mantengo soluzione originale")
-            return solution
+            # 3. Prova a inserire tool esclusi usando algoritmo BL-FFD con padding ridotto
+            final_layouts = list(compacted_layouts)  # Copia dei layout compattati
+            
+            # Ordina tool esclusi per area decrescente (priorità ai grandi)
+            excluded_sorted = sorted(excluded_tools, key=lambda t: t.width * t.height, reverse=True)
+            
+            for tool in excluded_sorted:
+                # Usa strategie di posizionamento per tentare inserimento
+                strategies = [
+                    self._strategy_space_optimization,
+                    self._strategy_gap_filling,
+                    self._strategy_best_fit_waste,
+                    self._strategy_corner_fitting,
+                    self._strategy_bottom_left_skyline
+                ]
+                
+                best_position = None
+                for strategy in strategies:
+                    try:
+                        position = strategy(tool, autoclave, final_layouts, int(padding_compatto))
+                        if position:
+                            best_position = position
+                            break  # Prima posizione valida
+                    except Exception as e:
+                        self.logger.debug(f"🔧 Strategia {strategy.__name__} fallita per ODL {tool.odl_id}: {str(e)}")
+                        continue
+                
+                # Se trovata posizione, aggiungi il tool
+                if best_position:
+                    x, y, width, height, rotated = best_position
+                    new_layout = NestingLayout(
+                        odl_id=tool.odl_id,
+                        x=float(x),
+                        y=float(y),
+                        width=float(width),
+                        height=float(height),
+                        weight=tool.weight,
+                        rotated=rotated,
+                        lines_used=tool.lines_needed
+                    )
+                    final_layouts.append(new_layout)
+                    self.logger.info(f"🔧 REINSERITO: ODL {tool.odl_id} in ({x:.1f}, {y:.1f})")
+            
+            self.logger.info(f"🔧 COMPATTAZIONE COMPLETATA: {len(compacted_layouts)} → {len(final_layouts)} layout")
+            return final_layouts
             
         except Exception as e:
-            self.logger.error(f"❌ Errore in post-compattazione: {str(e)}")
-            return solution
+            self.logger.warning(f"🔧 COMPATTAZIONE: Errore durante processo: {str(e)}")
+            # Fallback: restituisce layout originali
+            return layouts
+
+    def _try_smart_combinations(
+        self,
+        tools: List[ToolInfo],
+        autoclave: AutoclaveInfo,
+        start_time: float
+    ) -> NestingSolution:
+        """
+        🔧 FIX METODO AUSILIARIO: Prova combinazioni intelligenti di ordinamenti
+        
+        Implementa diverse strategie di ordinamento per massimizzare posizionamento
+        """
+        
+        self.logger.info(f"🔧 SMART COMBINATIONS: Test {len(tools)} tool con ordinamenti alternativi")
+        
+        best_solution = self._create_empty_solution([], autoclave, start_time)
+        
+        # Strategia 1: Ordinamento per weight decrescente (tool pesanti prima)
+        try:
+            heavy_first = sorted(tools, key=lambda t: t.weight, reverse=True)
+            heavy_layouts = self._apply_bl_ffd_algorithm_custom_order(heavy_first, autoclave)
+            if len(heavy_layouts) > best_solution.metrics.positioned_count:
+                temp_solution = self._create_solution_from_layouts(
+                    heavy_layouts, tools, autoclave, start_time, "SMART_HEAVY_FIRST"
+                )
+                best_solution = temp_solution
+                self.logger.info(f"🔧 SMART: Heavy-first miglioramento → {len(heavy_layouts)} tool")
+        except Exception as e:
+            self.logger.debug(f"🔧 SMART: Heavy-first fallita: {str(e)}")
+        
+        # Strategia 2: Ordinamento per aspect ratio crescente (quadrati prima)
+        try:
+            square_first = sorted(tools, key=lambda t: t.aspect_ratio)
+            square_layouts = self._apply_bl_ffd_algorithm_custom_order(square_first, autoclave)
+            if len(square_layouts) > best_solution.metrics.positioned_count:
+                temp_solution = self._create_solution_from_layouts(
+                    square_layouts, tools, autoclave, start_time, "SMART_SQUARE_FIRST"
+                )
+                best_solution = temp_solution
+                self.logger.info(f"🔧 SMART: Square-first miglioramento → {len(square_layouts)} tool")
+        except Exception as e:
+            self.logger.debug(f"🔧 SMART: Square-first fallita: {str(e)}")
+        
+        # Strategia 3: Ordinamento per numero linee decrescente (multi-line prima)
+        try:
+            lines_first = sorted(tools, key=lambda t: t.lines_needed, reverse=True)
+            lines_layouts = self._apply_bl_ffd_algorithm_custom_order(lines_first, autoclave)
+            if len(lines_layouts) > best_solution.metrics.positioned_count:
+                temp_solution = self._create_solution_from_layouts(
+                    lines_layouts, tools, autoclave, start_time, "SMART_LINES_FIRST"
+                )
+                best_solution = temp_solution
+                self.logger.info(f"🔧 SMART: Lines-first miglioramento → {len(lines_layouts)} tool")
+        except Exception as e:
+            self.logger.debug(f"🔧 SMART: Lines-first fallita: {str(e)}")
+        
+        return best_solution

@@ -44,11 +44,14 @@ class ParametriNesting(BaseModel):
 # Schema per la configurazione del layout (output del canvas React)
 class ConfigurazioneLayout(BaseModel):
     """Schema per la configurazione del layout generato dal frontend"""
-    canvas_width: float = Field(..., description="Larghezza del canvas in pixel")
-    canvas_height: float = Field(..., description="Altezza del canvas in pixel")
+    canvas_width: Optional[float] = Field(None, description="Larghezza del canvas in pixel")
+    canvas_height: Optional[float] = Field(None, description="Altezza del canvas in pixel")
     scale_factor: float = Field(default=1.0, description="Fattore di scala del canvas")
     tool_positions: List[Dict[str, Any]] = Field(default=[], 
                                                 description="Posizioni dei tool sul canvas")
+    # 🆕 NUOVO: Supporto per positioned_tools (formato 2L)
+    positioned_tools: List[Dict[str, Any]] = Field(default=[], 
+                                                  description="Tool posizionati (formato 2L)")
     plane_assignments: Dict[str, int] = Field(default={}, 
                                             description="Assegnazione dei tool ai piani")
     
@@ -355,19 +358,20 @@ class PosizionamentoTool2L(BaseModel):
     @validator('z_position', pre=True, always=True)
     def validate_z_position(cls, v, values):
         """Assicura che z_position sia coerente con il livello"""
-        level = values.get('level', 0)
+        level = values.get('level', 0) if values else 0
         if level == 0 and v != 0:
             return 0.0  # Piano base deve essere a z=0
         elif level == 1 and v == 0:
             return 100.0  # Cavalletto ha altezza default 100mm
-        return float(v)
+        return float(v) if v is not None else 0.0
     
     @validator('numero_odl', pre=True, always=True)
     def ensure_numero_odl_string(cls, v, values):
         """Assicura che numero_odl sia sempre una stringa"""
         if v is not None:
             return str(v)
-        odl_id = values.get('odl_id', 0)
+        # Fallback sicuro se odl_id non è disponibile
+        odl_id = values.get('odl_id', 0) if values else 0
         return f"ODL{str(odl_id).zfill(3)}"
 
 class CavallettoPosizionamento(BaseModel):
